@@ -421,6 +421,31 @@ final class PackFuzzyTests: XCTestCase {
         XCTAssertNil(library.match("Sauvage gentleman of the western plains"))
     }
 
+    /// İki altyazı yan yana tek satır okununca yalnız birinin Türkçesi gösterilmez (ikinci cümle düşerdi); köşe yazısı
+    /// ve çöp eklenmiş okuma yine bulunur.
+    func testTwoSubtitlesReadAsOneLineAreNotHalfTranslated() throws {
+        let library = try library("gta-v.json.gz")
+        XCTAssertNotNil(library.match("Are you listening to me?"))
+        let pairs = [
+            ("Hey, look. Good shit on those contracts you been workin' on.", "But listen, I got some other work."),
+            ("I'm calling it. Don't burn your eyes out.", "Bye, Dad."),
+        ]
+        for (first, second) in pairs {
+            let alone = try XCTUnwrap(library.match(first)?.text, first)
+            let found = library.match("\(first) \(second)")?.text
+            XCTAssertNotEqual(found, alone, "\(first) \(second)")
+            if let found, let other = library.match(second)?.text {
+                XCTAssertTrue(found.contains(alone) && found.contains(other), found)
+            }
+        }
+        XCTAssertEqual(PackFuzzy.clauses("Mirror Park Errr. Your broke. Call me back, okay? Bye, Dad."),
+                       ["Mirror Park Errr.", "Your broke.", "Call me back,", "okay? Bye, Dad."])
+        XCTAssertEqual(PackFuzzy.clauses("to escape... if we're able. You said seriously. nis seriously."),
+                       ["to escape...", "if we're able.", "You said seriously. nis seriously."])
+        XCTAssertNotNil(library.match("Your vehicle? Sorry, we can't get that sorted at this time. San Andreas"))
+        XCTAssertNotNil(library.match("Vinewood Hills Just not my junk, okay? I'm already scarred down there."))
+    }
+
     /// En büyük pakette (GTA V) bulanık arama da hızlı.
     func testFuzzySearchIsFastInTheLargestPack() throws {
         let library = try library("gta-v.json.gz")

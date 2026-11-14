@@ -4,6 +4,7 @@ package com.couchsubs.mobile.core
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -198,6 +199,39 @@ class PackFuzzyTest {
             "but it does mean he's got money to pay people who help him.")
         assertNull(library.match("The quick brown fox jumps over the lazy dog near the river bank."))
         assertNull(library.match("Sauvage gentleman of the western plains"))
+    }
+
+    /**
+     * İki altyazı yan yana tek satır okununca yalnız birinin Türkçesi gösterilmez (Mac'teki
+     * testTwoSubtitlesReadAsOneLineAreNotHalfTranslated ile aynı); köşe yazısı eklenmiş okuma yine bulunur.
+     */
+    @Test
+    fun twoSubtitlesReadAsOneLineAreNotHalfTranslated() {
+        assertEquals(
+            listOf("Mirror Park Errr.", "Your broke.", "Call me back,", "okay? Bye, Dad."),
+            PackFuzzy.clauses("Mirror Park Errr. Your broke. Call me back, okay? Bye, Dad."),
+        )
+        assertEquals(
+            listOf("to escape...", "if we're able.", "You said seriously. nis seriously."),
+            PackFuzzy.clauses("to escape... if we're able. You said seriously. nis seriously."),
+        )
+        if (directory == null) return
+        val library = library("gta-v.json.gz")
+        assertNotNull(library.match("Are you listening to me?"))
+        val pairs = listOf(
+            "Hey, look. Good shit on those contracts you been workin' on." to "But listen, I got some other work.",
+            "I'm calling it. Don't burn your eyes out." to "Bye, Dad.",
+        )
+        for ((first, second) in pairs) {
+            val alone = library.match(first)?.text
+            assertNotNull(first, alone)
+            val found = library.match("$first $second")?.text
+            assertNotEquals("$first $second", alone, found)
+            val other = library.match(second)?.text
+            if (found != null && other != null) assertTrue(found, found.contains(alone!!) && found.contains(other))
+        }
+        assertNotNull(library.match("Your vehicle? Sorry, we can't get that sorted at this time. San Andreas"))
+        assertNotNull(library.match("Vinewood Hills Just not my junk, okay? I'm already scarred down there."))
     }
 
     /** En büyük pakette (GTA V) bulunamayan satırın araması da satır başına 20 ms'nin altında. */

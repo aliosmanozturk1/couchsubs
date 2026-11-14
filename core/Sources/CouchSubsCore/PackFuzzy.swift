@@ -26,6 +26,11 @@ public enum PackFuzzy {
     /// var: köşe yazısı, çöp) kısa tarafta; benzerlik `inner - penalty` sayılır. Fazlalık az olmalı: iki ayrı altyazının
     /// birleştiği okuma tek bir altyazıya çıkmasın.
     static let containment = (minLength: 22, inner: 90.0, partial: 25.0, extra: 55.0, penalty: 10.0)
+    /// Fazlalıklı okumada yan cümle denetimi (`clauseHashes`): okuma birden çok cümle ya da yan cümleyse en az `letters`
+    /// harfli her birinin üçlülerinin en az `covered`'ı kısa adayda olmalı. İki altyazı yan yana okununca ("Hey, look. …
+    /// But listen, I got some other work.") ikinci cümle adayda yoktur: yalnız birinin Türkçesi gösterilmez, satır cümle
+    /// cümle aranır ya da motora gider.
+    static let sentenceCheck = (letters: 6, covered: 30.0)
 
     private static let fold: [Unicode.Scalar: Unicode.Scalar] = [
         "l": "i", "1": "i", "ı": "i", "j": "i", "0": "o", "5": "s", "æ": "a", "ø": "o", "œ": "o", "ß": "s",
@@ -137,6 +142,114 @@ public enum PackFuzzy {
         let queryCovered = (Double(both) / Double(inQuery) - fillEntry) / (1 - fillEntry)
         let entryCovered = (Double(both) / Double(inEntry) - fillQuery) / (1 - fillQuery)
         return (100.0 * queryCovered, 100.0 * entryCovered)
+    }
+
+    private static let clauseEnders = Set(".!?…,;:".unicodeScalars)
+    /// Ardından küçük harf gelse de bölen işaretler (yan cümle).
+    private static let clauseMarks = Set(",;:".unicodeScalars)
+    private static let clauseClosers = Set("\"'”’)]".unicodeScalars)
+
+    /// Satırın cümle ve yan cümleleri: . ! ? … (yinelenebilir, isteğe bağlı kapanış tırnağı ya da ayraç) ardından boşluk
+    /// ve büyük harf, ya da , ; : … ve üç nokta ardından boşluk. Tek noktadan sonra küçük harfle süren yer ("seriously.
+    /// nis seriously") bölünmez: OCR çöpüdür, ayrı cümle değil.
+    static func clauses(_ text: String) -> [String] {
+        let scalars = Array(text.unicodeScalars)
+        var output: [String] = []
+        var begin = 0, index = 0
+        func cut(_ end: Int) {
+            var view = String.UnicodeScalarView()
+            view.append(contentsOf: scalars[begin..<end])
+            let clause = String(view).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !clause.isEmpty { output.append(clause) }
+        }
+        while index < scalars.count {
+            guard clauseEnders.contains(scalars[index]) else { index += 1; continue }
+            var end = index
+            while end < scalars.count, clauseEnders.contains(scalars[end]) { end += 1 }
+            while end < scalars.count, clauseClosers.contains(scalars[end]) { end += 1 }
+            var next = end
+            while next < scalars.count, scalars[next].properties.isWhitespace { next += 1 }
+            // Üç nokta da küçük harfle süren yan cümleyi ayırır ("to escape... if we're able").
+            let run = scalars[index..<end]
+            let soft = run.contains { clauseMarks.contains($0) || $0 == "…" } || run.filter { $0 == "." }.count > 1
+            if next > end, next < scalars.count, soft || scalars[next].properties.isUppercase {
+                cut(end)
+                begin = next
+            }
+            index = max(next, index + 1)
+        }
+        cut(scalars.count)
+        // `sentenceCheck.letters` harften kısa yan cümle ("Bye," "Dad.") sonrakine (sonuncuysa öncekine) eklenir.
+        var merged: [String] = []
+        var pending = ""
+        for clause in output {
+            let joined = pending.isEmpty ? clause : pending + " " + clause
+            if folded(joined).count < sentenceCheck.letters { pending = joined } else { merged.append(joined); pending = "" }
+        }
+        if !pending.isEmpty {
+            if let last = merged.popLast() { merged.append(last + " " + pending) } else { merged.append(pending) }
+        }
+        return merged
+    }
+
+    /// Fazlalıklı okumanın denetlenecek yan cümleleri: her biri için üçlü kümesi seçenekleri (biri kısa adayda yeterince
+    /// varsa yan cümle tamam). Köşe yazısına benzeyen yan cümle atlanır; ilk yan cümlenin başındaki ve sonuncunun
+    /// sonundaki en çok üç büyük harfli sözcük ("Mirror Park Errr.", "… in a state Vinewood Hills") köşe yazısı olabilir,
+    /// onlarsız hâli de seçenektir. Seçeneklerden biri `sentenceCheck.letters` harften kısaysa yan cümle denetlenmez.
+    /// Okuma tek yan cümleyse boş.
+    static func clauseHashes(_ text: String) -> [[[UInt64]]] {
+        let parts = clauses(text)
+        guard parts.count > 1 else { return [] }
+        var output: [[[UInt64]]] = []
+        for (position, part) in parts.enumerated() where !overlayLike(part) {
+            let words = part.split(whereSeparator: \.isWhitespace)
+            var options = [Substring](arrayLiteral: Substring(part))
+            for count in 1...3 where count < words.count {
+                if position == 0, words.prefix(count).allSatisfy(capitalized) {
+                    options.append(Substring(words.dropFirst(count).joined(separator: " ")))
+                }
+                if position == parts.count - 1, words.suffix(count).allSatisfy(capitalized) {
+                    options.append(Substring(words.dropLast(count).joined(separator: " ")))
+                }
+            }
+            let folds = options.map { folded(String($0)) }
+            guard folds.allSatisfy({ $0.count >= sentenceCheck.letters }) else { continue }
+            output.append(folds.map(trigramHashes))
+        }
+        return output
+    }
+
+    /// Büyük harfle başlayan, yalnız harf ve rakamlı sözcük (köşe yazısı sözcüğü: "Vinewood", "LOSNN").
+    static func capitalized(_ word: Substring) -> Bool {
+        guard let first = word.unicodeScalars.first, first.properties.isUppercase else { return false }
+        return word.unicodeScalars.allSatisfy { isLetter($0) || isDigit($0) }
+    }
+
+    /// Köşe yazısına benzeyen parça: "•" içerir ya da en çok dört sözcük, noktalama yok ve her sözcük büyük harfle
+    /// başlar ("San Andreas", "First Person • zoom"). Fazlalık sayılır, cümle değil.
+    static func overlayLike(_ text: String) -> Bool {
+        if text.contains("•") { return true }
+        let words = text.split(whereSeparator: \.isWhitespace)
+        return !words.isEmpty && words.count <= 4 && words.allSatisfy(capitalized)
+    }
+
+    /// Her yan cümlenin seçeneklerinden birinin üçlülerinin en az `sentenceCheck.covered`'ı (rastlantıdan arındırılmış)
+    /// adayın Bloom'unda mı. `entry`: adayın kelimeleri (`bits / 64` tane), `inEntry`: adaydaki 1 bit sayısı.
+    static func coversClauses(_ clauses: [[[UInt64]]], entry: UnsafeBufferPointer<UInt64>, offset: Int, bits: Int,
+                              inEntry: Int) -> Bool {
+        let fill = Double(inEntry) / Double(bits)
+        guard fill < 1 else { return false }
+        func covered(_ hashes: [UInt64]) -> Bool {
+            let words = bloom(hashes, bits: bits)
+            var both = 0, inClause = 0
+            for index in words.indices {
+                both += (words[index] & entry[offset + index]).nonzeroBitCount
+                inClause += words[index].nonzeroBitCount
+            }
+            guard inClause > 0 else { return true }
+            return 100.0 * (Double(both) / Double(inClause) - fill) / (1 - fill) >= sentenceCheck.covered
+        }
+        return clauses.allSatisfy { $0.contains(where: covered) }
     }
 
     /// (uzunluk, Bloom baytları) — paket betiğinin yazdığıyla aynı; satır çok kısaysa nil.
@@ -301,6 +414,8 @@ struct PackFuzzyIndex: Sendable {
             ? max(contain.minLength, length * 11 / 20)...min(255, length * 5 / 2) : near
         var close: [(score: Double, key: UInt64)] = []
         var contained: [(score: Double, key: UInt64)] = []
+        /// Okumanın yan cümle üçlüleri (`PackFuzzy.clauseHashes`); ilk fazlalıklı adayda hesaplanır.
+        var clauses: [[[UInt64]]]?
         let nearLower = near.lowerBound, nearUpper = near.upperBound
         let one = queryOnes[0], two = queryOnes[1], four = queryOnes[2]
         /// `range` sırasındaki adaylar: `wideOn` false ise iki yönlü benzerlik (`close`), true ise tek yönlü (`contained`).
@@ -338,9 +453,14 @@ struct PackFuzzyIndex: Sendable {
                 let cover = PackFuzzy.coverage(both: both, inQuery: inQuery, inEntry: inEntry, bits: bits)
                 let (inner, outer, least) = entryLength > length
                     ? (cover.query, cover.entry, contain.partial) : (cover.entry, cover.query, contain.extra)
-                if inner >= contain.inner, outer >= least, inner - contain.penalty >= floor {
-                    contained.append((inner - contain.penalty, keys[index]))
+                guard inner >= contain.inner, outer >= least, inner - contain.penalty >= floor else { continue }
+                // Fazlalıklı okumada her yan cümle adayda olmalı: ikinci bir altyazının cümlesi fazlalık sayılmaz.
+                if entryLength < length {
+                    if clauses == nil { clauses = PackFuzzy.clauseHashes(text) }
+                    if let clauses, !clauses.isEmpty,
+                       !PackFuzzy.coversClauses(clauses, entry: w, offset: base, bits: bits, inEntry: inEntry) { continue }
                 }
+                contained.append((inner - contain.penalty, keys[index]))
             }
         }
         }

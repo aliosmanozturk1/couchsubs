@@ -31,6 +31,8 @@ final class PackBenchmarkTests: XCTestCase {
         var stats: [String: (total: Int, hit: Int, correct: Int)] = [:]
         var order: [String] = []
         var wrong: [String] = []
+        // `COUCHSUBS_PACK_BENCH_WRONG`: kategori başına yazılacak yanlış eşleşme sayısı (varsayılan 30).
+        let wrongLimit = environment["COUCHSUBS_PACK_BENCH_WRONG"].flatMap(Int.init) ?? 30
         var missed: [String: [String]] = [:]
         for item in fixtures.cases {
             // Parçasız durum başka oyunun satırıdır: hiç eşleşmemeli, bulunursa yanlış sayılır.
@@ -43,7 +45,7 @@ final class PackBenchmarkTests: XCTestCase {
                 entry.hit += 1
                 if !expected.isEmpty, expected.allSatisfy({ found.contains($0) }) {
                     entry.correct += 1
-                } else if wrong.filter({ $0.hasPrefix("[\(item.cat)]") }).count < 30 {
+                } else if wrong.filter({ $0.hasPrefix("[\(item.cat)]") }).count < wrongLimit {
                     wrong.append("[\(item.cat)] \(item.screen) → \(found) (beklenen: \(expected.joined(separator: " | ")))")
                 }
             }

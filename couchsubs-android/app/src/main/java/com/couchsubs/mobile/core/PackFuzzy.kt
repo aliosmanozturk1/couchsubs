@@ -40,6 +40,135 @@ object PackFuzzy {
         const val penalty = 10.0
     }
 
+    /**
+     * Fazlalıklı okumada yan cümle denetimi ([clauseHashes]): okuma birden çok cümle ya da yan cümleyse en az [letters]
+     * harfli her birinin üçlülerinin en az [covered]'ı kısa adayda olmalı. İki altyazı yan yana okununca ("Hey, look. …
+     * But listen, I got some other work.") ikinci cümle adayda yoktur: yalnız birinin Türkçesi gösterilmez, satır cümle
+     * cümle aranır ya da motora gider.
+     */
+    object SentenceCheck {
+        const val letters = 6
+        const val covered = 30.0
+    }
+
+    private const val CLAUSE_ENDERS = ".!?…,;:"
+    /** Ardından küçük harf gelse de bölen işaretler (yan cümle). */
+    private const val CLAUSE_MARKS = ",;:"
+    private const val CLAUSE_CLOSERS = "\"'”’)]"
+
+    /**
+     * Satırın cümle ve yan cümleleri: . ! ? … (yinelenebilir, isteğe bağlı kapanış tırnağı ya da ayraç) ardından boşluk
+     * ve büyük harf, ya da , ; : … ve üç nokta ardından boşluk. Tek noktadan sonra küçük harfle süren yer ("seriously.
+     * nis seriously") bölünmez: OCR çöpüdür, ayrı cümle değil. Mac'teki `PackFuzzy.clauses` ile aynı.
+     */
+    fun clauses(text: String): List<String> {
+        val points = text.codePoints().toArray()
+        val output = mutableListOf<String>()
+        var begin = 0
+        var index = 0
+        fun inSet(set: String, point: Int) = point <= 0xffff && set.indexOf(point.toChar()) >= 0
+        fun cut(end: Int) {
+            val clause = String(points, begin, end - begin).trim()
+            if (clause.isNotEmpty()) output.add(clause)
+        }
+        while (index < points.size) {
+            if (!inSet(CLAUSE_ENDERS, points[index])) { index++; continue }
+            var end = index
+            while (end < points.size && inSet(CLAUSE_ENDERS, points[end])) end++
+            while (end < points.size && inSet(CLAUSE_CLOSERS, points[end])) end++
+            var next = end
+            while (next < points.size && isSpace(points[next])) next++
+            // Üç nokta da küçük harfle süren yan cümleyi ayırır ("to escape... if we're able").
+            var dots = 0
+            var soft = false
+            for (position in index until end) {
+                if (inSet(CLAUSE_MARKS, points[position]) || points[position] == '…'.code) soft = true
+                if (points[position] == '.'.code) dots++
+            }
+            if (next > end && next < points.size && (soft || dots > 1 || Character.isUpperCase(points[next]))) {
+                cut(end)
+                begin = next
+            }
+            index = maxOf(next, index + 1)
+        }
+        cut(points.size)
+        // SentenceCheck.letters harften kısa yan cümle ("Bye," "Dad.") sonrakine (sonuncuysa öncekine) eklenir.
+        val merged = mutableListOf<String>()
+        var pending = ""
+        for (clause in output) {
+            val joined = if (pending.isEmpty()) clause else "$pending $clause"
+            if (folded(joined).size < SentenceCheck.letters) pending = joined else { merged.add(joined); pending = "" }
+        }
+        if (pending.isNotEmpty()) {
+            if (merged.isNotEmpty()) merged[merged.size - 1] = merged.last() + " " + pending else merged.add(pending)
+        }
+        return merged
+    }
+
+    /**
+     * Fazlalıklı okumanın denetlenecek yan cümleleri: her biri için üçlü kümesi seçenekleri (biri kısa adayda yeterince
+     * varsa yan cümle tamam). Köşe yazısına benzeyen yan cümle atlanır; ilk yan cümlenin başındaki ve sonuncunun
+     * sonundaki en çok üç büyük harfli sözcük ("Mirror Park Errr.", "… in a state Vinewood Hills") köşe yazısı olabilir,
+     * onlarsız hâli de seçenektir. Seçeneklerden biri [SentenceCheck.letters] harften kısaysa yan cümle denetlenmez.
+     * Okuma tek yan cümleyse boş.
+     */
+    fun clauseHashes(text: String): List<List<LongArray>> {
+        val parts = clauses(text)
+        if (parts.size < 2) return emptyList()
+        val output = mutableListOf<List<LongArray>>()
+        for ((position, part) in parts.withIndex()) {
+            if (overlayLike(part)) continue
+            val tokens = words(part).map { String(it, 0, it.size) }
+            val options = mutableListOf(part)
+            for (count in 1..3) {
+                if (count >= tokens.size) break
+                if (position == 0 && tokens.take(count).all(::capitalized)) options.add(tokens.drop(count).joinToString(" "))
+                if (position == parts.size - 1 && tokens.takeLast(count).all(::capitalized)) options.add(tokens.dropLast(count).joinToString(" "))
+            }
+            val folds = options.map(::folded)
+            if (folds.any { it.size < SentenceCheck.letters }) continue
+            output.add(folds.map(::trigramHashes))
+        }
+        return output
+    }
+
+    /** Büyük harfle başlayan, yalnız harf ve rakamlı sözcük (köşe yazısı sözcüğü: "Vinewood", "LOSNN"). */
+    fun capitalized(word: String): Boolean {
+        val points = word.codePoints().toArray()
+        return points.isNotEmpty() && Character.isUpperCase(points[0]) && points.all { isLetter(it) || isDigit(it) }
+    }
+
+    /**
+     * Köşe yazısına benzeyen parça: "•" içerir ya da en çok dört sözcük, noktalama yok ve her sözcük büyük harfle başlar
+     * ("San Andreas", "First Person • zoom"). Fazlalık sayılır, cümle değil.
+     */
+    fun overlayLike(text: String): Boolean {
+        if (text.contains('•')) return true
+        val tokens = words(text).map { String(it, 0, it.size) }
+        return tokens.isNotEmpty() && tokens.size <= 4 && tokens.all(::capitalized)
+    }
+
+    /**
+     * Her yan cümlenin seçeneklerinden birinin üçlülerinin en az [SentenceCheck.covered]'ı (rastlantıdan arındırılmış)
+     * adayın Bloom'unda mı. [entry]: dizindeki kelimeler, [offset]ten başlayarak bits / 64 tane; [inEntry]: adaydaki 1 bit.
+     */
+    fun coversClauses(clauses: List<List<LongArray>>, entry: LongArray, offset: Int, bits: Int, inEntry: Int): Boolean {
+        val fill = inEntry.toDouble() / bits
+        if (fill >= 1) return false
+        fun covered(hashes: LongArray): Boolean {
+            val words = bloom(hashes, bits)
+            var both = 0
+            var inClause = 0
+            for (index in words.indices) {
+                both += java.lang.Long.bitCount(words[index] and entry[offset + index])
+                inClause += java.lang.Long.bitCount(words[index])
+            }
+            if (inClause == 0) return true
+            return 100.0 * (both.toDouble() / inClause - fill) / (1 - fill) >= SentenceCheck.covered
+        }
+        return clauses.all { options -> options.any(::covered) }
+    }
+
     private val fold = mapOf(
         'l'.code to 'i'.code, '1'.code to 'i'.code, 'ı'.code to 'i'.code, 'j'.code to 'i'.code, '0'.code to 'o'.code,
         '5'.code to 's'.code, 'æ'.code to 'a'.code, 'ø'.code to 'o'.code, 'œ'.code to 'o'.code, 'ß'.code to 's'.code,
@@ -345,6 +474,8 @@ class PackFuzzyIndex private constructor(
         val contain = PackFuzzy.Containment
         val close = ArrayList<Candidate>()
         val contained = ArrayList<Candidate>()
+        // Okumanın yan cümle üçlüleri (PackFuzzy.clauseHashes); ilk fazlalıklı adayda hesaplanır.
+        var clauses: List<List<LongArray>>? = null
 
         /** Boyu [lower]..[upper] olan adaylar: [wide] false ise iki yönlü benzerlik ([close]), true ise tek yönlü ([contained]). */
         fun scan(lower: Int, upper: Int, wide: Boolean) {
@@ -381,9 +512,13 @@ class PackFuzzyIndex private constructor(
                     val inner = if (longer) cover.query else cover.entry
                     val outer = if (longer) cover.entry else cover.query
                     val least = if (longer) contain.partial else contain.extra
-                    if (inner >= contain.inner && outer >= least && inner - contain.penalty >= floor) {
-                        contained.add(Candidate(inner - contain.penalty, keys[index]))
+                    if (inner < contain.inner || outer < least || inner - contain.penalty < floor) continue
+                    // Fazlalıklı okumada her yan cümle adayda olmalı: ikinci bir altyazının cümlesi fazlalık sayılmaz.
+                    if (!longer) {
+                        val found = clauses ?: PackFuzzy.clauseHashes(text).also { clauses = it }
+                        if (found.isNotEmpty() && !PackFuzzy.coversClauses(found, words, offset - perLine, bits, inEntry)) continue
                     }
+                    contained.add(Candidate(inner - contain.penalty, keys[index]))
                 }
             }
         }

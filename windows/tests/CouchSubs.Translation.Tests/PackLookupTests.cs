@@ -172,6 +172,37 @@ public class PackLookupTests
         Assert.Null(PackLookup.Match(library, "Sauvage gentleman of the western plains"));
     }
 
+    /// <summary>
+    /// İki altyazı yan yana tek satır okununca yalnız birinin Türkçesi gösterilmez (Mac'teki
+    /// testTwoSubtitlesReadAsOneLineAreNotHalfTranslated ile aynı); köşe yazısı eklenmiş okuma yine bulunur.
+    /// </summary>
+    [Fact]
+    public void TwoSubtitlesReadAsOneLineAreNotHalfTranslated()
+    {
+        var library = new GamePackLibrary(() => GamePackLibrary.EmbeddedPacks().Where(pack => pack.Name == "gta-v.json.gz"), null);
+        Assert.NotNull(PackLookup.Match(library, "Are you listening to me?"));
+        (string First, string Second)[] pairs =
+        [
+            ("Hey, look. Good shit on those contracts you been workin' on.", "But listen, I got some other work."),
+            ("I'm calling it. Don't burn your eyes out.", "Bye, Dad."),
+        ];
+        foreach (var (first, second) in pairs)
+        {
+            var alone = PackLookup.Match(library, first)?.Text;
+            Assert.NotNull(alone);
+            var found = PackLookup.Match(library, $"{first} {second}")?.Text;
+            Assert.NotEqual(alone, found);
+            if (found is not null && PackLookup.Match(library, second)?.Text is { } other)
+                Assert.True(found.Contains(alone) && found.Contains(other), found);
+        }
+        Assert.Equal(["Mirror Park Errr.", "Your broke.", "Call me back,", "okay? Bye, Dad."],
+            PackFuzzy.Clauses("Mirror Park Errr. Your broke. Call me back, okay? Bye, Dad."));
+        Assert.Equal(["to escape...", "if we're able.", "You said seriously. nis seriously."],
+            PackFuzzy.Clauses("to escape... if we're able. You said seriously. nis seriously."));
+        Assert.NotNull(PackLookup.Match(library, "Your vehicle? Sorry, we can't get that sorted at this time. San Andreas"));
+        Assert.NotNull(PackLookup.Match(library, "Vinewood Hills Just not my junk, okay? I'm already scarred down there."));
+    }
+
     /// <summary>En büyük pakette (GTA V) bulanık arama da hızlı.</summary>
     [Fact]
     public void FuzzySearchIsFastInTheLargestPack()
