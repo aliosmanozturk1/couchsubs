@@ -51,8 +51,19 @@ object PackKey {
     fun key(text: String): String? {
         val canon = canon(text)
         if (canon.isEmpty()) return null
-        val hash = MessageDigest.getInstance("SHA-256").digest(canon.toByteArray(Charsets.UTF_8))
+        val hash = digest.get()!!.digest(canon.toByteArray(Charsets.UTF_8))
         return hash.take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
+    private val digest = ThreadLocal.withInitial { MessageDigest.getInstance("SHA-256") }
+
+    /** Anahtarın sayı hâli doğrudan (hex dizesi kurulmadan; `number(key(text))` ile aynı); harf ya da rakam yoksa null. */
+    fun keyNumber(text: String): Long? = canonNumber(canon(text))
+
+    /** Zaten canon olan metnin anahtar sayısı; boşsa null. */
+    fun canonNumber(canon: String): Long? {
+        if (canon.isEmpty()) return null
+        return java.nio.ByteBuffer.wrap(digest.get()!!.digest(canon.toByteArray(Charsets.UTF_8))).long
     }
 
     /** Anahtarın sayı hâli (sözlükte daha az yer tutar); geçersizse null. */
@@ -93,14 +104,21 @@ class InvalidPackException(message: String, cause: Throwable? = null) : IOExcept
 /**
  * Bir oyunun çeviri paketi. Dosya gzip'li JSON'dur: `{"format":1|2,"id":…,"title":…,"entries":{anahtar: Türkçe}}`;
  * yalnız `{anahtar: Türkçe}` nesnesi de kabul edilir (adı dosya adından gelir). Biçim 2 ayrıca `segments` taşır (oyunun
- * ayrı gösterdiği parçalar ve çok cümleli satırların cümleleri; aynı düzen). Masaüstünün biçim 2'deki `fuzzy` imzaları
- * (OCR'ın bozduğu satırı bulma) telefonda henüz kullanılmıyor.
+ * ayrı gösterdiği parçalar ve çok cümleli satırların cümleleri; aynı düzen) ve `fuzzy` (OCR'ın bozduğu satırı bulmak
+ * için imzalar, bkz. [PackFuzzy]) taşır.
  *
  * Telefonda bellek sınırlıdır (uygulamayla gelen altı pakette ~520 bin satır): satırlar sıralı anahtar dizisi ve tek bir
  * UTF-8 bayt bloğunda tutulur (~30 MB; HashMap<Long, String> bunun üç katından fazlasını isterdi), ikili aramayla bulunur.
  * Dosya da akış hâlinde okunur ([PackJson]); bütün JSON bir nesne ağacına dönüştürülmez.
  */
-class GamePack private constructor(val id: String, val title: String, private val entries: Table, private val segments: Table) {
+class GamePack private constructor(
+    val id: String,
+    val title: String,
+    private val entries: Table,
+    private val segments: Table,
+    /** Bulanık imzalar (biçim 2); yoksa ya da bozuksa null. */
+    internal val fuzzy: PackFuzzyIndex?,
+) {
     /** Sıralı anahtarlar ve UTF-8 metin bloğu. */
     internal class Table(private val keys: LongArray, private val offsets: IntArray, private val blob: ByteArray) {
         val size get() = keys.size
@@ -110,6 +128,8 @@ class GamePack private constructor(val id: String, val title: String, private va
             if (index < 0) return null
             return String(blob, offsets[index], offsets[index + 1] - offsets[index], Charsets.UTF_8)
         }
+
+        fun contains(key: Long) = java.util.Arrays.binarySearch(keys, key) >= 0
 
         companion object {
             val EMPTY = Table(LongArray(0), IntArray(1), ByteArray(0))
@@ -188,14 +208,22 @@ class GamePack private constructor(val id: String, val title: String, private va
     /** Anahtarın parça ("segments") Türkçesi. */
     fun segment(key: Long): String? = segments[key]
 
+    /** Anahtar pakette (tam satır ya da parça) var mı. */
+    fun contains(key: Long) = entries.contains(key) || segments.contains(key)
+
     companion object {
         /** [name]: dosya adı uzantısız ("mafia-the-old-country"); düz biçimde kimlik ve başlık olur. */
         fun decode(data: ByteArray, name: String): GamePack {
             val json = if (data.size >= 2 && data[0] == 0x1f.toByte() && data[1] == 0x8b.toByte()) decompress(data) else data
             val entries = TableBuilder()
             val segments = TableBuilder()
+            // İmzaların sırası: dosyadaki bütün geçerli anahtarlar (Türkçesi boş kalanlar da); imzalar yoksa atılır.
+            var order = LongArray(1024)
+            var orderCount = 0
             fun add(target: TableBuilder, key: String, value: String) {
                 val number = PackKey.number(key.lowercase(Locale.ROOT)) ?: return
+                if (orderCount == order.size) order = order.copyOf(orderCount * 2)
+                order[orderCount++] = number
                 val text = cleaned(value)
                 // Aynı anahtar iki kez varsa sonraki kazanır (TableBuilder.build).
                 if (text.isNotEmpty()) target.add(number, text)
@@ -207,12 +235,26 @@ class GamePack private constructor(val id: String, val title: String, private va
             }
             if (parsed.format != null && parsed.format != 1.0 && parsed.format != 2.0) throw InvalidPackException("Desteklenmeyen paket biçimi")
             val id = parsed.id?.takeIf { it.isNotEmpty() } ?: name
-            return build(id, parsed.title?.takeIf { it.isNotEmpty() } ?: id, entries, segments)
+            if (entries.isEmpty) throw InvalidPackException("Pakette satır yok")
+            val fuzzy = parsed.fuzzy?.let { PackFuzzyIndex.decode(it, unsignedUnique(order, orderCount)) }
+            return GamePack(id, parsed.title?.takeIf { it.isNotEmpty() } ?: id, entries.build(), segments.build(), fuzzy)
         }
 
         private fun build(id: String, title: String, entries: TableBuilder, segments: TableBuilder): GamePack {
             if (entries.isEmpty) throw InvalidPackException("Pakette satır yok")
-            return GamePack(id, title, entries.build(), segments.build())
+            return GamePack(id, title, entries.build(), segments.build(), null)
+        }
+
+        /** İlk [count] anahtar işaretsiz sayı sırasıyla, tekrarsız (paket betiği anahtarları UInt64 olarak sıralar). */
+        private fun unsignedUnique(keys: LongArray, count: Int): LongArray {
+            val sorted = LongArray(count) { keys[it] xor Long.MIN_VALUE }
+            sorted.sort()
+            var unique = 0
+            for (index in sorted.indices) {
+                if (unique > 0 && sorted[unique - 1] == sorted[index]) continue
+                sorted[unique++] = sorted[index]
+            }
+            return LongArray(unique) { sorted[it] xor Long.MIN_VALUE }
         }
 
         /** Paketteki Türkçede de oyunun biçim etiketleri kalmış olabilir ("<b><h>…</>"); TV'de görünmesinler. */
@@ -273,6 +315,11 @@ class GamePackLibrary(
     private var loaded = false
     private var packs: List<Pair<GamePack, Boolean>> = emptyList()
     @Volatile private var disabled: Set<String> = emptySet()
+    /**
+     * Son tam eşleşmenin geldiği paket ([packs] sırası): bulanık arama yalnız orada yapılır (oynanan oyun). Satır birden
+     * çok pakette varsa kapsam o paketlerden biri değilse ilkine geçer; hiç tam eşleşme olmadıysa bulanık arama yapılmaz.
+     */
+    private var scope: Int? = null
 
     val infos: List<Info>
         get() = synchronized(lock) {
@@ -302,7 +349,59 @@ class GamePackLibrary(
             packs
         }
         if (current.isEmpty()) return null
-        val number = PackKey.key(text)?.let(PackKey::number) ?: return null
+        val number = PackKey.keyNumber(text) ?: return null
+        val found = lookup(current, number) ?: return null
+        noteHit(current, number)
+        return found
+    }
+
+    /**
+     * Tam anahtar yoksa oynanan oyunun (son tam eşleşmenin paketi) paketinde en yakın satırın Türkçesi: önce tek OCR
+     * düzeltmesiyle ([PackFuzzy.variants]) tam anahtar, sonra bulanık imza. Hiç tam eşleşme olmadıysa null.
+     */
+    fun nearestWithPack(text: String): PackMatch? {
+        val (current, chosen) = synchronized(lock) {
+            loadIfNeeded()
+            packs to scope
+        }
+        val pack = chosen?.let { current.getOrNull(it)?.first }?.takeIf { it.id !in disabled } ?: return null
+        corrected(text, pack, current)?.let { return it }
+        val key = pack.fuzzy?.nearest(text) { lookup(current, it)?.text } ?: return null
+        return lookup(current, key)
+    }
+
+    /** Bulanık aramanın yapılacağı paketin kimliği (son tam eşleşmenin paketi); yoksa null. */
+    val searchScope: String? get() = synchronized(lock) { scope?.let { packs.getOrNull(it)?.first?.id } }
+
+    /** Oynanan oyunun adı: son tam eşleşmenin geldiği paketin başlığı; yoksa null. */
+    val scopeTitle: String? get() = synchronized(lock) { scope?.let { packs.getOrNull(it)?.first?.title } }
+
+    /** Tek OCR düzeltmesiyle [pack]'te tam bulunan satırın Türkçesi; düzeltmelerin hepsi aynı Türkçeye çıkmıyorsa null. */
+    private fun corrected(text: String, pack: GamePack, current: List<Pair<GamePack, Boolean>>): PackMatch? {
+        var found: PackMatch? = null
+        for (variant in PackFuzzy.variants(text)) {
+            // ASCII canon metin yeniden sadeleştirilince değişmez; Normalizer'a gitmeden özetlenir.
+            val number = (if (variant.all { it.code < 128 }) PackKey.canonNumber(variant) else PackKey.keyNumber(variant)) ?: continue
+            if (!pack.contains(number)) continue
+            val turkish = lookup(current, number) ?: continue
+            if (found != null && found.text != turkish.text) return null
+            found = turkish
+        }
+        return found
+    }
+
+    private fun noteHit(current: List<Pair<GamePack, Boolean>>, number: Long) {
+        val off = disabled
+        val owners = current.indices.filter { current[it].first.id !in off && current[it].first.contains(number) }
+        val first = owners.firstOrNull() ?: return
+        synchronized(lock) {
+            if (packs !== current) return
+            if (owners.size == 1 || scope !in owners) scope = first
+        }
+    }
+
+    /** Anahtarın Türkçesi: açık paketlerde sondan başa tam satır, yoksa parça (masaüstünün birleşik sözlüğüyle aynı). */
+    private fun lookup(current: List<Pair<GamePack, Boolean>>, number: Long): PackMatch? {
         val off = disabled
         for (index in current.indices.reversed()) {
             val pack = current[index].first
@@ -351,6 +450,7 @@ class GamePackLibrary(
             add(file.name, data, false)
         }
         packs = list
+        scope = null
     }
 
     companion object {

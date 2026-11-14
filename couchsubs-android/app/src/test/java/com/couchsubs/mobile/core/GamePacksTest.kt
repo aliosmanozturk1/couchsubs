@@ -27,6 +27,7 @@ class PackKeyTest {
             val input = vector.getString("input")
             assertEquals(input, vector.getString("canon"), PackKey.canon(input))
             assertEquals(input, vector.getString("key"), PackKey.key(input) ?: "")
+            assertEquals(input, PackKey.key(input)?.let(PackKey::number), PackKey.keyNumber(input))
         }
     }
 
@@ -183,6 +184,32 @@ class GamePackTest {
         assertEquals("MARIA: Yere yat!", PackLookup.match(mafia, "MARIA: Get Down!")?.text)
         assertEquals("Yere yat!\nMinchia! Sana at sürmeyi yasaklamak lazım!",
             PackLookup.match(mafia, "Get Down!\nMinchia! You shouldn't be allowed to ride!")?.text)
+    }
+}
+
+/** Dokuz gömülü paketin bellekte kalan boyu (bulanık imzalar dahil); zayıf telefonda çeviri başlarken bellek yetmeli. */
+class PackMemoryTest {
+    private fun used(): Long {
+        val runtime = Runtime.getRuntime()
+        repeat(3) {
+            System.gc()
+            Thread.sleep(100)
+        }
+        return runtime.totalMemory() - runtime.freeMemory()
+    }
+
+    @Test
+    fun embeddedPacksStaySmall() {
+        val directory = File(System.getProperty("couchsubs.packs") ?: return)
+        val before = used()
+        val library = GamePackLibrary({ directory.listFiles()!!.sortedBy { it.name }.map { file -> file.name to { file.readBytes() } } }, null)
+        val started = System.nanoTime()
+        assertEquals(9, library.infos.size)
+        println("PAKET YÜKLEME: ${(System.nanoTime() - started) / 1_000_000} ms")
+        val retainedMb = (used() - before) / (1 shl 20)
+        println("PAKET BELLEK: $retainedMb MB (${library.infos.sumOf { it.entries }} satır)")
+        assertTrue("paketler bellekte $retainedMb MB", retainedMb < 80)
+        assertEquals(9, library.infos.size)
     }
 }
 
