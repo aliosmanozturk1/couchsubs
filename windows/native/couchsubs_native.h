@@ -33,6 +33,13 @@ typedef void (*cs_console_cb)(const char *host, const char *name, int awake, voi
  * aramayı 500 ms'de bir tekrarlar; aynı PS5 birden çok kez bildirilebilir. Bloklar. */
 CS_API int cs_discover(const char *const *targets, int target_count, int timeout_ms, cs_console_cb callback, void *user);
 
+/* cs_console_cb'nin genişletilmişi: PS5'te çalışan uygulamanın kimliği ve adı da gelir (yoksa NULL). */
+typedef void (*cs_console_ex_cb)(const char *host, const char *name, int awake, const char *running_app_titleid,
+		const char *running_app_name, void *user);
+
+/* cs_discover ile aynı; yanıtlar cs_console_ex_cb ile bildirilir. */
+CS_API int cs_discover_ex(const char *const *targets, int target_count, int timeout_ms, cs_console_ex_cb callback, void *user);
+
 /* Kayıtlı PS5'i dinlenme modundan uyandırır. credential: kayıt anahtarının onaltılık değeri. */
 CS_API int cs_wake(const char *host, uint64_t credential);
 

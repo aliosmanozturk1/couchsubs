@@ -375,6 +375,10 @@ public interface IAppServices
     PackMatch? FindInPacks(string text) => null;
     /// <summary>Ortak havuz; testlerde null (hiçbir şey gönderilmez).</summary>
     LinePool? Pool => null;
+    /// <summary>PS5'te o an çalışan oyun (yalnız bağlı PS5'e keşif sorusu); bilinmiyorsa ve testlerde null.</summary>
+    Task<RunningGame?> RunningGameAsync(string host) => Task.FromResult<RunningGame?>(null);
+    /// <summary>Paket sunucusundan yeni paketler; adres yapılandırılmadıysa ve testlerde null.</summary>
+    PackUpdater? PackUpdates => null;
     /// <summary>Altyazı geçmişinin dosyası (%LOCALAPPDATA%\CouchSubs\history.json); testlerde null (diske yazılmaz).</summary>
     string? HistoryFile => null;
 }

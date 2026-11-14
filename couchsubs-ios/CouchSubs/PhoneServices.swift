@@ -55,6 +55,14 @@ protocol PhoneServices: AnyObject {
     func testAIKey(provider: AIProvider, key: String, model: String?) async -> Result<String, AIFailure>
 }
 
+extension PhoneServices {
+    /// PS5'te o an çalışan oyun: yalnız bağlı PS5'in adresine keşif sorusu gider (ortak havuz için; bkz. `RunningGame`).
+    func runningGame(host: String) async -> RunningGame? {
+        guard let info = await Console.discover(timeout: .seconds(2), host: host).first else { return nil }
+        return RunningGame(titleId: info.runningAppTitleId, name: info.runningAppName)
+    }
+}
+
 final class LivePhoneServices: PhoneServices {
     func discoverConsoles() async -> [ConsoleInfo] {
         // İlk aramada iOS "Yerel Ağ" izin penceresini açar; kullanıcı izin verene kadar giden istekler düşer. Bulunamazsa

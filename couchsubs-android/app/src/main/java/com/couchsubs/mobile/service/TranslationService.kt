@@ -28,6 +28,7 @@ import com.couchsubs.mobile.core.SubtitleServer
 import com.couchsubs.mobile.core.TextTranslator
 import com.couchsubs.mobile.ocr.RegionPixels
 import com.couchsubs.mobile.ocr.SubtitleReader
+import com.couchsubs.mobile.remoteplay.ConsoleDiscovery
 import com.couchsubs.mobile.remoteplay.DisconnectKind
 import com.couchsubs.mobile.remoteplay.FrameSource
 import com.couchsubs.mobile.remoteplay.FrameSourceFactory
@@ -62,6 +63,8 @@ class TranslationService : Service() {
         private const val ACTION_STOP = "com.couchsubs.mobile.STOP"
         /** Yazı tanıma en çok saniyede bu kadar kare okur (telefon ısınmasın; altyazı için yeterli). */
         private const val MAX_READS_PER_SECOND = 5
+        /** PS5'e çalışan oyunun sorulma aralığı (ortak havuz). */
+        private const val GAME_PROBE_MS = 2 * 60 * 1000L
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, TranslationService::class.java))
@@ -91,6 +94,7 @@ class TranslationService : Service() {
     private val region = CropRegion()
     private val lifecycle = Any()
     @Volatile private var destroyed = false
+    @Volatile private var streaming = false
     private var begun = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -241,7 +245,23 @@ class TranslationService : Service() {
                 }
             }
         }
-        val onState: (SessionState) -> Unit = { state -> LiveState.update { it.copy(phase = describe(state)) } }
+        val onState: (SessionState) -> Unit = { state ->
+            streaming = state == SessionState.Streaming
+            if (!streaming) linePool.setGame(null)
+            LiveState.update { it.copy(phase = describe(state)) }
+        }
+        // Bağlıyken iki dakikada bir PS5'e çalışan oyun sorulur: havuza giden satırlar oyunla gider (klipte sorulmaz).
+        if (replacement == null) {
+            background.scheduleWithFixedDelay({
+                try {
+                    val host = settings.console?.host ?: console.host
+                    val game = if (streaming) ConsoleDiscovery.runningGame(host) else null
+                    if (streaming) linePool.setGame(game)
+                } catch (error: Exception) {
+                    Log.w(TAG, "running game", error)
+                }
+            }, GAME_PROBE_MS / 4, GAME_PROBE_MS, TimeUnit.MILLISECONDS)
+        }
         val source = replacement?.create(this, onFrame, onState)
             ?: StreamSession(console, accountId, onFrame, onState, onConsoleMoved = { moved -> settings.console = moved },
                 loginPasscode = settings.loginPasscode)

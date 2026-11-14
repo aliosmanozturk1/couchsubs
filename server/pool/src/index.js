@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // CouchSubs subtitle pool (Cloudflare Worker + D1).
-// POST /v1/lines   : uygulamalar paketlerde bulunmayan İngilizce satırları gönderir.
-// GET  /v1/export  : (yönetici) en az N kurulumun gördüğü, henüz çevrilmemiş satırlar.
+// POST /v1/lines   : uygulamalar paketlerde bulunmayan İngilizce satırları gönderir. Satırda isteğe bağlı olarak
+//                    PS5'te o an çalışan oyunun kimliği (titleId, ör. "PPSA01234") ve adı (game) gelir.
+// GET  /v1/export  : (yönetici) en az N kurulumun gördüğü, henüz çevrilmemiş satırlar; `title=` ya da `game=` ile
+//                    yalnız bir oyunun satırları.
 // POST /v1/exported: (yönetici) çeviriye alınan anahtarları işaretler.
 // GET  /v1/stats   : herkese açık sayılar.
 
@@ -11,6 +13,22 @@ const MAX_LINES = 200;
 const DAILY_LIMIT = 5000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TAG = /<[^<>]{0,40}>/g;
+// PS5 oyun kimliği: dört harf, beş rakam, isteğe bağlı "_00" eki (PPSA01234, CUSA00419_00).
+const TITLE_ID = /^[A-Z]{4}\d{5}(_\d{2})?$/;
+const MAX_GAME = 120;
+
+/** Geçerli PS5 oyun kimliği (büyük harfe çevrilmiş) ya da null. */
+export function titleId(value) {
+  const t = String(value ?? "").trim().toUpperCase();
+  return TITLE_ID.test(t) ? t : null;
+}
+
+/** Oyun adı: denetim karakterleri ve fazla boşluk atılır, en çok 120 karakter; boşsa null. */
+export function gameName(value) {
+  if (typeof value !== "string") return null;
+  const t = value.replace(/\p{C}/gu, " ").replace(/\s+/g, " ").trim().slice(0, MAX_GAME).trim();
+  return t || null;
+}
 
 // Uygulamadaki anahtar işleviyle birebir aynı (core/.../GamePack, golden-vectors.json).
 export function canon(s) {
@@ -56,7 +74,8 @@ async function submit(req, env) {
     const c = canon(text);
     if (c.split(" ").length < 2) continue;
     const k = await key(text); // istemcinin anahtarına güvenmeyiz, yeniden hesaplarız
-    if (!fresh.has(k)) fresh.set(k, text);
+    // Oyun bilgisi isteğe bağlıdır (eski sürümler göndermez); geçersizse yok sayılır, satır yine alınır.
+    if (!fresh.has(k)) fresh.set(k, { text, title: titleId(l?.titleId), game: gameName(l?.game) });
   }
 
   // D1'in günlük yazma kotası için satır başına en çok iki yazma: önce görülme kaydı; bu kurulum satırı zaten
@@ -68,27 +87,56 @@ async function submit(req, env) {
     ? await env.DB.batch(entries.map(([k]) =>
       env.DB.prepare("INSERT OR IGNORE INTO sightings(key,install) VALUES(?,?)").bind(k, install)))
     : [];
-  const stmts = [];
-  entries.forEach(([k, text], i) => {
-    if (!(seen[i]?.meta?.changes > 0)) return;
+  // Oyun bilgisi satırın ilk bilinen oyunudur: sonra gelen başka oyun üstüne yazmaz (COALESCE), ek yazma da yapmaz.
+  const build = (legacy) => {
+    const stmts = [];
+    entries.forEach(([k, line], i) => {
+      if (!(seen[i]?.meta?.changes > 0)) return;
+      stmts.push(legacy
+        ? env.DB.prepare(LEGACY_UPSERT).bind(k, line.text, now, now)
+        : env.DB.prepare(UPSERT).bind(k, line.text, now, now, line.title, line.game));
+    });
     stmts.push(env.DB.prepare(
-      "INSERT INTO lines(key,text,installs,first_seen,last_seen) VALUES(?,?,1,?,?) ON CONFLICT(key) DO UPDATE SET installs=installs+1, last_seen=excluded.last_seen"
-    ).bind(k, text, now, now));
-  });
-  stmts.push(env.DB.prepare(
-    "INSERT INTO quota(install,day,count) VALUES(?,?,?) ON CONFLICT(install,day) DO UPDATE SET count=count+excluded.count"
-  ).bind(install, day, room));
-  await env.DB.batch(stmts);
+      "INSERT INTO quota(install,day,count) VALUES(?,?,?) ON CONFLICT(install,day) DO UPDATE SET count=count+excluded.count"
+    ).bind(install, day, room));
+    return stmts;
+  };
+  let stmts = build(false);
+  try {
+    await env.DB.batch(stmts);
+  } catch (e) {
+    // Geçiş (migrate-2026-11-14-game.sql) henüz çalışmadıysa oyun sütunları yoktur: eski biçimle yazılır.
+    if (!/no such column|has no column/i.test(String(e?.message || e))) throw e;
+    stmts = build(true);
+    await env.DB.batch(stmts);
+  }
   return json({ accepted: fresh.size, recorded: stmts.length - 1 });
 }
+
+const UPSERT =
+  "INSERT INTO lines(key,text,installs,first_seen,last_seen,title_id,game) VALUES(?,?,1,?,?,?,?) " +
+  "ON CONFLICT(key) DO UPDATE SET installs=installs+1, last_seen=excluded.last_seen, " +
+  "title_id=COALESCE(lines.title_id,excluded.title_id), game=COALESCE(lines.game,excluded.game)";
+const LEGACY_UPSERT =
+  "INSERT INTO lines(key,text,installs,first_seen,last_seen) VALUES(?,?,1,?,?) " +
+  "ON CONFLICT(key) DO UPDATE SET installs=installs+1, last_seen=excluded.last_seen";
 
 async function exportLines(url, env) {
   const min = Math.max(1, Number(url.searchParams.get("min") || 2));
   const limit = Math.min(20000, Number(url.searchParams.get("limit") || 5000));
   const all = url.searchParams.get("all") === "1";
+  // Oyuna göre süzme yalnız geçişten sonra çalışır (title_id ve game sütunları); süzgeçsiz istek eskisi gibi.
+  const title = titleId(url.searchParams.get("title"));
+  const game = gameName(url.searchParams.get("game"));
+  const where = ["installs>=?"];
+  const args = [min];
+  if (!all) where.push("exported=0");
+  if (title) { where.push("title_id=?"); args.push(title); }
+  if (game) { where.push("game LIKE ? ESCAPE '\\'"); args.push(`%${game.replace(/[\\%_]/g, "\\$&")}%`); }
+  const cols = title || game ? "key,text,installs,first_seen,title_id,game" : "key,text,installs,first_seen";
   const r = await env.DB.prepare(
-    `SELECT key,text,installs,first_seen FROM lines WHERE installs>=? ${all ? "" : "AND exported=0"} ORDER BY installs DESC LIMIT ?`
-  ).bind(min, limit).all();
+    `SELECT ${cols} FROM lines WHERE ${where.join(" AND ")} ORDER BY installs DESC LIMIT ?`
+  ).bind(...args, limit).all();
   return json({ lines: r.results });
 }
 

@@ -8,11 +8,17 @@ public struct ConsoleInfo: Codable, Hashable, Sendable {
     public let host: String
     public let name: String
     public let isAwake: Bool
+    /// PS5'te o an çalışan uygulama (keşif yanıtındaki `running-app-titleid` ve `running-app-name`); ana ekranda ya
+    /// da dinlenme modunda yok.
+    public let runningAppTitleId: String?
+    public let runningAppName: String?
 
-    public init(host: String, name: String, isAwake: Bool) {
+    public init(host: String, name: String, isAwake: Bool, runningAppTitleId: String? = nil, runningAppName: String? = nil) {
         self.host = host
         self.name = name
         self.isAwake = isAwake
+        self.runningAppTitleId = runningAppTitleId
+        self.runningAppName = runningAppName
     }
 }
 
@@ -65,7 +71,9 @@ public enum Console {
             let collector = Unmanaged<Collector>.fromOpaque(user).takeUnretainedValue()
             let info = ConsoleInfo(host: String(cString: address),
                                    name: host.pointee.host_name.map { String(cString: $0) } ?? "PS5",
-                                   isAwake: host.pointee.state == CHIAKI_DISCOVERY_HOST_STATE_READY)
+                                   isAwake: host.pointee.state == CHIAKI_DISCOVERY_HOST_STATE_READY,
+                                   runningAppTitleId: host.pointee.running_app_titleid.map { String(cString: $0) },
+                                   runningAppName: host.pointee.running_app_name.map { String(cString: $0) })
             collector.lock.lock()
             collector.hosts[info.host] = info
             collector.lock.unlock()

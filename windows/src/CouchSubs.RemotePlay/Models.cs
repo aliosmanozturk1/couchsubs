@@ -6,7 +6,9 @@ namespace CouchSubs.RemotePlay;
 
 // Remote Play katmanının uygulamaya açtığı türler (Mac'teki RemotePlay modülünün karşılıkları).
 
-public sealed record ConsoleInfo(string Host, string Name, bool IsAwake);
+/// <param name="RunningAppTitleId">PS5'te o an çalışan uygulama (keşif yanıtındaki <c>running-app-titleid</c>); ana
+/// ekranda ya da dinlenme modunda null.</param>
+public sealed record ConsoleInfo(string Host, string Name, bool IsAwake, string? RunningAppTitleId = null, string? RunningAppName = null);
 
 /// <summary>PS5'e kaydedilmiş bu bilgisayarın bağlantı bilgileri. Şifreli olarak saklanır.</summary>
 /// <param name="RegistKey">16 baytlık kayıt anahtarı (ASCII onaltılık, sıfırla doldurulmuş).</param>

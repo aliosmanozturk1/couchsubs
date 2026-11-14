@@ -52,6 +52,12 @@ public sealed class LiveServices : IAppServices
     public LinePool? Pool { get; } = new(Path.Combine(AppPaths.Data, "pool.json"),
         AppVersion.Current(System.Reflection.Assembly.GetEntryAssembly() ?? typeof(LiveServices).Assembly));
     public string? HistoryFile { get; } = Path.Combine(AppPaths.Data, "history.json");
+    public Task<RunningGame?> RunningGameAsync(string host) => ConsoleDiscovery.RunningGameAsync(host);
+    // Paket sunucusu yapılandırıldıysa (COUCHSUBS_PACKS_URL ya da derlemedeki CouchSubsPacksUrl) indirilen paketler
+    // kullanıcının paket klasörüne gider; adres yoksa kapalı.
+    public PackUpdater? PackUpdates { get; } = PackUpdater.ConfiguredBaseUrl() is { } url
+        ? new PackUpdater(url, GamePackLibrary.UserDirectory, Path.Combine(AppPaths.Data, "packs-remote.json"))
+        : null;
 
     public async Task<IReadOnlyList<ConsoleInfo>> DiscoverConsolesAsync()
     {

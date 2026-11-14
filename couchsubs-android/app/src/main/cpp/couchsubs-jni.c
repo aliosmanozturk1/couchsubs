@@ -157,9 +157,14 @@ static void cs_discovery_cb(ChiakiDiscoveryHost *host, void *user)
 	cs_discover_ctx *ctx = user;
 	if(!host || !host->host_addr || !chiaki_discovery_host_is_ps5(host))
 		return;
-	char line[256];
-	snprintf(line, sizeof(line), "%s\t%s\t%d", host->host_addr, host->host_name ? host->host_name : "PS5",
-			host->state == CHIAKI_DISCOVERY_HOST_STATE_READY ? 1 : 0);
+	/* Sona PS5'te çalışan uygulamanın kimliği ve adı eklenir (yoksa boş): ortak havuz satırı oyunla gider. */
+	char line[512];
+	snprintf(line, sizeof(line), "%s\t%s\t%d\t%s\t%s", host->host_addr, host->host_name ? host->host_name : "PS5",
+			host->state == CHIAKI_DISCOVERY_HOST_STATE_READY ? 1 : 0,
+			host->running_app_titleid ? host->running_app_titleid : "",
+			host->running_app_name ? host->running_app_name : "");
+	for(char *c = line; *c; c++)
+		if(*c == '\n' || *c == '\r') *c = ' ';
 	for(char *c = line; *c; c++)
 		if(*c & 0x80) *c = '?';
 	chiaki_mutex_lock(&ctx->mutex);

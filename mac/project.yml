@@ -75,6 +75,8 @@ targets:
         SUEnableAutomaticChecks: true
         # Uygulama uzun süre açık kalınca da yeni sürüm görünsün: saatte bir.
         SUScheduledCheckInterval: 3600
+        # Paket sunucusu (server/packs); derleme ayarı PACKS_API_BASE_URL boşsa paket indirme kapalı (PackUpdater).
+        CSPacksBaseURL: $(PACKS_API_BASE_URL)
     entitlements:
       path: CouchSubs/CouchSubs.entitlements
       properties:
@@ -141,6 +143,7 @@ targets:
         LSApplicationCategoryType: public.app-category.utilities
         NSLocalNetworkUsageDescription: CouchSubs finds your PS5 and TV on the local network to send translated subtitles.
         NSHumanReadableCopyright: AGPL-3.0. Uses chiaki-ng (AGPL-3.0).
+        CSPacksBaseURL: $(PACKS_API_BASE_URL)
     entitlements:
       path: AppStore/CouchSubs.entitlements
       properties:

@@ -18,6 +18,11 @@ extension AppServices {
     func testLocalAI(server: LocalAIServer, key: String) async -> Result<String, AIFailure> {
         await AITranslationCore.test(provider: .local, key: key, model: server.model, server: server)
     }
+    /// PS5'te o an çalışan oyun: yalnız bağlı PS5'in adresine keşif sorusu gider (ortak havuz için; bkz. `RunningGame`).
+    func runningGame(host: String) async -> RunningGame? {
+        guard let info = await Console.discover(timeout: .seconds(2), host: host).first else { return nil }
+        return RunningGame(titleId: info.runningAppTitleId, name: info.runningAppName)
+    }
 }
 
 protocol AppServices: AnyObject {
@@ -508,6 +513,12 @@ final class AppModel: ObservableObject {
     private let pool: LinePool
     private var poolTimer: Task<Void, Never>?
     private var terminateObserver: NSObjectProtocol?
+    /// Bağlıyken birkaç dakikada bir PS5'e çalışan oyunu sorar (havuza giden satırlar oyunla gider). Testlerde kapalı.
+    private var gameProbe: Task<Void, Never>?
+    private let probesGame: Bool
+    static let gameProbeInterval: Duration = .seconds(120)
+    /// Paket sunucusundan yeni ve güncellenen paketler (adres yapılandırılmadıysa nil; bkz. `PackUpdater`).
+    private var packUpdates: Task<Void, Never>?
 
     // Dublaj
     private var dubber: Dubber?
@@ -563,6 +574,7 @@ final class AppModel: ObservableObject {
             }
         }
         pool = LinePool(file: poolFile, app: AppIdentity.version, platform: "mac", enabled: curated.sharePool && !testing)
+        probesGame = !testing
         if !testing {
             historyFile = SubtitleHistory.defaultFile
             history = SubtitleHistory.load(from: SubtitleHistory.defaultFile)
@@ -582,8 +594,62 @@ final class AppModel: ObservableObject {
             let list = packs.packs
             await MainActor.run { self?.installedPacks = list }
         }
-        // Testlerde havuz hiçbir şey göndermez.
-        if !testing { startPool() }
+        // Testlerde havuz hiçbir şey göndermez, paket sunucusuna da sorulmaz.
+        if !testing {
+            startPool()
+            startPackUpdates()
+        }
+    }
+
+    /// Paket sunucusunun adresi yapılandırıldıysa (Info.plist `CSPacksBaseURL`) açılışta ve günde bir bakılır; asıl
+    /// indirme haftada birdir (`PackUpdater.refreshInterval`). Yeni paket inince paketler yeniden okunur.
+    private func startPackUpdates() {
+        guard let base = PackUpdater.configuredBaseURL() else { return }
+        let state = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(AppIdentity.name, isDirectory: true).appendingPathComponent("packs-remote.json")
+        let updater = PackUpdater(baseURL: base, directory: GamePackLibrary.userDirectory, stateFile: state)
+        let packs = self.packs
+        packUpdates = Task.detached(priority: .background) { [weak self] in
+            while !Task.isCancelled {
+                let result = await updater.refresh()
+                if result.changed {
+                    packs.reload()
+                    let list = packs.packs
+                    await MainActor.run { self?.installedPacks = list }
+                    RemotePlayLog.write("Paketler güncellendi: \((result.downloaded + result.removed).joined(separator: ", "))")
+                }
+                try? await Task.sleep(for: .seconds(24 * 3600))
+            }
+        }
+    }
+
+    /// PS5'e bağlanınca çalışan oyun okunmaya başlar, bağlantı gidince bırakılır (havuz satırı oyunsuz gider).
+    private func updateGameProbe(connected: Bool) {
+        guard probesGame else { return }
+        guard connected, let host = console?.host else {
+            gameProbe?.cancel()
+            gameProbe = nil
+            let pool = self.pool
+            Task { await pool.setGame(nil) }
+            return
+        }
+        guard gameProbe == nil else { return }
+        let pool = self.pool
+        let services = self.services
+        gameProbe = Task {
+            var last: RunningGame?
+            while !Task.isCancelled {
+                let game = await services.runningGame(host: host)
+                // Bu arada bağlantı bittiyse oyun yazılmaz (bırakılan oyun geri gelmesin).
+                guard !Task.isCancelled else { break }
+                await pool.setGame(game)
+                if game != last, let game {
+                    SubtitleLog.write("PS5'te çalışan oyun: \(game.name ?? "?") (\(game.titleId))")
+                }
+                last = game
+                try? await Task.sleep(for: Self.gameProbeInterval)
+            }
+        }
     }
 
     /// Kurulum bitmiş mi. "Bitti" yalnız sihirbazın sonuna gelinince kaydedilir (TV adımı başarıyla geçildi ya da
@@ -1411,6 +1477,7 @@ final class AppModel: ObservableObject {
     func stop() {
         session?.stop()
         session = nil
+        updateGameProbe(connected: false)
         keeper?.stop()
         keeper = nil
         pipeline?.reset()
@@ -1449,6 +1516,7 @@ final class AppModel: ObservableObject {
             }
         }
         sessionState = state
+        updateGameProbe(connected: state == .streaming)
         // Bağlantı koptuysa TV'de eski altyazı kalmasın.
         if case .disconnected = state {
             pipeline?.reset()

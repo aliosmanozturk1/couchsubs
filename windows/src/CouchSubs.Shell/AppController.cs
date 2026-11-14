@@ -78,6 +78,10 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private string? dubbingError;
     private IReadOnlyList<GamePackLibrary.Info> installedPacks = [];
     private Timer? poolTimer;
+    /// <summary>Bağlıyken iki dakikada bir PS5'e çalışan oyunu sorar (havuza giden satırlar oyunla gider).</summary>
+    private CancellationTokenSource? gameProbe;
+    public static readonly TimeSpan GameProbeInterval = TimeSpan.FromMinutes(2);
+    private Timer? packTimer;
     private string metricsText = "";
     /// <summary>Çevrilen satırların geçmişi (arayüz iş parçacığında değişir).</summary>
     private readonly SubtitleHistory history;
@@ -1137,6 +1141,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         session?.Stop();
         session?.Dispose();
         session = null;
+        UpdateGameProbe(connected: false);
         keeper?.Stop();
         keeper = null;
         pipeline?.Reset();
@@ -1213,6 +1218,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         Stop();
         server.Dispose();
         poolTimer?.Dispose();
+        packTimer?.Dispose();
         // Kapanırken kuyruk bir kez daha gönderilir; en çok birkaç saniye beklenir.
         if (services.Pool is { } pool)
         {
@@ -1234,10 +1240,73 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     {
         // Paketler ilk altyazıyı bekletmesin diye açılışta arka planda yüklenir.
         if (services.GamePacks is { } packs) _ = Task.Run(() => { var list = packs.Packs; post(() => InstalledPacks = list); });
+        StartPackUpdates();
         if (services.Pool is not { } pool) return;
         pool.SetEnabled(settings.SharePool);
         // Beş dakikada bir gönderilir; sunucuya ulaşılamazsa kuyruk diskte bekler, sonra yeniden denenir.
         poolTimer = new Timer(_ => _ = pool.FlushAsync(), null, LinePool.FlushInterval, LinePool.FlushInterval);
+    }
+
+    /// <summary>
+    /// Paket sunucusu yapılandırıldıysa açılışta ve günde bir bakılır; asıl indirme haftada birdir
+    /// (<see cref="PackUpdater.RefreshInterval"/>). Yeni paket inince paketler yeniden okunur.
+    /// </summary>
+    private void StartPackUpdates()
+    {
+        if (services.PackUpdates is not { } updater) return;
+        packTimer = new Timer(_ => _ = RefreshPacksAsync(updater), null, TimeSpan.Zero, TimeSpan.FromDays(1));
+    }
+
+    private async Task RefreshPacksAsync(PackUpdater updater)
+    {
+        try
+        {
+            var result = await updater.RefreshAsync().ConfigureAwait(false);
+            if (!result.Changed || services.GamePacks is not { } packs) return;
+            packs.Reload();
+            var list = packs.Packs;
+            post(() => InstalledPacks = list);
+            SubtitleLog.Write("paketler güncellendi: " + string.Join(", ", result.Downloaded.Concat(result.Removed)));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or HttpRequestException)
+        {
+            // Sonraki bakışta yeniden denenir.
+        }
+    }
+
+    /// <summary>PS5'e bağlanınca çalışan oyun okunmaya başlar, bağlantı gidince bırakılır (havuz satırı oyunsuz gider).</summary>
+    private void UpdateGameProbe(bool connected)
+    {
+        if (services.Pool is not { } pool) return;
+        if (!connected || console?.Host is not { } host)
+        {
+            gameProbe?.Cancel();
+            gameProbe?.Dispose();
+            gameProbe = null;
+            pool.SetGame(null);
+            return;
+        }
+        if (gameProbe is not null) return;
+        var cancel = new CancellationTokenSource();
+        gameProbe = cancel;
+        var token = cancel.Token;
+        _ = Task.Run(async () =>
+        {
+            RunningGame? last = null;
+            while (!token.IsCancellationRequested)
+            {
+                RunningGame? game;
+                try { game = await services.RunningGameAsync(host).ConfigureAwait(false); }
+                catch (Exception) { game = null; }
+                // Bu arada bağlantı bittiyse oyun yazılmaz (bırakılan oyun geri gelmesin).
+                if (token.IsCancellationRequested) break;
+                pool.SetGame(game);
+                if (game is not null && game != last) SubtitleLog.Write($"PS5'te çalışan oyun: {game.Name ?? "?"} ({game.TitleId})");
+                last = game;
+                try { await Task.Delay(GameProbeInterval, token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
+            }
+        }, CancellationToken.None);
     }
 
     private void ConnectPacks(SubtitlePipeline target) => target.PackLookup = PacksActive ? services.FindInPacks : null;
@@ -1506,6 +1575,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             });
         SessionState = state;
         UpdateTroubleClocks();
+        UpdateGameProbe(state.Phase == SessionPhase.Streaming);
         // Bağlantı koptuysa TV'de eski altyazı kalmasın.
         if (state.Phase == SessionPhase.Disconnected)
         {

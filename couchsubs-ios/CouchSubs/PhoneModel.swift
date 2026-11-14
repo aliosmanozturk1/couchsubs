@@ -118,6 +118,10 @@ final class PhoneModel: ObservableObject {
     /// Oyun paketleri: uygulamayla gelenler ve sunucudan indirilen güncel sürümleri (ücretsiz, herkese).
     let packs: GamePackLibrary
     private let pool: LinePool
+    /// Bağlıyken birkaç dakikada bir PS5'e çalışan oyunu sorar (havuza giden satırlar oyunla gider). Testlerde kapalı.
+    private var gameProbe: Task<Void, Never>?
+    private let probesGame: Bool
+    static let gameProbeInterval: Duration = .seconds(120)
 
     init(services: PhoneServices = LivePhoneServices(), store: AppStore = KeychainStore(), defaults: UserDefaults = .standard,
          packs: GamePackLibrary = GamePackLibrary(bundled: nil, user: nil)) {
@@ -147,6 +151,7 @@ final class PhoneModel: ObservableObject {
         let poolFile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(AppIdentity.name, isDirectory: true).appendingPathComponent("pool.json")
         pool = LinePool(file: poolFile, app: AppIdentity.version, platform: "ios", enabled: curated.sharePool && !testing)
+        probesGame = !testing
         savedKeys = Set(TranslationEngine.allCases.filter { engine in
             engine.storeKey.flatMap { store.load(String.self, for: $0) }?.isEmpty == false
         })
@@ -313,6 +318,7 @@ final class PhoneModel: ObservableObject {
         runningSince = nil
         session?.stop()
         session = nil
+        updateGameProbe(connected: false)
         keeper?.stop()
         keeper = nil
         pipeline?.reset()
@@ -377,8 +383,32 @@ final class PhoneModel: ObservableObject {
         store.save(moved, for: StoreKey.console)
     }
 
+    /// PS5'e bağlanınca çalışan oyun okunmaya başlar, bağlantı gidince bırakılır (havuz satırı oyunsuz gider).
+    private func updateGameProbe(connected: Bool) {
+        guard probesGame else { return }
+        let pool = self.pool
+        guard connected, let host = console?.host else {
+            gameProbe?.cancel()
+            gameProbe = nil
+            Task { await pool.setGame(nil) }
+            return
+        }
+        guard gameProbe == nil else { return }
+        let services = self.services
+        gameProbe = Task {
+            while !Task.isCancelled {
+                let game = await services.runningGame(host: host)
+                // Bu arada bağlantı bittiyse oyun yazılmaz (bırakılan oyun geri gelmesin).
+                guard !Task.isCancelled else { break }
+                await pool.setGame(game)
+                try? await Task.sleep(for: Self.gameProbeInterval)
+            }
+        }
+    }
+
     private func sessionStateChanged(_ state: SessionState) {
         sessionState = state
+        updateGameProbe(connected: state == .streaming)
         if case .disconnected = state {
             pipeline?.reset()
             server.clear()

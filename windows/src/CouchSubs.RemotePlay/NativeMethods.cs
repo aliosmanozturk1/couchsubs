@@ -39,6 +39,12 @@ internal static unsafe partial class NativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int cs_discover(nint* targets, int targetCount, int timeoutMs, nint callback, nint user);
 
+    /// <param name="callback">void (*)(const char *host, const char *name, int awake, const char *running_app_titleid,
+    /// const char *running_app_name, void *user)</param>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int cs_discover_ex(nint* targets, int targetCount, int timeoutMs, nint callback, nint user);
+
     [LibraryImport(Library, StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial int cs_wake(string host, ulong credential);
