@@ -1,6 +1,6 @@
 # Gizlilik / Privacy
 
-*Son güncelleme / Last updated: 2026-11-14*
+*Son güncelleme / Last updated: 2026-11-15*
 
 ## Türkçe
 
@@ -33,7 +33,9 @@ Android telefon uygulamalarının kimliğe bağlanmayan kullanım istatistikleri
 - **Ortak havuz (Ayarlar › Çeviri'den kapatılabilir):** hiçbir oyun paketinde bulunmayan, okunan İngilizce altyazı
   satırları herkes için daha iyi Türkçe çeviriler hazırlamak üzere `couchsubs-pool.enmera.workers.dev` adresine
   gönderilir. Giden yalnız satırın metni, ondan üretilen anahtar, ilk görüldüğü an, uygulama sürümü, işletim sistemi
-  (mac/windows/ios/android) ve kuruluma özgü rastgele bir kimliktir. Görüntü, ses, kullanıcı adı, PSN ya da hesap bilgisi gönderilmez.
+  (mac/windows/ios/android) ve kuruluma özgü rastgele bir kimliktir. Biliniyorsa satırla birlikte PS5'te o an çalışan
+  oyunun kimliği ve adı (ör. PPSA01234, "Grand Theft Auto VI") da gönderilir; bu, satırların hangi oyuna ait olduğunu
+  bilmek içindir ve sizinle ilgili bir bilgi taşımaz. Görüntü, ses, kullanıcı adı, PSN ya da hesap bilgisi gönderilmez.
   Kapatınca gönderim hemen durur ve bekleyen satırlar silinir.
 - **Ev ağı:** PS5 ve LG TV'yi bulmak ve onlarla eşleşmek için yalnız yerel ağ kullanılır.
 
@@ -117,8 +119,10 @@ sent to DeepL unless you turn this on. PS5 and TV discovery and pairing use your
 **Shared pool (can be turned off in Settings › Translation):** English subtitle lines that were read and are not
 in any game pack are sent to `couchsubs-pool.enmera.workers.dev` to make better Turkish translations for
 everyone. Only the line's text, a key derived from it, when it was first seen, the app version, the operating
-system (mac/windows/ios/android) and a random ID made for this installation are sent; no picture, audio, user name, PSN or
-account data. Turning it off stops sending at once and deletes lines waiting to be sent.
+system (mac/windows/ios/android) and a random ID made for this installation are sent. When known, the ID and name of
+the game running on the PS5 at that moment (e.g. PPSA01234, "Grand Theft Auto VI") are sent with the line; this is only
+to know which game the lines belong to and carries no information about you. No picture, audio, user name, PSN or
+account data is sent. Turning it off stops sending at once and deletes lines waiting to be sent.
 
 The TV app receives subtitles only from the CouchSubs computer on your home network and does not connect
 to the internet.
