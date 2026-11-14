@@ -259,13 +259,27 @@ public final class GamePackLibrary: @unchecked Sendable {
             return turkish
         }, nearest: { line in
             if let known = asked[line] { return known }
-            guard let index = self.lock.withLock({ self.scope }).flatMap({ $0 < searchable.count ? searchable[$0].fuzzy : nil }) else {
+            guard let pack = self.lock.withLock({ self.scope }).flatMap({ $0 < searchable.count ? searchable[$0] : nil }) else {
                 return nil
             }
-            let found = index.nearest(line, translation: { entries[$0] }).flatMap { entries[$0] }
+            let found = Self.corrected(line, in: pack, entries: entries)
+                ?? pack.fuzzy?.nearest(line, translation: { entries[$0] }).flatMap { entries[$0] }
             asked[line] = found
             return found
         })
+    }
+
+    /// Tek OCR düzeltmesiyle (`PackFuzzy.variants`) oynanan oyunun paketinde tam bulunan satırın Türkçesi; düzeltmelerin
+    /// hepsi aynı Türkçeye çıkmıyorsa nil.
+    private static func corrected(_ line: String, in pack: Searchable, entries: [UInt64: String]) -> String? {
+        var found: String?
+        for variant in PackFuzzy.variants(line) {
+            guard let number = PackKey.key(variant).flatMap(PackKey.number), pack.contains(number),
+                  let turkish = entries[number] else { continue }
+            if let earlier = found, earlier != turkish { return nil }
+            found = turkish
+        }
+        return found
     }
 
     /// Bulanık aramanın yapılacağı paketin kimliği (son tam eşleşmenin paketi); yoksa nil.
@@ -351,16 +365,21 @@ public enum PackLookup {
             var pieces: [SubtitleSegmenter.Piece] = []
             var translations: [String?] = []
             var all = true
-            for (index, line) in lines.enumerated() {
-                guard let found = single(line, find: find) else { all = false; break }
-                if index > 0 {
+            for line in lines {
+                guard let found = single(line, find: find) else {
+                    // Altyazıyla aynı bloğa düşen köşe yazısı ("San Andreas", "First Person • zoom") atlanır.
+                    if isOverlay(line) { continue }
+                    all = false
+                    break
+                }
+                if !pieces.isEmpty {
                     pieces.append(SubtitleSegmenter.Piece("\n", translate: false))
                     translations.append(nil)
                 }
                 pieces += found.pieces
                 translations += found.translations
             }
-            if all { return result(pieces, translations) }
+            if all, !pieces.isEmpty { return result(pieces, translations) }
         }
 
         // Cümle cümle (etiket, tire ve ayraçlar olduğu gibi kalır).
@@ -396,6 +415,18 @@ public enum PackLookup {
         guard let loose = looseLabel(line), let turkish = find(loose.body) else { return nil }
         let pieces = [SubtitleSegmenter.Piece(loose.label, translate: false), SubtitleSegmenter.Piece(loose.body, translate: true)]
         return (result(pieces, [nil, turkish]), pieces, [nil, turkish])
+    }
+
+    /// Altyazı olmayan köşe yazısı satırı: "•" içerir ya da en çok dört sözcük, noktalama yok ve her sözcük büyük
+    /// harfle başlar ("San Andreas", "Mirror Park", "LOSNN"). Yalnız başka satırlar pakette bulunduysa atlanır.
+    static func isOverlay(_ line: String) -> Bool {
+        if line.contains("•") { return true }
+        let words = line.split(whereSeparator: \.isWhitespace)
+        guard !words.isEmpty, words.count <= 4 else { return false }
+        return words.allSatisfy { word in
+            guard let first = word.unicodeScalars.first, first.properties.isUppercase else { return false }
+            return word.unicodeScalars.allSatisfy { PackFuzzy.isLetter($0) || PackFuzzy.isDigit($0) }
+        }
     }
 
     /// OCR'ın bozduğu konuşmacı etiketi: "-GAETANO:", "M]:", "li LUCA:", "MİNE GUARD•" (ilk 32 karakterde iki nokta ya

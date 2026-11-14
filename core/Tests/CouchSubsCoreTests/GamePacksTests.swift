@@ -239,6 +239,18 @@ final class PackLookupTests: XCTestCase {
         XCTAssertNil(match("Get down!\nWho are you?"))
     }
 
+    /// Altyazının bloğuna düşen köşe yazısı (GTA V'te bölge adı, kamera ipucu) atlanır; tek başına eşleşme sayılmaz.
+    func testOverlayLineNextToTheSubtitleIsSkipped() {
+        XCTAssertEqual(match("San Andreas\nWho is that?")?.text, "O da kim?")
+        XCTAssertEqual(match("Get down!\nFirst Person • zoom")?.text, "Yere yat!")
+        XCTAssertEqual(match("Get down!\nMirror Park\nWho is that?")?.text, "Yere yat!\nO da kim?")
+        XCTAssertNil(match("San Andreas\nMirror Park"))
+        XCTAssertNil(match("Get down!\nwho are you"))
+        XCTAssertTrue(PackLookup.isOverlay("LOSNN"))
+        XCTAssertFalse(PackLookup.isOverlay("Listen to me,"))
+        XCTAssertFalse(PackLookup.isOverlay("Hey, Franklin!"))
+    }
+
     func testEachSentenceIsLookedUpWhenTheLineIsMissing() {
         let found = match("ENZO: Get down! Who is that?")
         XCTAssertEqual(found?.text, "ENZO: Yere yat! O da kim?")
@@ -388,6 +400,27 @@ final class PackFuzzyTests: XCTestCase {
         XCTAssertGreaterThan(pack.fuzzy?.count ?? 0, 20000)
     }
 
+    /// GTA V oyuncularının gerçek ıskalamaları: kısa satırda tek harf hatası, yutulmuş kesme işareti, köşe yazısı,
+    /// iki satırlık altyazının yalnız bir satırı ve başına çöp eklenmiş okuma da paketten bulunur.
+    func testGtaOcrReadsAreFound() throws {
+        let library = try library("gta-v.json.gz")
+        XCTAssertNotNil(library.match("Are you listening to me?"))
+        func same(_ screen: String, as line: String, file: StaticString = #filePath, lineNumber: UInt = #line) {
+            let expected = library.match(line)?.text
+            XCTAssertNotNil(expected, line, file: file, line: lineNumber)
+            XCTAssertEqual(library.match(screen)?.text, expected, screen, file: file, line: lineNumber)
+        }
+        same("Somebody help rne!", as: "Somebody help me!")
+        same("Yeah, well, well see.", as: "Yeah, well, we'll see.")
+        same("You cant put a price on freedom.", as: "You can't put a price on freedom.")
+        same("LOSNN\nI told him to leave it, Trevor.", as: "I told him to leave it, Trevor.")
+        same("I can't do crap with this deathship right", as: "I can't do crap with this deathship right on top of me! Bring it down, T!")
+        same("San Andreas LOSNN but it does mean he's got money to pay people who help him.",
+             as: "but it does mean he's got money to pay people who help him.")
+        XCTAssertNil(library.match("The quick brown fox jumps over the lazy dog near the river bank."))
+        XCTAssertNil(library.match("Sauvage gentleman of the western plains"))
+    }
+
     /// En büyük pakette (GTA V) bulanık arama da hızlı.
     func testFuzzySearchIsFastInTheLargestPack() throws {
         let library = try library("gta-v.json.gz")
@@ -398,6 +431,8 @@ final class PackFuzzyTests: XCTestCase {
         for _ in 0..<25 { for line in lines { _ = library.match(line) } }
         let elapsed = Date().timeIntervalSince(start) / 100
         print("GTA V bulanık arama: satır başına \(String(format: "%.2f", elapsed * 1000)) ms")
-        XCTAssertLessThan(elapsed, 0.05)
+        // Bulunamayan satırda tek yönlü kapsama için daha geniş boy aralığı da taranır. Sürüm derlemesinde ~10 ms; sınır
+        // hata ayıklama derlemesinde arka plan önceliğiyle (heavy-job) bütün testler birlikteyken ölçülen ~80 ms'ye göre.
+        XCTAssertLessThan(elapsed, 0.12)
     }
 }

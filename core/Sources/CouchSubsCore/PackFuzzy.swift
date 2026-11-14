@@ -21,10 +21,55 @@ public enum PackFuzzy {
     static let damagedMinimum: [(limit: Int, value: Double)] = [(24, 70), (40, 60), (256, 55)]
     /// Türkçesi farklı en yakın ikinci aday en az bu kadar geride olmalı.
     static let margin = 5.0
+    /// Tek yönlü kapsama (yarım ya da fazlalıklı okuma): iki taraf da en az `minLength` harf; kısa tarafın en az
+    /// `inner`'ı uzun tarafta; uzun tarafın en az `partial`'ı (satır yarım okunmuş) ya da `extra`'sı (okumada fazlalık
+    /// var: köşe yazısı, çöp) kısa tarafta; benzerlik `inner - penalty` sayılır. Fazlalık az olmalı: iki ayrı altyazının
+    /// birleştiği okuma tek bir altyazıya çıkmasın.
+    static let containment = (minLength: 22, inner: 90.0, partial: 25.0, extra: 55.0, penalty: 10.0)
 
     private static let fold: [Unicode.Scalar: Unicode.Scalar] = [
         "l": "i", "1": "i", "ı": "i", "j": "i", "0": "o", "5": "s", "æ": "a", "ø": "o", "œ": "o", "ß": "s",
     ]
+
+    /// Yazı tanımanın sık karıştırdığı harf dizileri (canon metinde, küçük harf): okunan → asıl olabilecek.
+    static let confusions: [(read: String, real: String)] = [
+        ("rn", "m"), ("m", "rn"), ("cl", "d"), ("d", "cl"), ("vv", "w"), ("ri", "n"), ("n", "ri"), ("li", "h"),
+        ("l", "i"), ("i", "l"), ("1", "l"), ("1", "i"), ("0", "o"), ("5", "s"), ("j", "i"), ("c", "e"), ("e", "c"),
+        ("a", "o"), ("o", "a"), ("h", "b"), ("b", "h"), ("f", "t"), ("t", "f"), ("u", "v"), ("v", "u"), ("y", "v"),
+        ("v", "y"), ("q", "g"), ("g", "q"),
+    ]
+    /// Tek düzeltmeyle denenecek en kısa ve en uzun canon satır (harf sayısı); daha uzun satırda bulanık imza yeter.
+    static let variantLength = (minimum: 6, maximum: 48)
+
+    /// Satırın tek bir OCR düzeltmesiyle olabileceği canon hâller: karıştırılan harf dizisi değişir, bir harf düşer,
+    /// sözcük ikiye bölünür (OCR boşluğu ya da kesme işaretini yuttu: "cant" → "can t") ya da iki sözcük birleşir.
+    /// Pakette tam anahtarla aranırlar; bulanık imzanın yetmediği kısa satırlar içindir.
+    static func variants(_ text: String) -> [String] {
+        let canon = Array(PackKey.canon(text).unicodeScalars)
+        guard canon.count >= variantLength.minimum, canon.count <= variantLength.maximum else { return [] }
+        var output = Set<String>()
+        func add(_ scalars: ArraySlice<Unicode.Scalar>...) {
+            var view = String.UnicodeScalarView()
+            for part in scalars { view.append(contentsOf: part) }
+            let value = String(view)
+            if !value.isEmpty, !value.hasPrefix(" "), !value.hasSuffix(" "), !value.contains("  ") { output.insert(value) }
+        }
+        let confusions = Self.confusions.map { (Array($0.read.unicodeScalars), Array($0.real.unicodeScalars)) }
+        let space: [Unicode.Scalar] = [" "]
+        for index in canon.indices {
+            for (read, real) in confusions where index + read.count <= canon.count && Array(canon[index..<(index + read.count)]) == read {
+                add(canon[..<index], real[...], canon[(index + read.count)...])
+            }
+            if canon[index] == " " {
+                add(canon[..<index], canon[(index + 1)...])
+            } else {
+                add(canon[..<index], canon[(index + 1)...])
+                if index > 0, canon[index - 1] != " " { add(canon[..<index], space[...], canon[index...]) }
+            }
+        }
+        output.remove(String(String.UnicodeScalarView(canon)))
+        return output.sorted()
+    }
 
     /// canon metin, boşluksuz ve OCR'ın karıştırdığı harfler birleşmiş.
     static func folded(_ text: String) -> [Unicode.Scalar] {
@@ -79,12 +124,19 @@ public enum PackFuzzy {
     /// Benzerlik, bit sayılarından (ortak, sorgudaki, adaydaki).
     @inline(__always)
     static func score(both: Int, inQuery: Int, inEntry: Int, bits: Int) -> Double {
-        guard inQuery > 0, inEntry > 0 else { return 0 }
+        let cover = coverage(both: both, inQuery: inQuery, inEntry: inEntry, bits: bits)
+        return min(cover.query, cover.entry)
+    }
+
+    /// Rastlantıdan arındırılmış tek yönlü kapsamalar (0-100): sorgunun adayda olanı, adayın sorguda olanı.
+    @inline(__always)
+    static func coverage(both: Int, inQuery: Int, inEntry: Int, bits: Int) -> (query: Double, entry: Double) {
+        guard inQuery > 0, inEntry > 0 else { return (0, 0) }
         let fillQuery = Double(inQuery) / Double(bits), fillEntry = Double(inEntry) / Double(bits)
-        guard fillQuery < 1, fillEntry < 1 else { return 0 }
+        guard fillQuery < 1, fillEntry < 1 else { return (0, 0) }
         let queryCovered = (Double(both) / Double(inQuery) - fillEntry) / (1 - fillEntry)
         let entryCovered = (Double(both) / Double(inEntry) - fillQuery) / (1 - fillQuery)
-        return 100.0 * min(queryCovered, entryCovered)
+        return (100.0 * queryCovered, 100.0 * entryCovered)
     }
 
     /// (uzunluk, Bloom baytları) — paket betiğinin yazdığıyla aynı; satır çok kısaysa nil.
@@ -225,6 +277,9 @@ struct PackFuzzyIndex: Sendable {
 
     /// Eşik, uzunluk ve ikinci aday şartlarını sağlayan en benzer satırın anahtarı; yoksa nil.
     /// `translation`: anahtarın Türkçesi (aynı Türkçeli iki aday birbirinin rakibi sayılmaz).
+    /// Önce boyu yakın adaylar (benzerlik iki yönlü kapsamanın küçüğü). Hiçbiri eşiği geçmezse boyu çok farklı adaylarda
+    /// tek yönlü kapsamaya bakılır (`PackFuzzy.containment`): yarım okunan satır (iki satırlık altyazının bir satırı)
+    /// uzun adayın içinde, köşe yazısı ya da çöp eklenmiş okuma kısa adayın dışında kalır.
     func nearest(_ text: String, translation: (UInt64) -> String?) -> UInt64? {
         let scalars = PackFuzzy.folded(text)
         guard scalars.count >= PackFuzzy.minLength, !keys.isEmpty else { return nil }
@@ -236,30 +291,78 @@ struct PackFuzzyIndex: Sendable {
         let query = PackFuzzy.bloom(hashes, bits: 64) + PackFuzzy.bloom(hashes, bits: 128) + PackFuzzy.bloom(hashes, bits: 256)
         let queryOnes = [query[0].nonzeroBitCount, query[1].nonzeroBitCount + query[2].nonzeroBitCount,
                          query[3...6].reduce(0) { $0 + $1.nonzeroBitCount }]
-        // Aday uzunluğu en çok ±%25 farklı: |aday - satır| * 4 <= satır.
-        let lower = length - length / 4
-        let upper = min(255, length + length / 4)
-        var found: [(score: Double, key: UInt64)] = []
+        let contain = PackFuzzy.containment
+        // İki yönlü aday: boyu en çok ±%25 farklı (|aday - satır| * 4 <= satır); benzerlik kapsamaların küçüğü.
+        let near = (length - length / 4)...min(255, length + length / 4)
+        // Tek yönlü aday: satırın 11/20'si ile 5/2'si arası (fazlalıklı okumada aday satırın en az %55'i kadar olur);
+        // kısa taraf en az `inner` kapsanmalı, uzun tarafın en az `partial`/`extra`'sı kısa tarafta; benzerlik
+        // `inner - penalty`.
+        let wide = length >= contain.minLength
+            ? max(contain.minLength, length * 11 / 20)...min(255, length * 5 / 2) : near
+        var close: [(score: Double, key: UInt64)] = []
+        var contained: [(score: Double, key: UInt64)] = []
+        let nearLower = near.lowerBound, nearUpper = near.upperBound
+        let one = queryOnes[0], two = queryOnes[1], four = queryOnes[2]
+        /// `range` sırasındaki adaylar: `wideOn` false ise iki yönlü benzerlik (`close`), true ise tek yönlü (`contained`).
+        /// Hata ayıklama derlemesinde de hızlı olsun diye diziler doğrudan okunur.
+        func scan(_ range: Range<Int>, wideOn: Bool) {
         query.withUnsafeBufferPointer { q in
-            words.withUnsafeBufferPointer { w in
-                for index in start[lower]..<start[upper + 1] {
-                    let bits = PackFuzzy.bits(forLength: Int(lengths[index]))
-                    let tier = bits == 64 ? 0 : bits == 128 ? 1 : 2
-                    let base = Int(offsets[index])
-                    var both = (q[tier == 0 ? 0 : tier == 1 ? 1 : 3] & w[base]).nonzeroBitCount
-                    if tier >= 1 { both += (q[tier == 1 ? 2 : 4] & w[base + 1]).nonzeroBitCount }
-                    if tier == 2 { both += (q[5] & w[base + 2]).nonzeroBitCount + (q[6] & w[base + 3]).nonzeroBitCount }
-                    let score = PackFuzzy.score(both: both, inQuery: queryOnes[tier], inEntry: Int(ones[index]), bits: bits)
-                    if score >= floor { found.append((score, keys[index])) }
+        words.withUnsafeBufferPointer { w in
+        lengths.withUnsafeBufferPointer { lengths in
+        offsets.withUnsafeBufferPointer { offsets in
+        ones.withUnsafeBufferPointer { ones in
+            for index in range {
+                let entryLength = Int(lengths[index])
+                let base = Int(offsets[index])
+                let bits: Int, inQuery: Int, both: Int
+                if entryLength * PackFuzzy.bitsPerGram <= 64 {
+                    bits = 64; inQuery = one
+                    both = (q[0] & w[base]).nonzeroBitCount
+                } else if entryLength * PackFuzzy.bitsPerGram <= 128 {
+                    bits = 128; inQuery = two
+                    both = (q[1] & w[base]).nonzeroBitCount + (q[2] & w[base + 1]).nonzeroBitCount
+                } else {
+                    bits = 256; inQuery = four
+                    both = (q[3] & w[base]).nonzeroBitCount + (q[4] & w[base + 1]).nonzeroBitCount
+                        + (q[5] & w[base + 2]).nonzeroBitCount + (q[6] & w[base + 3]).nonzeroBitCount
+                }
+                let inEntry = Int(ones[index])
+                if !wideOn {
+                    let score = PackFuzzy.score(both: both, inQuery: inQuery, inEntry: inEntry, bits: bits)
+                    if score >= floor { close.append((score, keys[index])) }
+                    continue
+                }
+                // Kısa tarafın bitlerinin en az %90'ı ortak olmalı (hızlı eleme).
+                guard entryLength >= contain.minLength, entryLength != length,
+                      both * 10 >= 9 * (entryLength > length ? inQuery : inEntry) else { continue }
+                let cover = PackFuzzy.coverage(both: both, inQuery: inQuery, inEntry: inEntry, bits: bits)
+                let (inner, outer, least) = entryLength > length
+                    ? (cover.query, cover.entry, contain.partial) : (cover.entry, cover.query, contain.extra)
+                if inner >= contain.inner, outer >= least, inner - contain.penalty >= floor {
+                    contained.append((inner - contain.penalty, keys[index]))
                 }
             }
         }
-        guard let best = found.max(by: { ($0.score, $0.key) < ($1.score, $1.key) }), best.score >= need else { return nil }
-        let turkish = translation(best.key)
-        for other in found where other.key != best.key && other.score > best.score - PackFuzzy.margin
-            && translation(other.key) != turkish {
-            return nil
         }
-        return best.key
+        }
+        }
+        }
+        }
+        /// En iyi aday; eşiği geçmiyorsa nil, Türkçesi farklı rakibi yakınsa `.ambiguous`.
+        func pick(_ found: [(score: Double, key: UInt64)]) -> (key: UInt64?, ambiguous: Bool) {
+            guard let best = found.max(by: { ($0.score, $0.key) < ($1.score, $1.key) }), best.score >= need else { return (nil, false) }
+            let turkish = translation(best.key)
+            for other in found where other.key != best.key && other.score > best.score - PackFuzzy.margin
+                && translation(other.key) != turkish {
+                return (nil, true)
+            }
+            return (best.key, false)
+        }
+        scan(start[nearLower]..<start[nearUpper + 1], wideOn: false)
+        // Tek yönlü adaylara yalnız iki yönlü hiçbir aday eşiği geçmediyse bakılır.
+        let first = pick(close)
+        guard first.key == nil, !first.ambiguous, length >= contain.minLength else { return first.key }
+        scan(start[wide.lowerBound]..<start[wide.upperBound + 1], wideOn: true)
+        return contained.isEmpty ? nil : pick(close + contained).key
     }
 }

@@ -306,14 +306,33 @@ public sealed class GamePackLibrary(Func<IEnumerable<(string Name, byte[] Data)>
     public string? Nearest(string text)
     {
         Dictionary<ulong, string> current;
-        PackFuzzyIndex? index;
+        GamePack? pack;
         lock (gate)
         {
             LoadIfNeeded();
             current = entries;
-            index = scope is { } chosen && chosen < loadedPacks.Count ? loadedPacks[chosen].Fuzzy : null;
+            pack = scope is { } chosen && chosen < loadedPacks.Count ? loadedPacks[chosen] : null;
         }
-        return index?.Nearest(text, key => current.GetValueOrDefault(key)) is { } found ? current.GetValueOrDefault(found) : null;
+        if (pack is null) return null;
+        if (Corrected(text, pack, current) is { } corrected) return corrected;
+        return pack.Fuzzy?.Nearest(text, key => current.GetValueOrDefault(key)) is { } found ? current.GetValueOrDefault(found) : null;
+    }
+
+    /// <summary>
+    /// Tek OCR düzeltmesiyle (<see cref="PackFuzzy.Variants"/>) oynanan oyunun paketinde tam bulunan satırın Türkçesi;
+    /// düzeltmelerin hepsi aynı Türkçeye çıkmıyorsa null.
+    /// </summary>
+    private static string? Corrected(string text, GamePack pack, Dictionary<ulong, string> current)
+    {
+        string? found = null;
+        foreach (var variant in PackFuzzy.Variants(text))
+        {
+            if (PackKey.Key(variant) is not { } key || PackKey.Number(key) is not { } number || !Contains(pack.Keys, number)
+                || !current.TryGetValue(number, out var turkish)) continue;
+            if (found is not null && found != turkish) return null;
+            found = turkish;
+        }
+        return found;
     }
 
     /// <summary>Bulanık aramanın yapılacağı paketin kimliği (son tam eşleşmenin paketi); yoksa null.</summary>

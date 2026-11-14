@@ -7,3 +7,6 @@ düzeltme) → `translate.py` (Claude ile cümle cümle çeviri) → `review.py`
 
 Anthropic anahtarı `~/.config/couchsubs/anthropic-key` dosyasından okunur; depoya konmaz. Harcama `ledger.jsonl`'a
 yazılır. Kaynaklar ve lisansları THIRD-PARTY-NOTICES.md'de.
+
+`sentences.py`: çok cümleli satırların cümlelerini, Türkçesi aynı sayıda cümleye bölünüyorsa API'siz parça olarak ekler
+(GTA V'te ~51 bin, RDR2'de ~47 bin yeni parça; paketler ~3 MB büyür). Henüz gömülü paketlere uygulanmadı.
