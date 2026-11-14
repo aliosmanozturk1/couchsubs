@@ -17,11 +17,14 @@
     <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION" tools:node="remove" />
 
+    <!-- largeHeap: uygulamayla gelen dokuz oyun paketi bellekte ~50 MB tutar; Compose, ML Kit ve görüntü akışıyla birlikte
+         varsayılan sınır zayıf telefonda yetmiyor, çeviri başlarken uygulama kapanıyordu. -->
     <application
         android:name=".CouchSubsApp"
         android:allowBackup="false"
         android:icon="@mipmap/icon"
         android:label="CouchSubs"
+        android:largeHeap="true"
         android:theme="@style/Theme.CouchSubs"
         android:usesCleartextTraffic="true">
         <!-- Ölçüm açılışta Profil › Kullanım verisi'ne göre açılır (Services.applyMeasurement); reklam kimliği ve reklam

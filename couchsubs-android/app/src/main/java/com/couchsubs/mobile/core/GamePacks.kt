@@ -112,18 +112,71 @@ class GamePack private constructor(val id: String, val title: String, private va
         }
 
         companion object {
-            fun of(map: Map<Long, String>): Table {
-                val keys = map.keys.toLongArray().also { it.sort() }
-                val offsets = IntArray(keys.size + 1)
-                val blob = java.io.ByteArrayOutputStream(map.size * 48)
-                for ((index, key) in keys.withIndex()) {
-                    offsets[index] = blob.size()
-                    blob.write(map.getValue(key).toByteArray(Charsets.UTF_8))
-                }
-                offsets[keys.size] = blob.size()
-                return Table(keys, offsets, blob.toByteArray())
-            }
+            val EMPTY = Table(LongArray(0), IntArray(1), ByteArray(0))
         }
+    }
+
+    /**
+     * Satırları geldiği sırayla düz dizilere yazar, sonunda anahtara göre sıralı [Table] kurar. Satır başına nesne
+     * (HashMap düğümü, Long, String) tutulmaz: GTA V gibi büyük paket açılırken bellek tepe noktası birkaç kat düşer.
+     */
+    internal class TableBuilder {
+        private var keys = LongArray(1024)
+        private var ends = IntArray(1024)
+        private var count = 0
+        /** Tamponu kopyalamadan okunabilen bayt akışı (toByteArray() bütün metni bir kez daha kopyalardı). */
+        private class Bytes : java.io.ByteArrayOutputStream(1 shl 16) {
+            fun raw(): ByteArray = buf
+        }
+        private val blob = Bytes()
+
+        val isEmpty get() = count == 0
+
+        fun add(key: Long, text: String) {
+            if (count == keys.size) {
+                keys = keys.copyOf(count * 2)
+                ends = ends.copyOf(count * 2)
+            }
+            blob.write(text.toByteArray(Charsets.UTF_8))
+            keys[count] = key
+            ends[count] = blob.size()
+            count++
+        }
+
+        fun build(): Table {
+            if (count == 0) return Table.EMPTY
+            val bytes = blob.raw()
+            // Kararlı sıralama: aynı anahtarın kayıtları geliş sırasıyla yan yana kalır, sonuncusu alınır.
+            val order = (0 until count).sortedWith { a, b -> keys[a].compareTo(keys[b]) }
+            var unique = 0
+            var total = 0
+            for (position in order.indices) {
+                val index = order[position]
+                if (position + 1 < order.size && keys[order[position + 1]] == keys[index]) continue
+                unique++
+                total += ends[index] - start(index)
+            }
+            val sortedKeys = LongArray(unique)
+            val offsets = IntArray(unique + 1)
+            val text = ByteArray(total)
+            var slot = 0
+            var at = 0
+            for (position in order.indices) {
+                val index = order[position]
+                if (position + 1 < order.size && keys[order[position + 1]] == keys[index]) continue
+                val from = start(index)
+                val length = ends[index] - from
+                System.arraycopy(bytes, from, text, at, length)
+                sortedKeys[slot] = keys[index]
+                offsets[slot] = at
+                at += length
+                slot++
+            }
+            offsets[unique] = at
+            return Table(sortedKeys, offsets, text)
+        }
+
+        private fun start(index: Int) = if (index == 0) 0 else ends[index - 1]
     }
 
     /** Tam satır sayısı (parçalar hariç). */
@@ -139,27 +192,27 @@ class GamePack private constructor(val id: String, val title: String, private va
         /** [name]: dosya adı uzantısız ("mafia-the-old-country"); düz biçimde kimlik ve başlık olur. */
         fun decode(data: ByteArray, name: String): GamePack {
             val json = if (data.size >= 2 && data[0] == 0x1f.toByte() && data[1] == 0x8b.toByte()) decompress(data) else data
-            val entries = HashMap<Long, String>()
-            val segments = HashMap<Long, String>()
-            fun add(target: HashMap<Long, String>, key: String, value: String) {
+            val entries = TableBuilder()
+            val segments = TableBuilder()
+            fun add(target: TableBuilder, key: String, value: String) {
                 val number = PackKey.number(key.lowercase(Locale.ROOT)) ?: return
                 val text = cleaned(value)
-                // Aynı anahtar iki kez varsa sonraki kazanır.
-                if (text.isNotEmpty()) target[number] = text
+                // Aynı anahtar iki kez varsa sonraki kazanır (TableBuilder.build).
+                if (text.isNotEmpty()) target.add(number, text)
             }
             val parsed = PackJson.parse(json, { key, value -> add(entries, key, value) }, { key, value -> add(segments, key, value) })
             if (!parsed.wrapped) {
                 parsed.rootStrings.forEach { (key, value) -> add(entries, key, value) }
-                return build(name, name, entries, emptyMap())
+                return build(name, name, entries, TableBuilder())
             }
             if (parsed.format != null && parsed.format != 1.0 && parsed.format != 2.0) throw InvalidPackException("Desteklenmeyen paket biçimi")
             val id = parsed.id?.takeIf { it.isNotEmpty() } ?: name
             return build(id, parsed.title?.takeIf { it.isNotEmpty() } ?: id, entries, segments)
         }
 
-        private fun build(id: String, title: String, entries: Map<Long, String>, segments: Map<Long, String>): GamePack {
-            if (entries.isEmpty()) throw InvalidPackException("Pakette satır yok")
-            return GamePack(id, title, Table.of(entries), Table.of(segments))
+        private fun build(id: String, title: String, entries: TableBuilder, segments: TableBuilder): GamePack {
+            if (entries.isEmpty) throw InvalidPackException("Pakette satır yok")
+            return GamePack(id, title, entries.build(), segments.build())
         }
 
         /** Paketteki Türkçede de oyunun biçim etiketleri kalmış olabilir ("<b><h>…</>"); TV'de görünmesinler. */
@@ -168,11 +221,30 @@ class GamePack private constructor(val id: String, val title: String, private va
             return PackKey.stripTags(text, "").split(' ').filter { it.isNotEmpty() }.joinToString(" ").trim()
         }
 
+        /**
+         * Açılmış boyut gzip'in son 4 baytında yazar (ISIZE); dizi bir kerede o boyutta ayrılır. readBytes() büyüyen
+         * tamponla açılmış boyutun yaklaşık üç katı geçici bellek isterdi (GTA V: 18 MB JSON).
+         */
         private fun decompress(data: ByteArray): ByteArray = try {
-            GZIPInputStream(ByteArrayInputStream(data)).use { it.readBytes() }
+            val size = if (data.size >= 18) (data[data.size - 4].toInt() and 0xff) or ((data[data.size - 3].toInt() and 0xff) shl 8) or
+                ((data[data.size - 2].toInt() and 0xff) shl 16) or ((data[data.size - 1].toInt() and 0xff) shl 24) else -1
+            GZIPInputStream(ByteArrayInputStream(data), 1 shl 16).use { input ->
+                if (size !in 0..MAX_EXACT_SIZE) return@use input.readBytes()
+                val out = ByteArray(size)
+                var at = 0
+                while (at < size) {
+                    val count = input.read(out, at, size - at)
+                    if (count < 0) break
+                    at += count
+                }
+                // Boyut tutmadıysa (birden çok gzip üyesi ya da bozuk dosya) güvenli yola dönülür.
+                if (at != size || input.read() != -1) GZIPInputStream(ByteArrayInputStream(data)).use { it.readBytes() } else out
+            }
         } catch (error: IOException) {
             throw InvalidPackException("Paket açılamadı", error)
         }
+
+        private const val MAX_EXACT_SIZE = 256 shl 20
     }
 }
 
@@ -188,7 +260,11 @@ data class PackMatch(val text: String, val packId: String? = null)
  * satırın hangi oyunun paketinden geldiği bilinir.
  */
 class GamePackLibrary(
-    private val bundled: (() -> List<Pair<String, ByteArray>>)?,
+    /**
+     * Uygulamayla gelen paketlerin adları ve okuyucuları. Dosyalar sırayla, biri çözülüp bırakıldıktan sonra okunur:
+     * hepsi birden belleğe alınırsa zayıf telefonda bellek yetmiyordu (çeviri başlarken uygulama kapanıyordu).
+     */
+    private val bundled: (() -> List<Pair<String, () -> ByteArray>>)?,
     private val userDirectory: File?,
 ) {
     data class Info(val id: String, val title: String, val entries: Int, val builtIn: Boolean)
@@ -257,7 +333,15 @@ class GamePackLibrary(
             list.removeAll { it.first.id == pack.id }
             list.add(pack to builtIn)
         }
-        bundled?.invoke()?.sortedBy { it.first }?.forEach { (name, data) -> if (isPackFile(name)) add(name, data, true) }
+        bundled?.invoke()?.sortedBy { it.first }?.forEach { (name, read) ->
+            if (!isPackFile(name)) return@forEach
+            val data = try {
+                read()
+            } catch (error: IOException) {
+                return@forEach
+            }
+            add(name, data, true)
+        }
         userDirectory?.listFiles()?.filter { it.isFile && isPackFile(it.name) }?.sortedBy { it.name }?.forEach { file ->
             val data = try {
                 file.readBytes()

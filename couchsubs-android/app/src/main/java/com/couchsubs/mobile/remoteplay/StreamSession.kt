@@ -192,9 +192,12 @@ class StreamSession(
         if (!isCurrent(current) || native != 0L) return
         val imageReader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, 3)
         imageReader.setOnImageAvailableListener({ source ->
+            // IllegalStateException (en çok kare) ya da UnsupportedOperationException (çözücünün kare biçimi okuyucuyla
+            // uyuşmuyor) bu iş parçacığında yakalanmazsa uygulama kapanır.
             val image = try {
                 source.acquireLatestImage()
-            } catch (error: IllegalStateException) {
+            } catch (error: RuntimeException) {
+                Log.w(TAG, "acquireLatestImage: ${error.message}")
                 null
             } ?: return@setOnImageAvailableListener
             framesReceived++

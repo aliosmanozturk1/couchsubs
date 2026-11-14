@@ -157,8 +157,10 @@ class TranslationService : Service() {
         Thread({
             try {
                 setup(console, accountId, replacement)
-            } catch (error: Exception) {
-                // Kurulum sürerken durdurulduysa (zamanlayıcı kapanmış olur) yalnız kurulanlar kapatılır.
+            } catch (error: Throwable) {
+                // Exception değil Throwable: bu iş parçacığında yakalanmayan hata (ör. OutOfMemoryError) bütün uygulamayı
+                // kapatır, PS5 bağlantısı da kopar. Kurulum sürerken durdurulduysa (zamanlayıcı kapanmış olur) yalnız
+                // kurulanlar kapatılır.
                 if (destroyed) releaseParts()
                 else {
                     Log.e(TAG, "setup", error)
@@ -197,13 +199,20 @@ class TranslationService : Service() {
         val linePool = LinePool(File(filesDir, "line-pool.json"), "CouchSubs Android ${BuildConfig.VERSION_NAME}",
             enabled = settings.sharePool && replacement == null)
         pool = linePool
-        val packTitles = library.infos.associate { it.id to it.title }
+        // Paketler burada açılır (ilk altyazı beklemesin); kapalıysa hiç açılmaz. Bellek yetmezse paketsiz sürülür:
+        // çeviri motoru çalışır, uygulama kapanmaz ve PS5 bağlantısı kopmaz.
+        val packTitles = if (!settings.packsEnabled) null else try {
+            library.infos.associate { it.id to it.title }
+        } catch (error: OutOfMemoryError) {
+            Log.e(TAG, "packs", error)
+            null
+        }
         reader = SubtitleReader()
         pipeline = SubtitlePipeline(translator, subtitleServer).apply {
-            packLookup = { text -> if (settings.packsEnabled) PackLookup.match(library, text) else null }
+            packLookup = { text -> if (packTitles != null && settings.packsEnabled) PackLookup.match(library, text) else null }
             onPackMissed = { text -> linePool.offer(text) }
             onPairShown = { pair ->
-                LiveState.shown(pair, pair.packId?.let { packTitles[it] ?: it })
+                LiveState.shown(pair, pair.packId?.let { packTitles?.get(it) ?: it })
                 // Paket başına oturumda bir kez (her satırda olay göndermeyelim); toplam sayı oturum sonunda gider.
                 pair.packId?.let { id -> if (packsUsed.add(id)) Telemetry.event(Telemetry.PACK_HIT, "pack" to id) }
             }

@@ -88,8 +88,8 @@ object Services {
      * (aynı kimlikte indirilen kazanır).
      */
     fun packLibrary(context: Context): GamePackLibrary {
-        val bundled: () -> List<Pair<String, ByteArray>> = {
-            (context.assets.list("packs") ?: emptyArray()).map { it to context.assets.open("packs/$it").use { s -> s.readBytes() } }
+        val bundled: () -> List<Pair<String, () -> ByteArray>> = {
+            (context.assets.list("packs") ?: emptyArray()).map { name -> name to { context.assets.open("packs/$name").use { s -> s.readBytes() } } }
         }
         return GamePackLibrary(bundled, packStore.files().firstOrNull()?.parentFile).also { it.setDisabled(settings.disabledPacks) }
     }

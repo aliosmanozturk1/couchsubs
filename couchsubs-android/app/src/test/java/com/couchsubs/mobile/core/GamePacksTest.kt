@@ -86,7 +86,7 @@ class GamePackTest {
         val json = "{\"format\":2,\"id\":\"g\",\"entries\":{\"$down\":\"Yere yat!\"}," +
             "\"segments\":{\"$back\":\"Geri çekil!\",\"$down\":\"Eğil!\"},\"fuzzy\":{\"x\":[1,2]}}"
         assertEquals(1, GamePack.decode(json.toByteArray(), "g").size)
-        val library = GamePackLibrary({ listOf("g.json" to json.toByteArray()) }, null)
+        val library = GamePackLibrary({ listOf("g.json" to { json.toByteArray() }) }, null)
         assertEquals("Yere yat!", library.find("Get Down!"))
         assertEquals("Geri çekil!", library.find("Get back!"))
     }
@@ -103,9 +103,9 @@ class GamePackTest {
         val user = Files.createTempDirectory("packs").toFile()
         val library = GamePackLibrary({
             listOf(
-                "a.json.gz" to Fixtures.bytes("pack-bare.json.gz"),
-                "b.json.gz" to Fixtures.bytes("pack-wrapped.json.gz"),
-                "c.json.gz" to "bozuk".toByteArray(),
+                "a.json.gz" to { Fixtures.bytes("pack-bare.json.gz") },
+                "b.json.gz" to { Fixtures.bytes("pack-wrapped.json.gz") },
+                "c.json.gz" to { "bozuk".toByteArray() },
             )
         }, user)
         assertEquals(listOf("a", "Test Game"), library.infos.map { it.title })
@@ -129,18 +129,57 @@ class GamePackTest {
         assertEquals("a", library.findWithPack("Get Down!")?.packId)
     }
 
+    /** Paketteki aynı anahtarın sonraki satırı kazanır, boş satır alınmaz; çok satırlı pakette her satır bulunur. */
+    @Test
+    fun duplicateKeysKeepLastAndAllLinesAreFound() {
+        val down = PackKey.key("Get Down!")
+        val lines = (0 until 5000).map { "Line number $it" }
+        val body = lines.joinToString(",") { "\"${PackKey.key(it)}\":\"Satır ${it.substringAfterLast(' ')}\"" }
+        val json = "{\"format\":1,\"id\":\"g\",\"entries\":{\"$down\":\"Eğil!\",$body,\"$down\":\"Yere yat!\",\"${PackKey.key("Empty")}\":\" \"}}"
+        val pack = GamePack.decode(json.toByteArray(), "g")
+        assertEquals(5001, pack.size)
+        assertEquals("Yere yat!", pack[PackKey.number(down!!)!!])
+        assertNull(pack[PackKey.number(PackKey.key("Empty")!!)!!])
+        for (index in listOf(0, 1, 2499, 4999)) assertEquals("Satır $index", pack[PackKey.number(PackKey.key(lines[index])!!)!!])
+        assertNull(pack.segment(PackKey.number(down)!!))
+    }
+
+    /**
+     * Uygulamayla gelen paketler ilk aramada ve teker teker okunur: bir paket çözülmeden sonrakinin baytları belleğe
+     * alınmaz (dokuz paketin hepsi birden okununca zayıf telefonda bellek yetmiyor, çeviri başlarken uygulama kapanıyordu).
+     * Okunamayan dosya atlanır.
+     */
+    @Test
+    fun bundledPacksAreReadOneAtATime() {
+        val events = mutableListOf<String>()
+        val wrapped = Fixtures.bytes("pack-wrapped.json.gz")
+        val bare = Fixtures.bytes("pack-bare.json.gz")
+        val library = GamePackLibrary({
+            events.add("liste")
+            listOf(
+                "b.json.gz" to { events.add("oku b"); wrapped },
+                "a.json.gz" to { events.add("oku a"); bare },
+                "c.json.gz" to { events.add("oku c"); throw java.io.IOException("okunamadı") },
+            )
+        }, null)
+        assertEquals(emptyList<String>(), events)
+        assertEquals(listOf("a", "Test Game"), library.infos.map { it.title })
+        assertEquals(listOf("liste", "oku a", "oku b", "oku c"), events)
+        assertEquals("Yere yat!", library.find("Get Down!"))
+    }
+
     /** Uygulamayla gelen paketler (core/Sources/CouchSubsCore/Resources/packs) yüklenir ve hızlı aranır. */
     @Test
     fun embeddedPacksLoad() {
         val directory = File(System.getProperty("couchsubs.packs") ?: return)
         val started = System.nanoTime()
-        val library = GamePackLibrary({ directory.listFiles()!!.map { it.name to it.readBytes() } }, null)
+        val library = GamePackLibrary({ directory.listFiles()!!.map { file -> file.name to { file.readBytes() } } }, null)
         val ids = library.infos.map { it.id }
         val elapsedMs = (System.nanoTime() - started) / 1_000_000
         assertTrue(ids.contains("gta-v"))
         assertTrue(ids.contains("mafia-the-old-country"))
         assertTrue("paketler $elapsedMs ms'de yüklendi", elapsedMs < 10_000)
-        val mafia = GamePackLibrary({ listOf("mafia-the-old-country.json.gz" to File(directory, "mafia-the-old-country.json.gz").readBytes()) }, null)
+        val mafia = GamePackLibrary({ listOf("mafia-the-old-country.json.gz" to { File(directory, "mafia-the-old-country.json.gz").readBytes() }) }, null)
         assertEquals("MARIA: Yere yat!", PackLookup.match(mafia, "MARIA: Get Down!")?.text)
         assertEquals("Yere yat!\nMinchia! Sana at sürmeyi yasaklamak lazım!",
             PackLookup.match(mafia, "Get Down!\nMinchia! You shouldn't be allowed to ride!")?.text)
