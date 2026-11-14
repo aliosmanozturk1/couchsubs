@@ -17,6 +17,8 @@ settings:
     # (build-chiaki-macos.sh); Debug yalnız bu Mac'in mimarisini derler.
     ARCHS: "arm64 x86_64"
     ONLY_ACTIVE_ARCH: NO
+    # Paket sunucusu (server/packs; sır değil, paketler herkese açık). Info.plist CSPacksBaseURL bununla dolar.
+    PACKS_API_BASE_URL: "https://couchsubs-packs.enmera.workers.dev"
   configs:
     Debug:
       ONLY_ACTIVE_ARCH: YES

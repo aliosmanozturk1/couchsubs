@@ -13,7 +13,9 @@ Kötüye kullanıma karşı IP başına (`CF-Connecting-IP`) saatte 60 paket ind
 Sınır Worker örneği başına bellektedir (kaba kesme içindir); daha sıkı gerekirse Cloudflare'in Rate Limiting kuralı
 eklenir. Uygulama indirdiği dosyayı listedeki SHA-256 ile doğrular, haftada bir yeniler.
 
-## Kurulum (sahibin hesabıyla; henüz yapılmadı)
+## Kurulum (sahibin hesabıyla; 2026-11-15'te yapıldı)
+
+Yayın adresi: `https://couchsubs-packs.enmera.workers.dev` (R2 kovası `couchsubs-packs`, liste sürümü 1).
 
 ```sh
 cd server/packs
@@ -24,15 +26,18 @@ npx wrangler r2 bucket create couchsubs-packs
 node scripts/build-index.mjs ../../core/Sources/CouchSubsCore/Resources/packs 1 > index.json
 for f in ../../core/Sources/CouchSubsCore/Resources/packs/*.json.gz; do
   id=$(basename "$f" .json.gz)
-  sha=$(shasum -a 256 "$f" | cut -d' ' -f1)
-  npx wrangler r2 object put "couchsubs-packs/packs/$id.json.gz" --file "$f" --content-type application/gzip \
-    --custom-metadata "sha256=$sha" --remote
+  npx wrangler r2 object put "couchsubs-packs/packs/$id.json.gz" --file "$f" --content-type application/gzip --remote
 done
 npx wrangler r2 object put couchsubs-packs/index.json --file index.json --content-type application/json --remote
 npx wrangler deploy
 ```
 
-Uygulamadaki adres `couchsubs-android/secrets.properties` içindeki `packs.url` ile verilir.
+wrangler'ın `r2 object put` komutu özel metadata (`sha256`) yazamıyor; bu yüzden `x-pack-sha256` başlığı şimdilik
+gelmez. Uygulamalar indirdiği dosyayı listedeki (`index.json`) SHA-256 ile doğrular, başlığa bakmaz.
+
+Uygulamalardaki adres: Android `couchsubs-android/secrets.properties` içindeki `packs.url`; iPhone/iPad
+`couchsubs-ios/Config/App.xcconfig` `PACKS_API_BASE_URL`; Mac `mac/project.yml` `PACKS_API_BASE_URL`; Windows yayın
+derlemesinde `-p:CouchSubsPacksUrl` (`.github/workflows/windows.yml`).
 
 ## Test
 
