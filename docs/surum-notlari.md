@@ -6,13 +6,18 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 **Bu sürümde yeni**
 
-- **Android telefon uygulaması (deneme):** Bilgisayar olmadan çalışır: telefon PS5'e aynı Wi-Fi üzerinden kendisi bağlanır, altyazıyı okuyup çevirir, Türkçesini telefonda ya da TV'de gösterir. Oyun paketleri ücretsiz. APK yukarıdaki bağlantıda; Google Play sürümü incelemede. iPhone sürümü test ediliyor.
-- **"Unknown Session Request Error" artık sebebiyle gösteriliyor:** PS5 eşleme kaydını kabul etmezse CouchSubs boşuna yeniden denemiyor ve "PS5 bu kaydı kabul etmedi; Ayarlar'dan PS5'i yeniden eşleyin" diyor. Ağ ya da zaman aşımı sorunları ayrı gösteriliyor. Not: PS5 aynı anda tek Uzaktan Oynatma bağlantısına izin verir; CouchSubs çalışırken PS Remote Play açık olmamalı.
-- **Açık renkli sahnelerde çeviri kaybolmuyor:** İngilizce altyazı beyaz ya da parlak bir zeminin önündeyken yazı tanıma kısa süre kaçırınca Türkçe çeviri siliniyordu. Artık altyazının yeri değişmediyse çeviri ekranda kalıyor; altyazı gerçekten gidince eskisi gibi hemen kalkıyor.
-- **DeepL'de adlar korunuyor:** Sözlükteki adlar (ör. Phantom Blade Zero'daki "Soul") DeepL'de de çevrilmiyor; adın arkasındaki sözcük de bozulmuyor ("began" → "Pegan" gibi).
-- **Takılan okuma çeviriyi durdurmuyor (Windows ve iPhone):** Mac'te beta.35'te düzeltilen sorun diğer platformlarda da giderildi.
-- **TV eski adrese takılmıyor (TV uygulaması 0.9.18):** Altyazı kaynağı başka cihaz olunca (bilgisayar yerine telefon ya da tablet) ya da cihazın IP adresi değişince TV uygulaması son bağlandığı adreste bekliyordu. Artık o adres birkaç denemede yanıt vermezse TV ağı tarıyor, yeni CouchSubs'ı bulup ona bağlanıyor ve adresi kaydediyor. LG'de tarama ilk kez çalışıyor; Samsung ve Android TV'de de sürekli ertelenmiyor.
-- **Ayarlar'da altyazının yeri:** "Yerleşim" ve "Ekrandaki konum" yalnız TV'ye gönderilirken görünüyor; bilgisayar ekranındaki altyazı için yerinde "Altyazı penceresini ayarla" düğmesi var.
+- **Ekranı çevir düzeltmeleri:** Altyazı yalnız bilgisayar ekranındayken (TV yok) "Ekranı çevir" sonuçları görünmüyordu, yalnız "Ekran çevriliyor…" kalıyordu; artık çeviriler altyazı penceresinde satır satır görünüyor. Gemini seçiliyken ekran her parça için ayrı istek yerine tek istekte çevriliyor, böylece dakikalık hak hemen bitmiyor. Ekran çevrilemezse ya da PS5'ten görüntü gelmiyorsa nedeni ekranda yazıyor.
+- **PS5 giriş şifresi:** PS5'te kullanıcı için giriş şifresi açıksa oturum kurulmuyordu. Ayarlar'a isteğe bağlı 4 haneli şifre alanı geldi (Mac, Windows, iPhone, Android); PS5 isteyince gönderiliyor, şifre güvenli depoda saklanıyor.
+- **Samsung TV izni her bağlantıda sorulmuyor:** TV'nin verdiği izin anahtarı artık kaybolmuyor ve TV yenisini verince o saklanıyor (#40).
+- **Elle yazılan adres temizleniyor:** PS5 ya da TV adresi boşluklu, portlu, "http://" ile ya da virgüllü yazılınca temizleniyor; adres olmayan giriş uyarıyla reddediliyor. Bozuk adres artık uygulamayı kapatmıyor.
+- **Yerel yapay zekâ:** Ollama ve LM Studio modellerinin tırnaksız verdiği yanıtlar da okunuyor; oyun paketi eşleşince oyunun adı modele gidiyor, çeviri bağlama daha uygun oluyor (#27).
+- **Hazır paketler daha çok satır yakalıyor (GTA V, RDR2):** Yarım okunan, köşe yazısı (bölge adı, kamera ipucu) karışan ya da tek harfi bozuk okunan satırlar da paketten bulunuyor. Ekranda yan yana duran iki altyazı tek satır okununca artık yalnız biri gösterilmiyor.
+- **Yeni paketler uygulama güncellemesi beklemeden geliyor:** Mac ve Windows yeni oyun paketlerini paket sunucusundan kendisi indiriyor. Ortak havuza giden satırlar artık oynanan oyunun adıyla gidiyor; böylece yeni oyunların paketleri daha hızlı hazırlanabiliyor.
+- **Android TV: TV HDMI'yı kendi oynatıcısında açınca katman:** Bazı Google TV'ler (ör. Expressluck Apollo) HDMI girişini kendi oynatıcısında öne alınca altyazı görünmüyordu; CouchSubs artık bunu fark edip katman moduna geçiyor (TV uygulaması 0.9.18). Katkı: [mucahitpuren](https://github.com/mucahitpuren) (#42).
+- **Mac'te "Altyazıyı göster" kartı taşmıyor:** Kart ana ekranın sol sütununu iki yandan kesiyordu; sığmayınca seçenekler artık alt alta gösteriliyor. Katkı: [mucahitpuren](https://github.com/mucahitpuren) (#43).
+- **Android telefon APK 0.1.0-beta.42:** Çeviri başlarken bellek yetmeyip uygulamanın kapanması ve PSN girişinde beyaz ya da sonsuz yüklenen ekran düzeltildi.
+
+**beta.37'de gelenler:** Android telefon uygulaması (deneme), "Unknown Session Request Error"un sebebiyle gösterilmesi, açık renkli sahnelerde çevirinin kaybolmaması, DeepL'de adların korunması, Windows ve iPhone'da takılan okumanın çeviriyi durdurmaması, TV uygulaması 0.9.18 (TV eski adrese takılmıyor, yeni altyazı kaynağını kendisi buluyor), Ayarlar'da bilgisayar ekranındaki altyazı için "Altyazı penceresini ayarla".
 
 **beta.35'te gelenler:** Samsung kurulumunda doğru "Host PC IP" (VPN ve sanal bağdaştırıcılar seçilmiyor), Samsung girişi açılmazsa açılır pencere ipucu ve bağlantıyı kopyala düğmesi, Mac'te alan değişince çevirinin durmasının giderilmesi, "Üstünü örtsün"de tek kutu (TV uygulaması 0.9.17), ücretsiz çeviride "Soul" gibi adların korunması.
 
@@ -71,6 +76,7 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 | `CouchSubs-macos.zip`, `CouchSubs-windows-x64.zip` | Kurulumsuz kullanmak isteyenler için |
 | `com.couchsubs.tv_…_all.ipk` | LG TV uygulaması, elle kurmak isteyenler için |
 | `CouchSubs-samsung-kaynak.zip` | Samsung TV uygulaması, Tizen Studio ile elle kurmak isteyenler için |
+| `CouchSubs-android.apk` | Android telefon uygulaması (deneme) |
 | `CouchSubs-androidtv.apk` | Android TV / Google TV uygulaması, USB bellekle kurmak isteyenler için |
 | `appcast.xml`, `releases.win.json`, `*.nupkg` | Uygulama içi güncelleme dosyaları (elle indirmeyin) |
 | `SHA256SUMS.txt` | Dosyaların doğrulama özetleri |
