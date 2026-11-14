@@ -46,7 +46,8 @@ protocol PhoneServices: AnyObject {
     func register(host: String, accountId: Data, pin: UInt32) async throws -> RegisteredConsole
     func discoverTVs() async -> [LGTV]
     func pairTV(_ tv: LGTV, key: String?, server: String) async throws -> TVPairing
-    func makeStream(console: RegisteredConsole, accountId: Data) -> StreamControlling
+    /// `loginPasscode`: PS5 bu hesap için giriş şifresi isterse gönderilecek 4 hane (Ayarlar'da kayıtlıysa).
+    func makeStream(console: RegisteredConsole, accountId: Data, loginPasscode: String?) -> StreamControlling
     /// `onKey`: TV bağlantıda yeni jeton verdi (Samsung); saklanır.
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
                     onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void) -> KeeperControlling
@@ -96,8 +97,8 @@ final class LivePhoneServices: PhoneServices {
         }
     }
 
-    func makeStream(console: RegisteredConsole, accountId: Data) -> StreamControlling {
-        StreamSession(console: console, accountId: accountId)
+    func makeStream(console: RegisteredConsole, accountId: Data, loginPasscode: String?) -> StreamControlling {
+        StreamSession(console: console, accountId: accountId, loginPasscode: loginPasscode)
     }
 
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,

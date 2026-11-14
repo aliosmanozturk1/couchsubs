@@ -570,7 +570,7 @@ static void cs_session_event(ChiakiEvent *event, void *user)
 			session->event(CS_EVENT_CONNECTED, 0, NULL, session->user);
 			break;
 		case CHIAKI_EVENT_LOGIN_PIN_REQUEST:
-			session->event(CS_EVENT_LOGIN_PIN, 0, NULL, session->user);
+			session->event(CS_EVENT_LOGIN_PIN, event->login_pin_request.pin_incorrect ? 1 : 0, NULL, session->user);
 			break;
 		case CHIAKI_EVENT_QUIT:
 		{
@@ -674,6 +674,13 @@ CS_API cs_session *cs_session_start(const char *host, const uint8_t regist_key[0
 		return NULL;
 	}
 	return session;
+}
+
+CS_API int cs_session_set_login_pin(cs_session *session, const uint8_t *pin, size_t pin_size)
+{
+	if(!session || !pin || !pin_size)
+		return CHIAKI_ERR_INVALID_DATA;
+	return chiaki_session_set_login_pin(&session->session, pin, pin_size);
 }
 
 CS_API void cs_session_stop(cs_session *session)

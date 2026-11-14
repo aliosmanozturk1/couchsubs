@@ -26,6 +26,7 @@ fun interface NativeSessionListener {
 /** libchiaki'ye JNI köprüsü (app/src/main/cpp/couchsubs-jni.c). */
 object NativeBridge {
     const val EVENT_CONNECTED = 1
+    /** reason: 1 ise önceki şifre yanlıştı. */
     const val EVENT_LOGIN_PIN = 2
     const val EVENT_QUIT = 3
     const val QUIT_STOPPED = 1
@@ -53,6 +54,8 @@ object NativeBridge {
         surface: Surface, listener: NativeSessionListener, outcome: NativeOutcome,
     ): Long
     @JvmStatic external fun sessionStop(ptr: Long)
+    /** PS5'in istediği giriş şifresini (ASCII rakamlar) gönderir; 0 başarı. Olay geri çağrısından çağrılmamalı. */
+    @JvmStatic external fun sessionSetLoginPin(ptr: Long, pin: ByteArray): Int
     @JvmStatic external fun sessionErrors(ptr: Long): String?
     @JvmStatic external fun sessionFrames(ptr: Long): Long
 }

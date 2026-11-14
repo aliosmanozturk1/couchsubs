@@ -384,6 +384,28 @@
                     </c:Card>
                 </StackPanel>
             </TabItem>
+            <!-- İkinci hesabın PS5 giriş şifresi (isteğe bağlı, 4 hane, şifreli depoda). PS5 isterse oturum açılırken gönderilir. -->
+            <TabItem Header="{t:T 'PS5 login passcode'}">
+                <StackPanel>
+                    <TextBlock Text="{t:T 'PS5 login passcode'}" Style="{StaticResource DisplayText}" Margin="0,0,0,16" />
+                    <c:Card>
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,12"
+                                       Text="{t:T 'Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks. It is stored encrypted on this PC.'}" />
+                            <StackPanel x:Name="NewPasscode" Orientation="Horizontal">
+                                <PasswordBox x:Name="PasscodeBox" Width="160" MaxLength="4" VerticalContentAlignment="Center" />
+                                <Button Content="{t:T 'Save'}" Margin="12,0,0,0" Click="OnPasscodeSave" />
+                            </StackPanel>
+                            <DockPanel x:Name="SavedPasscode" LastChildFill="False">
+                                <TextBlock Text="{t:T 'Passcode saved.'}" Style="{StaticResource DoneText}" VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Content="{t:T 'Remove passcode'}" Click="OnPasscodeRemove" />
+                            </DockPanel>
+                            <TextBlock x:Name="PasscodeError" Style="{StaticResource ErrorText}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Text="{t:T 'Enter the 4-digit passcode.'}" Visibility="Collapsed" />
+                        </StackPanel>
+                    </c:Card>
+                </StackPanel>
+            </TabItem>
             <TabItem Header="{t:T 'About CouchSubs'}">
                 <StackPanel>
                     <TextBlock Text="{t:T 'About CouchSubs'}" Style="{StaticResource DisplayText}" Margin="0,0,0,16" />

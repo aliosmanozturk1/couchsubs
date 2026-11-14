@@ -22,6 +22,8 @@ final class PhoneModel: ObservableObject {
     @Published var console: RegisteredConsole?
     @Published var tv: LGTV?
     @Published private(set) var tvKeySaved: Bool
+    /// İkinci hesabın PS5 giriş şifresi Anahtarlık'ta kayıtlı.
+    @Published private(set) var hasLoginPasscode: Bool
     /// Son eşleşmede TV uygulaması açılamadı: büyük olasılıkla TV'de kurulu değil. Telefon TV uygulamasını kuramaz
     /// (LG ssh, Samsung sdb, Android TV adb ister); ilk kurulum bilgisayardaki CouchSubs ile yapılır.
     @Published var tvAppMissing = false
@@ -131,6 +133,7 @@ final class PhoneModel: ObservableObject {
         self.console = console
         self.tv = tv
         self.tvKeySaved = tvKeySaved
+        hasLoginPasscode = LoginPasscode.normalized(store.load(String.self, for: StoreKey.loginPasscode)) != nil
         let loaded = defaults.data(forKey: StoreKey.settings).flatMap { try? JSONDecoder().decode(UserSettings.self, from: $0) }
         let curated = (loaded ?? UserSettings()).withCuratedModels()
         settings = curated
@@ -253,7 +256,9 @@ final class PhoneModel: ObservableObject {
     /// Kurulumu baştan başlatır (kayıtlı her şeyi siler).
     func resetSetup() {
         stop()
-        [StoreKey.accountId, StoreKey.console, StoreKey.tv, StoreKey.tvKey, StoreKey.setupComplete].forEach(store.remove)
+        [StoreKey.accountId, StoreKey.console, StoreKey.tv, StoreKey.tvKey, StoreKey.setupComplete, StoreKey.loginPasscode]
+            .forEach(store.remove)
+        hasLoginPasscode = false
         accountId = nil
         console = nil
         tv = nil
@@ -275,7 +280,8 @@ final class PhoneModel: ObservableObject {
         server.sendStyle(settings.style)
         makePipeline()
         RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)")
-        let session = services.makeStream(console: console, accountId: accountId)
+        let session = services.makeStream(console: console, accountId: accountId,
+                                          loginPasscode: store.load(String.self, for: StoreKey.loginPasscode))
         session.onState = { [weak self] state in Task { @MainActor in self?.sessionStateChanged(state) } }
         session.onConsoleMoved = { [weak self] moved in Task { @MainActor in self?.consoleMoved(moved) } }
         session.onFrame = { [weak self] frame in
@@ -530,6 +536,20 @@ final class PhoneModel: ObservableObject {
 
     func hasKey(_ engine: TranslationEngine) -> Bool { savedKeys.contains(engine) }
 
+    /// PS5 giriş şifresi: yalnız 4 hane Anahtarlık'a kaydedilir; geçersizse false. Sonraki bağlantıda kullanılır.
+    @discardableResult
+    func setLoginPasscode(_ value: String) -> Bool {
+        guard let pin = LoginPasscode.normalized(value) else { return false }
+        store.save(pin, for: StoreKey.loginPasscode)
+        hasLoginPasscode = true
+        return true
+    }
+
+    func removeLoginPasscode() {
+        store.remove(StoreKey.loginPasscode)
+        hasLoginPasscode = false
+    }
+
     /// Anahtar denenir; kabul edildiyse Anahtarlık'a yazılır ve motor seçilir. Dönen metin kullanıcıya gösterilir.
     func saveKey(_ key: String, for engine: TranslationEngine) async -> Bool {
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -627,7 +647,10 @@ final class PhoneModel: ObservableObject {
             case .consoleAsleep: return String(localized: "Turn on your PS5")
             case .inUse: return String(localized: "Remote Play is in use on another device")
             case .refused: return String(localized: "The PS5 refused the connection. Set up the PS5 again.")
-            case .loginPasscode: return String(localized: "The second user has a login passcode on the PS5. Turn it off in Settings › Users and Accounts.")
+            case .loginPasscode:
+                return String(localized: "The PS5 asks for this account's login passcode. Enter it in Settings, or turn off this account's login passcode on the PS5.")
+            case .loginPasscodeIncorrect:
+                return String(localized: "The PS5 didn't accept the login passcode in Settings. Correct it, or turn off this account's login passcode on the PS5.")
             case .registrationInvalid: return String(localized: "The PS5 didn't accept this pairing. Pair the PS5 again with the second account in Settings.")
             case .notFound(let host):
                 return String(format: String(localized: "PS5 not found at %@. Make sure it is on and on the same network. Reconnecting…"), host)

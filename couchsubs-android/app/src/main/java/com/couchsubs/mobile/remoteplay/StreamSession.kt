@@ -11,7 +11,38 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /** Bağlantının neden koptuğu; kullanıcıya anlatılabilecek biçimde (Windows: DisconnectKind). */
-enum class DisconnectKind { STOPPED, IN_USE, REFUSED, NETWORK, NOT_FOUND, CONSOLE_ASLEEP, LOGIN_PASSCODE, OTHER }
+enum class DisconnectKind {
+    STOPPED, IN_USE, REFUSED, NETWORK, NOT_FOUND, CONSOLE_ASLEEP,
+    /** PS5 bu hesap için giriş şifresi istiyor, Ayarlar'da kayıtlı şifre yok. */
+    LOGIN_PASSCODE,
+    /** PS5 Ayarlar'daki giriş şifresini kabul etmedi; yeniden gönderilmez. */
+    LOGIN_PASSCODE_INCORRECT,
+    OTHER,
+}
+
+/** PS5 oturum giriş şifresi (4 hane). PS5 ikinci hesapta şifre isterse Ayarlar'da kayıtlı şifre gönderilir. */
+object LoginPasscode {
+    const val LENGTH = 4
+
+    /** Boşlukları atar; tam 4 rakam değilse null. */
+    fun normalized(value: String?): String? {
+        val trimmed = value?.trim() ?: return null
+        return trimmed.takeIf { it.length == LENGTH && it.all { c -> c in '0'..'9' } }
+    }
+
+    sealed class Reply {
+        /** libchiaki rakamları ASCII bekler (chiaki-ng'deki gibi). */
+        class Send(val pin: ByteArray) : Reply()
+        data class Stop(val kind: DisconnectKind) : Reply()
+    }
+
+    /** Şifre yoksa ya da PS5 önceki şifreyi kabul etmediyse oturum kapanır; yanlış şifreyle döngüye girilmez. */
+    fun reply(saved: String?, incorrect: Boolean): Reply {
+        if (incorrect) return Reply.Stop(DisconnectKind.LOGIN_PASSCODE_INCORRECT)
+        val pin = normalized(saved) ?: return Reply.Stop(DisconnectKind.LOGIN_PASSCODE)
+        return Reply.Send(pin.toByteArray(Charsets.US_ASCII))
+    }
+}
 
 sealed class SessionState {
     data object Connecting : SessionState()
@@ -46,6 +77,8 @@ class StreamSession(
     private val onConsoleMoved: (RegisteredConsole) -> Unit = {},
     private val width: Int = 1920,
     private val height: Int = 1080,
+    /** PS5 bu hesap için giriş şifresi isterse gönderilecek 4 hane (Ayarlar'da kayıtlıysa). */
+    private val loginPasscode: String? = null,
 ) : FrameSource {
     private companion object {
         const val TAG = "CouchSubsSession"
@@ -206,12 +239,24 @@ class StreamSession(
                 policy.reset()
                 emit(SessionState.Streaming)
             }
-            // Kol girdisi göndermediğimiz için şifre giremeyiz; yeniden denemek de aynı yere çıkar.
-            NativeBridge.EVENT_LOGIN_PIN -> queue.execute {
-                if (nativeGeneration != eventGeneration) return@execute
-                bump(false)
-                closeNative()
-                emit(SessionState.Disconnected(DisconnectKind.LOGIN_PASSCODE))
+            // libchiaki olayı kilit tutarken verir; şifre kuyrukta gönderilir.
+            NativeBridge.EVENT_LOGIN_PIN -> {
+                val reply = LoginPasscode.reply(loginPasscode, incorrect = reason == 1)
+                queue.execute {
+                    if (nativeGeneration != eventGeneration || native == 0L) return@execute
+                    when (reply) {
+                        is LoginPasscode.Reply.Send -> {
+                            Log.i(TAG, "PS5 giriş şifresi istedi; Ayarlar'daki şifre gönderiliyor")
+                            NativeBridge.sessionSetLoginPin(native, reply.pin)
+                        }
+                        // Şifre yok ya da yanlış: yeniden denemek aynı yere çıkar.
+                        is LoginPasscode.Reply.Stop -> {
+                            bump(false)
+                            closeNative()
+                            emit(SessionState.Disconnected(reply.kind))
+                        }
+                    }
+                }
             }
             NativeBridge.EVENT_QUIT -> {
                 val kind = when (reason) {

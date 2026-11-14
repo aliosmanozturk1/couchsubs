@@ -994,14 +994,32 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     {
         Stop();
         foreach (var key in new[] { StoreKeys.AccountId, StoreKeys.Console, StoreKeys.Tv, StoreKeys.TvKey, StoreKeys.TvDevKey, StoreKeys.TvAppVersion,
-                     StoreKeys.SetupComplete }) store.Remove(key);
+                     StoreKeys.SetupComplete, StoreKeys.LoginPasscode }) store.Remove(key);
         accountId = null;
         console = null;
         tv = null;
         tvAppMissing = false;
         TvApp = TvAppState.Unknown;
         Step = OnboardingStep.Welcome;
-        Changed(nameof(HasAccount), nameof(Console), nameof(Tv), nameof(HasTv), nameof(NeedsTv), nameof(CanStart));
+        Changed(nameof(HasAccount), nameof(Console), nameof(Tv), nameof(HasTv), nameof(NeedsTv), nameof(CanStart), nameof(HasLoginPasscode));
+    }
+
+    /// <summary>İkinci hesabın PS5 giriş şifresi şifreli depoda kayıtlı mı (şifrenin kendisi arayüze dönmez).</summary>
+    public bool HasLoginPasscode => LoginPasscode.Normalized(store.Load<string>(StoreKeys.LoginPasscode)) is not null;
+
+    /// <summary>Yalnız 4 hane şifreli depoya yazılır; geçersizse false. Sonraki bağlantıda kullanılır.</summary>
+    public bool SetLoginPasscode(string value)
+    {
+        if (LoginPasscode.Normalized(value) is not { } pin) return false;
+        store.Save(StoreKeys.LoginPasscode, pin);
+        Changed(nameof(HasLoginPasscode));
+        return true;
+    }
+
+    public void RemoveLoginPasscode()
+    {
+        store.Remove(StoreKeys.LoginPasscode);
+        Changed(nameof(HasLoginPasscode));
     }
 
     // --- Çeviri ---
@@ -1026,7 +1044,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 + $"motor: {(OnlineTranslationActive ? settings.OnlineEngine.ToString() : "ücretsiz")}, paketler: {(settings.GamePacks ? "açık" : "kapalı")}");
 
             RemotePlayLog.Note($"Çeviri başladı; PS5'e bağlanılıyor: {console.Name} {console.Host}");
-            var stream = services.MakeStream(console, accountId);
+            var stream = services.MakeStream(console, accountId, store.Load<string>(StoreKeys.LoginPasscode));
             stream.StateChanged += state => post(() => SessionStateChanged(state));
             stream.ConsoleMoved += moved => post(() => ConsoleMoved(moved));
             stream.FrameReceived += HandleFrame;
@@ -1176,7 +1194,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             DisconnectKind.ConsoleAsleep => text["Turn on your PS5"],
             DisconnectKind.InUse => text["Remote Play is in use on another device"],
             DisconnectKind.Refused => text["The PS5 refused the connection. Set up the PS5 again."],
-            DisconnectKind.LoginPasscode => text["The second user has a login passcode on the PS5. Turn it off in Settings › Users and Accounts."],
+            DisconnectKind.LoginPasscode => text["The PS5 asks for this account's login passcode. Enter it in Settings, or turn off this account's login passcode on the PS5."],
+            // Yanlış şifre bir kez gönderilir; PS5 yeniden isterse oturum kapanır (döngü yok).
+            DisconnectKind.LoginPasscodeIncorrect => text["The PS5 didn't accept the login passcode in Settings. Correct it, or turn off this account's login passcode on the PS5."],
             // Eskiden "Yeniden bağlanılıyor… (Unknown Session Request Error)" diye sonsuza kadar deneniyordu.
             DisconnectKind.RegistrationInvalid => text["The PS5 didn't accept this pairing. Pair the PS5 again with the second account in Settings."],
             // Eskiden ağ hatası, bulunamayan PS5 ve diğer nedenler hep yalnız "Yeniden bağlanılıyor…" idi.
@@ -1672,7 +1692,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         var now = Clock();
         var ps5Trouble = isRunning && sessionState.Phase != SessionPhase.Streaming && sessionState.Reason?.Kind is not
             (DisconnectKind.ConsoleAsleep or DisconnectKind.InUse or DisconnectKind.Refused or DisconnectKind.LoginPasscode
-             or DisconnectKind.RegistrationInvalid);
+             or DisconnectKind.LoginPasscodeIncorrect or DisconnectKind.RegistrationInvalid);
         ps5TroubleSince = ps5Trouble ? ps5TroubleSince ?? now : null;
         // Altyazı TV'ye gitmiyorsa ya da TV yoksa TV beklenmez.
         tvWaitingSince = isRunning && ShowsOnTv && HasTv && tvClients == 0 ? tvWaitingSince ?? now : null;

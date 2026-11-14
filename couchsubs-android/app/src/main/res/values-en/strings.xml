@@ -21,7 +21,8 @@
     <string name="phase_in_use">PS5 is in another Remote Play session. Close the other device.</string>
     <string name="phase_not_found">PS5 not found on the network. Are the phone and PS5 on the same network?</string>
     <string name="phase_asleep">PS5 did not wake from rest mode.</string>
-    <string name="phase_passcode">The second account has a Remote Play passcode. Turn off this account\'s login passcode on the PS5.</string>
+    <string name="phase_passcode">The PS5 asks for this account\'s login passcode. Enter it in Settings, or turn off this account\'s login passcode on the PS5.</string>
+    <string name="phase_passcode_incorrect">The PS5 didn\'t accept the login passcode in Settings. Correct it, or turn off this account\'s login passcode on the PS5.</string>
     <string name="phase_refused">PS5 refused the connection. Pair again.</string>
 
     <string name="error_not_paired">Sign in to PSN and pair your PS5 first.</string>
@@ -195,6 +196,9 @@
     <string name="settings_color">Text color</string>
     <string name="settings_target">Subtitle target</string>
     <string name="settings_ps5">PS5 and connection</string>
+    <string name="settings_passcode">PS5 login passcode</string>
+    <string name="settings_passcode_field">4 digits</string>
+    <string name="settings_passcode_note">Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks; it is stored encrypted on the phone.</string>
     <string name="settings_about">About</string>
     <string name="settings_copyright">CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera</string>
     <string name="main_packs_off">Off</string>

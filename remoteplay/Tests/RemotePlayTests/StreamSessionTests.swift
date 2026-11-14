@@ -245,3 +245,31 @@ final class DisconnectReasonTests: XCTestCase {
         XCTAssertNil(StreamSession.pickMoved([], name: "PS5-A"))
     }
 }
+
+/// PS5 giriş şifresi: kayıtlıysa ilk istekte gönderilir; yoksa ya da yanlışsa oturum kapanır (döngü yok).
+final class LoginPasscodeTests: XCTestCase {
+    func testOnlyFourDigitsAreKept() {
+        XCTAssertEqual(LoginPasscode.normalized(" 1234 "), "1234")
+        XCTAssertEqual(LoginPasscode.normalized("0007"), "0007")
+        XCTAssertNil(LoginPasscode.normalized(nil))
+        XCTAssertNil(LoginPasscode.normalized(""))
+        XCTAssertNil(LoginPasscode.normalized("123"))
+        XCTAssertNil(LoginPasscode.normalized("12345"))
+        XCTAssertNil(LoginPasscode.normalized("12a4"))
+        XCTAssertNil(LoginPasscode.normalized("١٢٣٤"))
+    }
+
+    func testSavedPasscodeIsSentAsAsciiOnFirstRequest() {
+        XCTAssertEqual(LoginPasscode.reply(saved: "1234", incorrect: false), .send(Data([0x31, 0x32, 0x33, 0x34])))
+    }
+
+    func testMissingPasscodeStopsTheSession() {
+        XCTAssertEqual(LoginPasscode.reply(saved: nil, incorrect: false), .stop(.loginPasscode))
+        XCTAssertEqual(LoginPasscode.reply(saved: "12", incorrect: false), .stop(.loginPasscode))
+    }
+
+    /// PS5 şifreyi yeniden istiyorsa önceki yanlıştı: aynı şifre tekrar gönderilmez.
+    func testIncorrectPasscodeIsNotResent() {
+        XCTAssertEqual(LoginPasscode.reply(saved: "1234", incorrect: true), .stop(.loginPasscodeIncorrect))
+    }
+}

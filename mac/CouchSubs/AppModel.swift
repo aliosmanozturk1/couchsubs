@@ -31,7 +31,8 @@ protocol AppServices: AnyObject {
     func discoverTVs() async -> [LGTV]
     /// TV ile eşleşir ve TV uygulamasını sunucu adresiyle başlatmayı dener.
     func pairTV(_ tv: LGTV, key: String?, server: String) async throws -> TVPairing
-    func makeStream(console: RegisteredConsole, accountId: Data) -> StreamControlling
+    /// `loginPasscode`: PS5 bu hesap için giriş şifresi isterse gönderilecek 4 hane (Ayarlar'da kayıtlıysa).
+    func makeStream(console: RegisteredConsole, accountId: Data, loginPasscode: String?) -> StreamControlling
     /// `onMoved`: TV ağda yeni bir adreste bulununca çağrılır.
     /// `appConnected`: TV uygulaması bilgisayara bağlı mı (Samsung'da bağlıyken TV'ye dokunulmaz).
     /// `onKey`: TV bağlantıda yeni jeton verdi (Samsung); saklanır.
@@ -148,8 +149,8 @@ final class LiveServices: AppServices {
         return TVPairing(key: newKey, launched: launched)
     }
 
-    func makeStream(console: RegisteredConsole, accountId: Data) -> StreamControlling {
-        StreamSession(console: console, accountId: accountId)
+    func makeStream(console: RegisteredConsole, accountId: Data, loginPasscode: String?) -> StreamControlling {
+        StreamSession(console: console, accountId: accountId, loginPasscode: loginPasscode)
     }
 
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
@@ -403,6 +404,8 @@ final class AppModel: ObservableObject {
     }
     @Published var accountId: Data?
     @Published var console: RegisteredConsole?
+    /// İkinci hesabın PS5 giriş şifresi Anahtarlık'ta kayıtlı.
+    @Published private(set) var hasLoginPasscode: Bool
     @Published var tv: LGTV?
     /// TV'nin eşleşme anahtarı kayıtlı.
     @Published private var tvKeySaved: Bool
@@ -536,6 +539,7 @@ final class AppModel: ObservableObject {
         let paired = tv != nil && tvKeySaved
         let ready = Self.setupIsComplete(store: store, accountId: accountId, console: console, paired: paired)
         self.tvKeySaved = tvKeySaved
+        hasLoginPasscode = LoginPasscode.normalized(store.load(String.self, for: StoreKey.loginPasscode)) != nil
         self.accountId = accountId
         self.console = console
         self.tv = tv
@@ -1017,7 +1021,8 @@ final class AppModel: ObservableObject {
     func resetSetup() {
         stop()
         [StoreKey.accountId, StoreKey.console, StoreKey.tv, StoreKey.tvKey, StoreKey.tvDevKey, StoreKey.tvAppVersion,
-         StoreKey.setupComplete].forEach(store.remove)
+         StoreKey.setupComplete, StoreKey.loginPasscode].forEach(store.remove)
+        hasLoginPasscode = false
         accountId = nil
         console = nil
         tv = nil
@@ -1047,7 +1052,8 @@ final class AppModel: ObservableObject {
             + "motor: \(onlineTranslationActive ? settings.onlineEngine.rawValue : "ücretsiz"), paketler: \(settings.gamePacks ? "açık" : "kapalı")")
 
         RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)")
-        let session = services.makeStream(console: console, accountId: accountId)
+        let session = services.makeStream(console: console, accountId: accountId,
+                                          loginPasscode: store.load(String.self, for: StoreKey.loginPasscode))
         session.onState = { [weak self] state in Task { @MainActor in self?.sessionStateChanged(state) } }
         session.onConsoleMoved = { [weak self] moved in Task { @MainActor in self?.consoleMoved(moved) } }
         session.onFrame = { [weak self] frame in
@@ -1386,6 +1392,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - PS5 giriş şifresi
+
+    /// 4 haneyi Anahtarlık'a kaydeder; geçersizse kaydetmez ve false döner. Sonraki bağlantıda kullanılır.
+    @discardableResult
+    func setLoginPasscode(_ value: String) -> Bool {
+        guard let pin = LoginPasscode.normalized(value) else { return false }
+        store.save(pin, for: StoreKey.loginPasscode)
+        hasLoginPasscode = true
+        return true
+    }
+
+    func removeLoginPasscode() {
+        store.remove(StoreKey.loginPasscode)
+        hasLoginPasscode = false
+    }
+
     func stop() {
         session?.stop()
         session = nil
@@ -1496,7 +1518,11 @@ final class AppModel: ObservableObject {
         case .consoleAsleep: return String(localized: "Turn on your PS5")
         case .inUse: return String(localized: "Remote Play is in use on another device")
         case .refused: return String(localized: "The PS5 refused the connection. Set up the PS5 again.")
-        case .loginPasscode: return String(localized: "The second user has a login passcode on the PS5. Turn it off in Settings › Users and Accounts.")
+        case .loginPasscode:
+            return String(localized: "The PS5 asks for this account's login passcode. Enter it in Settings, or turn off this account's login passcode on the PS5.")
+        // Yanlış şifre bir kez gönderilir; PS5 yeniden isterse oturum kapanır (döngü yok).
+        case .loginPasscodeIncorrect:
+            return String(localized: "The PS5 didn't accept the login passcode in Settings. Correct it, or turn off this account's login passcode on the PS5.")
         // Eskiden "Yeniden bağlanılıyor… (Unknown Session Request Error)" diye sonsuza kadar deneniyordu.
         case .registrationInvalid: return String(localized: "The PS5 didn't accept this pairing. Pair the PS5 again with the second account in Settings.")
         // Eskiden ağ hatası, bulunamayan PS5 ve diğer nedenler hep yalnız "Yeniden bağlanılıyor…" idi.

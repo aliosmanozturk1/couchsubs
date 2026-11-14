@@ -65,8 +65,10 @@ public enum DisconnectReason: Equatable, Sendable {
     /// PS5 bağlantıyı reddetti (ör. kayıt geçersiz ya da Uzaktan Oynatma kapalı).
     case refused
     case network
-    /// İkinci kullanıcının PS5'te giriş şifresi var; Uzaktan Oynatma şifre istiyor.
+    /// İkinci kullanıcının PS5'te giriş şifresi var ve Ayarlar'da kayıtlı şifre yok.
     case loginPasscode
+    /// Ayarlar'daki giriş şifresini PS5 kabul etmedi. Yeniden gönderilmez (yanlış şifreyle döngüye girilmez).
+    case loginPasscodeIncorrect
     /// PS5 oturum isteğinde kaydı kabul etmedi (0x80108b09 kayıt geçersiz, 0x80108b02 hesap tanınmıyor). Yeniden denemek
     /// aynı yere çıkar; PS5 ikinci hesapla yeniden eşlenmelidir.
     case registrationInvalid
@@ -125,6 +127,31 @@ public enum DisconnectReason: Equatable, Sendable {
              CHIAKI_QUIT_REASON_CTRL_CONNECT_FAILED, CHIAKI_QUIT_REASON_STREAM_CONNECTION_UNKNOWN: self = .network
         default: self = .other(String(cString: chiaki_quit_reason_string(quit)))
         }
+    }
+}
+
+/// PS5 oturum giriş şifresi (4 hane). PS5 ikinci hesapta şifre isterse Ayarlar'da kayıtlı şifre gönderilir.
+public enum LoginPasscode {
+    public static let length = 4
+
+    /// Boşlukları atar; tam 4 rakam değilse nil.
+    public static func normalized(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              trimmed.count == length, trimmed.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+        return trimmed
+    }
+
+    /// Şifre isteğine ne yapılacağı: kayıtlı geçerli şifre varsa ilk istekte gönderilir (libchiaki rakamları ASCII
+    /// olarak bekler, chiaki-ng'deki gibi). Şifre yoksa ya da PS5 önceki şifreyi kabul etmediyse oturum kapatılır.
+    public enum Reply: Equatable, Sendable {
+        case send(Data)
+        case stop(DisconnectReason)
+    }
+
+    public static func reply(saved: String?, incorrect: Bool) -> Reply {
+        if incorrect { return .stop(.loginPasscodeIncorrect) }
+        guard let pin = normalized(saved) else { return .stop(.loginPasscode) }
+        return .send(Data(pin.utf8))
     }
 }
 
@@ -237,6 +264,8 @@ public final class StreamSession: @unchecked Sendable {
     /// Tüm ağı taramak pahalı; PS5 kapalıyken her yeniden denemede yapılmaz.
     private var nextRelocate = Date.distantPast
     private let accountId: Data
+    /// PS5 bu hesap için giriş şifresi isterse gönderilecek 4 hane (Ayarlar'da kayıtlıysa).
+    private let loginPasscode: String?
     private let queue = DispatchQueue(label: "couchsubs.stream-session")
     private let decodeQueue = DispatchQueue(label: "couchsubs.decode")
     private var decoder = H264FrameDecoder()
@@ -251,9 +280,10 @@ public final class StreamSession: @unchecked Sendable {
     private var running = false
     private var generation = 0
 
-    public init(console: RegisteredConsole, accountId: Data) {
+    public init(console: RegisteredConsole, accountId: Data, loginPasscode: String? = nil) {
         self.console = console
         self.accountId = accountId
+        self.loginPasscode = LoginPasscode.normalized(loginPasscode)
     }
 
     deinit {
@@ -411,12 +441,22 @@ public final class StreamSession: @unchecked Sendable {
                 self.emit(.streaming)
             }
         case CHIAKI_EVENT_LOGIN_PIN_REQUEST:
-            // Kol girdisi göndermediğimiz için şifre giremeyiz; yeniden denemek de aynı yere çıkar.
+            // libchiaki olayı state_mutex tutarken verir; şifre kuyrukta (kilit bırakıldıktan sonra) gönderilir.
+            let reply = LoginPasscode.reply(saved: loginPasscode, incorrect: event.login_pin_request.pin_incorrect)
             queue.async { [weak self] in
-                guard let self, self.box?.generation == eventGeneration else { return }
-                _ = self.bump(running: false)
-                self.closeBox()
-                self.emit(.disconnected(.loginPasscode))
+                guard let self, let box = self.box, box.generation == eventGeneration else { return }
+                switch reply {
+                case .send(let pin):
+                    RemotePlayLog.write("PS5 giriş şifresi istedi; Ayarlar'daki şifre gönderiliyor")
+                    pin.withUnsafeBytes { raw in
+                        _ = chiaki_session_set_login_pin(box.pointer, raw.bindMemory(to: UInt8.self).baseAddress, pin.count)
+                    }
+                case .stop(let reason):
+                    // Şifre yok ya da yanlış: yeniden denemek aynı yere çıkar, oturum kapatılır.
+                    _ = self.bump(running: false)
+                    self.closeBox()
+                    self.emit(.disconnected(reason))
+                }
             }
         case CHIAKI_EVENT_QUIT:
             let reason = DisconnectReason(quit: event.quit.reason, sessionRequestHint: sessionRequestHint)

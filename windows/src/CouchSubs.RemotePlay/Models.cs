@@ -38,7 +38,7 @@ public enum DisconnectKind
     /// <summary>PS5 bağlantıyı reddetti (ör. kayıt geçersiz ya da Uzaktan Oynatma kapalı).</summary>
     Refused,
     Network,
-    /// <summary>İkinci kullanıcının PS5'te giriş şifresi var; Uzaktan Oynatma şifre istiyor.</summary>
+    /// <summary>PS5 bu hesap için giriş şifresi istiyor; Ayarlar'da kayıtlı şifre yok.</summary>
     LoginPasscode,
     /// <summary>Kayıtlı adreste PS5 aramaya yanıt vermedi ve oturum da açılamadı (ayrıntı: adres).</summary>
     NotFound,
@@ -46,6 +46,29 @@ public enum DisconnectKind
     /// <summary>PS5 oturum isteğinde kaydı kabul etmedi (0x80108b09 kayıt geçersiz, 0x80108b02 hesap tanınmıyor).
     /// Yeniden denemek aynı yere çıkar; PS5 ikinci hesapla yeniden eşlenmelidir.</summary>
     RegistrationInvalid,
+    /// <summary>PS5 Ayarlar'daki giriş şifresini kabul etmedi. Yeniden gönderilmez (yanlış şifreyle döngüye girilmez).</summary>
+    LoginPasscodeIncorrect,
+}
+
+/// <summary>PS5 oturum giriş şifresi (4 hane). PS5 ikinci hesapta şifre isterse Ayarlar'da kayıtlı şifre gönderilir.</summary>
+public static class LoginPasscode
+{
+    public const int Length = 4;
+
+    /// <summary>Boşlukları atar; tam 4 rakam değilse null.</summary>
+    public static string? Normalized(string? value)
+    {
+        var trimmed = value?.Trim();
+        return trimmed is { Length: Length } && trimmed.All(c => c is >= '0' and <= '9') ? trimmed : null;
+    }
+
+    /// <summary>Şifre isteğine yanıt: gönderilecek şifre (ASCII rakamlar, chiaki-ng'deki gibi) ya da oturumu kapatma
+    /// nedeni. Şifre yoksa ya da PS5 önceki şifreyi kabul etmediyse oturum kapanır.</summary>
+    public static (byte[]? Pin, DisconnectKind? Stop) Reply(string? saved, bool incorrect)
+    {
+        if (incorrect) return (null, DisconnectKind.LoginPasscodeIncorrect);
+        return Normalized(saved) is { } pin ? (System.Text.Encoding.ASCII.GetBytes(pin), null) : (null, DisconnectKind.LoginPasscode);
+    }
 }
 
 public sealed record DisconnectReason(DisconnectKind Kind, string? Detail = null);

@@ -60,6 +60,11 @@ internal static unsafe partial class NativeMethods
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void cs_session_stop(nint session);
 
+    /// <summary>PS5'in istediği giriş şifresi (ASCII rakamlar). Olay geri çağrısından çağrılmamalı.</summary>
+    [LibraryImport(Library)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int cs_session_set_login_pin(nint session, byte* pin, nuint pinSize);
+
     private static readonly Lock InitLock = new();
     private static bool initialized;
 

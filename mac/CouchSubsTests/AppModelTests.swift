@@ -70,7 +70,9 @@ final class FakeServices: AppServices {
     /// TV'nin eşleşmede döndüğü jeton (Samsung jetonla gelen bağlantıda boş dönebilir).
     var pairKey = "tv-key"
     var onKey: (@Sendable (String) -> Void)?
-    func makeStream(console: RegisteredConsole, accountId: Data) -> StreamControlling {
+    var streamPasscodes: [String?] = []
+    func makeStream(console: RegisteredConsole, accountId: Data, loginPasscode: String?) -> StreamControlling {
+        streamPasscodes.append(loginPasscode)
         let stream = FakeStream()
         streams.append(stream)
         return stream
@@ -698,6 +700,28 @@ final class AppModelRunTests: XCTestCase {
         model.stop()
     }
 
+    /// Ayarlar'daki PS5 giriş şifresi oturuma verilir; yalnız 4 hane kaydedilir, kurulum sıfırlanınca silinir.
+    func testLoginPasscodeIsSavedAndPassedToTheSession() async {
+        let services = FakeServices()
+        let model = readyModel(services)
+        XCTAssertFalse(model.hasLoginPasscode)
+        XCTAssertFalse(model.setLoginPasscode("12a4"))
+        XCTAssertFalse(model.hasLoginPasscode)
+        XCTAssertTrue(model.setLoginPasscode(" 4321 "))
+        XCTAssertTrue(model.hasLoginPasscode)
+        await model.start()
+        XCTAssertEqual(services.streamPasscodes, ["4321"])
+        model.stop()
+        model.removeLoginPasscode()
+        XCTAssertFalse(model.hasLoginPasscode)
+        await model.start()
+        XCTAssertEqual(services.streamPasscodes, ["4321", nil])
+        model.stop()
+        XCTAssertTrue(model.setLoginPasscode("1111"))
+        model.resetSetup()
+        XCTAssertFalse(model.hasLoginPasscode)
+    }
+
     func testRunningPreventsIdleSleep() async {
         let model = readyModel(FakeServices())
         await model.start()
@@ -756,7 +780,9 @@ final class AppModelRunTests: XCTestCase {
 
     func testLoginPasscodeIsExplained() {
         XCTAssertEqual(AppModel.statusText(.disconnected(.loginPasscode), running: true),
-                       String(localized: "The second user has a login passcode on the PS5. Turn it off in Settings › Users and Accounts."))
+                       String(localized: "The PS5 asks for this account's login passcode. Enter it in Settings, or turn off this account's login passcode on the PS5."))
+        XCTAssertEqual(AppModel.statusText(.disconnected(.loginPasscodeIncorrect), running: true),
+                       String(localized: "The PS5 didn't accept the login passcode in Settings. Correct it, or turn off this account's login passcode on the PS5."))
     }
 
     func testDisconnectReasonsAreExplained() {

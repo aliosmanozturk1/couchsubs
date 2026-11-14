@@ -129,6 +129,8 @@ public sealed class StreamSession : IStreamSession
     private RegisteredConsole console;
     private DateTime nextRelocate = DateTime.MinValue;
     private readonly byte[] accountId;
+    /// <summary>PS5 bu hesap için giriş şifresi isterse gönderilecek 4 hane (Ayarlar'da kayıtlıysa).</summary>
+    private readonly string? loginPasscode;
     private readonly SerialQueue queue = new("CouchSubs stream session");
     private readonly FrameDelivery delivery;
     private readonly ReconnectPolicy policy = new();
@@ -142,11 +144,12 @@ public sealed class StreamSession : IStreamSession
     private int generation;
     private bool disposed;
 
-    public StreamSession(RegisteredConsole console, byte[] accountId)
+    public StreamSession(RegisteredConsole console, byte[] accountId, string? loginPasscode = null)
     {
         if (accountId.Length != 8) throw new ArgumentException("PSN account id must be 8 bytes", nameof(accountId));
         this.console = console;
         this.accountId = (byte[])accountId.Clone();
+        this.loginPasscode = LoginPasscode.Normalized(loginPasscode);
         delivery = new FrameDelivery(frame => FrameReceived?.Invoke(frame));
     }
 
@@ -310,13 +313,21 @@ public sealed class StreamSession : IStreamSession
                 });
                 break;
             case NativeMethods.EventLoginPin:
-                // Kol girdisi göndermediğimiz için şifre giremeyiz; yeniden denemek de aynı yere çıkar.
+                // libchiaki olayı kilit tutarken verir; şifre kuyrukta gönderilir. quitReason 1: önceki şifre yanlıştı.
+                var (pin, stop) = LoginPasscode.Reply(loginPasscode, incorrect: quitReason == 1);
                 queue.Post(() =>
                 {
-                    if (box?.Generation != eventGeneration) return;
+                    if (box is not { } current || current.Generation != eventGeneration) return;
+                    if (pin is not null)
+                    {
+                        RemotePlayLog.Note("PS5 giriş şifresi istedi; Ayarlar'daki şifre gönderiliyor");
+                        current.SetLoginPin(pin);
+                        return;
+                    }
+                    // Şifre yok ya da yanlış: yeniden denemek aynı yere çıkar.
                     Bump(running: false);
                     CloseBox();
-                    Emit(SessionState.Disconnected(DisconnectKind.LoginPasscode));
+                    Emit(SessionState.Disconnected(stop ?? DisconnectKind.LoginPasscode));
                 });
                 break;
             case NativeMethods.EventQuit:
@@ -417,6 +428,16 @@ public sealed class StreamSession : IStreamSession
                 NativeMethods.cs_session_stop(native);
                 native = 0;
                 handle.Free();
+            }
+        }
+
+        public unsafe void SetLoginPin(byte[] pin)
+        {
+            lock (tearLock)
+            {
+                if (native == 0) return;
+                fixed (byte* bytes = pin)
+                    NativeMethods.cs_session_set_login_pin(native, bytes, (nuint)pin.Length);
             }
         }
 

@@ -189,8 +189,11 @@ internal sealed class FakeServices : IAppServices
     public string PairKey { get; set; } = "tv-key";
     /// <summary>Son bekçiye verilen "yeni jeton" geri çağrısı.</summary>
     public Action<string>? OnKey { get; private set; }
-    public IStreamSession MakeStream(RegisteredConsole console, byte[] accountId)
+    /// <summary>Her oturuma verilen PS5 giriş şifresi.</summary>
+    public List<string?> StreamPasscodes { get; } = [];
+    public IStreamSession MakeStream(RegisteredConsole console, byte[] accountId, string? loginPasscode)
     {
+        StreamPasscodes.Add(loginPasscode);
         if (StreamError is not null) throw StreamError;
         var stream = new FakeStream();
         Streams.Add(stream);
@@ -790,6 +793,29 @@ public class AppControllerRunTests
         return (AppControllerTests.Make(services, store, sleep: sleep), services, sleep);
     }
 
+    /// <summary>Ayarlar'daki PS5 giriş şifresi oturuma verilir; yalnız 4 hane kaydedilir, kurulum sıfırlanınca silinir.</summary>
+    [Fact]
+    public async Task LoginPasscodeIsSavedAndPassedToTheSession()
+    {
+        var (controller, services, _) = Ready();
+        Assert.False(controller.HasLoginPasscode);
+        Assert.False(controller.SetLoginPasscode("12a4"));
+        Assert.True(controller.SetLoginPasscode(" 4321 "));
+        Assert.True(controller.HasLoginPasscode);
+        await controller.StartAsync();
+        Assert.Equal(["4321"], services.StreamPasscodes);
+        controller.Stop();
+        controller.RemoveLoginPasscode();
+        Assert.False(controller.HasLoginPasscode);
+        await controller.StartAsync();
+        Assert.Equal(["4321", null], services.StreamPasscodes);
+        controller.Stop();
+        Assert.True(controller.SetLoginPasscode("1111"));
+        controller.ResetSetup();
+        Assert.False(controller.HasLoginPasscode);
+        controller.Dispose();
+    }
+
     [Fact]
     public async Task DoubleStartCreatesOneSession()
     {
@@ -1094,8 +1120,12 @@ public class AppControllerRunTests
     public void LoginPasscodeIsExplained()
     {
         var text = Localizer.ForLanguage("en");
-        Assert.Equal("The second user has a login passcode on the PS5. Turn it off in Settings › Users and Accounts.",
+        Assert.Equal("The PS5 asks for this account's login passcode. Enter it in Settings, or turn off this account's login passcode on the PS5.",
             AppController.StatusText(SessionState.Disconnected(DisconnectKind.LoginPasscode), true, text));
+        Assert.Equal("The PS5 didn't accept the login passcode in Settings. Correct it, or turn off this account's login passcode on the PS5.",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.LoginPasscodeIncorrect), true, text));
+        Assert.Equal("PS5 bu hesap için giriş şifresi istiyor. Ayarlar'dan şifreyi girin ya da PS5'te bu hesabın giriş şifresini kapatın.",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.LoginPasscode), true, Localizer.ForLanguage("tr")));
     }
 
     [Fact]

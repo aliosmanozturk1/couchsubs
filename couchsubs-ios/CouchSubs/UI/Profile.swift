@@ -3,6 +3,7 @@
 // Ayarlar). Uygulama tamamen ücretsizdir ve hesap istemez.
 
 import CouchSubsCore
+import RemotePlay
 import SwiftUI
 
 // MARK: - Profil
@@ -180,6 +181,7 @@ struct SettingsScreen: View {
                 }
             }
             AreaTile()
+            LoginPasscodeTile()
             Tile(spacing: 0) {
                 NavigationLink(value: Route.packs) {
                     ListRow(symbol: "bolt.fill", tint: .pro, title: "Game packs",
@@ -241,6 +243,46 @@ struct SettingsScreen: View {
         keyResult = accepted ? nil : String(localized: "The key did not work. Check it and try again.")
         if accepted { key = "" }
         checking = false
+    }
+}
+
+/// İkinci hesabın PS5 giriş şifresi (isteğe bağlı, 4 hane, Anahtarlık'ta). PS5 isterse oturum açılırken gönderilir.
+private struct LoginPasscodeTile: View {
+    @EnvironmentObject private var model: PhoneModel
+    @State private var passcode = ""
+    @State private var invalid = false
+
+    var body: some View {
+        Tile {
+            Text("PS5 login passcode").font(Mobile.TypeScale.headline)
+            HStack(spacing: Mobile.Space.inline) {
+                if model.hasLoginPasscode {
+                    Text("Passcode saved.").font(Mobile.TypeScale.headline.weight(.regular))
+                    Spacer()
+                    Button { model.removeLoginPasscode() } label: { Image(systemName: "xmark.circle.fill") }
+                        .foregroundStyle(Mobile.Palette.secondary)
+                        .accessibilityLabel(Text("Remove passcode"))
+                } else {
+                    SecureField("4 digits", text: $passcode)
+                        .keyboardType(.numberPad)
+                        .onChange(of: passcode) { value in passcode = String(value.filter(\.isNumber).prefix(LoginPasscode.length)) }
+                    Button("Save") {
+                        invalid = !model.setLoginPasscode(passcode)
+                        if !invalid { passcode = "" }
+                    }
+                    .foregroundStyle(Mobile.Palette.accent)
+                    .disabled(passcode.isEmpty)
+                }
+            }
+            .font(Mobile.TypeScale.headline.weight(.regular))
+            .padding(.horizontal, Mobile.Space.tile)
+            .frame(minHeight: Mobile.Control.field)
+            .background(Mobile.Palette.surface2, in: RoundedRectangle(cornerRadius: Mobile.Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: Mobile.Radius.control).strokeBorder(Mobile.Palette.border))
+            if invalid { MobileNote(text: String(localized: "Enter the 4-digit passcode.")) }
+            Text("Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks. It is kept in the Keychain.")
+                .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+        }
     }
 }
 

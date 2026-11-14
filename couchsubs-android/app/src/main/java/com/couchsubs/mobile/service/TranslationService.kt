@@ -234,7 +234,8 @@ class TranslationService : Service() {
         }
         val onState: (SessionState) -> Unit = { state -> LiveState.update { it.copy(phase = describe(state)) } }
         val source = replacement?.create(this, onFrame, onState)
-            ?: StreamSession(console, accountId, onFrame, onState, onConsoleMoved = { moved -> settings.console = moved })
+            ?: StreamSession(console, accountId, onFrame, onState, onConsoleMoved = { moved -> settings.console = moved },
+                loginPasscode = settings.loginPasscode)
         synchronized(lifecycle) {
             // Kurulum sürerken durdurulduysa (onDestroy çalıştı) açılan bağlantı başlatılmaz.
             if (destroyed) {
@@ -300,6 +301,7 @@ class TranslationService : Service() {
             DisconnectKind.NOT_FOUND -> getString(R.string.phase_not_found)
             DisconnectKind.CONSOLE_ASLEEP -> getString(R.string.phase_asleep)
             DisconnectKind.LOGIN_PASSCODE -> getString(R.string.phase_passcode)
+            DisconnectKind.LOGIN_PASSCODE_INCORRECT -> getString(R.string.phase_passcode_incorrect)
             DisconnectKind.REFUSED -> getString(R.string.phase_refused)
             else -> getString(R.string.phase_reconnecting)
         }

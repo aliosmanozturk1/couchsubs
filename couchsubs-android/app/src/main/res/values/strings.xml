@@ -21,7 +21,8 @@
     <string name="phase_in_use">PS5 başka bir Remote Play bağlantısında. Diğer cihazı kapat.</string>
     <string name="phase_not_found">PS5 ağda bulunamadı. Telefon ve PS5 aynı ağda mı?</string>
     <string name="phase_asleep">PS5 dinlenme modundan uyanmadı.</string>
-    <string name="phase_passcode">İkinci hesapta Remote Play şifresi açık. PS5\'te bu hesabın oturum açma şifresini kapat.</string>
+    <string name="phase_passcode">PS5 bu hesap için giriş şifresi istiyor. Ayarlar\'dan şifreyi gir ya da PS5\'te bu hesabın giriş şifresini kapat.</string>
+    <string name="phase_passcode_incorrect">PS5, Ayarlar\'daki giriş şifresini kabul etmedi. Şifreyi düzelt ya da PS5\'te bu hesabın giriş şifresini kapat.</string>
     <string name="phase_refused">PS5 bağlantıyı reddetti. Eşlemeyi yenile.</string>
 
     <string name="error_not_paired">Önce PSN girişi ve PS5 eşlemesi gerekiyor.</string>
@@ -201,6 +202,9 @@
     <string name="settings_color">Yazı rengi</string>
     <string name="settings_target">Altyazı hedefi</string>
     <string name="settings_ps5">PS5 ve bağlantı</string>
+    <string name="settings_passcode">PS5 giriş şifresi</string>
+    <string name="settings_passcode_field">4 hane</string>
+    <string name="settings_passcode_note">Yalnız ikinci hesabın PS5\'te giriş şifresi varsa gerekir. PS5 isteyince CouchSubs girer; şifre telefonda şifreli saklanır.</string>
     <string name="settings_about">Hakkında</string>
     <string name="settings_copyright">CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera</string>
     <string name="main_packs_off">Kapalı</string>

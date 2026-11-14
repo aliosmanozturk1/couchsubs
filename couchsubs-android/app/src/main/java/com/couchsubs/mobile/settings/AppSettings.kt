@@ -9,6 +9,7 @@ import android.util.Base64
 import com.couchsubs.mobile.core.SubtitlePlacement
 import com.couchsubs.mobile.core.SubtitleStyle
 import com.couchsubs.mobile.core.SubtitleTextColor
+import com.couchsubs.mobile.remoteplay.LoginPasscode
 import com.couchsubs.mobile.remoteplay.RegisteredConsole
 import org.json.JSONObject
 import java.security.KeyStore
@@ -161,6 +162,11 @@ class AppSettings(context: Context) {
                 .put("registKey", Base64.encodeToString(it.registKey, Base64.NO_WRAP))
                 .put("morning", Base64.encodeToString(it.morning, Base64.NO_WRAP)).toString()
         })
+
+    /** İkinci hesabın PS5 giriş şifresi (4 hane, isteğe bağlı); PS5 isterse oturum açılırken gönderilir. */
+    var loginPasscode: String?
+        get() = LoginPasscode.normalized(secrets.get("loginPasscode"))
+        set(value) = secrets.put("loginPasscode", LoginPasscode.normalized(value))
 
     /** Hedef seçiminde görülen TV'nin adı (ana ekrandaki "Altyazı · Salon TV"). */
     var tvName: String?

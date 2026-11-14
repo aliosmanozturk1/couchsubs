@@ -27,6 +27,8 @@ public static class StoreKeys
     public const string LocalAiKey = "localAIKey";
     /// <summary>Kurulum sihirbazı bitti. TV'siz kurulumda (altyazı bilgisayar ekranında) ana ekranı bu açar.</summary>
     public const string SetupComplete = "setupComplete";
+    /// <summary>İkinci hesabın PS5 giriş şifresi (4 hane, isteğe bağlı); PS5 isterse oturum açılırken gönderilir.</summary>
+    public const string LoginPasscode = "loginPasscode";
 }
 
 /// <summary>Altyazının gösterileceği yer (Mac'teki SubtitleOutput ile aynı).</summary>
@@ -313,7 +315,8 @@ public interface IAppServices
     Task<IReadOnlyList<LgTv>> DiscoverTvsAsync();
     /// <summary>TV ile eşleşir ve TV uygulamasını sunucu adresiyle başlatmayı dener.</summary>
     Task<TvPairing> PairTvAsync(LgTv tv, string? key, string server);
-    IStreamSession MakeStream(RegisteredConsole console, byte[] accountId);
+    /// <param name="loginPasscode">PS5 bu hesap için giriş şifresi isterse gönderilecek 4 hane (Ayarlar'da kayıtlıysa).</param>
+    IStreamSession MakeStream(RegisteredConsole console, byte[] accountId, string? loginPasscode);
     /// <param name="appConnected">TV uygulaması bilgisayara bağlı mı (Samsung'da bağlıyken TV'ye dokunulmaz).</param>
     /// <param name="onMoved">TV ağda yeni bir adreste bulununca çağrılır.</param>
     /// <param name="onKey">TV bağlantıda yeni jeton verdi (Samsung); saklanır.</param>

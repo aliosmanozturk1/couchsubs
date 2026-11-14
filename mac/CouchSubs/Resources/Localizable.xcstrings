@@ -3409,22 +3409,6 @@
         }
       }
     },
-    "The second user has a login passcode on the PS5. Turn it off in Settings › Users and Accounts.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The second user has a login passcode on the PS5. Turn it off in Settings › Users and Accounts."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "İkinci kullanıcının PS5'te giriş şifresi var. Ayarlar › Kullanıcılar ve Hesaplar'dan kapatın."
-          }
-        }
-      }
-    },
     "The translation follows where the game shows its own subtitle.": {
       "localizations": {
         "en": {
@@ -8465,22 +8449,6 @@
         }
       }
     },
-    "Save": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Save"
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kaydet"
-          }
-        }
-      }
-    },
     "Other": {
       "localizations": {
         "en": {
@@ -9629,6 +9597,150 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kaydedilen bütün satırlar bu telefondan silinir."
+          }
+        }
+      }
+    },
+    "The PS5 asks for this account's login passcode. Enter it in Settings, or turn off this account's login passcode on the PS5.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PS5 asks for this account's login passcode. Enter it in Settings, or turn off this account's login passcode on the PS5."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PS5 bu hesap için giriş şifresi istiyor. Ayarlar'dan şifreyi girin ya da PS5'te bu hesabın giriş şifresini kapatın."
+          }
+        }
+      }
+    },
+    "The PS5 didn't accept the login passcode in Settings. Correct it, or turn off this account's login passcode on the PS5.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PS5 didn't accept the login passcode in Settings. Correct it, or turn off this account's login passcode on the PS5."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PS5, Ayarlar'daki giriş şifresini kabul etmedi. Şifreyi düzeltin ya da PS5'te bu hesabın giriş şifresini kapatın."
+          }
+        }
+      }
+    },
+    "PS5 login passcode": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PS5 login passcode"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PS5 giriş şifresi"
+          }
+        }
+      }
+    },
+    "Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks. It is kept in the Keychain.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks. It is kept in the Keychain."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yalnız ikinci hesabın PS5'te giriş şifresi varsa gerekir. PS5 isteyince CouchSubs girer. Anahtar Zinciri'nde saklanır."
+          }
+        }
+      }
+    },
+    "Passcode saved.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passcode saved."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şifre kaydedildi."
+          }
+        }
+      }
+    },
+    "Remove passcode": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove passcode"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şifreyi kaldır"
+          }
+        }
+      }
+    },
+    "4 digits": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4 digits"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4 hane"
+          }
+        }
+      }
+    },
+    "Enter the 4-digit passcode.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the 4-digit passcode."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4 haneli şifreyi girin."
+          }
+        }
+      }
+    },
+    "Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks. It is stored encrypted on this PC.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks. It is stored encrypted on this PC."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yalnız ikinci hesabın PS5'te giriş şifresi varsa gerekir. PS5 isteyince CouchSubs girer. Bu bilgisayarda şifreli saklanır."
           }
         }
       }

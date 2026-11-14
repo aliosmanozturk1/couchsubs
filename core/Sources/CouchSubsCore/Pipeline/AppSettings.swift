@@ -14,6 +14,8 @@ public enum StoreKey {
     /// LG geliştirici modu süresinin son uzatıldığı an.
     public static let devSessionRenewed = "devSessionRenewed"
     public static let settings = "settings"
+    /// İkinci hesabın PS5 giriş şifresi (4 hane, isteğe bağlı); PS5 isterse oturum açılırken gönderilir.
+    public static let loginPasscode = "loginPasscode"
     /// Kurulum sihirbazı bitti. TV'siz kurulumda (altyazı bilgisayar ekranında) ana ekranı bu açar.
     public static let setupComplete = "setupComplete"
     /// Kullanıcının DeepL anahtarı (isteğe bağlı çevrimiçi çeviri).

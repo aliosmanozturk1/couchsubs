@@ -65,7 +65,30 @@ public partial class SettingsWindow : Window
         SharePool.IsChecked = settings.SharePool;
         ShowPacks();
         AppearanceChoice.SelectedItem = AppearanceChoice.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == settings.Appearance.ToString());
+        ShowPasscode();
         loading = false;
+    }
+
+    /// <summary>PS5 giriş şifresi kayıtlıysa yalnız "kaydedildi" görünür; şifrenin kendisi geri okunmaz.</summary>
+    private void ShowPasscode()
+    {
+        var saved = controller.HasLoginPasscode;
+        NewPasscode.Visibility = saved ? Visibility.Collapsed : Visibility.Visible;
+        SavedPasscode.Visibility = saved ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnPasscodeSave(object sender, RoutedEventArgs e)
+    {
+        var accepted = controller.SetLoginPasscode(PasscodeBox.Password);
+        PasscodeError.Visibility = accepted ? Visibility.Collapsed : Visibility.Visible;
+        if (accepted) PasscodeBox.Clear();
+        ShowPasscode();
+    }
+
+    private void OnPasscodeRemove(object sender, RoutedEventArgs e)
+    {
+        controller.RemoveLoginPasscode();
+        ShowPasscode();
     }
 
     private void OnAppearance(object sender, SelectionChangedEventArgs e)

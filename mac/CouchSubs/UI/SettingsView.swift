@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Ayarların bölümleri; solda kenar çubuğunda listelenir, sağda seçili olan gösterilir.
 enum SettingsSection: CaseIterable, Identifiable {
-    case appearance, dubbing, translation, packs, language, area, obs, about
+    case appearance, dubbing, translation, packs, language, area, obs, ps5, about
 
     var id: Self { self }
 
@@ -18,6 +18,7 @@ enum SettingsSection: CaseIterable, Identifiable {
         case .language: "Language"
         case .area: "Subtitle area"
         case .obs: "OBS overlay"
+        case .ps5: "PS5 login passcode"
         case .about: "About CouchSubs"
         }
     }
@@ -31,6 +32,7 @@ enum SettingsSection: CaseIterable, Identifiable {
         case .language: "character.bubble"
         case .area: "rectangle.dashed"
         case .obs: "dot.radiowaves.left.and.right"
+        case .ps5: "lock"
         case .about: "info.circle"
         }
     }
@@ -136,6 +138,7 @@ private struct SettingsPage: View {
             case .language: LanguageCard()
             case .area: AreaCards()
             case .obs: OBSCard()
+            case .ps5: LoginPasscodeCard()
             case .about:
                 AppThemeCard()
                 AboutCard()
@@ -288,6 +291,39 @@ private struct OBSCard: View {
                 .buttonStyle(.secondary)
             }
             HintText(text: "If OBS runs on another computer, use this Mac's network address instead of localhost. The overlay only shows subtitles while the translation is running.")
+        }
+    }
+}
+
+/// İkinci hesabın PS5 giriş şifresi (isteğe bağlı, 4 hane, Anahtarlık'ta). PS5 isterse oturum açılırken gönderilir.
+private struct LoginPasscodeCard: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var passcode = ""
+    @State private var invalid = false
+
+    var body: some View {
+        Card {
+            HintText(text: "Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks. It is kept in the Keychain.")
+            if model.hasLoginPasscode {
+                HStack(spacing: Theme.space("m")) {
+                    Text("Passcode saved.").font(.csBody)
+                    Spacer()
+                    Button("Remove passcode") { model.removeLoginPasscode() }.buttonStyle(.secondary)
+                }
+            } else {
+                HStack(spacing: Theme.space("m")) {
+                    SecureField("4 digits", text: $passcode).textFieldStyle(CSTextFieldStyle())
+                    Button("Save") {
+                        invalid = !model.setLoginPasscode(passcode)
+                        if !invalid { passcode = "" }
+                    }
+                    .buttonStyle(.secondary)
+                    .disabled(passcode.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                if invalid {
+                    Text("Enter the 4-digit passcode.").font(.csCallout).foregroundStyle(Color.csSecondary)
+                }
+            }
         }
     }
 }

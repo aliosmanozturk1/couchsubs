@@ -452,7 +452,9 @@ static void cs_session_event(ChiakiEvent *event, void *user)
 			type = CS_EVENT_CONNECTED;
 			break;
 		case CHIAKI_EVENT_LOGIN_PIN_REQUEST:
+			/* reason 1: önceki şifre yanlıştı (PS5 yeniden istiyor). */
 			type = CS_EVENT_LOGIN_PIN;
+			reason = event->login_pin_request.pin_incorrect ? 1 : 0;
 			break;
 		case CHIAKI_EVENT_QUIT:
 			type = CS_EVENT_QUIT;
@@ -579,6 +581,23 @@ JNIEXPORT void JNICALL JNI_FCN(sessionStop)(JNIEnv *env, jclass cls, jlong ptr)
 	chiaki_session_join(&session->session);
 	chiaki_session_fini(&session->session);
 	cs_session_free(env, session);
+}
+
+/* PS5'in istediği giriş şifresini (ASCII rakamlar) gönderir. Olay geri çağrısından değil, kuyruktan çağrılmalı:
+ * libchiaki olayı state_mutex tutarken verir. */
+JNIEXPORT jint JNICALL JNI_FCN(sessionSetLoginPin)(JNIEnv *env, jclass cls, jlong ptr, jbyteArray pin_array)
+{
+	(void)cls;
+	cs_session *session = (cs_session *)(intptr_t)ptr;
+	if(!session || !pin_array)
+		return CHIAKI_ERR_INVALID_DATA;
+	jsize size = (*env)->GetArrayLength(env, pin_array);
+	jbyte *pin = (*env)->GetByteArrayElements(env, pin_array, NULL);
+	if(!pin)
+		return CHIAKI_ERR_MEMORY;
+	ChiakiErrorCode err = chiaki_session_set_login_pin(&session->session, (const uint8_t *)pin, (size_t)size);
+	(*env)->ReleaseByteArrayElements(env, pin_array, pin, JNI_ABORT);
+	return (jint)err;
 }
 
 /* Oturumun biriktirdiği hata satırları (yoksa null). */
