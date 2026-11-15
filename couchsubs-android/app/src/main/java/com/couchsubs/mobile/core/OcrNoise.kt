@@ -56,6 +56,28 @@ object OcrNoise {
         return score
     }
 
+    /**
+     * Okuma çöp gibi mi: harflerinin altıda birinden çoğu bozuk sözcüklerde (karışık büyük-küçük harf, simge, ünlüsüz
+     * "Gtt"). Altyazılar geçişte birbirinin üstüne solarken yazı tanıma iki satırı karıştırıp noktayla biten bir çöp
+     * okuyabiliyor ("Gtt solkolfege."); nokta yüzünden ilk karede çevrilmesin (Mac: OcrNoise.looksGarbled).
+     */
+    fun looksGarbled(text: String): Boolean {
+        var good = 0
+        var bad = 0
+        for (token in text.split(Regex("\\s+")).filter { it.isNotEmpty() }) {
+            val core = split(token).second
+            val letters = core.filter { it.isLetter() }
+            if (letters.isEmpty()) continue
+            val clean = cleanCore(core) == core && normalCase(core) && core.none { it in "[]()" } && !vowelless(letters)
+            if (clean) good += letters.length else bad += letters.length
+        }
+        return bad * 6 > good + bad
+    }
+
+    /** Üç ve daha çok harfli, ünlüsüz ve kısaltma olmayan (tümü büyük harf değil) sözcük: İngilizcede olmaz ("Gtt", "rnnk"). */
+    private fun vowelless(letters: String): Boolean =
+        letters.length >= 3 && !letters.all { it.isUpperCase() } && letters.lowercase().none { it in "aeiouyäöüıàáâèéêìíîòóôùúû" }
+
     private fun normalCase(core: String): Boolean {
         val letters = core.filter { it.isLetter() }
         if (letters.all { it.isUpperCase() } || letters.drop(1).all { it.isLowerCase() }) return true

@@ -103,6 +103,7 @@ fun MainScreen(
     onPacks: () -> Unit,
     onProfile: () -> Unit,
     onSettings: () -> Unit,
+    onHistory: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val settings = Services.settings
@@ -112,6 +113,8 @@ fun MainScreen(
     fun mark(step: TourStep) = Modifier.onGloballyPositioned { bounds[step] = it.boundsInRoot() }
     val topBar: @Composable () -> Unit = {
         TopBar {
+            // iPhone'daki gibi: geçmiş, ayarlar, profil.
+            IconAction(Icons.Filled.DateRange, stringResource(R.string.history), onHistory)
             SettingsAction(onSettings)
             Box(mark(TourStep.PROFILE)) { ProfileAction(onProfile) }
         }

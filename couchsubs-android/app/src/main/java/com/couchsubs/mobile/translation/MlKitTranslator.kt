@@ -32,13 +32,21 @@ class MlKitTranslator : TextTranslator, AutoCloseable {
     override fun translate(text: String): String {
         cache.get(text)?.let { return it }
         val pieces = SubtitleSegmenter.split(text)
-        val result = pieces.joinToString("") { piece ->
-            if (!piece.translate) piece.text
-            else cache.get(piece.text) ?: await(translator.translate(SubtitleSegmenter.normalizeCase(piece.text)), 10)
-                .also { cache.store(piece.text, it) }
+        // iPhone ve Mac'teki ücretsiz metin hattıyla aynı: oyun deyimleri düz İngilizceye, çeviri Türkçe düzeltmelerden geçer;
+        // hitap satırın bütününe bakar ("Sana söyledim. Bekleyin!" → "Bekle!").
+        val sentences = pieces.map { piece ->
+            if (!piece.translate) null
+            else cache.get(piece.text) ?: translateSentence(piece.text).also { cache.store(piece.text, it) }
         }
+        val final = TurkishPostEdit.register(sentences)
+        val result = pieces.indices.joinToString("") { final[it] ?: pieces[it].text }
         cache.store(text, result)
         return result
+    }
+
+    private fun translateSentence(sentence: String): String {
+        val input = GameEnglish.plain(SubtitleSegmenter.normalizeCase(sentence))
+        return TurkishPostEdit.apply(sentence, await(translator.translate(input), 10))
     }
 
     override fun close() = translator.close()

@@ -37,7 +37,37 @@ object Services {
     /** Paket listesi değişince (indirme) artar; ekranlar yeniden okur. */
     val packsVersion = MutableStateFlow(0)
 
+    /** Bu ve önceki oturumlarda çevrilen son 200 altyazı (history.json; "Geçmiş" ekranı, iPhone ile aynı). */
+    var history = com.couchsubs.mobile.core.SubtitleHistory()
+        private set
+    /** Geçmiş değişince artar; ekran yeniden okur. */
+    val historyVersion = MutableStateFlow(0)
+    private var historyFile: File? = null
+    private val historyWriter = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "CouchSubs history").apply { isDaemon = true } }
+
+    fun addToHistory(source: String, translation: String, origin: String) {
+        history.add(source, translation, origin)
+        historyChanged()
+    }
+
+    fun clearHistory() {
+        history.clear()
+        historyChanged()
+    }
+
+    private fun historyChanged() {
+        historyVersion.value++
+        val file = historyFile ?: return
+        historyWriter.execute { runCatching { history.save(file) } }
+    }
+
     fun init(app: Application) {
+        historyFile = File(app.filesDir, "history.json").also { file ->
+            historyWriter.execute {
+                history = com.couchsubs.mobile.core.SubtitleHistory.load(file)
+                historyVersion.value++
+            }
+        }
         settings = AppSettings(app)
         Backend.init(app)
         Meta.init(app)

@@ -7,6 +7,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.couchsubs.mobile.core.SubtitlePlacement
+import com.couchsubs.mobile.core.toJson
 import com.couchsubs.mobile.core.SubtitleStyle
 import com.couchsubs.mobile.core.SubtitleTextColor
 import com.couchsubs.mobile.remoteplay.LoginPasscode
@@ -138,8 +139,65 @@ class AppSettings(context: Context) {
         get() = prefs.getInt("tvFontSize", 46)
         set(value) = prefs.edit().putInt("tvFontSize", value).apply()
 
+    /**
+     * TV'ye giden görünüm. Yazı boyu Ayarlar › Altyazı görünümündeki ölçekle TV'deki varsayılana (46) göre büyür
+     * (iPhone ile aynı: %120 → 55); eskiden ölçek yalnız telefon ekranını değiştiriyor, TV hep 46 kalıyordu.
+     */
     val style: SubtitleStyle
-        get() = SubtitleStyle(fontSize = tvFontSize, placement = SubtitlePlacement.COVER, textColor = textColor)
+        get() = SubtitleStyle(fontSize = scaledFontSize(tvFontSize, subtitleScale), placement = SubtitlePlacement.COVER, textColor = textColor)
+
+    /** Altyazının arandığı bölge (Ayarlar › Altyazı alanı; iPhone ile aynı hazır seçimler ve Özel). */
+    var region: com.couchsubs.mobile.core.CropRegion
+        get() = com.couchsubs.mobile.core.cropRegionFrom(prefs.getString("region", null)?.let { runCatching { JSONObject(it) }.getOrNull() })
+            ?: com.couchsubs.mobile.core.CropRegion()
+        set(value) = prefs.edit().putString("region", value.toJson().toString()).apply()
+
+    var areaPreset: com.couchsubs.mobile.core.AreaPreset
+        get() = prefs.getString("areaPreset", null)?.let { name -> runCatching { com.couchsubs.mobile.core.AreaPreset.valueOf(name) }.getOrNull() }
+            ?: com.couchsubs.mobile.core.AreaPreset.matching(region)
+        set(value) = prefs.edit().putString("areaPreset", value.name).apply()
+
+    /** Hazır seçim: bölgesi de kaydedilir (Özel'de kayıtlı bölge kalır). */
+    fun selectAreaPreset(preset: com.couchsubs.mobile.core.AreaPreset) {
+        preset.region?.let { region = it }
+        areaPreset = preset
+    }
+
+    fun setCustomRegion(value: com.couchsubs.mobile.core.CropRegion) {
+        region = value
+        areaPreset = com.couchsubs.mobile.core.AreaPreset.CUSTOM
+    }
+
+    /** Altyazının yanında sürekli okunan ek alanlar (görev, bildirim, telefon; en çok üç). Varsayılan: hiç yok. */
+    var extraAreas: List<com.couchsubs.mobile.core.ExtraArea>
+        get() = com.couchsubs.mobile.core.ExtraArea.listFromJson(prefs.getString("extraAreas", null))
+        set(value) = prefs.edit().putString("extraAreas", com.couchsubs.mobile.core.ExtraArea.listToJson(value.take(com.couchsubs.mobile.core.ExtraArea.MAX_COUNT))).apply()
+
+    /** Bölge ya da ek alanlar değişince (çeviri sürerken yeni bölge hemen okunur). */
+    fun onAreasChanged(action: () -> Unit): SharedPreferences.OnSharedPreferenceChangeListener {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "region" || key == "extraAreas") action()
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return listener
+    }
+
+    /** Görünüm ayarı değişince (ölçek, renk) çağrılır; çeviri sürerken TV'ye yeni görünüm gider. */
+    fun onStyleChanged(action: () -> Unit): SharedPreferences.OnSharedPreferenceChangeListener {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "subtitleScale" || key == "textColor" || key == "tvFontSize") action()
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return listener
+    }
+
+    fun removeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
+
+    companion object {
+        /** Yüzde ölçekle yazı boyu (yuvarlanır). */
+        fun scaledFontSize(base: Int, percent: Int): Int = Math.round(base * percent.coerceIn(80, 160) / 100.0).toInt()
+    }
 
     /** PSN hesap kimliği (8 bayt, base64). */
     var accountId: ByteArray?

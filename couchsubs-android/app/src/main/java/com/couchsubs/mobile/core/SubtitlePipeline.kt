@@ -13,9 +13,10 @@ fun interface TextTranslator {
 data class ShownPair(val source: String, val translation: String, val origin: String, val packId: String? = null)
 
 /**
- * Okunan satırlar → kararlılık → paket / çeviri → TV (Windows: SubtitlePipeline.cs, aynı kurallar). Yazı tanıma
- * çağıranda yapılır; çeviri ayrı bir iş parçacığında sırayla yürür: aynı anda yalnız bir çeviri sürer, bir tane de
- * sırada bekler (en yenisi), hızlı konuşmada araya giren satırlar atlanır.
+ * Okunan satırlar → kararlılık → paket / çeviri → TV (Windows: SubtitlePipeline.cs, Mac/iPhone: SubtitlePipeline.swift,
+ * aynı kurallar). Yazı tanıma çağıranda yapılır; çeviri ayrı bir iş parçacığında sırayla yürür: aynı anda yalnız bir
+ * çeviri sürer, en çok [MAX_WAITING] satır sırada bekler; bekleyen satırın uzamış ya da düzelmiş okuması gelirse eskisi
+ * sıradan çıkar.
  */
 class SubtitlePipeline(
     private val translator: TextTranslator,
@@ -25,8 +26,14 @@ class SubtitlePipeline(
     private val executor: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "CouchSubs translate").apply { isDaemon = true } },
 ) {
     companion object {
-        /** Satır ekrandan bundan uzun süre önce kalktıysa geç gelen çevirisi gösterilmez. */
-        const val LATE_RESULT_MS = 1000
+        /**
+         * Satır ekrandan bundan uzun süre önce kalktıysa geç gelen çevirisi gösterilmez (sonraki sahnenin üstüne düşmesin).
+         * Yavaş çeviride (ücretsiz motor, zayıf işlemci) art arda gelen satırların çevirisi satır kalktıktan bir iki saniye
+         * sonra gelir; sınır 1 sn iken üç satırlık konuşmanın yalnız ilki görünüyordu.
+         */
+        const val LATE_RESULT_MS = 2500
+        /** Çeviri sürerken sırada en çok bu kadar satır bekler; daha eskisi atlanır (kuyruk konuşma hızıyla büyümesin). */
+        const val MAX_WAITING = 2
         private const val REMEMBERED_PAIRS = 8
 
         /** Satır ekrandan kalktıktan sonra gelen çevirinin TV'de kalacağı süre (TV uygulamasıyla aynı kural). */
@@ -35,6 +42,8 @@ class SubtitlePipeline(
 
     private class Request(val number: Int, val source: String, val box: TextBox?, val session: Int) {
         @Volatile var leftAt: Long? = null
+        /** Yerine aynı cümlenin uzamış okuması geldi (daktilo efekti); çevirisi gösterilmez. */
+        @Volatile var superseded = false
     }
 
     private data class Pair3(val number: Int, val source: String, val translation: String?)
@@ -45,7 +54,9 @@ class SubtitlePipeline(
     private var lastRequested = 0
     private var lastShown = 0
     private var inFlight: Request? = null
-    private var pending: Request? = null
+    private val waiting = mutableListOf<Request>()
+    /** Son gösterilen satırın kaynağı: yeni satır onun düzelmiş okumasıysa TV yerine koyar. */
+    private var lastShownSource: String? = null
     private var lineOnScreen: Int? = null
     private val pairs = mutableListOf<Pair3>()
     private var session = 0
@@ -93,7 +104,7 @@ class SubtitlePipeline(
     private fun lineLeft() {
         val number = lineOnScreen ?: return
         val time = now()
-        for (request in listOf(inFlight, pending)) if (request != null && request.number == number && request.leftAt == null) request.leftAt = time
+        for (request in requests()) if (request.number == number && request.leftAt == null) request.leftAt = time
         lineOnScreen = null
     }
 
@@ -102,17 +113,29 @@ class SubtitlePipeline(
         lineOnScreen = request.number
         packLookup?.invoke(source)?.let { return showPacked(request, it) }
         val missed = onPackMissed
-        if (inFlight != null) {
-            pending = request
-        } else {
+        val current = inFlight
+        if (current == null) {
             inFlight = request
             executor.execute { pump(request) }
+        } else {
+            // Aynı cümlenin eski okuması sırada bekliyorsa çıkar; sıra dolduysa en eski bekleyen atlanır.
+            waiting.removeAll { TextMatch.isRevision(source, it.source) }
+            waiting.add(request)
+            while (waiting.size > MAX_WAITING) waiting.removeAt(0)
+            // Süren çeviri bu cümlenin yarım okumasınınsa (daktilo efekti) sonucu gösterilmez; tamamı sıradan çevrilir.
+            if (!current.superseded && current.session == session && TextMatch.isGrowth(source, current.source)) current.superseded = true
         }
         return missed?.let { callback -> { callback(source) } }
     }
 
+    /** Süren ve sırada bekleyen istekler. */
+    private fun requests(): List<Request> = listOfNotNull(inFlight) + waiting
+
+    /** Satır az önce gösterilenin uzamış ya da düzelmiş okuması mı (TV yerine koyar, üstüne yığmaz). */
+    private fun revisesShown(source: String) = lastShownSource?.let { TextMatch.isRevision(source, it) } ?: false
+
     private fun showPacked(request: Request, packed: PackMatch): (() -> Unit)? {
-        pending = null
+        waiting.clear()
         packHits++
         val source = request.source
         val translated = packed.text
@@ -120,7 +143,8 @@ class SubtitlePipeline(
         remember(request.number, source, if (shouldSend) translated else null)
         if (!shouldSend) return null
         lastShown = request.number
-        sender.sendSubtitle(translated, 15000, request.box)
+        sender.sendSubtitle(translated, 15000, request.box, revisesShown(source))
+        lastShownSource = source
         val shown = onPairShown
         return { shown?.invoke(ShownPair(source, translated, "paket", packed.packId)) }
     }
@@ -130,12 +154,15 @@ class SubtitlePipeline(
         if (index >= 0) {
             val pair = pairs[index]
             lineOnScreen = pair.number
-            pair.translation?.let { sender.sendSubtitle(it, 15000, box) }
+            pair.translation?.let {
+                sender.sendSubtitle(it, 15000, box, revisesShown(source))
+                lastShownSource = source
+            }
             return null
         }
         // Çevirisi henüz gelmediyse istek sürüyordur; satır yeniden ekranda sayılır.
-        for (request in listOf(inFlight, pending)) {
-            if (request == null || request.source != source || request.session != session) continue
+        for (request in requests()) {
+            if (request.source != source || request.session != session || request.superseded) continue
             request.leftAt = null
             lineOnScreen = request.number
             return null
@@ -152,10 +179,10 @@ class SubtitlePipeline(
                 // Olay işleyicilerinden biri hata verse de sıra takılı kalmasın.
             }
             synchronized(lock) {
-                var next = pending
-                pending = null
-                val left = next?.leftAt
-                if (next != null && (next.session != session || (left != null && now() - left > LATE_RESULT_MS))) next = null
+                // Ekrandan çoktan kalkmış satır çevrilmez; çevirisi zaten gösterilmeyecekti.
+                val time = now()
+                waiting.removeAll { it.session != session || it.leftAt.let { left -> left != null && time - left > LATE_RESULT_MS } }
+                val next = if (waiting.isEmpty()) null else waiting.removeAt(0)
                 inFlight = next
                 if (next == null) return
                 request = next
@@ -169,7 +196,8 @@ class SubtitlePipeline(
             translator.translate(source)
         } catch (error: Exception) {
             synchronized(lock) {
-                if (request.session != session) return
+                // Yerine uzamış okuması gelen satırın bırakılan çevirisi hata sayılmaz.
+                if (request.session != session || request.superseded) return
                 // Model eksikse ya da geçici hata olduysa satır ekranda kaldıkça (saniyede en çok bir kez) yeniden denenir.
                 if (request.number == lineOnScreen) stabilizer.forgetSent()
             }
@@ -181,13 +209,14 @@ class SubtitlePipeline(
             if (request.session != session) return
             val shouldSend = stabilizer.shouldSend(source, translated)
             remember(request.number, source, if (shouldSend) translated else null)
-            if (request.number <= lastShown || !shouldSend) return
+            if (request.number <= lastShown || !shouldSend || request.superseded) return
             val onScreen = request.number == lineOnScreen
             val left = request.leftAt
             // Satır ekrandan çoktan kalktıysa çevirisi sonraki sahnenin üstüne düşmesin.
             if (!onScreen && left != null && now() - left > LATE_RESULT_MS) return
             lastShown = request.number
-            sender.sendSubtitle(translated, if (onScreen) 15000 else readingTime(translated), request.box)
+            sender.sendSubtitle(translated, if (onScreen) 15000 else readingTime(translated), request.box, revisesShown(source))
+            lastShownSource = source
         }
         onPairShown?.invoke(ShownPair(source, translated, "motor"))
     }
@@ -202,7 +231,8 @@ class SubtitlePipeline(
     fun reset() = synchronized(lock) {
         session++
         lineOnScreen = null
-        pending = null
+        waiting.clear()
+        lastShownSource = null
         pairs.clear()
         if (stabilizer.reset() == StabilizerAction.Clear) sender.clear()
     }

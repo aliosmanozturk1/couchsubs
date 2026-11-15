@@ -20,6 +20,7 @@ import com.couchsubs.mobile.Services
 import com.couchsubs.mobile.account.Backend
 import com.couchsubs.mobile.account.Telemetry
 import com.couchsubs.mobile.core.CropRegion
+import com.couchsubs.mobile.core.active
 import com.couchsubs.mobile.core.GamePackLibrary
 import com.couchsubs.mobile.core.LinePool
 import com.couchsubs.mobile.core.PackLookup
@@ -92,11 +93,19 @@ class TranslationService : Service() {
     private var lastReading = com.couchsubs.mobile.core.Reading.Empty
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
-    private val region = CropRegion()
+    /** Altyazı bölgesi ve ek alanlar (Ayarlar › Altyazı alanı); çeviri sürerken değişirse hemen yenisi okunur. */
+    @Volatile private var region = CropRegion()
+    @Volatile private var extraAreas: List<com.couchsubs.mobile.core.ExtraArea> = emptyList()
+    @Volatile private var areasListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
+    /** Ek alanları ana altyazıdan ayrı ve seyrek (saniyede bir) okuyan; kendi okuyucusu ve iş parçacığı var. */
+    @Volatile private var regionWatcher: com.couchsubs.mobile.core.RegionWatcher? = null
+    @Volatile private var regionReader: SubtitleReader? = null
+    private val regionWork = Executors.newSingleThreadExecutor { Thread(it, "CouchSubs extra areas").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
     private val lifecycle = Any()
     @Volatile private var destroyed = false
     @Volatile private var streaming = false
     private var begun = false
+    @Volatile private var styleListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -192,7 +201,15 @@ class TranslationService : Service() {
             if (before == 0 && count > 0) Telemetry.event(Telemetry.TV_CONNECTED, "count" to count)
         }
         subtitleServer.onEvent = { event ->
-            LiveState.update { it.copy(current = if (event is SubtitleEvent.Subtitle) event.text else "") }
+            LiveState.update { it.phoneEvent(event) }
+        }
+        // Çeviri sürerken Ayarlar'da yazı boyu ya da rengi değişirse TV hemen yeni görünüme geçer (iPhone ile aynı).
+        styleListener = settings.onStyleChanged { server?.sendStyle(settings.style) }
+        region = settings.region
+        extraAreas = settings.extraAreas.active()
+        areasListener = settings.onAreasChanged {
+            region = settings.region
+            extraAreas = settings.extraAreas.active()
         }
         try {
             subtitleServer.start()
@@ -221,12 +238,21 @@ class TranslationService : Service() {
             onPackMissed = { text -> linePool.offer(text) }
             onPairShown = { pair ->
                 LiveState.shown(pair, pair.packId?.let { packTitles?.get(it) ?: it })
+                Services.addToHistory(pair.source, pair.translation,
+                    if (pair.origin == "paket") com.couchsubs.mobile.core.SubtitleHistory.PACK else com.couchsubs.mobile.core.SubtitleHistory.ENGINE)
                 // Paket başına oturumda bir kez (her satırda olay göndermeyelim); toplam sayı oturum sonunda gider.
                 pair.packId?.let { id -> if (packsUsed.add(id)) Telemetry.event(Telemetry.PACK_HIT, "pack" to id) }
             }
             onTranslationResult = { error ->
                 LiveState.update { it.copy(error = error?.let { getString(R.string.error_translation) }) }
             }
+        }
+        // Ek alanlar aynı paketlerle ve aynı motorla (ayrı bir örnekle; altyazının bağlamına karışmasın) çevrilir; satırları
+        // ortak havuza önerilmez (arayüz yazıları havuzu kirletmesin). Mac ve iPhone ile aynı.
+        val areaReader = SubtitleReader().also { regionReader = it }
+        regionWatcher = com.couchsubs.mobile.core.RegionWatcher({ crop -> areaReader.read(crop.pixels as RegionPixels) },
+            onlineTranslator(free) ?: free, subtitleServer).apply {
+            packLookup = { text -> if (packTitles != null && settings.packsEnabled) PackLookup.match(library, text) else null }
         }
         background.scheduleWithFixedDelay({ linePool.flush() }, LinePool.FLUSH_INTERVAL_MS, LinePool.FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS)
         // Ücretsiz modelin ilk indirilmesi (yaklaşık 30 MB); oyun paketleri beklemeden çalışır.
@@ -242,16 +268,27 @@ class TranslationService : Service() {
         val onFrame: (android.media.Image) -> Unit = { image ->
             val now = System.currentTimeMillis()
             if (!reading.get() && now - lastRead >= 1000 / MAX_READS_PER_SECOND) {
-                SubtitleReader.copyRegion(image, region)?.let { pixels ->
+                val area = region
+                SubtitleReader.copyRegion(image, area)?.let { pixels ->
                     lastRead = now
                     reading.set(true)
-                    ocr.execute { read(pixels) }
+                    ocr.execute { read(pixels, area) }
                 }
             }
+            // Ek alanlar saniyede bir, kendi iş parçacığında okunur; altyazı okumasını beklemez, onu bekletmez.
+            regionWatcher?.offer(extraAreas, { r ->
+                SubtitleReader.copyRegion(image, r)?.let {
+                    com.couchsubs.mobile.core.RegionWatcher.Crop(it, com.couchsubs.mobile.core.RegionSignature.of(it.nv21, it.width, it.height))
+                }
+            }) { task -> runCatching { regionWork.execute(task) } }
+            FramePreview.offer(image, now)
         }
         val onState: (SessionState) -> Unit = { state ->
             streaming = state == SessionState.Streaming
-            if (!streaming) linePool.setGame(null)
+            if (!streaming) {
+                linePool.setGame(null)
+                regionWatcher?.reset()
+            }
             LiveState.update { it.copy(phase = describe(state)) }
         }
         // Bağlıyken iki dakikada bir PS5'e çalışan oyun sorulur: havuza giden satırlar oyunla gider (klipte sorulmaz).
@@ -285,7 +322,7 @@ class TranslationService : Service() {
         }, 2, 2, TimeUnit.SECONDS)
     }
 
-    private fun read(pixels: RegionPixels) {
+    private fun read(pixels: RegionPixels, area: CropRegion) {
         try {
             // Bölge değişmediyse (aynı altyazı duruyor) yeniden okunmaz; son okuma hattı yine besler (kararlılık ve
             // silme saate bağlıdır, Windows'taki ReadScheduler gibi).
@@ -293,7 +330,7 @@ class TranslationService : Service() {
             val result = if (pixels.signature == lastSignature) lastReading else reader?.read(pixels) ?: return
             lastSignature = pixels.signature
             lastReading = result
-            current.process(result, region.box)
+            current.process(result, area.box)
         } catch (error: Exception) {
             Log.w(TAG, "OCR", error)
         } finally {
@@ -332,7 +369,9 @@ class TranslationService : Service() {
         SessionState.Streaming -> getString(R.string.phase_streaming)
         is SessionState.Disconnected -> when (state.kind) {
             DisconnectKind.IN_USE -> getString(R.string.phase_in_use)
-            DisconnectKind.NOT_FOUND -> getString(R.string.phase_not_found)
+            DisconnectKind.NOT_FOUND -> state.detail?.let { getString(R.string.phase_not_found_host, it) } ?: getString(R.string.phase_not_found)
+            DisconnectKind.NETWORK -> getString(R.string.phase_network)
+            DisconnectKind.REGISTRATION_INVALID -> getString(R.string.phase_registration_invalid)
             DisconnectKind.CONSOLE_ASLEEP -> getString(R.string.phase_asleep)
             DisconnectKind.LOGIN_PASSCODE -> getString(R.string.phase_passcode)
             DisconnectKind.LOGIN_PASSCODE_INCORRECT -> getString(R.string.phase_passcode_incorrect)
@@ -363,6 +402,14 @@ class TranslationService : Service() {
 
     /** Kurulan parçaları kapatır; onDestroy'dan ve hizmet kurulum bitmeden durdurulduysa kurulum iş parçacığından çağrılır. */
     private fun releaseParts() = synchronized(lifecycle) {
+        styleListener?.let(settings::removeListener)
+        styleListener = null
+        areasListener?.let(settings::removeListener)
+        areasListener = null
+        regionWatcher?.reset()
+        regionWatcher = null
+        regionReader?.close()
+        regionReader = null
         session?.dispose()
         session = null
         pipeline?.reset()
@@ -387,9 +434,10 @@ class TranslationService : Service() {
         releaseParts()
         background.shutdownNow()
         ocr.shutdownNow()
+        regionWork.shutdownNow()
         wakeLock?.takeIf { it.isHeld }?.release()
         wifiLock?.takeIf { it.isHeld }?.release()
-        LiveState.update { it.copy(running = false, phase = "", current = "") }
+        LiveState.update { it.copy(running = false, phase = "", current = "", previous = "", regions = emptyList()) }
         super.onDestroy()
     }
 }

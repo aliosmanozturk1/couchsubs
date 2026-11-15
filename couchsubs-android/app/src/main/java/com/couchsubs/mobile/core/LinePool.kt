@@ -46,7 +46,8 @@ class LinePool(
             val text = raw.trim()
             if (text.isEmpty() || text.length > MAX_LENGTH) return false
             val words = text.split(Regex("\\s+")).count { word -> word.codePoints().anyMatch { Character.isLetter(it) } }
-            return words >= MIN_WORDS && !looksLikeNoise(text)
+            // PS5'in sistem yazısı, Türkçe arayüzü ya da yarım okuma da havuza gitmez (PoolFilter, Mac/iPhone ile aynı).
+            return words >= MIN_WORDS && !looksLikeNoise(text) && PoolFilter.accepts(text)
         }
 
         /** Yazı tanıma çöpü içeren ("ou$3e") ya da harften çok rakam ve simge taşıyan ("100/100 HP 25%") satır. */

@@ -35,6 +35,12 @@ class SubtitleStabilizer(
         const val RESTORE_WITHIN_MS = 1500
         /** Çevirisi başarısız olan satır en erken bu kadar sonra yeniden denenir. */
         const val RETRY_AFTER_MS = 1000
+        /**
+         * Çöp gibi okunan satır ([OcrNoise.looksGarbled]) ancak bu kadar süre aynı okununca gider. Altyazılar geçişte üst
+         * üste solarken yazı tanıma iki satırı karıştırıp birkaç kare aynı çöpü okuyabiliyordu ("- Nat) but, you knpw.
+         * shit, I m", GTA V, #26); süslü ama gerçekten öyle duran yazı yine çevrilir.
+         */
+        const val GARBLED_STABLE_MS = 700
         private const val HISTORY_SIZE = 5
 
         /** Satır nokta, ünlem, soru ya da üç noktayla bitiyor mu (kapanan tırnak ve parantezler yok sayılır). */
@@ -49,6 +55,7 @@ class SubtitleStabilizer(
     private val now: () -> Long = clock ?: monotonicClock
     private var candidate = ""
     private var candidateCount = 0
+    private var candidateSince = 0L
     /** Ekrandaki (gönderilmiş) satır: sadeleştirilmiş satırlar alt alta, ve ilk okunduğu hali. */
     private var sent = ""
     private var sentRaw = ""
@@ -78,11 +85,17 @@ class SubtitleStabilizer(
         } else {
             candidate = text
             candidateCount = 1
+            candidateSince = time
         }
-        // Daktilo efektinde metin büyürken aday değişir; noktalamayla biten satır ilk karede gider.
-        val ready = candidateCount >= stableFrames || endsSentence(rawText)
+        // Daktilo efektinde metin büyürken aday değişir; noktalamayla biten satır ilk karede gider. Çöp gibi okunan satır
+        // (altyazılar geçişte üst üste solarken karışan okuma) beklemeden gitmez; geçiş süresinden uzun kararlıysa gider.
+        val ready = if (OcrNoise.looksGarbled(rawText)) candidateCount >= stableFrames && time - candidateSince >= GARBLED_STABLE_MS
+            else candidateCount >= stableFrames || endsSentence(rawText)
         // Gönderilenin gürültülü yeniden okuması yeni satır değildir.
         if (!ready || isSame(text, sent)) return StabilizerAction.None
+        // Aynı cümlenin bir iki sözcüğü başka okunmuş, daha iyi olmayan okuması da yeni satır değildir; çevrilseydi TV'de
+        // aynı cümlenin iki üç çevirisi üst üste dururdu. Daha çok sözcük okuyan okuma yeniden çevrilir (TV yerine koyar).
+        if (sentRaw.isNotEmpty() && TextMatch.isWorseReread(rawText, sentRaw)) return StabilizerAction.None
 
         // Az önce kalkan satır geri geldiyse okuma birkaç kare kaçmıştır: çevirisi yeniden gösterilir.
         val index = history.indexOfLast { time - it.leftAt <= RESTORE_WITHIN_MS && isSame(text, it.rows) }

@@ -173,6 +173,9 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             }
             RowItem(stringResource(R.string.settings_screen_on)) { Switch(screenOn, { screenOn = it; settings.keepScreenOn = it }) }
         }
+        // Altyazı alanı ve ek alanlar (iPhone ile aynı sırada: görünümden sonra).
+        AreaTile()
+        ExtraAreasTile()
         // İkinci hesabın PS5 giriş şifresi: yalnız 4 hane gizli depoya (Keystore) yazılır; silinince kaldırılır.
         Tile(Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically) {

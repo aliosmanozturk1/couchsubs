@@ -37,6 +37,7 @@ object Routes {
     const val PROFILE = "profile"
     const val SETTINGS = "settings"
     const val TV_INSTALL = "tvinstall"
+    const val HISTORY = "history"
 
     /** Kurulumun eksik ilk adımı; hepsi tamamsa ana ekran. */
     fun next(): String {
@@ -108,6 +109,7 @@ class MainActivity : ComponentActivity() {
                             onPacks = { navigation.navigate(Routes.PACKS) },
                             onProfile = { navigation.navigate(Routes.PROFILE) },
                             onSettings = { navigation.navigate(Routes.SETTINGS) },
+                            onHistory = { navigation.navigate(Routes.HISTORY) },
                         )
                     }
                     composable(Routes.PACKS) {
@@ -127,6 +129,7 @@ class MainActivity : ComponentActivity() {
                             onTarget = { navigation.navigate(Routes.TARGET) }, onPairing = { pairing(navigation) },
                             onTvInstall = { navigation.navigate(Routes.TV_INSTALL) })
                     }
+                    composable(Routes.HISTORY) { HistoryScreen(onBack = { navigation.popBackStack() }) }
                     composable(Routes.TV_INSTALL) { TvInstallScreen(onBack = { navigation.popBackStack() }) }
                 }
             }

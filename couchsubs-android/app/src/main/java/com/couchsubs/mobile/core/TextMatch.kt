@@ -63,6 +63,65 @@ object TextMatch {
         return shared.toDouble() / longer >= 0.75
     }
 
+    /**
+     * Yeni satır, az önce gösterilen satırın uzamış ya da düzelmiş okuması mı: daktilo efektinde büyüyen cümle
+     * ("We do not have" → "We do not have time."), belirirken yarım okunan satır, bir iki sözcüğü başka okunan aynı
+     * cümle. TV böyle bir çeviriyi öncekinin üstüne yığmaz, yerine koyar. Ham metinler verilir (Mac: TextMatch.isRevision).
+     */
+    fun isRevision(new: String, old: String): Boolean {
+        val x = normalize(new)
+        val y = normalize(old)
+        if (x.isEmpty() || y.isEmpty()) return false
+        if (isGrowth(new, old) || isGrowth(old, new)) return true
+        if (isSimilar(x, y, 0.8)) return true
+        val a = cleanWords(x)
+        val b = cleanWords(y)
+        val shorter = minOf(a.size, b.size)
+        val longer = maxOf(a.size, b.size)
+        if (shorter < 5) return false
+        if (similarity(a, b) >= 0.65) return true
+        val remaining = b.toMutableList()
+        var shared = 0
+        for (word in a) if (remaining.remove(word)) shared++
+        return shared.toDouble() / longer >= 0.7
+    }
+
+    /**
+     * Okuma, gönderilmiş satırın aynı cümleyi bozuk okuyan ve ondan daha iyi olmayan bir yeniden okuması mı (açık zeminde
+     * her karede bir iki sözcüğü başka okunan cümle, GTA V, #26). Daha çok sözcük okuyan (puanı belirgin yüksek) okuma
+     * kötü sayılmaz, yeniden çevrilir (Mac: TextMatch.isWorseReread).
+     */
+    fun isWorseReread(reread: String, sent: String): Boolean {
+        val a = normalize(reread)
+        val b = normalize(sent)
+        val x = cleanWords(a)
+        val y = cleanWords(b)
+        if (x.size < 5 || y.isEmpty() || isGrowth(reread, sent) || isGrowth(sent, reread)) return false
+        val reads = similarity(x, y) >= 0.65 || isSimilar(a, b, 0.75)
+        return reads && OcrNoise.score(reread) < OcrNoise.score(sent) + 4
+    }
+
+    /** [new], [old]'un sonuna sözcük eklenmiş hali mi (daktilo efekti; satırın başı okunmamışsa başına eklenmiş hali). */
+    fun isGrowth(new: String, old: String): Boolean {
+        val x = normalize(new).split(' ').filter { it.isNotEmpty() }
+        val y = normalize(old).split(' ').filter { it.isNotEmpty() }
+        if (y.isEmpty() || x.size <= y.size) return false
+        return startsWith(x, y) || (y.size >= 2 && endsWith(x, y))
+    }
+
+    /** Levenshtein oranı (sözcük dizileri için). */
+    private fun similarity(x: List<String>, y: List<String>): Double {
+        if (x.isEmpty() || y.isEmpty()) return if (x.isEmpty() && y.isEmpty()) 1.0 else 0.0
+        var previous = IntArray(y.size + 1) { it }
+        for (i in 1..x.size) {
+            val row = IntArray(y.size + 1)
+            row[0] = i
+            for (j in 1..y.size) row[j] = minOf(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + if (x[i - 1] == y[j - 1]) 0 else 1)
+            previous = row
+        }
+        return 1 - previous[y.size].toDouble() / maxOf(x.size, y.size)
+    }
+
     private fun startsWith(words: List<String>, part: List<String>) = words.take(part.size) == part
 
     private fun endsWith(words: List<String>, part: List<String>) = words.takeLast(part.size) == part

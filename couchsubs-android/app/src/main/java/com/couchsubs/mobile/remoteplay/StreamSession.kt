@@ -18,7 +18,41 @@ enum class DisconnectKind {
     LOGIN_PASSCODE,
     /** PS5 Ayarlar'daki giriş şifresini kabul etmedi; yeniden gönderilmez. */
     LOGIN_PASSCODE_INCORRECT,
-    OTHER,
+    /**
+     * PS5 oturum isteğinde kaydı kabul etmedi (0x80108b09 kayıt geçersiz, 0x80108b02 hesap tanınmıyor). Yeniden denemek
+     * aynı yere çıkar; PS5 ikinci hesapla yeniden eşlenmelidir.
+     */
+    REGISTRATION_INVALID,
+    OTHER;
+
+    companion object {
+        /** CHIAKI_RP_APPLICATION_REASON_REGIST_FAILED ve _INVALID_PSN_ID. */
+        val REGISTRATION_REJECTED_CODES = setOf(0x80108b09L, 0x80108b02L)
+        private val unreachableLines = listOf(
+            "Session request connect failed eventually",
+            "Failed to send session request",
+            "Failed to receive session request response",
+        )
+
+        /**
+         * libchiaki oturum isteği (TCP 9295) düşünce yalnız "Unknown Session Request Error" der; asıl neden günlük
+         * satırındadır. Satırdan anlaşılan neden; anlaşılmıyorsa null (Mac/iPhone: DisconnectReason.sessionRequestHint).
+         */
+        fun sessionRequestHint(line: String): DisconnectKind? {
+            val marker = "Reported Application Reason:"
+            val at = line.indexOf(marker)
+            if (at >= 0) {
+                val token = line.substring(at + marker.length).trimStart(' ').takeWhile { !it.isWhitespace() }.lowercase()
+                val code = token.removePrefix("0x").toLongOrNull(16) ?: return null
+                return if (code in REGISTRATION_REJECTED_CODES) REGISTRATION_INVALID else null
+            }
+            // PS5'e bağlanılamadı ya da yanıt gelmedi: PS5 dinlenmeden yeni uyandıysa ilk denemelerde olağandır.
+            return if (unreachableLines.any { line.contains(it) }) NETWORK else null
+        }
+
+        /** Günlük satırlarından anlaşılan son neden (sonraki satır öncekinden daha yenidir). */
+        fun sessionRequestHint(lines: List<String>): DisconnectKind? = lines.mapNotNull(::sessionRequestHint).lastOrNull()
+    }
 }
 
 /** PS5 oturum giriş şifresi (4 hane). PS5 ikinci hesapta şifre isterse Ayarlar'da kayıtlı şifre gönderilir. */
@@ -311,17 +345,27 @@ class StreamSession(
                 }
             }
             NativeBridge.EVENT_QUIT -> {
-                val kind = when (reason) {
+                val general = when (reason) {
                     NativeBridge.QUIT_STOPPED -> DisconnectKind.STOPPED
                     NativeBridge.QUIT_IN_USE -> DisconnectKind.IN_USE
                     NativeBridge.QUIT_REFUSED -> DisconnectKind.REFUSED
                     NativeBridge.QUIT_NETWORK -> DisconnectKind.NETWORK
                     else -> DisconnectKind.OTHER
                 }
-                Log.i(TAG, "Oturum kapandı: $kind $text")
                 queue.execute {
                     if (nativeGeneration != eventGeneration || native == 0L) return@execute
+                    // "Unknown Session Request Error": asıl neden libchiaki'nin hata satırlarındadır (iPhone ve Mac ile aynı).
+                    val kind = if (general == DisconnectKind.OTHER && text?.contains("Session Request", ignoreCase = true) == true)
+                        DisconnectKind.sessionRequestHint(NativeBridge.sessionErrors(native)?.split('\n').orEmpty()) ?: general
+                        else general
+                    Log.i(TAG, "Oturum kapandı: $kind $text")
                     closeNative()
+                    if (kind == DisconnectKind.REGISTRATION_INVALID) {
+                        // Kayıt geçersiz: yeniden denemek aynı yere çıkar (eskiden sonsuza kadar "Yeniden bağlanılıyor…").
+                        bump(false)
+                        emit(SessionState.Disconnected(kind, text))
+                        return@execute
+                    }
                     scheduleReconnect(eventGeneration, SessionState.Disconnected(kind, text))
                 }
             }

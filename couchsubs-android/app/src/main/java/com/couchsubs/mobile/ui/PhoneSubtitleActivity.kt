@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Text
@@ -67,8 +70,8 @@ class PhoneSubtitleActivity : ComponentActivity() {
                     Column(Modifier.align(Alignment.Center).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
                         val style = Tokens.Type.subtitleLandscape
-                        val previous = status.recent.getOrNull(1)?.translation
-                        if (previous != null && status.current.isNotEmpty() && previous != status.current) Text(previous,
+                        val previous = status.previous
+                        if (previous.isNotEmpty() && status.current.isNotEmpty() && previous != status.current) Text(previous,
                             style = style.copy(fontSize = style.fontSize * scale * 0.8f, lineHeight = style.lineHeight * scale * 0.8f),
                             color = color.copy(alpha = 0.4f), textAlign = TextAlign.Center)
                         Text(status.current.ifEmpty { if (status.running) "" else "CouchSubs" },
@@ -77,6 +80,18 @@ class PhoneSubtitleActivity : ComponentActivity() {
                     }
                     Text(stringResource(R.string.subtitle_screen_note), style = Tokens.Type.caption, color = Tokens.Color.secondary,
                         modifier = Modifier.align(Alignment.BottomCenter))
+                    // Ek alanların (görev, telefon, bildirim) çevirisi oyundaki yerinde küçük kutuda (TV ve iPhone'daki gibi).
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                        status.regions.forEach { region ->
+                            val box = region.box ?: com.couchsubs.mobile.core.TextBox(0.6, 0.05, 0.95, 0.2)
+                            Text(region.text, style = Tokens.Type.caption, color = Tokens.Color.text,
+                                modifier = Modifier
+                                    .offset(x = maxWidth * box.left.toFloat(), y = maxHeight * box.top.toFloat())
+                                    .widthIn(min = 120.dp, max = maxOf(120.dp, maxWidth * (box.right - box.left).toFloat()))
+                                    .background(Color.Black.copy(alpha = 0.8f), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .padding(6.dp))
+                        }
+                    }
                 }
             }
         }

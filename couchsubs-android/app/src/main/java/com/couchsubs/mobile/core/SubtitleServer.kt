@@ -35,15 +35,24 @@ data class SubtitleStyle(
 
 /** Altyazıları TV'ye ileten taraf. */
 interface SubtitleSender {
-    /** [box]: oyundaki İngilizce altyazının ekrandaki yeri (kenarlara oranla); TV çeviriyi buna göre yerleştirir. */
-    fun sendSubtitle(text: String, durationMs: Int = 15000, box: TextBox? = null)
+    /**
+     * [box]: oyundaki İngilizce altyazının ekrandaki yeri (kenarlara oranla); TV çeviriyi buna göre yerleştirir.
+     * [replaces]: satır az önce gösterilenin uzamış ya da düzelmiş okumasıdır ([TextMatch.isRevision]); TV onu öncekinin
+     * üstüne yığmaz, yerine koyar (`replace` alanı; eski TV uygulamaları yok sayar).
+     */
+    fun sendSubtitle(text: String, durationMs: Int = 15000, box: TextBox? = null, replaces: Boolean = false)
     fun clear()
 }
 
 /** Sunucudan geçen ve telefon ekranındaki altyazı görünümünün de gösterdiği olay. */
 sealed class SubtitleEvent {
-    data class Subtitle(val text: String, val durationMs: Int) : SubtitleEvent()
+    /** [replaces]: satır öncekinin uzamış ya da düzelmiş okumasıdır; öncekinin üstüne yığılmaz, yerine geçer. */
+    data class Subtitle(val text: String, val durationMs: Int, val replaces: Boolean = false) : SubtitleEvent()
     data object Cleared : SubtitleEvent()
+    /** Ek alanın (görev, telefon, bildirim) çevirisi; [text] boşsa o alanın kutusu kalkar. */
+    data class Region(val id: String, val text: String, val box: TextBox?) : SubtitleEvent()
+    /** Bütün ek alan kutuları kalktı (çeviri durdu). */
+    data object RegionsCleared : SubtitleEvent()
 }
 
 /**
@@ -55,7 +64,7 @@ class SubtitleServer(
     private val port: Int = DEFAULT_PORT,
     private val pingIntervalMs: Long = 15_000,
     private val clock: () -> Long = System::currentTimeMillis,
-) : SubtitleSender {
+) : SubtitleSender, RegionSender {
     companion object {
         const val DEFAULT_PORT = 8787
 
@@ -69,14 +78,26 @@ class SubtitleServer(
             "right" to Json.Decimal(box.right), "top" to Json.Decimal(box.top),
         )
 
-        fun subtitleFrame(text: String, durationMs: Int, box: TextBox?, at: Long, paragraphs: Boolean = false): String {
+        fun subtitleFrame(text: String, durationMs: Int, box: TextBox?, at: Long, paragraphs: Boolean = false, replaces: Boolean = false): String {
             val json = mutableMapOf<String, Any?>("at" to at, "duration" to durationMs, "text" to text)
             if (paragraphs) json["paragraphs"] = true
+            if (replaces) json["replace"] = true
             if (box != null) json["box"] = boxJson(box)
             return frame("subtitle", json)
         }
 
         fun clearFrame() = frame("clear", emptyMap())
+
+        /**
+         * Ek alanın çevirisi: alanın kimliği (`id`), çeviri (`text`; boşsa kutu kalkar), yazının karedeki yeri (`box`) ve
+         * satır yüksekliği (`line`, ekrana oranla). TV çeviriyi o yerde küçük bir kutuda gösterir (Mac/iPhone ile aynı).
+         */
+        fun regionFrame(id: String, text: String, box: TextBox?, lineHeight: Double?): String {
+            val json = mutableMapOf<String, Any?>("id" to id, "text" to text)
+            if (box != null) json["box"] = boxJson(box)
+            if (lineHeight != null) json["line"] = Json.Decimal(Math.round(lineHeight.coerceIn(0.0, 1.0) * 10000) / 10000.0)
+            return frame("region", json)
+        }
 
         fun styleFrame(style: SubtitleStyle) = frame(
             "style", mapOf(
@@ -137,14 +158,24 @@ class SubtitleServer(
         sender.shutdown()
     }
 
-    override fun sendSubtitle(text: String, durationMs: Int, box: TextBox?) {
-        broadcast(subtitleFrame(text, durationMs, box, clock()), subtitle = true)
-        onEvent?.invoke(SubtitleEvent.Subtitle(text, durationMs))
+    override fun sendSubtitle(text: String, durationMs: Int, box: TextBox?, replaces: Boolean) {
+        broadcast(subtitleFrame(text, durationMs, box, clock(), replaces = replaces), subtitle = true)
+        onEvent?.invoke(SubtitleEvent.Subtitle(text, durationMs, replaces))
     }
 
     override fun clear() {
         broadcast(clearFrame(), subtitle = true)
         onEvent?.invoke(SubtitleEvent.Cleared)
+    }
+
+    override fun sendRegion(id: String, text: String, box: TextBox?, lineHeight: Double?) {
+        broadcast(regionFrame(id, text, box, lineHeight), subtitle = true)
+        onEvent?.invoke(SubtitleEvent.Region(id, text, box))
+    }
+
+    override fun clearRegions() {
+        broadcast(frame("region-clear", emptyMap()), subtitle = true)
+        onEvent?.invoke(SubtitleEvent.RegionsCleared)
     }
 
     fun sendStyle(style: SubtitleStyle) {

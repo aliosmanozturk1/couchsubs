@@ -271,7 +271,7 @@ class OcrNoiseTest {
 class PipelineTest {
     private class Recorder : SubtitleSender {
         val sent = mutableListOf<String>()
-        override fun sendSubtitle(text: String, durationMs: Int, box: TextBox?) {
+        override fun sendSubtitle(text: String, durationMs: Int, box: TextBox?, replaces: Boolean) {
             sent.add(text)
         }
         override fun clear() {
