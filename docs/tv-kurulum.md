@@ -18,7 +18,8 @@ mağazası varsa ve Play Store yoksa büyük olasılıkla değildir.
 Bilgisayar ve TV aynı ev ağında olmalıdır.
 
 **Bilgisayarsız: telefondan kurulum ve güncelleme.** Bilgisayarınız yoksa TV uygulamasını CouchSubs telefon
-uygulamasından ([Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile)) da kurabilirsiniz:
+uygulamasından ([Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile) ya da iPhone) da
+kurabilirsiniz; Android telefon da iPhone da Samsung, LG ve Android TV'ye kurar:
 **Ayarlar › TV uygulaması › TV uygulamasını bu telefondan kur** (aynı giriş ilk kurulumdaki altyazı hedefi adımında da
 var). Telefon ağdaki TV'yi bulup markayı kendisi seçer; her markanın adımları aşağıdaki "Telefondan kurulum"
 bölümlerindedir. Bilgisayar uygulaması gibi telefon da uygulama açılınca ve TV her bağlandığında TV'deki CouchSubs'ın
@@ -71,7 +72,8 @@ Modu kapatıp yeniden açarsanız TV yeni anahtar üretir ve parola bir kez daha
 Telefon, bilgisayar uygulaması gibi geliştirici modunun süresini günde bir kez kendisi uzatır (kurulumda ve TV'deki
 sürüme her baktığında). Yeni sürüm çıkınca ana ekrandaki **TV uygulamasını güncelle** ile parola sorulmadan güncellenir
 (TV'de geliştirici modu yeniden açıldıysa parola bir kez daha istenir). Paket, [Sürümler](https://github.com/yorulmazsinan/couchsubs/releases) sayfasındaki
-`.ipk` ile aynıdır. Kod: `couchsubs-android/.../tv/lg/`.
+`.ipk` ile aynıdır. Kod: `couchsubs-android/.../tv/lg/`; iPhone'da `couchsubs-ios/CouchSubs/TVInstall/LGPhoneInstall.swift`
+(SSH bağlantısı uygulamanın kendi küçük SSH istemcisiyle, `SshClient.swift`).
 
 ### Elle kurulum
 

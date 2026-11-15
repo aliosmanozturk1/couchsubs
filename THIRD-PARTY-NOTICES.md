@@ -33,7 +33,9 @@ released LG TV app (`com.couchsubs.tv_*_all.ipk`, part of CouchSubs).
 
 The iPhone app (`couchsubs-ios`, "install the TV app from this phone") contains a Swift port of the same TizenSdb.Core and
 Apps2Samsung code (`CouchSubs/TVInstall/`), under the same MIT terms below. It uses only Apple's frameworks (Security,
-CryptoKit, Network) for TLS and signing, and bundles the released Android TV and LG TV apps and the Samsung CA
+CryptoKit, CommonCrypto, Network) for TLS and signing. For LG TVs it contains its own minimal SSH client
+(`CouchSubs/TVInstall/SshClient.swift`, part of CouchSubs under AGPL-3.0; written from RFC 4253/4252/4254, no third-party
+SSH code), negotiating the same algorithms JSch uses with LG TVs. It bundles the released Android TV and LG TV apps and the Samsung CA
 certificates below.
 
 Samsung developer CA certificates (`vd_tizen_dev_author_ca`, `author_ca`, `vd_tizen_dev_public2`, `public2`) are
