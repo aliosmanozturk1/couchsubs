@@ -225,6 +225,9 @@ class PipelineQueueTest {
         override fun clear() {}
     }
 
+    /** Kaynağa benzemeyen sahte çeviri (benzer çeviri "zaten hedef dilde" sayılıp gösterilmez). */
+    private fun tr(text: String) = "<" + text.reversed() + ">"
+
     private val direct = object : java.util.concurrent.AbstractExecutorService() {
         override fun execute(command: Runnable) = command.run()
         override fun shutdown() {}
@@ -238,14 +241,14 @@ class PipelineQueueTest {
     fun grownLineReplacesItsHalfOnTheTv() {
         val recorder = Recorder()
         var now = 0L
-        val pipeline = SubtitlePipeline({ "TR: $it" }, recorder, { now }, direct)
+        val pipeline = SubtitlePipeline({ tr(it) }, recorder, { now }, direct)
         val area = CropRegion().box
         pipeline.process(Reading.fromText("We do not have"), area)
         now += 100
         pipeline.process(Reading.fromText("We do not have"), area)
         now += 100
         pipeline.process(Reading.fromText("We do not have time for this."), area)
-        assertEquals(listOf("TR: We do not have" to false, "TR: We do not have time for this." to true), recorder.sent)
+        assertEquals(listOf(tr("We do not have") to false, tr("We do not have time for this.") to true), recorder.sent)
     }
 
     @Test
@@ -261,7 +264,7 @@ class PipelineQueueTest {
             override fun isTerminated() = false
             override fun awaitTermination(timeout: Long, unit: java.util.concurrent.TimeUnit) = true
         }
-        val pipeline = SubtitlePipeline({ "TR: $it" }, recorder, { now }, manual)
+        val pipeline = SubtitlePipeline({ tr(it) }, recorder, { now }, manual)
         val area = CropRegion().box
         for (line in listOf("Run to the boat!", "Where is the ship?", "I told you to stay with your mother.")) {
             pipeline.process(Reading.fromText(line), area)
@@ -269,7 +272,7 @@ class PipelineQueueTest {
         }
         queued.removeAt(0).run()
         // Üç satır da gösterilir: süren çeviri bitince sıradaki iki satır sırayla çevrilir (eskiden yalnız en yenisi kalıyordu).
-        assertEquals(listOf("TR: Run to the boat!", "TR: Where is the ship?", "TR: I told you to stay with your mother."),
+        assertEquals(listOf(tr("Run to the boat!"), tr("Where is the ship?"), tr("I told you to stay with your mother.")),
             recorder.sent.map { it.first })
     }
 }
