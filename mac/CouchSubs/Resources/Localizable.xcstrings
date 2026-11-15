@@ -10224,6 +10224,1494 @@
           }
         }
       }
+    },
+    "Installs and updates the CouchSubs TV app on your Samsung, LG or Android TV from this phone, without a computer. Looking for the TV on your network; you can change the brand later.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installs and updates the CouchSubs TV app on your Samsung, LG or Android TV from this phone, without a computer. Looking for the TV on your network; you can change the brand later."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs TV uygulamasını Samsung, LG ya da Android TV'ne bilgisayar olmadan, bu telefondan kurar ve günceller. Ağdaki TV aranıyor; markayı sonra değiştirebilirsin."
+          }
+        }
+      }
+    },
+    "Install the TV app": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install the TV app"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV uygulamasını kur"
+          }
+        }
+      }
+    },
+    "Installs the CouchSubs TV app on your Samsung TV from this phone, without a computer. The phone and the TV must be on the same Wi-Fi.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installs the CouchSubs TV app on your Samsung TV from this phone, without a computer. The phone and the TV must be on the same Wi-Fi."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs TV uygulamasını Samsung TV'ne bilgisayar olmadan, bu telefondan kurar. Telefon ve TV aynı Wi-Fi'da olmalı."
+          }
+        }
+      }
+    },
+    "Samsung TVs and smart monitors (2017 and later).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsung TVs and smart monitors (2017 and later)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsung TV'ler ve akıllı monitörler (2017 ve sonrası)."
+          }
+        }
+      }
+    },
+    "Samsung TVs on the network": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsung TVs on the network"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ağdaki Samsung TV'ler"
+          }
+        }
+      }
+    },
+    "Looking for TVs…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looking for TVs…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'ler aranıyor…"
+          }
+        }
+      }
+    },
+    "No Samsung TV found. Is the TV on and on the same Wi-Fi? You can also type its address below (on the TV: Settings › General › Network › Network Status).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Samsung TV found. Is the TV on and on the same Wi-Fi? You can also type its address below (on the TV: Settings › General › Network › Network Status)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsung TV bulunamadı. TV açık ve aynı Wi-Fi'da mı? Adresini aşağıya elle de yazabilirsin (TV'de Ayarlar › Genel › Ağ › Ağ Durumu)."
+          }
+        }
+      }
+    },
+    "My TV isn't listed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My TV isn't listed"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'm listede yok"
+          }
+        }
+      }
+    },
+    "TV's IP address": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV's IP address"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'nin IP adresi"
+          }
+        }
+      }
+    },
+    "Developer mode is on": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Developer mode is on"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geliştirici modu açık"
+          }
+        }
+      }
+    },
+    "Developer mode is off": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Developer mode is off"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geliştirici modu kapalı"
+          }
+        }
+      }
+    },
+    "Host PC IP belongs to another device: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host PC IP belongs to another device: %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host PC IP başka bir cihazın: %@"
+          }
+        }
+      }
+    },
+    "Turn on developer mode on the TV": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn on developer mode on the TV"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'de geliştirici modunu aç"
+          }
+        }
+      }
+    },
+    "2. Press 1 2 3 4 5 on the remote (or type 12345 on the on-screen keypad). The Developer mode window opens. On some new models this works on Apps › App Settings.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Press 1 2 3 4 5 on the remote (or type 12345 on the on-screen keypad). The Developer mode window opens. On some new models this works on Apps › App Settings."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Kumandada 1 2 3 4 5 tuşlarına bas (ya da ekran klavyesiyle 12345 yaz). Geliştirici modu penceresi açılır. Bazı yeni modellerde bu, Uygulamalar › Uygulama Ayarları ekranında çalışır."
+          }
+        }
+      }
+    },
+    "3. Turn Developer mode On, type this phone's address as Host PC IP and press OK:": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Turn Developer mode On, type this phone's address as Host PC IP and press OK:"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Developer mode'u On yap, Host PC IP olarak bu telefonun adresini yaz ve OK'e bas:"
+          }
+        }
+      }
+    },
+    "4. Restart the TV: hold the power button on the remote for about 2 seconds until the TV turns off, then turn it on again. A short press only puts it on standby.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4. Restart the TV: hold the power button on the remote for about 2 seconds until the TV turns off, then turn it on again. A short press only puts it on standby."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4. TV'yi yeniden başlat: kumandanın güç tuşunu TV kapanana kadar yaklaşık 2 saniye basılı tut, sonra yeniden aç. Kısa basınca TV yalnız bekleme moduna geçer."
+          }
+        }
+      }
+    },
+    "Could not find this phone's address; is it on Wi-Fi?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not find this phone's address; is it on Wi-Fi?"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefonun adresi bulunamadı; Wi-Fi'a bağlı mı?"
+          }
+        }
+      }
+    },
+    "The first install asks you to sign in once with a free Samsung account: Samsung only accepts the app signed with a certificate made for your TV. If the phone's address changes, repeat the Host PC IP step.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The first install asks you to sign in once with a free Samsung account: Samsung only accepts the app signed with a certificate made for your TV. If the phone's address changes, repeat the Host PC IP step."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İlk kurulumda bir kez ücretsiz Samsung hesabıyla giriş istenir: Samsung uygulamayı yalnız senin TV'ne özel sertifikayla kabul eder. Telefonun adresi değişirse Host PC IP adımı yinelenir."
+          }
+        }
+      }
+    },
+    "Install and open": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install and open"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kur ve aç"
+          }
+        }
+      }
+    },
+    "Connecting to the TV…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to the TV…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'ye bağlanılıyor…"
+          }
+        }
+      }
+    },
+    "Reading the TV…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading the TV…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV okunuyor…"
+          }
+        }
+      }
+    },
+    "Waiting for Samsung sign-in…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for Samsung sign-in…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsung girişi bekleniyor…"
+          }
+        }
+      }
+    },
+    "Getting a certificate for your TV from Samsung…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Getting a certificate for your TV from Samsung…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsung'dan TV'ne özel sertifika alınıyor…"
+          }
+        }
+      }
+    },
+    "Signing the app…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing the app…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulama imzalanıyor…"
+          }
+        }
+      }
+    },
+    "Installing on the TV… (this can take a minute)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installing on the TV… (this can take a minute)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'ye kuruluyor… (bir dakika sürebilir)"
+          }
+        }
+      }
+    },
+    "Removing the old copy from the TV…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Removing the old copy from the TV…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'deki eski kopya kaldırılıyor…"
+          }
+        }
+      }
+    },
+    "Opening the app on the TV…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opening the app on the TV…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'de uygulama açılıyor…"
+          }
+        }
+      }
+    },
+    "Installed: CouchSubs %@ is opening on the TV.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installed: CouchSubs %@ is opening on the TV."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kuruldu: TV'de CouchSubs %@ açılıyor."
+          }
+        }
+      }
+    },
+    "CouchSubs %@ is already on the TV; opening it.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs %@ is already on the TV; opening it."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'de CouchSubs %@ zaten kurulu; açılıyor."
+          }
+        }
+      }
+    },
+    "Details: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Details: %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayrıntı: %@"
+          }
+        }
+      }
+    },
+    "Share the install log": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share the install log"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kurulum günlüğünü paylaş"
+          }
+        }
+      }
+    },
+    "Samsung sign-in": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsung sign-in"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsung girişi"
+          }
+        }
+      }
+    },
+    "The TV did not accept this phone. In the TV's Developer mode window, check that Host PC IP is this phone's address (%@), then restart the TV (hold the power button for about 2 seconds).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TV did not accept this phone. In the TV's Developer mode window, check that Host PC IP is this phone's address (%@), then restart the TV (hold the power button for about 2 seconds)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV bu telefonu kabul etmedi. TV'deki geliştirici modu penceresinde Host PC IP'nin bu telefonun adresi (%@) olduğunu kontrol et ve TV'yi yeniden başlat (güç tuşunu yaklaşık 2 saniye basılı tut)."
+          }
+        }
+      }
+    },
+    "A CouchSubs TV app signed on another device is still on the TV and could not be removed. On the TV, open Apps, select CouchSubs, delete it and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A CouchSubs TV app signed on another device is still on the TV and could not be removed. On the TV, open Apps, select CouchSubs, delete it and try again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'de başka bir cihazda imzalanmış bir CouchSubs uygulaması var ve kaldırılamadı. TV'de Uygulamalar'ı aç, CouchSubs'ı seçip sil ve tekrar dene."
+          }
+        }
+      }
+    },
+    "The TV refuses CouchSubs because an earlier CouchSubs is still registered on it (Tizen error 118, -22), even if it no longer appears among the apps. If CouchSubs is among the TV's apps, delete it there and try again. Otherwise reset Smart Hub (Settings › Support › Device Care › Self Diagnosis › Reset Smart Hub) and try again. Resetting Smart Hub also removes the other apps you downloaded.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TV refuses CouchSubs because an earlier CouchSubs is still registered on it (Tizen error 118, -22), even if it no longer appears among the apps. If CouchSubs is among the TV's apps, delete it there and try again. Otherwise reset Smart Hub (Settings › Support › Device Care › Self Diagnosis › Reset Smart Hub) and try again. Resetting Smart Hub also removes the other apps you downloaded."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV, daha önceki bir CouchSubs'ın kaydı hâlâ durduğu için uygulamayı kabul etmiyor (Tizen hatası 118, -22); uygulama listede görünmese de. CouchSubs TV'nin uygulamaları arasındaysa oradan silip tekrar dene. Değilse Smart Hub'ı sıfırlayıp (Ayarlar › Destek › Cihaz Bakımı › Kendi Kendine Tanılama › Smart Hub'ı Sıfırla) tekrar dene. Smart Hub'ı sıfırlamak, indirdiğin diğer uygulamaları da kaldırır."
+          }
+        }
+      }
+    },
+    "The connection to the TV dropped during the install. Keep the TV on and on the same Wi-Fi as this phone, keep the phone's screen on, then try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The connection to the TV dropped during the install. Keep the TV on and on the same Wi-Fi as this phone, keep the phone's screen on, then try again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kurulum sırasında TV bağlantısı koptu. TV'yi açık ve bu telefonla aynı Wi-Fi'da tutup tekrar dene; telefonun ekranı kapanmasın."
+          }
+        }
+      }
+    },
+    "The TV app could not be installed. Try again; if it fails again, send us the install log.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TV app could not be installed. Try again; if it fails again, send us the install log."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV uygulaması kurulamadı. Tekrar dene; yine olmazsa kurulum günlüğünü bize gönder."
+          }
+        }
+      }
+    },
+    "This phone app does not contain the TV package. Update the app and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This phone app does not contain the TV package. Update the app and try again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu telefon uygulamasında TV paketi yok. Uygulamayı güncelleyip tekrar dene."
+          }
+        }
+      }
+    },
+    "Samsung": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsung"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsung"
+          }
+        }
+      }
+    },
+    "Android TV": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Android TV"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Android TV"
+          }
+        }
+      }
+    },
+    "LG": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LG"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LG"
+          }
+        }
+      }
+    },
+    "Installs the CouchSubs TV app on your LG TV (webOS) from this phone, without a computer. The phone and the TV must be on the same Wi-Fi.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installs the CouchSubs TV app on your LG TV (webOS) from this phone, without a computer. The phone and the TV must be on the same Wi-Fi."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs TV uygulamasını LG TV'ne (webOS) bilgisayar olmadan, bu telefondan kurar. Telefon ve TV aynı Wi-Fi'da olmalı."
+          }
+        }
+      }
+    },
+    "Needs LG's Developer Mode app on the TV and a free LG developer account. CouchSubs extends the developer mode session for you.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Needs LG's Developer Mode app on the TV and a free LG developer account. CouchSubs extends the developer mode session for you."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'de LG'nin Developer Mode uygulaması ve ücretsiz LG geliştirici hesabı gerekir. CouchSubs geliştirici modunun süresini kendisi uzatır."
+          }
+        }
+      }
+    },
+    "LG TVs on the network": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LG TVs on the network"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ağdaki LG TV'ler"
+          }
+        }
+      }
+    },
+    "No LG TV found. Is the TV on and on the same Wi-Fi? You can also type its address below (on the TV: Settings › General › Network › the connected network).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No LG TV found. Is the TV on and on the same Wi-Fi? You can also type its address below (on the TV: Settings › General › Network › the connected network)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LG TV bulunamadı. TV açık ve aynı Wi-Fi'da mı? Adresini aşağıya elle de yazabilirsin (TV'de Ayarlar › Genel › Ağ › bağlı ağ)."
+          }
+        }
+      }
+    },
+    "Passphrase (on the TV screen, 6 characters)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passphrase (on the TV screen, 6 characters)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passphrase (TV ekranında, 6 karakter)"
+          }
+        }
+      }
+    },
+    "Passphrase (key saved; type it if needed)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passphrase (key saved; type it if needed)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passphrase (anahtar kayıtlı; gerekirse yaz)"
+          }
+        }
+      }
+    },
+    "1. Create a free LG developer account at webostv.developer.lge.com.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Create a free LG developer account at webostv.developer.lge.com."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. webostv.developer.lge.com'da ücretsiz LG geliştirici hesabı aç."
+          }
+        }
+      }
+    },
+    "2. On the TV, install the Developer Mode app from the LG Content Store, open it, sign in with your account and turn on Dev Mode Status. The TV restarts.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. On the TV, install the Developer Mode app from the LG Content Store, open it, sign in with your account and turn on Dev Mode Status. The TV restarts."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. TV'de LG Content Store'dan Developer Mode uygulamasını kur, açıp hesabınla giriş yap ve Dev Mode Status'u aç. TV yeniden başlar."
+          }
+        }
+      }
+    },
+    "3. Open the Developer Mode app again and turn on Key Server. Leave the app on screen; a 6-character Passphrase appears at the bottom left.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Open the Developer Mode app again and turn on Key Server. Leave the app on screen; a 6-character Passphrase appears at the bottom left."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Developer Mode uygulamasını yeniden aç ve Key Server'ı aç. Uygulamayı ekranda bırak; sol altta 6 karakterli Passphrase görünür."
+          }
+        }
+      }
+    },
+    "4. Type the Passphrase above and press Install and open. The passphrase is only needed for the first install.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4. Type the Passphrase above and press Install and open. The passphrase is only needed for the first install."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4. Passphrase'i yukarıya yaz ve Kur ve aç'a bas. Parola yalnız ilk kurulumda gerekir."
+          }
+        }
+      }
+    },
+    "TV says: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV says: %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'nin yanıtı: %@"
+          }
+        }
+      }
+    },
+    "The TV did not respond. Make sure the TV is on and on the same Wi-Fi as this phone, and that Dev Mode Status is on in the Developer Mode app.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TV did not respond. Make sure the TV is on and on the same Wi-Fi as this phone, and that Dev Mode Status is on in the Developer Mode app."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV yanıt vermedi. TV'nin açık ve bu telefonla aynı Wi-Fi'da olduğundan, Developer Mode uygulamasında Dev Mode Status'un açık olduğundan emin ol."
+          }
+        }
+      }
+    },
+    "Pairing with the TV…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing with the TV…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV ile eşleniyor…"
+          }
+        }
+      }
+    },
+    "On the TV, answer Allow to “Allow USB debugging?” (tick “Always allow from this device”).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On the TV, answer Allow to “Allow USB debugging?” (tick “Always allow from this device”)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'de “USB hata ayıklamasına izin verilsin mi?” sorusuna İzin ver de (“Bu cihazdan her zaman izin ver”i işaretle)."
+          }
+        }
+      }
+    },
+    "Getting the developer key from the TV…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Getting the developer key from the TV…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'den geliştirici anahtarı alınıyor…"
+          }
+        }
+      }
+    },
+    "Installs the CouchSubs Android TV app on your Android TV or Google TV from this phone, without a computer. The phone and the TV must be on the same Wi-Fi.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installs the CouchSubs Android TV app on your Android TV or Google TV from this phone, without a computer. The phone and the TV must be on the same Wi-Fi."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs Android TV uygulamasını Android TV ya da Google TV'ne bilgisayar olmadan, bu telefondan kurar. Telefon ve TV aynı Wi-Fi'da olmalı."
+          }
+        }
+      }
+    },
+    "Debugging must be on in the TV's developer options. Leave it on so updates can be installed.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debugging must be on in the TV's developer options. Leave it on so updates can be installed."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'nin geliştirici seçeneklerinde hata ayıklama açık olmalı. Güncellemeler için açık bırak."
+          }
+        }
+      }
+    },
+    "Android TVs on the network": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Android TVs on the network"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ağdaki Android TV'ler"
+          }
+        }
+      }
+    },
+    "No Android TV found. Is the TV on and on the same Wi-Fi? You can also type its address below (on the TV: Settings › Network & Internet › the connected network).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Android TV found. Is the TV on and on the same Wi-Fi? You can also type its address below (on the TV: Settings › Network & Internet › the connected network)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Android TV bulunamadı. TV açık ve aynı Wi-Fi'da mı? Adresini aşağıya elle yazabilirsin (TV'de Ayarlar › Ağ ve İnternet › bağlı ağ)."
+          }
+        }
+      }
+    },
+    "Network debugging is on (5555)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network debugging is on (5555)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ağ hata ayıklaması açık (5555)"
+          }
+        }
+      }
+    },
+    "Debugging port is closed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debugging port is closed"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hata ayıklama portu kapalı"
+          }
+        }
+      }
+    },
+    "Connection": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı yolu"
+          }
+        }
+      }
+    },
+    "USB/network debugging": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "USB/network debugging"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "USB/ağ hata ayıklama"
+          }
+        }
+      }
+    },
+    "Wireless debugging": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wireless debugging"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kablosuz hata ayıklama"
+          }
+        }
+      }
+    },
+    "TV's IP address and port (e.g. 192.168.1.20:41235)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV's IP address and port (e.g. 192.168.1.20:41235)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'nin IP adresi ve portu (ör. 192.168.1.20:41235)"
+          }
+        }
+      }
+    },
+    "IP address and port in the pairing window": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IP address and port in the pairing window"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleme penceresindeki IP adresi ve port"
+          }
+        }
+      }
+    },
+    "Pairing code (6 digits; leave empty if already paired)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing code (6 digits; leave empty if already paired)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleme kodu (6 hane; daha önce eşlendiyse boş bırak)"
+          }
+        }
+      }
+    },
+    "With wireless debugging, type the TV's port too: the “IP address & Port” at the top of the TV's Wireless debugging screen (e.g. 192.168.1.20:41235).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With wireless debugging, type the TV's port too: the “IP address & Port” at the top of the TV's Wireless debugging screen (e.g. 192.168.1.20:41235)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kablosuz hata ayıklamada TV'nin portunu da yaz: TV'de Kablosuz hata ayıklama ekranının üstündeki “IP adresi ve bağlantı noktası” (ör. 192.168.1.20:41235)."
+          }
+        }
+      }
+    },
+    "Next to the pairing code, type the IP address and port from the pairing window too (e.g. 192.168.1.20:37099).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next to the pairing code, type the IP address and port from the pairing window too (e.g. 192.168.1.20:37099)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleme kodunun yanında eşleme penceresindeki IP adresi ve portu da yaz (ör. 192.168.1.20:37099)."
+          }
+        }
+      }
+    },
+    "Turn on debugging on the TV": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn on debugging on the TV"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'de hata ayıklamayı aç"
+          }
+        }
+      }
+    },
+    "1. Turn on developer options: on the TV, open Settings › System (or Device Preferences) › About and press the Android TV OS build row 7 times.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Turn on developer options: on the TV, open Settings › System (or Device Preferences) › About and press the Android TV OS build row 7 times."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. Geliştirici seçeneklerini aç: TV'de Ayarlar › Sistem (ya da Cihaz Tercihleri) › Hakkında › Android TV OS derlemesi satırına 7 kez bas."
+          }
+        }
+      }
+    },
+    "2. In Settings › System › Developer options, turn on USB debugging. Some TVs also have “Network debugging” or “ADB over network”; turn that on too.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. In Settings › System › Developer options, turn on USB debugging. Some TVs also have “Network debugging” or “ADB over network”; turn that on too."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Ayarlar › Sistem › Geliştirici seçenekleri'nde USB hata ayıklama'yı aç. Bazı TV'lerde ayrıca “Ağ hata ayıklaması” ya da “ADB over network” olur; onu da aç."
+          }
+        }
+      }
+    },
+    "3. Press Install and open. When the TV asks “Allow USB debugging?”, tick “Always allow from this device” and choose Allow. If it cannot connect, try the Wireless debugging option (Android 11 and later, Google TV).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Press Install and open. When the TV asks “Allow USB debugging?”, tick “Always allow from this device” and choose Allow. If it cannot connect, try the Wireless debugging option (Android 11 and later, Google TV)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. Kur ve aç'a bas. TV'de “USB hata ayıklamasına izin verilsin mi?” çıkınca “Bu cihazdan her zaman izin ver”i işaretleyip İzin ver'i seç. Bağlanamazsan Kablosuz hata ayıklama yolunu dene (Android 11 ve sonrası, Google TV)."
+          }
+        }
+      }
+    },
+    "2. Turn on Developer options › Wireless debugging and open it. Type the “IP address & Port” at the top as the TV's address.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Turn on Developer options › Wireless debugging and open it. Type the “IP address & Port” at the top as the TV's address."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. Geliştirici seçenekleri › Kablosuz hata ayıklama'yı aç, içine gir. Üstteki “IP adresi ve bağlantı noktası”nı TV'nin adresine yaz."
+          }
+        }
+      }
+    },
+    "3. The first time, press “Pair device with pairing code”; type the IP address and port from that window together with the 6-digit code, and press Install and open while the window is still open.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. The first time, press “Pair device with pairing code”; type the IP address and port from that window together with the 6-digit code, and press Install and open while the window is still open."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. İlk kurulumda “Cihazı eşleme kodu ile eşle”ye bas; açılan penceredeki IP adresi ve portu, 6 haneli kodla birlikte buraya yaz ve pencere açıkken Kur ve aç'a bas."
+          }
+        }
+      }
+    },
+    "Remove the TV's copy and install": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove the TV's copy and install"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'deki kopyayı kaldırıp kur"
+          }
+        }
+      }
+    },
+    "The TV did not respond. Make sure the TV is on and on the same Wi-Fi as this phone, and that debugging is on in its developer options. With wireless debugging the port changes every time; type the one on the screen.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TV did not respond. Make sure the TV is on and on the same Wi-Fi as this phone, and that debugging is on in its developer options. With wireless debugging the port changes every time; type the one on the screen."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV yanıt vermedi. TV'nin açık ve bu telefonla aynı Wi-Fi'da olduğundan, geliştirici seçeneklerinde hata ayıklamanın açık olduğundan emin ol. Kablosuz hata ayıklamada port her açılışta değişir; ekrandakini yaz."
+          }
+        }
+      }
+    },
+    "The TV does not know this phone. With wireless debugging, pair first: press “Pair device with pairing code” on the TV, type the address and the code from that window and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TV does not know this phone. With wireless debugging, pair first: press “Pair device with pairing code” on the TV, type the address and the code from that window and try again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV bu telefonu tanımıyor. Kablosuz hata ayıklamada önce eşle: TV'de “Cihazı eşleme kodu ile eşle”ye bas, penceredeki adresi ve kodu yazıp tekrar dene."
+          }
+        }
+      }
+    },
+    "Pairing failed: the code is wrong or the pairing window on the TV closed. Open the window again, type the new code and port and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pairing failed: the code is wrong or the pairing window on the TV closed. Open the window again, type the new code and port and try again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleme olmadı: kod yanlış ya da TV'deki eşleme penceresi kapandı. Pencereyi yeniden aç, yeni kodu ve portu yazıp tekrar dene."
+          }
+        }
+      }
+    },
+    "CouchSubs on the TV is signed with another key or is newer, so this version cannot be installed over it. The button below removes the TV's copy and installs the new one. The TV app's settings are deleted.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs on the TV is signed with another key or is newer, so this version cannot be installed over it. The button below removes the TV's copy and installs the new one. The TV app's settings are deleted."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'deki CouchSubs başka bir anahtarla imzalı ya da daha yeni; bu sürüm onun üstüne kurulamıyor. Aşağıdaki düğmeyle TV'deki kopya kaldırılır ve yenisi kurulur. TV uygulamasının ayarları silinir."
+          }
+        }
+      }
+    },
+    "Install the TV app from this phone": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install the TV app from this phone"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV uygulamasını bu telefondan kur"
+          }
+        }
+      }
+    },
+    "Debugging must be on in the TV's developer options. You can turn it off after the install.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debugging must be on in the TV's developer options. You can turn it off after the install."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'nin geliştirici seçeneklerinde hata ayıklama açık olmalı. Kurulumdan sonra kapatabilirsin."
+          }
+        }
+      }
+    },
+    "Needs LG's Developer Mode app on the TV and a free LG developer account.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Needs LG's Developer Mode app on the TV and a free LG developer account."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'de LG'nin Developer Mode uygulaması ve ücretsiz LG geliştirici hesabı gerekir."
+          }
+        }
+      }
+    },
+    "Developer mode stays on for at most 1000 hours. CouchSubs extends it by itself once a day while the phone can reach the TV.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Developer mode stays on for at most 1000 hours. CouchSubs extends it by itself once a day while the phone can reach the TV."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geliştirici modu en çok 1000 saat açık kalır. Telefon TV'ye ulaşabildiği sürece CouchSubs bunu günde bir kez kendisi uzatır."
+          }
+        }
+      }
+    },
+    "A new TV app version is available": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A new TV app version is available"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV uygulamasının yeni sürümü var"
+          }
+        }
+      }
+    },
+    "TV: %@ → this phone: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV: %@ → this phone: %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV: %@ → bu telefon: %@"
+          }
+        }
+      }
+    },
+    "Update the TV app": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Update the TV app"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV uygulamasını güncelle"
+          }
+        }
+      }
+    },
+    "TV app installed on %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV app installed on %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV uygulaması kurulu: %@"
+          }
+        }
+      }
+    },
+    "Not installed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not installed"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kurulu değil"
+          }
+        }
+      }
+    },
+    "On iPhone, wireless debugging needs this phone's Local Network permission (Settings › CouchSubs).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On iPhone, wireless debugging needs this phone's Local Network permission (Settings › CouchSubs)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone'da kablosuz hata ayıklama için bu telefonun Yerel Ağ izni gerekir (Ayarlar › CouchSubs)."
+          }
+        }
+      }
+    },
+    "The Google Play page opened on the TV: press Install (or Update) with the TV remote. The app opens by itself once it is installed.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Google Play page opened on the TV: press Install (or Update) with the TV remote. The app opens by itself once it is installed."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'de Google Play sayfası açıldı: TV kumandasıyla Yükle'ye (ya da Güncelle'ye) basın. Kurulunca uygulama kendiliğinden açılır."
+          }
+        }
+      }
+    },
+    "CouchSubs on the TV was installed from Google Play and this version could not be installed over it. You can keep using the Play version; Play brings the update itself. To install this version now, the button below removes the TV's copy and installs the new one (the TV app's settings are deleted).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs on the TV was installed from Google Play and this version could not be installed over it. You can keep using the Play version; Play brings the update itself. To install this version now, the button below removes the TV's copy and installs the new one (the TV app's settings are deleted)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'deki CouchSubs Google Play'den kurulmuş ve bu sürüm onun üstüne kurulamadı. Play'deki sürümü kullanmaya devam edebilirsin; güncellemeyi Play kendisi getirir. Bu sürümü hemen kurmak istersen aşağıdaki düğmeyle TV'deki kopya kaldırılır ve yenisi kurulur (TV uygulamasının ayarları silinir)."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

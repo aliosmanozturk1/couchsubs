@@ -10,6 +10,8 @@ import UIKit
 /// Ana ekrandan açılan sayfalar.
 enum Route: Hashable {
     case settings, profile, packs, target, ps5, psn, about, history
+    /// TV uygulamasını bu telefondan kurmak; `tvUpdate` ana ekrandaki güncellemeyi kendiliğinden başlatır.
+    case tvInstall, tvUpdate
 }
 
 /// Turun vurguladığı öğeler.
@@ -102,7 +104,14 @@ struct HomeScreen: View {
                 StatTile(symbol: "globe", label: "Translation", value: engineName)
                 StatTile(symbol: "clock.arrow.circlepath", label: "Last session", value: lastSession)
             }
-            if model.tvAppMissing { MobileNote(text: String(localized: "To install the TV app for the first time, use CouchSubs on a computer once. After that this phone is enough.")) }
+            if let update = model.tvAppUpdate {
+                TVAppUpdateTile(update: update) { path.append(.tvUpdate) }
+            } else if model.tvAppMissing {
+                Button { path.append(.tvInstall) } label: {
+                    InfoTile(symbol: "arrow.down.app", title: "Install the TV app from this phone", caption: "Samsung · LG · Android TV")
+                }
+                .buttonStyle(.plain)
+            }
             // Dil paketi yalnız Apple çevirisinin kullanılabildiği sistemde (iOS 26 ve sonrası) istenir.
             if model.translatorStatus == .needsDownload, #available(iOS 26, *) {
                 LanguagePackTile()
@@ -124,6 +133,7 @@ struct HomeScreen: View {
         .task {
             app.analytics.screen("home")
             await model.refreshTranslatorStatus()
+            await model.checkTVApp()
         }
     }
 

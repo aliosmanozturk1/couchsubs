@@ -24,9 +24,14 @@ final class PhoneModel: ObservableObject {
     @Published private(set) var tvKeySaved: Bool
     /// İkinci hesabın PS5 giriş şifresi Anahtarlık'ta kayıtlı.
     @Published private(set) var hasLoginPasscode: Bool
-    /// Son eşleşmede TV uygulaması açılamadı: büyük olasılıkla TV'de kurulu değil. Telefon TV uygulamasını kuramaz
-    /// (LG ssh, Samsung sdb, Android TV adb ister); ilk kurulum bilgisayardaki CouchSubs ile yapılır.
+    /// Son eşleşmede TV uygulaması açılamadı: büyük olasılıkla TV'de kurulu değil; telefon kurabilir (TV uygulamasını kur).
     @Published var tvAppMissing = false
+    /// TV'deki uygulama telefondaki paketten eski: ana ekranda "TV uygulamasını güncelle".
+    @Published private(set) var tvAppUpdate: TVAppUpdate?
+    /// Bu telefonun TV uygulamasını kurduğu ya da sürümünü okuduğu son TV.
+    @Published private(set) var installedTVApp: InstalledTVApp?
+    private var tvAppCheckedAt: Date?
+    private var checkingTVApp = false
 
     @Published var settings: UserSettings {
         didSet {
@@ -183,6 +188,7 @@ final class PhoneModel: ObservableObject {
         savedKeys = Set(TranslationEngine.allCases.filter { engine in
             engine.storeKey.flatMap { store.load(String.self, for: $0) }?.isEmpty == false
         })
+        installedTVApp = defaults.data(forKey: StoreKey.tvAppInstalled).flatMap { try? JSONDecoder().decode(InstalledTVApp.self, from: $0) }
         attachServer()
         reloadPackList()
     }
@@ -198,7 +204,15 @@ final class PhoneModel: ObservableObject {
 
     private func attachServer() {
         server.onClientsChanged = { [weak self] count in
-            DispatchQueue.main.async { MainActor.assumeIsolated { self?.tvClients = count } }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let connected = self.tvClients == 0 && count > 0
+                    self.tvClients = count
+                    // TV uygulaması her bağlandığında sürümüne bakılır (eskiyse ana ekranda güncelleme önerilir).
+                    if connected { Task { await self.checkTVApp() } }
+                }
+            }
         }
         server.sendsToTV = settings.output.showsOnTV
         server.onEvent = { [weak self] event in
@@ -782,6 +796,49 @@ final class PhoneModel: ObservableObject {
 
     var tvStatusText: String {
         tvClients > 0 ? String(localized: "Connected") : String(localized: "Waiting for the TV app")
+    }
+
+    // MARK: - TV uygulamasının sürümü
+
+    /// TV'deki CouchSubs sürümünü sessizce okur (Samsung sdb, Android TV adb, LG ssh; geliştirici modu kapalıysa
+    /// sorulamaz); telefondaki paketten eskiyse `tvAppUpdate` dolar. Uygulama açılınca ve TV her bağlandığında çağrılır.
+    func checkTVApp(force: Bool = false) async {
+        guard !checkingTVApp else { return }
+        if !force, let last = tvAppCheckedAt, Date().timeIntervalSince(last) < 60 { return }
+        let target: (TVBrand, String, UInt16?)
+        if let installed = installedTVApp {
+            target = (installed.brand, installed.host, installed.port)
+        } else if let tv, !tv.host.isEmpty {
+            target = (tv.brand, tv.host, nil)
+        } else {
+            return
+        }
+        guard let bundled = TVPackages.version(for: target.0) else { return }
+        checkingTVApp = true
+        tvAppCheckedAt = Date()
+        defer { checkingTVApp = false }
+        guard let version = await TVAppVersionCheck.installedVersion(brand: target.0, host: target.1, port: target.2) else { return }
+        if Versions.isNewer(bundled, than: version) {
+            tvAppUpdate = TVAppUpdate(brand: target.0, host: target.1, port: target.2, installed: version, bundled: bundled)
+        } else {
+            tvAppUpdate = nil
+        }
+        saveInstalledTVApp(InstalledTVApp(brand: target.0, host: target.1, port: target.2, version: version))
+    }
+
+    /// Telefondan kurulum ya da sürüm denetimi bitti: TV hatırlanır. Android TV onaysız eşlendiği için altyazı hedefi olur.
+    func tvAppInstalled(brand: TVBrand, host: String, port: UInt16?, version: String) async {
+        saveInstalledTVApp(InstalledTVApp(brand: brand, host: host, port: port, version: version))
+        if tvAppUpdate?.brand == brand, !Versions.isNewer(tvAppUpdate?.bundled ?? "", than: version) { tvAppUpdate = nil }
+        tvAppMissing = false
+        if brand == .androidTV, !(tv?.brand == .androidTV && hasTV) {
+            try? await pair(LGTV(name: "Android TV", host: host, brand: .androidTV))
+        }
+    }
+
+    private func saveInstalledTVApp(_ value: InstalledTVApp) {
+        installedTVApp = value
+        if let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: StoreKey.tvAppInstalled) }
     }
 
     // MARK: - Sunucu

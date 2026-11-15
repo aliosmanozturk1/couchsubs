@@ -186,6 +186,8 @@ struct RootView: View {
                 case .psn: PSNScreen(onBack: { path.removeLast() }, onDone: { path.removeLast() })
                 case .about: AboutScreen()
                 case .history: HistoryScreen()
+                case .tvInstall: TVInstallScreen()
+                case .tvUpdate: TVInstallScreen(update: model.tvAppUpdate)
                 }
             }
         }

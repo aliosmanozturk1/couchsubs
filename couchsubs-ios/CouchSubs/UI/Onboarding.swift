@@ -354,6 +354,7 @@ struct TargetScreen: View {
     @State private var manualBrand = TVBrand.lg
     /// Elle yazılan adres geçersizse sayfada gösterilen ileti.
     @State private var manualError: String?
+    @State private var showInstall = false
 
     var body: some View {
         MobileScreen {
@@ -394,9 +395,12 @@ struct TargetScreen: View {
                 }
                 .buttonStyle(.plain)
             }
-            if model.tvAppMissing {
-                MobileNote(text: String(localized: "To install the TV app for the first time, use CouchSubs on a computer once. After that this phone is enough."))
+            // TV uygulaması yoksa ya da eskiyse bu telefondan kurulur (ilk kurulumda da).
+            Button { showInstall = true } label: {
+                InfoTile(symbol: "arrow.down.app", title: "Install the TV app from this phone", caption: "Samsung · LG · Android TV",
+                         emphasis: model.tvAppMissing ? .selected : .none)
             }
+            .buttonStyle(.plain)
             if let error { MobileNote(text: error) }
         } bottom: {
             Button(setup ? "Continue" : "Done", action: onDone)
@@ -405,6 +409,9 @@ struct TargetScreen: View {
         }
         .task { await search() }
         .sheet(isPresented: $showManual) { manualSheet }
+        .sheet(isPresented: $showInstall, onDismiss: { Task { await search() } }) {
+            TVInstallScreen().environmentObject(model)
+        }
     }
 
     private var allTVs: [LGTV] {
@@ -430,7 +437,7 @@ struct TargetScreen: View {
             } else if ready == true {
                 MobilePill(text: String(localized: "Ready"), dot: true)
             } else if ready == false {
-                MobilePill(text: String(localized: "Install with a computer"))
+                MobilePill(text: String(localized: "Not installed"))
             }
         }
         .frame(minHeight: Mobile.Control.row)

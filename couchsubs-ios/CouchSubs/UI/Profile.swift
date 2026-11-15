@@ -196,6 +196,10 @@ struct SettingsScreen: View {
                 RowDivider()
                 NavigationLink(value: Route.target) { ListRow(symbol: "tv", title: "Subtitle target", detail: targetName) }
                 RowDivider()
+                NavigationLink(value: Route.tvInstall) {
+                    ListRow(symbol: "arrow.down.app", title: "Install the TV app from this phone", detail: model.installedTVApp?.version)
+                }
+                RowDivider()
                 NavigationLink(value: Route.ps5) {
                     ListRow(symbol: "gamecontroller", title: "PS5 and connection", detail: model.console?.name)
                 }
