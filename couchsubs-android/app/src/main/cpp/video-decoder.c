@@ -7,8 +7,10 @@
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaFormat.h>
 #include <android/native_window_jni.h>
+#include <sys/system_properties.h>
 
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #define INPUT_BUFFER_TIMEOUT_MS 10
@@ -116,6 +118,13 @@ next:
 	return false;
 }
 
+static bool prefers_software_decoder(void)
+{
+	char manufacturer[PROP_VALUE_MAX] = { 0 };
+	__system_property_get("ro.product.manufacturer", manufacturer);
+	return strcasecmp(manufacturer, "samsung") == 0;
+}
+
 bool couchsubs_video_decoder_start(CouchSubsVideoDecoder *decoder, JNIEnv *env, jobject surface)
 {
 	if(!surface)
@@ -126,11 +135,17 @@ bool couchsubs_video_decoder_start(CouchSubsVideoDecoder *decoder, JNIEnv *env, 
 	if(!decoder->window)
 		goto beach;
 
-	ok = open_codec(decoder, false);
+	/* Samsung'da donanım çözücünün ImageReader'a verdiği kareler işlemciden güvenle okunamıyor: Image.getPlanes()
+	 * boş adresle JNI'yi durduruyor (SIGABRT) ya da düzlem okunurken SIGSEGV oluyor (Crashlytics, Galaxy S22/S23/
+	 * A54/M52; Exynos ve Snapdragon). Yazılım çözücü kareyi işlemciyle yazdığı için okunabilir arabellek verir;
+	 * 1080p30 H.264 için yükü düşük. Yazılım çözücü açılamazsa donanım çözücü denenir. */
+	bool software_first = prefers_software_decoder();
+	ok = open_codec(decoder, software_first);
 	if(!ok)
 	{
-		CHIAKI_LOGE(decoder->log, "Video decoder: hardware decoder failed, trying software decoder");
-		ok = open_codec(decoder, true);
+		CHIAKI_LOGE(decoder->log, "Video decoder: %s decoder failed, trying %s decoder",
+				software_first ? "software" : "hardware", software_first ? "hardware" : "software");
+		ok = open_codec(decoder, !software_first);
 	}
 	if(!ok)
 	{

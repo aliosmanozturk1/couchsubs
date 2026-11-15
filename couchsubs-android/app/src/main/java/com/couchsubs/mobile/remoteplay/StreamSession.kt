@@ -270,6 +270,7 @@ class StreamSession(
     private fun openSession(current: Int) {
         if (!isCurrent(current) || native != 0L) return
         val imageReader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, 3)
+        var described = false
         imageReader.setOnImageAvailableListener({ source ->
             // IllegalStateException (en çok kare) ya da UnsupportedOperationException (çözücünün kare biçimi okuyucuyla
             // uyuşmuyor) bu iş parçacığında yakalanmazsa uygulama kapanır.
@@ -281,6 +282,10 @@ class StreamSession(
             } ?: return@setOnImageAvailableListener
             framesReceived++
             watchdog.picture(SystemClock.elapsedRealtime())
+            if (!described) {
+                described = true
+                describeFirstFrame(image)
+            }
             try {
                 onFrame(image)
             } catch (error: RuntimeException) {
@@ -304,6 +309,20 @@ class StreamSession(
         reader = imageReader
     }
 
+    /** Oturumun ilk karesinin gerçek arabellek biçimi çökme raporuna yazılır (üreticiye özel biçimler okunamayabilir). */
+    private fun describeFirstFrame(image: Image) {
+        val text = try {
+            val buffer = if (android.os.Build.VERSION.SDK_INT >= 28) image.hardwareBuffer else null
+            val detail = buffer?.let { "biçim 0x${Integer.toHexString(it.format)} kullanım 0x${java.lang.Long.toHexString(it.usage)}" }
+            buffer?.close()
+            "PS5: ilk kare ${image.width}x${image.height} ${detail ?: "-"}"
+        } catch (error: RuntimeException) {
+            "PS5: ilk kare okunamadı: ${error.message}"
+        }
+        Log.i(TAG, text)
+        com.couchsubs.mobile.account.Backend.breadcrumb(text)
+    }
+
     /** Oturumu kapatır (join içerir; yalnız kuyrukta, asla yerel geri çağrıdan değil). */
     private fun closeNative() {
         watchdog.ended()
@@ -311,7 +330,9 @@ class StreamSession(
         if (ptr == 0L) return
         native = 0L
         NativeBridge.sessionStop(ptr)
-        reader?.close()
+        // Okuyucu kare iş parçacığında kapatılır: kuyruktan kapatılırsa o an okunan karenin belleği elden gider ve
+        // düzlem okunurken süreç SIGSEGV ile çöker. dispose()'taki quitSafely bu iletiyi önce işler.
+        reader?.let { r -> if (!Handler(imageThread.looper).post { r.close() }) r.close() }
         reader = null
     }
 
