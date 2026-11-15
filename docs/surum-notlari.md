@@ -6,10 +6,13 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 **Bu sürümde yeni**
 
-- **Ek alanlar (Mac ve Windows):** Altyazının yanında görev yazısı, telefon mesajı, bildirim gibi köşe yazıları da okunup çevriliyor (Ayarlar › Altyazı alanı › Ek alan ekle). Hazır seçimler var (Görev sağ üst, Bildirim sol alt, Telefon sağ alt), en çok üç alan eklenebiliyor. Çeviri, yazının bulunduğu yana yaslı küçük bir kutuda çıkıyor; yazı değişmedikçe yeniden çevrilmiyor ve altyazıyı yavaşlatmıyor. Varsayılan olarak ek alan yok, mevcut kullanım değişmiyor.
-- **Yayın penceresi (Mac ve Windows):** TikTok LIVE Studio ve diğer yayın programları için yeşil, siyah ya da mor zeminli ayrı bir pencere (Ayarlar › OBS › Yayın penceresi). Pencere yakalamayla "CouchSubs Yayın" penceresini ekleyip Chroma key ile zemini silebilirsiniz. OBS sayfasında `?bg=green` (ya da `black`, `magenta`) ile düz zemin ve daha keskin yazı; localhost adresini kabul etmeyen programlar için yerel IP'li adres (`http://<bilgisayarın IP'si>:8787/obs`) kopyalanabiliyor.
-- **Android: TV uygulamasını telefondan kurma (deneysel, Samsung):** Bilgisayarı olmayanlar CouchSubs TV uygulamasını Samsung TV'ye (Tizen 3.0 ve sonrası, akıllı monitörler dahil) telefondan kurabiliyor. Varsayılan kapalı: Ayarlar › Deneysel › "TV uygulamasını bu telefondan kur". Gerçek TV'lerde henüz az denendi; sorun olursa kurulum günlüğünü paylaşabilirsiniz.
-- **Android telefon APK 0.1.0-beta.44:** Telefondan TV kurulumu bu sürümde.
+- **TV uygulaması artık her güncellemede aynı imzayla (TV uygulaması 0.9.19):** Android TV'de CouchSubs TV her sürümde farklı bir imzayla geliyordu; güncellemede eski uygulama kaldırılıp yeniden kuruluyor, TV'deki ayarlar sıfırlanıyordu. Bu sürümden itibaren TV uygulaması kalıcı bir anahtarla imzalanıyor, sonraki güncellemeler ayarları silmeden üstüne kuruluyor. Bu sürüme geçerken bir kez daha yeniden kurulum gerekebilir.
+- **Ek alan çevirileri TV'de de:** Ek alanların (görev, bildirim, telefon yazıları) çevirisi artık TV'de oyunun üstünde de kutu olarak çıkıyor. TV uygulaması bir sonraki bağlantıda kendiliğinden 0.9.19'a güncellenir.
+- **Android TV'de Play sayfası:** CouchSubs TV Google Play'de yayındaysa ve TV'de Play Store varsa, kurulum TV'de Play sayfasını açıyor; kurulunca uygulama açılıyor ve sonraki güncellemeleri Play yapıyor. Play açılamazsa eskisi gibi doğrudan kuruluyor.
+- **Telefon uygulamaları TV uygulamasını kendisi kurup güncelliyor:** Bilgisayarı olmayanlar CouchSubs TV'yi telefondan kurabiliyor; TV'deki sürüm eskiyse telefon tek dokunuşla güncelliyor. Android'de Samsung, LG ve Android TV ([Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile)); iPhone'da da Samsung, LG ve Android TV (App Store'a geliyor).
+- **Telefon uygulamalarında diğer iyileştirmeler:** Android'de ek alanlar, altyazı geçmişi, daha iyi altyazı kalitesi, terim sözlüğü, kalıcı çeviri önbelleği, parlak sahnelerde okunurluk, donanım çözücü hata verince yazılım çözücüye geçiş ve çeviri başlarken kapanma düzeltmesi; iPhone'da ek alanlar, bağlantı kopunca bildirim, paket başına aç/kapat ve "Oynanıyor".
+
+**beta.40'ta gelenler:** Ek alanlar (Mac ve Windows: görev, bildirim, telefon yazıları), TikTok LIVE Studio ve diğer yayın programları için yayın penceresi, OBS sayfasında düz zemin (`?bg=`), Android'den Samsung TV'ye TV uygulaması kurulumu.
 
 **beta.39'da gelenler:** PS5 görüntüsü takılınca bağlantının kendiliğinden yeniden kurulması, çevirinin bir süre sonra donmaması (Mac, Windows, iPhone, Android), Android telefon APK 0.1.0-beta.43.
 
