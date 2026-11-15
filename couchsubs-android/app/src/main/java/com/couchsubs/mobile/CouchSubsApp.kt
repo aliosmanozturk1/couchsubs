@@ -42,6 +42,12 @@ object Services {
     /** Paket listesi değişince (indirme) artar; ekranlar yeniden okur. */
     val packsVersion = MutableStateFlow(0)
 
+    /** Xbox (Beta) Microsoft girişi ve jetonları: kullanıcı jetonu her yenilendiğinde Keystore'a yazılır. */
+    val xboxAuth: com.couchsubs.mobile.xbox.XboxAuth by lazy {
+        com.couchsubs.mobile.xbox.XboxAuth(userToken = com.couchsubs.mobile.xbox.XboxUserToken.parse(settings.xboxUserToken),
+            onUserToken = { settings.xboxUserToken = it?.serialize() })
+    }
+
     /** Bu ve önceki oturumlarda çevrilen son 200 altyazı (history.json; "Geçmiş" ekranı, iPhone ile aynı). */
     var history = com.couchsubs.mobile.core.SubtitleHistory()
         private set

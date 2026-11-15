@@ -39,12 +39,21 @@ object Routes {
     const val SETTINGS = "settings"
     const val TV_INSTALL = "tvinstall"
     const val HISTORY = "history"
+    const val PLATFORM = "platform"
+    const val XBOX_LOGIN = "xboxlogin"
+    const val XBOX_CONSOLE = "xboxconsole"
 
     /** Kurulumun eksik ilk adımı; hepsi tamamsa ana ekran. */
     fun next(): String {
         val settings = Services.settings
         return when {
             !settings.welcomeSeen -> WELCOME
+            // Konsol türü bir kez sorulur; PS5'i önceden eşlenmiş kurulumlar PlayStation sayılır.
+            settings.platformChoice == null && settings.accountId == null && settings.console == null && !settings.setupSkipped -> PLATFORM
+            // Xbox (Beta): Microsoft girişi ve Xbox seçimi; ikinci hesap (PSN) adımı yok.
+            settings.xbox && !Services.xboxAuth.signedIn && !settings.setupSkipped -> XBOX_LOGIN
+            settings.xbox && settings.xboxConsole == null && !settings.setupSkipped -> XBOX_CONSOLE
+            settings.xbox -> if (!settings.onboarded) TARGET else MAIN
             // "Şimdilik geç" ile atlandıysa PS5'siz ana ekrana gidilir (ör. Play incelemesi); eşleme Ayarlar'dan.
             settings.accountId == null && !settings.setupSkipped -> PSN
             settings.console == null && !settings.setupSkipped -> PAIR
@@ -95,6 +104,18 @@ class MainActivity : ComponentActivity() {
                             else advance(navigation)
                         }
                     }
+                    composable(Routes.PLATFORM) { PlatformScreen(onBack = back(navigation)) { advance(navigation) } }
+                    composable(Routes.XBOX_LOGIN) {
+                        XboxLoginScreen(onBack = back(navigation), onSkip = skip(navigation)) {
+                            if (settings.xboxConsole == null && navigation.previousBackStackEntry != null)
+                                navigation.navigate(Routes.XBOX_CONSOLE) { popUpTo(Routes.XBOX_LOGIN) { inclusive = true } }
+                            else advance(navigation)
+                        }
+                    }
+                    composable(Routes.XBOX_CONSOLE) {
+                        XboxConsoleScreen(onBack = back(navigation), onSkip = skip(navigation),
+                            onSignIn = { navigation.navigate(Routes.XBOX_LOGIN) }) { advance(navigation) }
+                    }
                     composable(Routes.PAIR) { PairScreen(onBack = back(navigation), onSkip = skip(navigation)) { advance(navigation) } }
                     composable(Routes.TARGET) {
                         val onboarding = navigation.previousBackStackEntry == null
@@ -136,7 +157,8 @@ class MainActivity : ComponentActivity() {
                     composable(Routes.SETTINGS) {
                         SettingsScreen(onBack = { navigation.popBackStack() }, onPacks = { navigation.navigate(Routes.PACKS) },
                             onTarget = { navigation.navigate(Routes.TARGET) }, onPairing = { pairing(navigation) },
-                            onTvInstall = { navigation.navigate(Routes.TV_INSTALL) })
+                            onTvInstall = { navigation.navigate(Routes.TV_INSTALL) },
+                            onPlatform = { navigation.navigate(Routes.PLATFORM) })
                     }
                     composable(Routes.HISTORY) { HistoryScreen(onBack = { navigation.popBackStack() }) }
                     composable(Routes.TV_INSTALL) {
@@ -157,6 +179,11 @@ class MainActivity : ComponentActivity() {
      */
     private fun advance(navigation: NavHostController) {
         val next = Routes.next()
+        // Ayarlar'dan konsol türü değişince eksik adım (ör. Microsoft girişi) açılır.
+        if (next != Routes.MAIN && navigation.previousBackStackEntry != null && next in setOf(Routes.XBOX_LOGIN, Routes.XBOX_CONSOLE, Routes.PSN, Routes.PAIR)) {
+            navigation.navigate(next) { popUpTo(navigation.currentDestination?.route ?: next) { inclusive = true } }
+            return
+        }
         if (next == Routes.MAIN && navigation.previousBackStackEntry != null) {
             navigation.popBackStack()
             return
@@ -177,7 +204,9 @@ class MainActivity : ComponentActivity() {
 
     /** PS5 eşleme: PSN girişi yoksa (kurulum atlandıysa) önce giriş, ardından eşleme. */
     private fun pairing(navigation: NavHostController) {
-        navigation.navigate(if (Services.settings.accountId == null) Routes.PSN else Routes.PAIR)
+        val settings = Services.settings
+        if (settings.xbox) navigation.navigate(if (!Services.xboxAuth.signedIn) Routes.XBOX_LOGIN else Routes.XBOX_CONSOLE)
+        else navigation.navigate(if (settings.accountId == null) Routes.PSN else Routes.PAIR)
     }
 
     private fun startTranslation() {

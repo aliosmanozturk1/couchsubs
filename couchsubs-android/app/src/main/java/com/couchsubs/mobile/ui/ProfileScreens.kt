@@ -114,7 +114,8 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
 
 /** Ayarlar (tuval Telefon-Ayarlar): motor ve anahtar, altyazı görünümü, paketler, hedef, PS5, hakkında. */
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit, onPairing: () -> Unit, onTvInstall: () -> Unit = {}) {
+fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit, onPairing: () -> Unit, onTvInstall: () -> Unit = {},
+                   onPlatform: () -> Unit = {}) {
     val context = LocalContext.current
     val settings = Services.settings
     var engine by remember { mutableStateOf(settings.engine) }
@@ -260,9 +261,13 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             { RowItem(stringResource(R.string.settings_packs), onClick = onPacks) { Pill(stringResource(if (settings.packsEnabled) R.string.main_packs_on else R.string.main_packs_off)) } },
             { RowItem(stringResource(R.string.settings_target), if (settings.target == SubtitleTarget.TV) settings.tvName ?: stringResource(R.string.main_target_tv)
                 else stringResource(R.string.main_target_phone), onClick = onTarget) },
-            { RowItem(stringResource(R.string.settings_ps5), settings.console?.name ?: stringResource(R.string.profile_not_paired), onClick = onPairing) },
+            { RowItem(stringResource(R.string.platform_setting), stringResource(if (settings.xbox) R.string.platform_xbox else R.string.platform_ps), onClick = onPlatform) {
+                if (settings.xbox) Pill(stringResource(R.string.beta)) } },
+            if (settings.xbox) ({ RowItem("Xbox", settings.xboxConsole?.name ?: stringResource(R.string.profile_not_paired), onClick = onPairing) })
+            else ({ RowItem(stringResource(R.string.settings_ps5), settings.console?.name ?: stringResource(R.string.profile_not_paired), onClick = onPairing) }),
             { RowItem(stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, onClick = { open(context, context.getString(R.string.url_source)) }) },
         ))
+        XboxSignOutRow()
         // TV uygulamasını bu telefondan kurmak ve güncellemek (bilgisayardaki gibi; Samsung, LG, Android TV).
         Tile(Modifier.fillMaxWidth()) {
             TileLabel(stringResource(R.string.settings_tv_app))
@@ -280,3 +285,17 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
     }
 }
 
+
+/** Xbox seçiliyken ve giriş yapılmışken Microsoft hesabından çıkış (jeton Keystore'dan silinir). */
+@Composable
+private fun XboxSignOutRow() {
+    val settings = Services.settings
+    var signedIn by remember { mutableStateOf(Services.xboxAuth.signedIn) }
+    if (!settings.xbox || !signedIn) return
+    Tile(Modifier.fillMaxWidth()) {
+        RowItem(stringResource(R.string.xbox_sign_out), onClick = {
+            Services.xboxAuth.signOut()
+            signedIn = false
+        })
+    }
+}

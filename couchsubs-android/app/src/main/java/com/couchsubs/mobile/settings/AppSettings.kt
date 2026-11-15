@@ -22,6 +22,9 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
+/** Okunan konsol: PlayStation (varsayılan, Remote Play) ya da Xbox (Beta, ev yayını). */
+enum class ConsolePlatform { PLAYSTATION, XBOX }
+
 /** Altyazının gösterileceği yer. */
 enum class SubtitleTarget { TV, PHONE }
 
@@ -244,6 +247,24 @@ class AppSettings(context: Context) {
                 .put("registKey", Base64.encodeToString(it.registKey, Base64.NO_WRAP))
                 .put("morning", Base64.encodeToString(it.morning, Base64.NO_WRAP)).toString()
         })
+
+    /** Konsol türü; seçilmediyse null (kurulumda sorulur). Eski kurulumlar PlayStation sayılır. */
+    var platformChoice: ConsolePlatform?
+        get() = prefs.getString("platform", null)?.let { name -> ConsolePlatform.entries.firstOrNull { it.name == name } }
+        set(value) = prefs.edit().putString("platform", value?.name).apply()
+
+    val platform: ConsolePlatform get() = platformChoice ?: ConsolePlatform.PLAYSTATION
+    val xbox: Boolean get() = platform == ConsolePlatform.XBOX
+
+    /** Microsoft kullanıcı jetonu (Windows'taki userToken JSON'u); Keystore ile şifreli. */
+    var xboxUserToken: String?
+        get() = secrets.get("xboxUserToken")
+        set(value) = secrets.put("xboxUserToken", value)
+
+    /** Seçilen Xbox (kimlik, ad). */
+    var xboxConsole: com.couchsubs.mobile.xbox.XboxConsole?
+        get() = com.couchsubs.mobile.xbox.XboxConsole.fromJson(prefs.getString("xboxConsole", null))
+        set(value) = prefs.edit().putString("xboxConsole", value?.toJson()).apply()
 
     /** İkinci hesabın PS5 giriş şifresi (4 hane, isteğe bağlı); PS5 isterse oturum açılırken gönderilir. */
     var loginPasscode: String?

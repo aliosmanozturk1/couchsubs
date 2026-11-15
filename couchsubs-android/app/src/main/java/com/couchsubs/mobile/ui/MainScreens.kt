@@ -111,7 +111,8 @@ fun MainScreen(
     val settings = Services.settings
     val bounds = remember { mutableStateMapOf<TourStep, Rect>() }
     var tour by remember { mutableStateOf(if (settings.tourShown) null else TourStep.START) }
-    val paired = settings.console != null
+    val xbox = settings.xbox
+    val paired = if (xbox) settings.xboxConsole != null && Services.xboxAuth.signedIn else settings.console != null
     fun mark(step: TourStep) = Modifier.onGloballyPositioned { bounds[step] = it.boundsInRoot() }
     val topBar: @Composable () -> Unit = {
         TopBar {
@@ -137,7 +138,9 @@ fun MainScreen(
             status.error?.let { NoteTile(it) }
             TvAppUpdateCard(onTvUpdate)
             TwoColumns(
-                { StatusTile(Icons.Filled.PlayArrow, "PS5", settings.console?.name ?: stringResource(R.string.profile_not_paired), it,
+                { if (xbox) StatusTile(Icons.Filled.PlayArrow, "Xbox", settings.xboxConsole?.name ?: stringResource(R.string.profile_not_paired), it,
+                    corner = { Pill(stringResource(R.string.beta)) }, onClick = onPairing)
+                  else StatusTile(Icons.Filled.PlayArrow, "PS5", settings.console?.name ?: stringResource(R.string.profile_not_paired), it,
                     corner = { if (settings.console != null) StatusLabel(stringResource(R.string.main_paired)) }, onClick = onPairing) },
                 { StatusTile(if (settings.target == SubtitleTarget.TV) Icons.Filled.Home else Icons.Filled.Phone, stringResource(R.string.main_target),
                     if (settings.target == SubtitleTarget.TV) settings.tvName ?: stringResource(R.string.main_target_tv) else stringResource(R.string.main_target_phone),

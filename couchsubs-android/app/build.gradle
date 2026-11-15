@@ -287,6 +287,9 @@ dependencies {
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.79'
     // Telefondan LG kurulumu: geliştirici modunun SSH'si (9922). mwiede/jsch, BSD.
     implementation 'com.github.mwiede:jsch:0.2.25'
+    // Xbox ev yayını (Beta): Google libwebrtc'nin Android derlemesi (webrtc-sdk, BSD-3). Görüntü donanım çözücüsüyle
+    // alınır, kareler OCR'a Y düzlemi olarak gider (docs/superpowers/specs/2026-11-16-telefon-xbox-design.md).
+    implementation 'io.github.webrtc-sdk:android:144.7559.15'
 
     testImplementation 'junit:junit:4.13.2'
     // android.jar'daki org.json yalnız iskelettir; JVM testleri gerçeğini kullanır.
