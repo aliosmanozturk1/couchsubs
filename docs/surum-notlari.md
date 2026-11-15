@@ -6,11 +6,19 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 **Bu sürümde yeni**
 
-- **Oynanan oyun kendiliğinden tanınıyor:** CouchSubs okuduğu altyazıları hazır paketlerle karşılaştırıp hangi oyunu oynadığınızı kendisi buluyor. Tanıyamazsa birkaç dakika sonra çeviri ekranında "Hangi oyunu oynuyorsunuz?" diye soruyor: arayıp seçebilir, "Listede yok" ya da "Sorma" diyebilirsiniz. Ekranda "Oynanan oyun: … · Değiştir" görünür, Ayarlar'dan yeniden sordurabilirsiniz. Böylece ortak havuza giden satırlar oyunun adıyla gidiyor ve topluluk paketleri oyun oyun oluşuyor (Mac, Windows, iPhone, Android).
-- **Paketler kendiliğinden güncelleniyor:** Oyun paketleri sunucudan uygulama açılınca, günde bir kez ve PS5'te yeni bir oyun tanınınca hemen denetleniyor; inen paket çeviriyi durdurmadan devreye giriyor. Topluluğun ortak havuzundan oluşan otomatik paketler de böyle geliyor, uygulama güncellemesi beklemek gerekmiyor.
-- **Görüntüyü PS Remote Play penceresinden okuma (Mac ve Windows):** Ayarlar › Görüntü kaynağı'nda "Bu bilgisayardaki PS Remote Play penceresi" seçilirse CouchSubs PS5'e bağlanmadan altyazıyı aynı bilgisayarda açık olan PS Remote Play (Sony) ya da chiaki-ng penceresinden okuyor. İkinci PSN hesabı ve PS5 eşleştirmesi gerekmiyor; kurulumda da "İkinci hesap yok mu? Remote Play penceresinden oku" seçeneği var. Katkı: [lones8888](https://github.com/lones8888) (#99).
-- **LG'de geliştirici modu parola alanı her zaman görünüyor (#94):** TV'de Key Server ve parola göründüğü halde kart bazen "TV uygulaması kurulu değil" adımında kalıyor, parola yazılacak alan çıkmıyordu. Artık parola alanı ve "TV'ye kur" düğmesi her zaman görünüyor (Mac ve Windows).
+- **Windows Güvenlik Duvarı izni ve Ayarlar kartı (Windows, #128):** TV ve PS5'in bilgisayara ulaşması için gereken Güvenlik Duvarı izninin verilip verilmediği artık Ayarlar'daki yeni kartta görünüyor; izin yoksa "CouchSubs'a Windows Güvenlik Duvarı'nda izin ver" düğmesiyle verilebiliyor. Ağ "Ortak" olarak ayarlıysa (Windows TV'nin bilgisayarı bulmasını engeller) uyarı çıkıyor, TV adımında da ipucu var. Uygulama kaldırılınca eklenen kural da siliniyor.
+- **2016 Samsung TV'ler (Tizen 2.4, deneysel, #71):** TV uygulaması artık 2016 model Samsung TV'lere de kurulabiliyor. Şimdilik kurulum Android telefon ve iPhone uygulamasından yapılıyor; bilgisayardan kurulum sıradaki sürümde gelecek.
+- **Kurulum sihirbazında Remote Play yardımı (Mac ve Windows, #107):** Kurulumda "İkinci hesap yok mu? Remote Play penceresinden oku" kartı, PS Remote Play indirme düğmeleri ve "Hesabı bağla" geldi; ikinci PSN hesabı olmadan kurulum bitirilebiliyor. Katkı: [lones8888](https://github.com/lones8888).
+- **Çeviri ve okuma iyileştirmeleri:** İzlenen alanlarda (görev, bildirim, telefon yazıları) bir çeviri başarısız olursa artık yeniden deneniyor, eski çeviri ekranda takılı kalmıyor (#112). "No!" ile "Not now!" gibi farklı kısa satırlar artık aynı sayılmıyor, önceki satır yerinde kalıyor (#105; TV uygulamasında da). Harfleri bozuk okunan satırlar ("Gtt to the gate") doğrusunun önüne geçmiyor (#120). Farklı yapay zekâ modellerinin çevirileri birbirine karışmıyor (#110). Çeviri başlarken boş bir ısınma isteği gönderilmiyor (#123).
+- **Paketler daha sağlam iniyor:** İlk indirme ya da diske yazma başarısız olursa paket bir sonraki denetimde yeniden indiriliyor (#114, #118); sunucudan eksik ya da bozuk liste gelirse indirdiğiniz paketler silinmiyor (#106).
+- **LG oturum yenileme TV başına (#124):** Geliştirici modu süresi her LG TV için ayrı ayrı uzatılıyor; birden çok LG TV varsa birinin yenilenmesi diğerininkini ertelemiyor.
+- **Görüntü gelmeyince sonsuz "Bağlantı koptu, yeniden bağlanılıyor" döngüsü giderildi (Mac, iPhone, Android, #119).**
+- **TV uygulaması 0.9.20:** kısa satır düzeltmesi (LG) ve 2016 Samsung TV desteği. Masaüstü uygulaması TV'deki eski sürümü görüp güncellemeyi öneriyor.
 - **Android telefon:** [Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile) üzerinden güncelleniyor.
+
+Eren Batı ([erenbati](https://github.com/erenbati)) bu sürümde #105, #106, #110, #112, #114, #118, #120, #123 ve #124 ile katkıda bulundu; teşekkürler.
+
+**beta.42'de gelenler:** Oynanan oyunun kendiliğinden tanınması, paketlerin sunucudan kendiliğinden güncellenmesi, görüntüyü bu bilgisayardaki PS Remote Play penceresinden okuma (katkı: [lones8888](https://github.com/lones8888), #99), LG'de geliştirici modu parola alanının her zaman görünmesi (#94).
 
 **beta.41'de gelenler:** TV uygulamasının her güncellemede aynı imzayla gelmesi (TV uygulaması 0.9.19), ek alan çevirilerinin TV'de de görünmesi, Android TV'de Play sayfasından kurulum, telefon uygulamalarından TV uygulamasını kurma ve güncelleme (Samsung, LG, Android TV).
 
