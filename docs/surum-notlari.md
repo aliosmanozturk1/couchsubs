@@ -7,6 +7,7 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 **Bu sürümde yeni**
 
 - **Xbox desteği (Beta, Windows, #139):** Kurulumun başında konsol seçiliyor (PS5 ya da Xbox). Xbox seçilince Microsoft hesabı eşleştiriliyor ve altyazı Xbox görüntü aktarımından okunuyor. Henüz gerçek bir Xbox'ta uzun süre denenmedi; sorun görürseniz bildirin. Xbox ekranlarının metinleri de Türkçe ve İngilizce (#142). Şimdilik yalnız Windows'ta.
+- **Xbox (Beta, deneysel) telefonlarda da (Android, iPhone, #147):** Xbox ev yayınından altyazı çevirisi; gerçek cihaz geri bildirimiyle iyileştirilecek. Seçim isteğe bağlı, varsayılan PlayStation.
 - **Tamamen opak arka plan ve tam genişlik bant (#131):** Altyazı arka planı %100'e çekilince artık tamamen opak (TV dahil). Yeni **Arka plan alanı** seçeneği: Yazı kadar (varsayılan) ya da Tam genişlik bant (TV, Mac, Windows, iPhone, Android).
 - **Topluluk çeviri paketlerini içe aktarma (Mac ve Windows, #132):** Ayarlar › Çeviri › Oyun paketleri'nden JSON, TXT ya da iki dilli SRT dosyası içe aktarılabiliyor. Önce önizleme gösteriliyor (kullanılabilir, hatalı, yinelenen ve çakışan satırlar), oyun adı düzeltilebiliyor; içe aktarılan paket yalnız bilgisayarınızda kalıyor. Telefonlarda da var (#135).
 - **PS5 görüntü bildiriminde çökme giderildi (Mac ve Windows):** PS5 "görüntü yayınlanamaz" iletisi gönderdiğinde (ör. oyun içi korumalı sahneler) uygulama kapanabiliyordu; artık durum günlüğe yazılıyor ve akış sürüyor. Android telefonda aynı düzeltme Play'de (#146).
