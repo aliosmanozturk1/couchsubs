@@ -181,6 +181,7 @@ struct SettingsScreen: View {
                 }
             }
             AreaTile()
+            ExtraAreasTile()
             LoginPasscodeTile()
             Tile(spacing: 0) {
                 NavigationLink(value: Route.packs) {

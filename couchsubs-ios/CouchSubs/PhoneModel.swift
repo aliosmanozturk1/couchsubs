@@ -90,6 +90,14 @@ final class PhoneModel: ObservableObject {
     }
     /// Telefon ekranında şu an görünen satırlar (TV uygulamasıyla aynı yığın kuralları).
     @Published private(set) var phoneLines: [SubtitleStack.Line] = []
+    /// Telefon ekranındaki ek alan çevirileri (görev, telefon, bildirim); TV'deki gibi kendi yerlerinde küçük kutular.
+    @Published private(set) var phoneRegions: [PhoneRegion] = []
+
+    struct PhoneRegion: Identifiable, Equatable {
+        let id: String
+        let text: String
+        let box: TextBox?
+    }
     @Published private(set) var installedPacks: [GamePackLibrary.Info] = []
 
     /// Çeviri sürerken ekran kararmasın (iOS uygulamayı askıya alınca bağlantı da durur). Uygulama UIKit'e bağlar.
@@ -107,6 +115,8 @@ final class PhoneModel: ObservableObject {
     private var session: StreamControlling?
     private var keeper: KeeperControlling?
     private var pipeline: SubtitlePipeline?
+    /// Ek alanları (görev, telefon, bildirim) okuyup çeviren; çeviri sürerken ve ek alan varken var (Mac ile aynı).
+    private var regionWatcher: RegionWatcher?
     /// Hatta aynı anda tek kare girer. Durdurma ve yeni hat kapıyı sıfırlar; takılan okuma hattı yeniden kurdurur (Mac ile aynı).
     private var frameGate = FrameGate()
     private var savedKeys: Set<TranslationEngine> = []
@@ -323,6 +333,8 @@ final class PhoneModel: ObservableObject {
         keeper = nil
         pipeline?.reset()
         pipeline = nil
+        regionWatcher?.reset()
+        regionWatcher = nil
         // Yeni "Başlat" eski oturumdan kalan (belki takılmış) okumayı beklemeden temiz başlar.
         frameGate.reset()
         isRunning = false
@@ -411,6 +423,7 @@ final class PhoneModel: ObservableObject {
         updateGameProbe(connected: state == .streaming)
         if case .disconnected = state {
             pipeline?.reset()
+            regionWatcher?.reset()
             server.clear()
         }
     }
@@ -437,15 +450,30 @@ final class PhoneModel: ObservableObject {
             }
             self?.translatorStatus = status
         }
+        // Ek alan okuyucusu yeni dil ve motorla, ilk ek alan karesinde yeniden kurulur.
+        regionWatcher?.reset()
+        regionWatcher = nil
         connectPacks(to: pipeline)
         onlineIssue = nil
         pipeline.warmUp()
         self.pipeline = pipeline
     }
 
+    /// Ek alanlar aynı dil, motor ve paketlerle okunur; ayrı bir okuyucu ve çevirmenle (altyazının sırasını beklemez).
+    private func makeRegionWatcher(packLookup: ((String) -> PackMatch?)?) -> RegionWatcher {
+        let watcher = RegionWatcher(reader: VisionReader(language: settings.sourceLanguage), translator: makeTranslator(), server: server)
+        watcher.packLookup = packLookup
+        watcher.onLog = { SubtitleLog.write($0) }
+        return watcher
+    }
+
     private func handle(_ frame: CGImage, capturedAt: Int) async {
         framePreview.image = frame
-        guard pipeline != nil else { return }
+        guard let current = pipeline else { return }
+        // Ek alanlar ayrı ve seyrek okunur (saniyede bir); altyazı okumasını beklemez, onu bekletmez.
+        let areas = settings.activeExtraAreas
+        if regionWatcher == nil, !areas.isEmpty { regionWatcher = makeRegionWatcher(packLookup: current.packLookup) }
+        regionWatcher?.offer(frame, areas: areas)
         // Önceki kare hâlâ işleniyorsa bu kare atlanır. Tek okuma bitmezse çeviri tamamen duruyor, "Durdur / Başlat"
         // düzeltmiyordu (Mac'te görüldü, 2026-11-13); takılan okuma hattı yeniden kurdurur.
         var entry = frameGate.enter(now: SubtitleStabilizer.uptimeMs())
@@ -512,6 +540,8 @@ final class PhoneModel: ObservableObject {
         let pool = self.pool
         let active = packsActive
         pipeline.packLookup = active ? { packs.match($0) } : nil
+        // Ek alanlar da pakette aranır ama havuza önerilmez (arayüz yazıları havuzu kirletmesin).
+        regionWatcher?.packLookup = pipeline.packLookup
         guard settings.sourceLanguage == "en" else {
             pipeline.onPackMiss = nil
             return
@@ -630,8 +660,14 @@ final class PhoneModel: ObservableObject {
             stack.show(text, durationMs: durationMs, paragraphs: true, now: now)
         case .screenClear:
             stack.hide()
-        // Telefonda ek alan yok (çeviri TV'de kendi yerinde gösterilir).
-        case .region, .regionClear:
+        // Ek alanın çevirisi telefon ekranında da kendi yerinde küçük kutuda görünür (boş metin kutuyu kaldırır).
+        case .region(let id, let text, let box):
+            var regions = phoneRegions.filter { $0.id != id }
+            if !text.isEmpty { regions.append(PhoneRegion(id: id, text: text, box: box)) }
+            if regions != phoneRegions { phoneRegions = regions }
+            return
+        case .regionClear:
+            if !phoneRegions.isEmpty { phoneRegions = [] }
             return
         }
         phoneRefresh()
@@ -657,6 +693,7 @@ final class PhoneModel: ObservableObject {
         stackTimer?.cancel()
         stackTimer = nil
         if !phoneLines.isEmpty { phoneLines = [] }
+        if !phoneRegions.isEmpty { phoneRegions = [] }
     }
 
     /// Deneme altyazısı: TV'de ya da telefon ekranında yazının nasıl göründüğü.

@@ -296,6 +296,21 @@ struct SubtitleScreen: View {
             }
             .padding(.horizontal, Mobile.Space.screen)
             .padding(.bottom, Mobile.Space.screen * 2)
+            // Ek alanların (görev, telefon, bildirim) çevirisi oyundaki yerinde küçük kutuda (TV'deki gibi).
+            GeometryReader { proxy in
+                ForEach(model.phoneRegions) { region in
+                    let box = region.box ?? TextBox(left: 0.6, top: 0.05, right: 0.95, bottom: 0.2)
+                    Text(verbatim: region.text)
+                        .font(Mobile.TypeScale.caption)
+                        .foregroundStyle(Mobile.Palette.text)
+                        .padding(6)
+                        .background(Color.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 6))
+                        .frame(maxWidth: max(120, proxy.size.width * (box.right - box.left)), alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .position(x: proxy.size.width * (box.left + box.right) / 2, y: proxy.size.height * box.top + 24)
+                }
+            }
+            .allowsHitTesting(false)
             Text("The screen stays on · brightness is lowered automatically")
                 .font(Mobile.TypeScale.caption)
                 .foregroundStyle(Mobile.Palette.tertiary)
