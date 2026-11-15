@@ -9,8 +9,13 @@
 #include <android/native_window_jni.h>
 
 #include <string.h>
+#include <unistd.h>
 
 #define INPUT_BUFFER_TIMEOUT_MS 10
+/* Bu kadar art arda hatadan sonra donanım çözücü bırakılır, yazılım çözücüyle yeniden kurulur. */
+#define CODEC_ERROR_LIMIT 30
+
+static const char *const SOFTWARE_DECODERS[] = { "c2.android.avc.decoder", "OMX.google.h264.decoder", NULL };
 
 static void *output_thread_func(void *user);
 
@@ -59,6 +64,58 @@ void couchsubs_video_decoder_fini(CouchSubsVideoDecoder *decoder)
 	chiaki_mutex_fini(&decoder->codec_mutex);
 }
 
+/* Çözücüyü kurar ve çıkış iş parçacığını başlatır (kilit tutulurken, pencere hazırken). software: yazılım çözücü.
+ * Bazı üreticilerin (ör. Honor/MagicOS) donanım çözücüsü kurulumda ya da çözerken hata verebilir; o zaman yazılım
+ * çözücü denenir. Başarısızsa codec NULL kalır. */
+static bool open_codec(CouchSubsVideoDecoder *decoder, bool software)
+{
+	const char *mime = "video/avc";
+	for(int i = 0; software ? SOFTWARE_DECODERS[i] != NULL : i == 0; i++)
+	{
+		const char *name = software ? SOFTWARE_DECODERS[i] : "(default)";
+		decoder->codec = software ? AMediaCodec_createCodecByName(name) : AMediaCodec_createDecoderByType(mime);
+		if(!decoder->codec)
+		{
+			CHIAKI_LOGE(decoder->log, "Video decoder: no AMediaCodec %s for %s", name, mime);
+			continue;
+		}
+		AMediaFormat *format = AMediaFormat_new();
+		AMediaFormat_setString(format, AMEDIAFORMAT_KEY_MIME, mime);
+		AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_WIDTH, decoder->target_width);
+		AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_HEIGHT, decoder->target_height);
+		/* Android 11+: düşük gecikmeli çözme (desteklemeyen cihaz yok sayar). */
+		AMediaFormat_setInt32(format, "low-latency", 1);
+		media_status_t r = AMediaCodec_configure(decoder->codec, format, decoder->window, NULL, 0);
+		AMediaFormat_delete(format);
+		if(r != AMEDIA_OK)
+		{
+			CHIAKI_LOGE(decoder->log, "AMediaCodec_configure() failed (%s): %d", name, (int)r);
+			goto next;
+		}
+		r = AMediaCodec_start(decoder->codec);
+		if(r != AMEDIA_OK)
+		{
+			CHIAKI_LOGE(decoder->log, "AMediaCodec_start() failed (%s): %d", name, (int)r);
+			goto next;
+		}
+		decoder->shutdown_output = false;
+		decoder->codec_errors = 0;
+		if(chiaki_thread_create(&decoder->output_thread, output_thread_func, decoder) != CHIAKI_ERR_SUCCESS)
+		{
+			CHIAKI_LOGE(decoder->log, "Video decoder: output thread failed");
+			AMediaCodec_stop(decoder->codec);
+			goto next;
+		}
+		decoder->software = software;
+		CHIAKI_LOGI(decoder->log, "Video decoder: %s started", software ? name : "hardware decoder");
+		return true;
+next:
+		AMediaCodec_delete(decoder->codec);
+		decoder->codec = NULL;
+	}
+	return false;
+}
+
 bool couchsubs_video_decoder_start(CouchSubsVideoDecoder *decoder, JNIEnv *env, jobject surface)
 {
 	if(!surface)
@@ -69,51 +126,41 @@ bool couchsubs_video_decoder_start(CouchSubsVideoDecoder *decoder, JNIEnv *env, 
 	if(!decoder->window)
 		goto beach;
 
-	const char *mime = "video/avc";
-	decoder->codec = AMediaCodec_createDecoderByType(mime);
-	if(!decoder->codec)
+	ok = open_codec(decoder, false);
+	if(!ok)
 	{
-		CHIAKI_LOGE(decoder->log, "Video decoder: no AMediaCodec for %s", mime);
-		goto error_window;
+		CHIAKI_LOGE(decoder->log, "Video decoder: hardware decoder failed, trying software decoder");
+		ok = open_codec(decoder, true);
+	}
+	if(!ok)
+	{
+		ANativeWindow_release(decoder->window);
+		decoder->window = NULL;
 	}
 
-	AMediaFormat *format = AMediaFormat_new();
-	AMediaFormat_setString(format, AMEDIAFORMAT_KEY_MIME, mime);
-	AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_WIDTH, decoder->target_width);
-	AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_HEIGHT, decoder->target_height);
-	/* Android 11+: düşük gecikmeli çözme (desteklemeyen cihaz yok sayar). */
-	AMediaFormat_setInt32(format, "low-latency", 1);
-	media_status_t r = AMediaCodec_configure(decoder->codec, format, decoder->window, NULL, 0);
-	AMediaFormat_delete(format);
-	if(r != AMEDIA_OK)
-	{
-		CHIAKI_LOGE(decoder->log, "AMediaCodec_configure() failed: %d", (int)r);
-		goto error_codec;
-	}
-	r = AMediaCodec_start(decoder->codec);
-	if(r != AMEDIA_OK)
-	{
-		CHIAKI_LOGE(decoder->log, "AMediaCodec_start() failed: %d", (int)r);
-		goto error_codec;
-	}
-	if(chiaki_thread_create(&decoder->output_thread, output_thread_func, decoder) != CHIAKI_ERR_SUCCESS)
-	{
-		CHIAKI_LOGE(decoder->log, "Video decoder: output thread failed");
-		AMediaCodec_stop(decoder->codec);
-		goto error_codec;
-	}
-	ok = true;
-	goto beach;
-
-error_codec:
-	AMediaCodec_delete(decoder->codec);
-	decoder->codec = NULL;
-error_window:
-	ANativeWindow_release(decoder->window);
-	decoder->window = NULL;
 beach:
 	chiaki_mutex_unlock(&decoder->codec_mutex);
 	return ok;
+}
+
+/* Donanım çözücü art arda hata verdiyse yazılım çözücüyle yeniden kurar. Kilit tutulurken çağrılır, dönüşte de tutulur. */
+static void fall_back_to_software(CouchSubsVideoDecoder *decoder)
+{
+	CHIAKI_LOGE(decoder->log, "Video decoder: %u errors in a row, switching to software decoder", (unsigned)decoder->codec_errors);
+	decoder->shutdown_output = true;
+	AMediaCodec_stop(decoder->codec);
+	chiaki_mutex_unlock(&decoder->codec_mutex);
+	chiaki_thread_join(&decoder->output_thread, NULL);
+	chiaki_mutex_lock(&decoder->codec_mutex);
+	AMediaCodec_delete(decoder->codec);
+	decoder->codec = NULL;
+	if(!open_codec(decoder, true))
+	{
+		/* Görüntü gelmez; PictureWatchdog oturumu yeniden kurar. Süreç çökmez. */
+		CHIAKI_LOGE(decoder->log, "Video decoder: software decoder could not be opened");
+		decoder->software = true;
+		decoder->shutdown_output = false;
+	}
 }
 
 bool couchsubs_video_decoder_video_sample(uint8_t *buf, size_t buf_size, int32_t frames_lost, bool frame_recovered, void *user)
@@ -123,6 +170,8 @@ bool couchsubs_video_decoder_video_sample(uint8_t *buf, size_t buf_size, int32_t
 	bool result = true;
 	CouchSubsVideoDecoder *decoder = user;
 	chiaki_mutex_lock(&decoder->codec_mutex);
+	if(!decoder->software && decoder->codec && decoder->codec_errors >= CODEC_ERROR_LIMIT)
+		fall_back_to_software(decoder);
 	if(!decoder->codec || decoder->shutdown_output)
 		goto beach;
 
@@ -131,6 +180,9 @@ bool couchsubs_video_decoder_video_sample(uint8_t *buf, size_t buf_size, int32_t
 		ssize_t index = AMediaCodec_dequeueInputBuffer(decoder->codec, INPUT_BUFFER_TIMEOUT_MS * 1000);
 		if(index < 0)
 		{
+			/* TRY_AGAIN_LATER olağan; başka bir değer çözücü hatasıdır. */
+			if(index != AMEDIACODEC_INFO_TRY_AGAIN_LATER)
+				decoder->codec_errors++;
 			/* libchiaki bozuk kare sayıp yeni anahtar kare ister. */
 			result = false;
 			goto beach;
@@ -150,7 +202,12 @@ bool couchsubs_video_decoder_video_sample(uint8_t *buf, size_t buf_size, int32_t
 		/* Zaman damgası yalnız birer artar: en gerçek zamanlı davranış. */
 		media_status_t r = AMediaCodec_queueInputBuffer(decoder->codec, (size_t)index, 0, size, decoder->timestamp_cur++, 0);
 		if(r != AMEDIA_OK)
+		{
 			CHIAKI_LOGE(decoder->log, "AMediaCodec_queueInputBuffer() failed: %d", (int)r);
+			decoder->codec_errors++;
+			result = false;
+			goto beach;
+		}
 		buf += size;
 		buf_size -= size;
 	}
@@ -175,14 +232,27 @@ static void *output_thread_func(void *user)
 				decoder->frames_out++;
 			if(info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM)
 				break;
+			if(info.size != 0 && decoder->codec_errors)
+			{
+				chiaki_mutex_lock(&decoder->codec_mutex);
+				decoder->codec_errors = 0;
+				chiaki_mutex_unlock(&decoder->codec_mutex);
+			}
 		}
 		else
 		{
+			/* TRY_AGAIN_LATER (-1), biçim (-2) ve arabellek (-3) değişimi olağan; daha küçükse çözücü hatası.
+			 * Hata durumundaki çözücü hemen döner: dönerek işlemciyi yakmasın diye kısa beklenir. */
+			bool failed = status < AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED;
 			chiaki_mutex_lock(&decoder->codec_mutex);
 			bool shutdown = decoder->shutdown_output;
+			if(failed && !shutdown)
+				decoder->codec_errors++;
 			chiaki_mutex_unlock(&decoder->codec_mutex);
 			if(shutdown)
 				break;
+			if(failed)
+				usleep(10000);
 		}
 	}
 	return NULL;

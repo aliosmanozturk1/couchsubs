@@ -29,6 +29,10 @@ typedef struct couchsubs_video_decoder_t
 	int32_t target_height;
 	/* Çözülüp yüzeye verilen kare sayısı (tanı için). */
 	uint64_t frames_out;
+	/* Art arda çözücü hatası; eşiği geçerse yazılım çözücüye geçilir. */
+	uint32_t codec_errors;
+	/* Yazılım çözücü (c2.android / OMX.google) kullanılıyor. */
+	bool software;
 } CouchSubsVideoDecoder;
 
 ChiakiErrorCode couchsubs_video_decoder_init(CouchSubsVideoDecoder *decoder, ChiakiLog *log, int32_t width, int32_t height);
