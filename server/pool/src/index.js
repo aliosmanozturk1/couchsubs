@@ -54,6 +54,23 @@ function isAdmin(req, env) {
   return env.ADMIN_TOKEN && h === `Bearer ${env.ADMIN_TOKEN}`;
 }
 
+/** Gönderinin özeti: uygulama, platform, satır sayısı, oyun alanı taşıyan ve geçerli olan satırlar, kimlik biçimi
+ *  ("PPSA99999" gibi; rakamlar 9 olur). Metin ve kurulum kimliği yazılmaz. */
+export function submitSummary(body, lines) {
+  const ids = lines.map((l) => l?.titleId).filter((v) => v != null);
+  const sample = ids.length ? String(ids[0]).slice(0, 16).replace(/\d/g, "9") : null;
+  return {
+    pool: "lines",
+    app: String(body?.app ?? "").slice(0, 40),
+    platform: String(body?.platform ?? "").slice(0, 20),
+    lines: lines.length,
+    titleId: ids.length,
+    valid: lines.filter((l) => titleId(l?.titleId)).length,
+    game: lines.filter((l) => typeof l?.game === "string" && l.game.trim()).length,
+    sample,
+  };
+}
+
 async function submit(req, env) {
   let body;
   try { body = await req.json(); } catch { return json({ error: "json" }, 400); }
@@ -79,6 +96,8 @@ async function submit(req, env) {
     // Oyun bilgisi isteğe bağlıdır (eski sürümler göndermez); geçersizse yok sayılır, satır yine alınır.
     if (!fresh.has(k)) fresh.set(k, { text, title: titleId(l?.titleId), game: gameName(l?.game) });
   }
+  // Günlükte (wrangler tail) yalnız sayılar ve oyun kimliğinin biçimi: oyun bilgisinin gelip gelmediği görülsün.
+  console.log(JSON.stringify(submitSummary(body, lines)));
 
   // D1'in günlük yazma kotası için satır başına en çok iki yazma: önce görülme kaydı; bu kurulum satırı zaten
   // bildirdiyse (changes 0) satıra hiç dokunulmaz. Yeni görülmede sayaç sayılarak değil bir artırılarak güncellenir.

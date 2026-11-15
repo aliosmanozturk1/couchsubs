@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { accepts } from "../src/filter.js";
 import worker, { gameName, titleId } from "../src/index.js";
+import { GENERAL, runAutopack } from "../src/autopack.js";
 
 test("Türkçe arayüz, bozulmuş Türkçe, sistem yazısı ve yarım okumalar alınmaz", () => {
   for (const line of [
@@ -165,4 +166,27 @@ test("dışa aktarma oyuna göre süzülür (yalnız yönetici)", async () => {
   // Süzgeçsiz istek eski sütunlarla (geçişten önce de çalışır).
   await get("");
   assert.doesNotMatch(DB.last.sql, /title_id|game/);
+});
+
+test("oyunu bilinmeyen satırlar ortak pakete sıralanır (oyunu bilinenlerden sonra)", async () => {
+  const stored = new Map();
+  const env = {
+    AI: {},
+    PACKS: {
+      get: async (name) => (stored.has(name) ? { text: async () => stored.get(name) } : null),
+      put: async (name, value) => { stored.set(name, value); },
+    },
+    DB: {
+      prepare: (sql) => ({
+        bind: () => ({
+          all: async () => ({ results: sql.includes("GROUP BY title_id") ? [{ title_id: "PPSA01234", game: "X", lines: 400 }] : [] }),
+          first: async () => (sql.includes("title_id IS NULL") ? { lines: 350 } : null),
+        }),
+      }),
+    },
+  };
+  const plan = await runAutopack(env, new Date("2026-11-20T03:07:00Z"));
+  assert.equal(plan.queued, 2);
+  const state = JSON.parse(stored.get("auto/state.json"));
+  assert.deepEqual(state.queue.map((t) => t.titleId), ["PPSA01234", GENERAL]);
 });

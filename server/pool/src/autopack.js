@@ -27,6 +27,11 @@ export const NIGHTLY_LIMIT = 3000;
 export const BATCH = 40;
 export const MODEL = "@cf/google/gemma-4-26b-a4b-it";
 export const SOURCE = `CouchSubs havuzu (en az ${MIN_INSTALLS} oyuncu) + Workers AI (${MODEL})`;
+/** Oyunu bilinmeyen satırların ortak paketi (title_id NULL). PS5'in keşif yanıtı çalışan oyunu bildirmediği için
+ *  satırların çoğu oyunsuz gelir; uygulamalar sunucudaki her paketi indirdiğinden bu paket de herkese gider. Oyunu
+ *  bilinen paketlerden sonra hazırlanır. */
+export const GENERAL = "GENEL";
+export const GENERAL_TITLE = "Ortak havuz (çeşitli oyunlar)";
 
 const STATE = "auto/state.json";
 const KNOWN = "auto/known-keys.bin";
@@ -172,7 +177,7 @@ async function readIndex(env) {
 
 async function buildPack(env, job, cache, known) {
   const id = packId(job.titleId);
-  const title = job.game || job.titleId;
+  const title = job.titleId === GENERAL ? GENERAL_TITLE : job.game || job.titleId;
   const { body, count } = packBody(id, title, cache, known);
   const packs = await readIndex(env);
   const previous = packs.find((p) => p.id === id);
@@ -207,6 +212,9 @@ export async function runAutopack(env, now = new Date()) {
     ).bind(MIN_INSTALLS).all();
     const packs = await readIndex(env);
     const titles = results.map((r) => ({ titleId: r.title_id, game: r.game, lines: r.lines }));
+    const general = await env.DB.prepare("SELECT COUNT(*) AS lines FROM lines WHERE title_id IS NULL AND installs>=?")
+      .bind(MIN_INSTALLS).first();
+    titles.push({ titleId: GENERAL, game: null, lines: general?.lines ?? 0 });
     // Ham satır sayısı temizlikten önce: eşiğin altındaki oyun beklemeye kalır (paketi zaten varsa güncellenir).
     const queue = titles.filter((t) => t.lines >= MIN_LINES || packs.some((p) => p.id === packId(t.titleId)));
     state = { night, titles, queue, translated: 0, done: [] };
@@ -220,9 +228,13 @@ export async function runAutopack(env, now = new Date()) {
   if (!known) return { phase: "waiting", reason: "auto/known-keys.bin yok" };
   const cache = (await getJson(env, cacheFile(job.titleId))) ?? { lines: {}, skip: {}, fail: {} };
   cache.fail ??= {};
-  const { results: rows } = await env.DB.prepare(
-    "SELECT key, text FROM lines WHERE title_id=? AND installs>=? ORDER BY installs DESC LIMIT 5000"
-  ).bind(job.titleId, MIN_INSTALLS).all();
+  const { results: rows } = await (job.titleId === GENERAL
+    ? env.DB.prepare(
+      "SELECT key, text FROM lines WHERE title_id IS NULL AND installs>=? ORDER BY installs DESC, last_seen DESC LIMIT 5000"
+    ).bind(MIN_INSTALLS)
+    : env.DB.prepare(
+      "SELECT key, text FROM lines WHERE title_id=? AND installs>=? ORDER BY installs DESC LIMIT 5000"
+    ).bind(job.titleId, MIN_INSTALLS)).all();
 
   const budget = Math.min(LINES_PER_RUN, NIGHTLY_LIMIT - state.translated);
   const todo = [];
