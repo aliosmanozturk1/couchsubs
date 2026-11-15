@@ -493,6 +493,16 @@ static void cs_session_event(ChiakiEvent *event, void *user)
 		(*global_vm)->DetachCurrentThread(global_vm);
 }
 
+/* PS5 "bu görüntü yayınlanamaz" (korumalı içerik, rp_prohibit) ya da "yeniden yayınlanabilir" dediğinde libchiaki'nin
+ * ctrl iş parçacığı bu geri çağrıyı koşulsuz çağırır (ctrl.c: displaya/displayb iletileri ve ctrl yanıtı). Atanmazsa
+ * NULL işlev çağrılır ve uygulama SIGSEGV ile kapanır (Crashlytics: ctrl_thread_func, ctrl.c:995/1005). Altyazı için
+ * yapılacak bir şey yok: yalnız günlüğe yazılır, akış sürer. */
+static void cs_session_cant_display(void *user, bool cant_display)
+{
+	cs_session *session = user;
+	CHIAKI_LOGI(&session->log, "PS5 stream %s", cant_display ? "can't display (protected content)" : "can display again");
+}
+
 static void cs_session_free(JNIEnv *env, cs_session *session)
 {
 	couchsubs_video_decoder_fini(&session->decoder, env);
@@ -563,6 +573,8 @@ JNIEXPORT jlong JNICALL JNI_FCN(sessionStart)(JNIEnv *env, jclass cls, jstring h
 	}
 	chiaki_session_set_event_cb(&session->session, cs_session_event, session);
 	chiaki_session_set_video_sample_cb(&session->session, couchsubs_video_decoder_video_sample, &session->decoder);
+	ChiakiCtrlDisplaySink display_sink = { .user = session, .cantdisplay_cb = cs_session_cant_display };
+	chiaki_session_ctrl_set_display_sink(&session->session, &display_sink);
 	err = chiaki_session_start(&session->session);
 	if(err != CHIAKI_ERR_SUCCESS)
 	{
