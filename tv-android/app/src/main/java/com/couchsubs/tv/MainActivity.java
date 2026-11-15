@@ -5,7 +5,9 @@ import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
 import android.media.tv.TvContract;
+import android.media.tv.TvInputManager;
 import android.media.tv.TvView;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -102,7 +104,16 @@ public class MainActivity extends Activity implements TvPage.Host {
                     keepScreenOn(true);
                     status("playing");
                 }
-                @Override public void onVideoUnavailable(String inputId, int reason) { noVideo(); }
+                @Override public void onVideoUnavailable(String inputId, int reason) {
+                    // PS5 oyuna girerken çözünürlük ya da HDR değiştirir; TV bunu kısa bir "ayarlanıyor" olarak bildirir.
+                    // O arada ekran açık kalır, yoksa TV oyunun ortasında boşta sanıp ekran koruyucuya geçer.
+                    if (reason == TvInputManager.VIDEO_UNAVAILABLE_REASON_TUNING
+                            || reason == TvInputManager.VIDEO_UNAVAILABLE_REASON_BUFFERING) {
+                        trouble();
+                        return;
+                    }
+                    noVideo();
+                }
             });
             root.addView(tvView);
         }
@@ -123,6 +134,7 @@ public class MainActivity extends Activity implements TvPage.Host {
         root.addView(help, helpLayout);
 
         setContentView(root);
+        preferLowLatency();
         page.load();
         page.webView.requestFocus();
     }
@@ -141,6 +153,19 @@ public class MainActivity extends Activity implements TvPage.Host {
     private void keepScreenOn(boolean on) {
         if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    /**
+     * PS5 TV'ye doğrudan bağlıyken TV HDMI ALLM ile oyun moduna geçer; görüntü bu uygulamanın içinden gelince TV bunu
+     * bilemez. Android 11+ TV'lerde pencere "en az görüntü işleme" ister: TV bunu destekliyorsa oyun moduna ya da düşük
+     * gecikmeye geçer (Window#setPreferMinimalPostProcessing). Desteklemeyen TV'de hiçbir şey olmaz.
+     */
+    private void preferLowLatency() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
+        try {
+            getWindow().setPreferMinimalPostProcessing(true);
+        } catch (RuntimeException ignored) {
+        }
     }
 
     /** 1920 piksellik sayfa ölçüsünü ekran pikseline çevirir (yardım kutusu sayfayla aynı boyda görünsün). */
@@ -325,6 +350,9 @@ public class MainActivity extends Activity implements TvPage.Host {
     private void tune(String id) {
         tunedInput = id;
         watch.tuned(SystemClock.elapsedRealtime());
+        // PS5 görüntüsü gelirken TV boşta sanmasın: giriş açılır açılmaz ekran açık tutulur; görüntü gerçekten yoksa
+        // (PS5 kapalı, kablo çıktı) noVideo() bırakır.
+        keepScreenOn(true);
         tvView.tune(id, TvContract.buildChannelUriForPassthroughInput(id));
         // Görüntü gelene kadar izlenir; hiç gelmezse katmana geçilir.
         trouble();
