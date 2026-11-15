@@ -6,8 +6,12 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 **Bu sürümde yeni**
 
-- **PS5 görüntüsü takılınca uygulama bağlantıyı kendisi yeniden kuruyor; çeviri bir süre sonra donmuyor (Mac, Windows, iPhone, Android):** Kablosuz ağda bozuk gelen bir kareden sonra PS5'ten hiç görüntü gelmeyebiliyordu; bağlantı açık görünse de altyazı duruyor, ancak uygulamayı kapatıp açmak düzeltiyordu. Artık bağlıyken 8 saniye görüntü gelmezse CouchSubs oturumu kendisi kapatıp yeniden kuruyor ve çeviri kaldığı yerden sürüyor. Olay `remoteplay.log` ve `altyazi.log`'a yazılıyor.
-- **Android telefon APK 0.1.0-beta.43:** Aynı düzeltme telefonda da var.
+- **Ek alanlar (Mac ve Windows):** Altyazının yanında görev yazısı, telefon mesajı, bildirim gibi köşe yazıları da okunup çevriliyor (Ayarlar › Altyazı alanı › Ek alan ekle). Hazır seçimler var (Görev sağ üst, Bildirim sol alt, Telefon sağ alt), en çok üç alan eklenebiliyor. Çeviri, yazının bulunduğu yana yaslı küçük bir kutuda çıkıyor; yazı değişmedikçe yeniden çevrilmiyor ve altyazıyı yavaşlatmıyor. Varsayılan olarak ek alan yok, mevcut kullanım değişmiyor.
+- **Yayın penceresi (Mac ve Windows):** TikTok LIVE Studio ve diğer yayın programları için yeşil, siyah ya da mor zeminli ayrı bir pencere (Ayarlar › OBS › Yayın penceresi). Pencere yakalamayla "CouchSubs Yayın" penceresini ekleyip Chroma key ile zemini silebilirsiniz. OBS sayfasında `?bg=green` (ya da `black`, `magenta`) ile düz zemin ve daha keskin yazı; localhost adresini kabul etmeyen programlar için yerel IP'li adres (`http://<bilgisayarın IP'si>:8787/obs`) kopyalanabiliyor.
+- **Android: TV uygulamasını telefondan kurma (deneysel, Samsung):** Bilgisayarı olmayanlar CouchSubs TV uygulamasını Samsung TV'ye (Tizen 3.0 ve sonrası, akıllı monitörler dahil) telefondan kurabiliyor. Varsayılan kapalı: Ayarlar › Deneysel › "TV uygulamasını bu telefondan kur". Gerçek TV'lerde henüz az denendi; sorun olursa kurulum günlüğünü paylaşabilirsiniz.
+- **Android telefon APK 0.1.0-beta.44:** Telefondan TV kurulumu bu sürümde.
+
+**beta.39'da gelenler:** PS5 görüntüsü takılınca bağlantının kendiliğinden yeniden kurulması, çevirinin bir süre sonra donmaması (Mac, Windows, iPhone, Android), Android telefon APK 0.1.0-beta.43.
 
 **beta.38'de gelenler:** "Ekranı çevir" düzeltmeleri (TV'siz kullanımda sonuçlar altyazı penceresinde, Gemini'de tek istek), PS5 giriş şifresi alanı, Samsung TV izninin her bağlantıda sorulmaması (#40), elle yazılan adreslerin temizlenmesi, yerel yapay zekâda tırnaksız yanıtlar ve oyun adı (#27), GTA V ve RDR2 paketlerinin daha çok satır yakalaması, yeni paketlerin uygulama güncellemesi beklemeden gelmesi, Android TV'de TV HDMI'yı kendi oynatıcısında açınca katman (TV uygulaması 0.9.18, #42), Mac'te "Altyazıyı göster" kartının taşmaması (#43), Android telefon APK 0.1.0-beta.42 (çeviri başlarken kapanma ve PSN girişinde beyaz ekran düzeltildi). Katkı: [mucahitpuren](https://github.com/mucahitpuren).
 
