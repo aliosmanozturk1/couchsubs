@@ -38,7 +38,19 @@ final class AppAnalytics: AnalyticsLogging {
     func setCollection(_ enabled: Bool) {
         if meta { Settings.shared.isAutoLogAppEventsEnabled = enabled }
         guard firebase else { return }
+        Self.applyFirebase(enabled)
+    }
+
+    /// Android'deki Backend.apply ile aynı: ölçüm ve çökme raporu Kullanım verisi'ne bağlı; analytics_storage ona göre
+    /// verilir ya da reddedilir, reklam depolama ve kişiselleştirme (Consent Mode v2) her zaman reddedilir.
+    static func applyFirebase(_ enabled: Bool) {
         Analytics.setAnalyticsCollectionEnabled(enabled)
+        Analytics.setConsent([
+            .analyticsStorage: enabled ? .granted : .denied,
+            .adStorage: .denied,
+            .adUserData: .denied,
+            .adPersonalization: .denied,
+        ])
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(enabled)
     }
 }
@@ -50,6 +62,7 @@ enum Integrations {
     static func configureFirebase() -> Bool {
         guard AppConfig.hasFirebase else { return false }
         if FirebaseApp.app() == nil { FirebaseApp.configure() }
+        AppAnalytics.applyFirebase(UsageData.enabled)
         return true
     }
 
