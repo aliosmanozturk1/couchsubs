@@ -137,6 +137,14 @@ bool couchsubs_video_decoder_video_sample(uint8_t *buf, size_t buf_size, int32_t
 		}
 		size_t codec_buf_size;
 		uint8_t *codec_buf = AMediaCodec_getInputBuffer(decoder->codec, (size_t)index, &codec_buf_size);
+		if(!codec_buf || codec_buf_size == 0)
+		{
+			/* NDK belgesi: arabellek alınamazsa NULL döner; memcpy süreci çökertirdi. Kare atlanır. */
+			CHIAKI_LOGE(decoder->log, "AMediaCodec_getInputBuffer() returned no buffer");
+			AMediaCodec_queueInputBuffer(decoder->codec, (size_t)index, 0, 0, decoder->timestamp_cur++, 0);
+			result = false;
+			goto beach;
+		}
 		size_t size = buf_size > codec_buf_size ? codec_buf_size : buf_size;
 		memcpy(codec_buf, buf, size);
 		/* Zaman damgası yalnız birer artar: en gerçek zamanlı davranış. */

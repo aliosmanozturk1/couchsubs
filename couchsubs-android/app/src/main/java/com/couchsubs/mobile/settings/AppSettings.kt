@@ -178,6 +178,16 @@ class AppSettings(context: Context) {
         get() = prefs.getLong("lastSessionMs", 0)
         set(value) = prefs.edit().putLong("lastSessionMs", value).apply()
 
+    /** Çeviri hizmeti çalışıyor mu; süreç ölünce true kalır, sonraki açılışta kapanışın çeviri sırasında olduğu anlaşılır. */
+    var translating: Boolean
+        get() = prefs.getBoolean("translating", false)
+        set(value) = prefs.edit().putBoolean("translating", value).apply()
+
+    /** Son raporlanan önceki kapanışın anı (ApplicationExitInfo.timestamp; bkz. ExitReport). */
+    var lastExitReportAt: Long
+        get() = prefs.getLong("lastExitReportAt", 0)
+        set(value) = prefs.edit().putLong("lastExitReportAt", value).apply()
+
     /** Altyazı yazı ölçeği, yüzde (80–160; tasarım: Ayarlar › Altyazı görünümü). */
     var subtitleScale: Int
         get() = prefs.getInt("subtitleScale", 100)

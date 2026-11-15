@@ -17,6 +17,7 @@ import android.util.Log
 import com.couchsubs.mobile.BuildConfig
 import com.couchsubs.mobile.R
 import com.couchsubs.mobile.Services
+import com.couchsubs.mobile.account.Backend
 import com.couchsubs.mobile.account.Telemetry
 import com.couchsubs.mobile.core.CropRegion
 import com.couchsubs.mobile.core.GamePackLibrary
@@ -152,6 +153,8 @@ class TranslationService : Service() {
             return
         }
         acquireLocks()
+        settings.translating = true
+        Backend.breadcrumb("çeviri: başlıyor (${settings.target.name}, ${settings.engine.name}, paketler ${settings.packsEnabled})")
         startedAt = System.currentTimeMillis()
         LiveState.update { LiveStatus(running = true, phase = getString(R.string.phase_preparing), startedAt = startedAt, engineLabel = engineLabel()) }
         Telemetry.event(Telemetry.SESSION_START, "target" to settings.target.name.lowercase(), "engine" to settings.engine.name.lowercase(),
@@ -211,8 +214,9 @@ class TranslationService : Service() {
             Log.e(TAG, "packs", error)
             null
         }
+        Backend.breadcrumb("çeviri: paketler ${packTitles?.size ?: "yok"}")
         reader = SubtitleReader()
-        pipeline = SubtitlePipeline(translator, subtitleServer).apply {
+        pipeline =SubtitlePipeline(translator, subtitleServer).apply {
             packLookup = { text -> if (packTitles != null && settings.packsEnabled) PackLookup.match(library, text) else null }
             onPackMissed = { text -> linePool.offer(text) }
             onPairShown = { pair ->
@@ -273,6 +277,7 @@ class TranslationService : Service() {
                 return
             }
             session = source
+            Backend.breadcrumb("çeviri: PS5 oturumu açılıyor")
             source.start()
         }
         background.scheduleWithFixedDelay({
@@ -375,6 +380,7 @@ class TranslationService : Service() {
 
     override fun onDestroy() {
         synchronized(lifecycle) { destroyed = true }
+        settings.translating = false
         if (startedAt > 0) settings.lastSessionMs = System.currentTimeMillis() - startedAt
         if (startedAt > 0) Telemetry.event(Telemetry.SESSION_STOP, "seconds" to (System.currentTimeMillis() - startedAt) / 1000,
             "pack_lines" to (pipeline?.packHits ?: 0), "lines" to LiveState.status.value.recent.size)

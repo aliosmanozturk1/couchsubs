@@ -45,6 +45,20 @@ object Services {
         packStore = PackStore(File(app.filesDir, "packs-remote"), HttpPackServer(BuildConfig.PACKS_URL.trimEnd('/')))
         // Açılışta (haftada bir) yeni ve güncellenen paketlere bakılır.
         refreshPacks(force = false)
+        reportPreviousExits(app)
+    }
+
+    /**
+     * Önceki kapanış yerel çökme, bellek yetmemesi ya da ANR idiyse raporlanır (Crashlytics bunları kendisi görmez;
+     * bkz. ExitReport). Süreç yeni açıldığı için çeviri hizmeti çalışmıyor: "translating" kaldıysa süreç çeviri
+     * sürerken ölmüştür.
+     */
+    private fun reportPreviousExits(app: Application) {
+        val duringTranslation = settings.translating
+        settings.translating = false
+        scope.launch(Dispatchers.IO) {
+            settings.lastExitReportAt = Backend.reportPreviousExits(app, settings.lastExitReportAt, duringTranslation)
+        }
     }
 
     /** Profil › Kullanım verisi değişince ya da karşılama geçilince (iPhone'daki gibi). */

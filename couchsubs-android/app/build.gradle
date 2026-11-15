@@ -185,6 +185,8 @@ dependencies {
     implementation platform('com.google.firebase:firebase-bom:33.7.0')
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.google.firebase:firebase-crashlytics'
+    // Yerel çökmeler (libchiaki, MediaCodec) de raporlansın: düz Crashlytics yalnız Java çökmelerini görür.
+    implementation 'com.google.firebase:firebase-crashlytics-ndk'
     // Meta App Events (iPhone'la aynı): yalnız olay adları, reklam kimliği yok. Uygulamada reklam yok.
     implementation 'com.facebook.android:facebook-core:17.0.0'
 
