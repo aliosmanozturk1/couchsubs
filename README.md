@@ -58,8 +58,7 @@ https://github.com/user-attachments/assets/bb8569d8-115d-49c7-a772-da2d9e171c17
 | **Windows** 10 / 11 (64 bit) | **[CouchSubs-windows-Setup.exe](https://github.com/yorulmazsinan/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe)** |
 
 **Android telefon** (Android 8+, 64 bit; bilgisayar gerekmez): **[Google Play'den indirin](https://play.google.com/store/apps/details?id=com.couchsubs.mobile)** (Play Store'da
-"CouchSubs: Türkçe Yama"). Play Store'u olmayan cihazlar için [APK](https://github.com/yorulmazsinan/couchsubs/releases/latest/download/CouchSubs-android.apk); siteden APK kurduysanız Play
-sürümünden önce onu silin.
+"CouchSubs: Türkçe Yama"). Daha önce siteden APK kurduysanız Play sürümünden önce onu silin.
 
 TV uygulamasını ayrıca indirmeniz gerekmez: bilgisayar uygulaması TV'nize kendisi kurar. Uygulama yeni sürümleri
 kendisi bulur ve tek tıkla günceller. Kurulum istemeyenler için zip paketleri de duruyor:

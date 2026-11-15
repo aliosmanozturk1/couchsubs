@@ -2,7 +2,7 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 **Site, kurulum rehberi ve SSS:** [couchsubs.enmeraapps.com](https://couchsubs.enmeraapps.com)
 
-**İndir:** [Mac (DMG)](https://github.com/yorulmazsinan/couchsubs/releases/latest/download/CouchSubs-macos.dmg) · [Windows (kurulum)](https://github.com/yorulmazsinan/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe) · [Android telefon (Google Play)](https://play.google.com/store/apps/details?id=com.couchsubs.mobile) · [Play Store'u olmayan cihazlar için APK](https://github.com/yorulmazsinan/couchsubs/releases/latest/download/CouchSubs-android.apk)
+**İndir:** [Mac (DMG)](https://github.com/yorulmazsinan/couchsubs/releases/latest/download/CouchSubs-macos.dmg) · [Windows (kurulum)](https://github.com/yorulmazsinan/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe) · [Android telefon (Google Play)](https://play.google.com/store/apps/details?id=com.couchsubs.mobile)
 
 **Bu sürümde yeni**
 
@@ -74,7 +74,6 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 | `CouchSubs-macos.zip`, `CouchSubs-windows-x64.zip` | Kurulumsuz kullanmak isteyenler için |
 | `com.couchsubs.tv_…_all.ipk` | LG TV uygulaması, elle kurmak isteyenler için |
 | `CouchSubs-samsung-kaynak.zip` | Samsung TV uygulaması, Tizen Studio ile elle kurmak isteyenler için |
-| `CouchSubs-android.apk` | Android telefon uygulaması, Play Store'u olmayan cihazlar için (asıl yol [Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile)) |
 | `CouchSubs-androidtv.apk` | Android TV / Google TV uygulaması, USB bellekle kurmak isteyenler için |
 | `appcast.xml`, `releases.win.json`, `*.nupkg` | Uygulama içi güncelleme dosyaları (elle indirmeyin) |
 | `SHA256SUMS.txt` | Dosyaların doğrulama özetleri |
