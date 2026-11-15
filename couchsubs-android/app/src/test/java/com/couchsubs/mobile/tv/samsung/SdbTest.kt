@@ -167,7 +167,8 @@ class FakeSdbTv {
             check(next().command == SdbFrame.CNXN)
             send(SdbFrame(SdbFrame.AUTH, 1, 0, ByteArray(20) { it.toByte() }))
             check(next().let { it.command == SdbFrame.AUTH && it.arg0 == 2 && it.payload.size == 256 })
-            send(SdbFrame(SdbFrame.AUTH, 1, 0, ByteArray(20)))
+            // TizenSdb gibi: TV açık anahtarı AUTH türü 3 ile ister.
+            send(SdbFrame(SdbFrame.AUTH, 3, 0, ByteArray(0)))
             check(next().let { it.command == SdbFrame.AUTH && it.arg0 == 3 })
             authenticated = true
             send(SdbFrame(SdbFrame.CNXN, 0x01000000, 2048, "device::fake".toByteArray()))

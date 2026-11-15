@@ -170,8 +170,10 @@ class SamsungCertificates(private val http: HttpPost = UrlConnectionPost, privat
 
         /** İmzadaki zincir: yaprak ve onu veren Samsung ara sertifikası (kök yok). */
         fun chain(leaf: X509Certificate): List<X509Certificate> {
+            // Adlar kanonik biçimde karşılaştırılır (aynı ad farklı ASN.1 dizgi türüyle yazılmış olabilir).
+            fun name(principal: javax.security.auth.x500.X500Principal) = principal.getName(javax.security.auth.x500.X500Principal.CANONICAL)
             val issuer = authorities.firstOrNull {
-                it.subjectX500Principal == leaf.issuerX500Principal && it.subjectX500Principal != it.issuerX500Principal
+                name(it.subjectX500Principal) == name(leaf.issuerX500Principal) && name(it.subjectX500Principal) != name(it.issuerX500Principal)
             }
             return listOfNotNull(leaf, issuer)
         }

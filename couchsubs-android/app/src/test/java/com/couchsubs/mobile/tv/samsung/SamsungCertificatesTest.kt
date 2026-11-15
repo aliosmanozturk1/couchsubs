@@ -217,7 +217,7 @@ class SamsungCertificatesTest {
         assertEquals(listOf(leaf), SamsungCertificates.chain(leaf))
         // Samsung'un yazar CA'sının verdiği bir sertifika, o ara sertifikayla zincirlenir.
         val samsungAuthor = SamsungCertificates.authorities.first { it.subjectX500Principal != it.issuerX500Principal }
-        val issued = TestCertificates.issue("CN=CouchSubs", TestCertificates.rsa().public, issuer = samsungAuthor.subjectX500Principal.name)
+        val issued = TestCertificates.issue("CN=CouchSubs", TestCertificates.rsa().public, issuer = samsungAuthor.subjectX500Principal)
         assertEquals(listOf(issued, samsungAuthor), SamsungCertificates.chain(issued))
         assertNull(SamsungCertificates.chain(issued).getOrNull(2))
     }
