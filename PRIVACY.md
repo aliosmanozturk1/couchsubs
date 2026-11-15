@@ -36,7 +36,9 @@ Android telefon uygulamalarının kimliğe bağlanmayan kullanım istatistikleri
   (mac/windows/ios/android) ve kuruluma özgü rastgele bir kimliktir. Biliniyorsa satırla birlikte PS5'te o an çalışan
   oyunun kimliği ve adı (ör. PPSA01234, "Grand Theft Auto VI") da gönderilir; bu, satırların hangi oyuna ait olduğunu
   bilmek içindir ve sizinle ilgili bir bilgi taşımaz. Görüntü, ses, kullanıcı adı, PSN ya da hesap bilgisi gönderilmez.
-  Kapatınca gönderim hemen durur ve bekleyen satırlar silinir.
+  En az iki farklı kurulumda okunan satırlar her gece kendiliğinden makine çevirisiyle (kendi Cloudflare
+  hesabımızdaki Workers AI) o oyunun Türkçe yamasına dönüştürülür ve herkese dağıtılır; yamada satırı kimin
+  gönderdiğine dair bir bilgi bulunmaz. Kapatınca gönderim hemen durur ve bekleyen satırlar silinir.
 - **Ev ağı:** PS5 ve LG TV'yi bulmak ve onlarla eşleşmek için yalnız yerel ağ kullanılır.
 
 TV uygulaması altyazıları yalnız ev ağındaki CouchSubs bilgisayarından alır ve internete bağlanmaz.
@@ -90,7 +92,8 @@ TV uygulaması altyazıları yalnız ev ağındaki CouchSubs bilgisayarından al
   sistemi "android" olarak gider.
 - **TV'de gösterme:** telefon ev ağında küçük bir altyazı sunucusu açar (port 8787) ve TV'yi yerel ağda arar; altyazılar
   yalnız aynı ağdaki CouchSubs TV uygulamasına gider.
-- Oyun paketleri haftada bir, hesap ya da kimlik bilgisi gönderilmeden indirilir.
+- Oyun paketleri uygulama açılınca, günde bir ve PS5'te yeni bir oyun başlayınca, hesap ya da kimlik bilgisi
+  gönderilmeden indirilir.
 
 Sorularınız ve silme talepleriniz için: info@enmera.com.tr ya da https://github.com/yorulmazsinan/couchsubs/issues
 
@@ -121,7 +124,9 @@ in any game pack are sent to `couchsubs-pool.enmera.workers.dev` to make better 
 everyone. Only the line's text, a key derived from it, when it was first seen, the app version, the operating
 system (mac/windows/ios/android) and a random ID made for this installation are sent. When known, the ID and name of
 the game running on the PS5 at that moment (e.g. PPSA01234, "Grand Theft Auto VI") are sent with the line; this is only
-to know which game the lines belong to and carries no information about you. No picture, audio, user name, PSN or
+to know which game the lines belong to and carries no information about you. Lines read by at least two different installations are
+automatically machine-translated every night (Workers AI on our own Cloudflare account) into that game's Turkish pack,
+which is given to everyone; the pack holds nothing about who sent a line. No picture, audio, user name, PSN or
 account data is sent. Turning it off stops sending at once and deletes lines waiting to be sent.
 
 The TV app receives subtitles only from the CouchSubs computer on your home network and does not connect
@@ -163,6 +168,7 @@ account or keys are sent; when turned off nothing goes to Firebase or Meta. Goog
 The shared pool works as described above (can be turned off in Settings › Contribute to the shared pool, on by default;
 the operating system is sent as "android"). To show subtitles on a TV, the phone runs a small subtitle server on your
 home network (port 8787) and looks for TVs on the local network; subtitles go only to the CouchSubs TV app on the same
-network. Game packs are downloaded about once a week without sending any account or identifying data.
+network. Game packs are downloaded when the app opens, once a day and when a new game starts on the PS5,
+without sending any account or identifying data.
 
 Contact and deletion requests: info@enmera.com.tr or https://github.com/yorulmazsinan/couchsubs/issues

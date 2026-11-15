@@ -69,7 +69,7 @@ async function readIndex(env: Env): Promise<PackInfo[]> {
 }
 
 async function list(env: Env): Promise<Response> {
-  return json({ packs: await readIndex(env) }, 200, { "cache-control": "public, max-age=3600" });
+  return json({ packs: await readIndex(env) }, 200, { "cache-control": "public, max-age=300" });
 }
 
 async function download(request: Request, env: Env, id: string, rate: RateLimiter, now: number): Promise<Response> {
@@ -84,8 +84,9 @@ async function download(request: Request, env: Env, id: string, rate: RateLimite
     "content-type": "application/gzip",
     "content-length": String(object.size),
     etag: object.httpEtag,
-    // Sürüm değişince dosya da değişir (ETag); bir gün önbellekte kalabilir, uygulama SHA-256 ile doğrular.
-    "cache-control": "public, max-age=86400",
+    // Havuzdan otomatik paketler her gece değişebilir: önbellek her seferinde ETag ile sorar (değişmediyse 304), eski
+    // dosya listedeki yeni SHA-256'ya takılmaz.
+    "cache-control": "public, no-cache",
   };
   const sha = object.customMetadata?.sha256;
   if (sha) headers["x-pack-sha256"] = sha;

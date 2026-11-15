@@ -6,8 +6,10 @@
 //                    yalnız bir oyunun satırları.
 // POST /v1/exported: (yönetici) çeviriye alınan anahtarları işaretler.
 // GET  /v1/stats   : herkese açık sayılar.
+// Cron (gece 03:07–04:57 UTC): havuzdan kendiliğinden oyun paketi (src/autopack.js).
 
 import { accepts } from "./filter.js";
+import { runAutopack } from "./autopack.js";
 
 const MAX_LINES = 200;
 const DAILY_LIMIT = 5000;
@@ -172,5 +174,10 @@ export default {
     } catch (e) {
       return json({ error: "server_error" }, 500);
     }
+  },
+
+  async scheduled(event, env, ctx) {
+    const result = await runAutopack(env, new Date(event.scheduledTime));
+    console.log("autopack", JSON.stringify(result));
   },
 };

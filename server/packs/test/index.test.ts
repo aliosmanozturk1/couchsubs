@@ -32,7 +32,7 @@ describe("GET /v1/packs", () => {
   it("lists packs", async () => {
     const response = await handle(get("/v1/packs"), env(), new RateLimiter());
     expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("public, max-age=3600");
+    expect(response.headers.get("cache-control")).toBe("public, max-age=300");
     expect(await response.json()).toEqual(index);
   });
 });
@@ -43,7 +43,7 @@ describe("GET /v1/packs/:id", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/gzip");
     expect(response.headers.get("x-pack-sha256")).toBe("ab".repeat(32));
-    expect(response.headers.get("cache-control")).toBe("public, max-age=86400");
+    expect(response.headers.get("cache-control")).toBe("public, no-cache");
     expect(response.headers.get("etag")).toBe('"etag-1"');
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([0x1f, 0x8b, 1, 2, 3]));
   });
