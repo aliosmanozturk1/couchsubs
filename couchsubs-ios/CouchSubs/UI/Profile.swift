@@ -71,6 +71,9 @@ struct ProfileScreen: View {
                 toggleRow("Ask which game I'm playing", "If no pack recognises the game, asked once two minutes after translation starts.",
                           isOn: $model.settings.askGame)
                 RowDivider()
+                toggleRow("Show speaker name", "Keeps the character's name in front of the translation (ARTHUR: …). The name itself is never translated.",
+                          isOn: $model.settings.showSpeakerNames)
+                RowDivider()
                 toggleRow("Usage data", "Error and usage statistics", isOn: $usageData)
             }
             Tile(spacing: 0) {

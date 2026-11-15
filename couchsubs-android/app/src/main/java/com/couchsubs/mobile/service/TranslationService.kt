@@ -295,6 +295,7 @@ class TranslationService : Service() {
         reader = SubtitleReader()
         pipeline =SubtitlePipeline(translator, subtitleServer).apply {
             packLookup = { text -> if (packTitles != null && settings.packsEnabled) PackLookup.match(library, text) else null }
+            showSpeakerNames = { settings.showSpeakerNames }
             onPackMissed = { text -> linePool.offer(text) }
             onPairShown = { pair ->
                 LiveState.shown(pair, pair.packId?.let { packTitles?.get(it) ?: it })

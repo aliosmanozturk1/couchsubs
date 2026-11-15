@@ -438,6 +438,7 @@ final class AppModel: ObservableObject {
             if settings.output != oldValue.output { outputChanged() }
             if settings.dubbing != oldValue.dubbing { dubbingSettingsChanged(from: oldValue.dubbing) }
             if settings.gamePacks != oldValue.gamePacks, let pipeline { connectPacks(to: pipeline) }
+            pipeline?.showSpeakerNames = settings.showSpeakerNames
             if settings.appearance != oldValue.appearance { settings.appearance.apply() }
             let windowAppChanged = settings.frameSource == .remotePlayWindow && settings.remotePlayApp != oldValue.remotePlayApp
             if settings.frameSource != oldValue.frameSource || windowAppChanged, isRunning {
@@ -1397,6 +1398,7 @@ final class AppModel: ObservableObject {
         let pipeline = SubtitlePipeline(reader: VisionReader(language: settings.sourceLanguage),
                                         translator: makeTranslator(),
                                         server: server, scheduler: ReadScheduler())
+        pipeline.showSpeakerNames = settings.showSpeakerNames
         pipeline.onPair = { [weak self, weak pipeline] source, translation in
             self?.lastSource = source
             self?.lastTranslation = translation

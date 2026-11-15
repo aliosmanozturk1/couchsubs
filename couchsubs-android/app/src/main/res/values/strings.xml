@@ -219,6 +219,8 @@
     <string name="game_last_played">Son oynanan</string>
     <string name="settings_ask_game">Oynanan oyunu sor</string>
     <string name="settings_ask_game_short">Oyun paketle tanınmazsa çeviri başladıktan iki dakika sonra bir kez sorulur.</string>
+    <string name="settings_speaker_names">Konuşan adını göster</string>
+    <string name="settings_speaker_names_short">Karakterin adı çevirinin başında kalır (ARTHUR: …). Adın kendisi hiçbir zaman çevrilmez.</string>
     <string name="running_now">Şimdi</string>
     <string name="running_ready_translation">hazır çeviri</string>
     <string name="running_ready">hazır</string>

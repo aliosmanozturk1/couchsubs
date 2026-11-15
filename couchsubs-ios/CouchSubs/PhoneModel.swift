@@ -47,6 +47,7 @@ final class PhoneModel: ObservableObject {
             server.sendStyle(settings.style)
             if settings.output != oldValue.output { outputChanged() }
             if settings.gamePacks != oldValue.gamePacks, let pipeline { connectPacks(to: pipeline) }
+            pipeline?.showSpeakerNames = settings.showSpeakerNames
             if settings.sharePool != oldValue.sharePool {
                 let (pool, enabled) = (pool, settings.sharePool)
                 Task { await pool.setEnabled(enabled) }
@@ -575,6 +576,7 @@ final class PhoneModel: ObservableObject {
         frameGate.reset()
         let pipeline = SubtitlePipeline(reader: VisionReader(language: settings.sourceLanguage), translator: makeTranslator(),
                                         server: server, scheduler: ReadScheduler())
+        pipeline.showSpeakerNames = settings.showSpeakerNames
         pipeline.onPair = { [weak self, weak pipeline] source, translation in
             self?.lastSource = source
             self?.lastTranslation = translation

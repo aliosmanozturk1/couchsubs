@@ -30,6 +30,8 @@ public final class SubtitlePipeline {
         let source: String
         let box: TextBox?
         let session: Int
+        /// Baştaki konuşan adı ("ARTHUR: …"); çeviriye yalnız cümle gider.
+        let prefix: SpeakerPrefix.Split?
         /// Satırı kararlı yapan karenin geldiği an, o okumanın süresi ve güveni (ölçümler için).
         let read: ReadInfo
         /// Satırın ekrandan kalktığı an (hâlâ ekrandaysa nil).
@@ -42,6 +44,7 @@ public final class SubtitlePipeline {
             self.box = box
             self.session = session
             self.read = read
+            prefix = SpeakerPrefix.split(source)
         }
     }
 
@@ -99,6 +102,8 @@ public final class SubtitlePipeline {
     /// Oyun paketi: kararlı satırın hazır Türkçesi (yoksa nil). Çeviri motorundan ve önbellekten önce bakılır; bulunursa
     /// motor hiç çağrılmaz ve çeviri beklemeden gösterilir. Uygulama paketler açıkken verir.
     public var packLookup: ((String) -> PackMatch?)?
+    /// Konuşan adı ("ARTHUR: …") TV'ye giden çeviride gösterilir; kapalıysa yalnız cümle gider.
+    public var showSpeakerNames = true
     /// Hiçbir pakette bulunmayan kararlı satır (ortak havuz için).
     public var onPackMiss: ((String) -> Void)?
     /// Son gösterilen çevirinin nereden geldiği: "paket" ya da "motor" (günlük ve sayım için).
@@ -176,7 +181,7 @@ public final class SubtitlePipeline {
         // Yazı tanımanın uydurduğu sözcük çöpleri ("ou$3e") de çevirmene gitmez.
         // Alandaki menü ve köşe göstergeleri de altyazı değildir; yalnız altyazı bloğu çevrilir ve kutusu ona göre olur.
         let place = TextBox(left: region.left, top: region.top, right: region.right, bottom: region.bottom)
-        let reading = lastReading.withoutButtonPrompts().withoutOcrNoise().subtitleBlock(in: place)
+        let reading = lastReading.withoutButtonPrompts().withoutOcrNoise().joiningRows().subtitleBlock(in: place)
         currentRead = ReadInfo(capturedAt: captured, ocrMs: lastReadMs, confidence: reading.confidence)
         let box = reading.box?.placed(in: place).centeredOnScreen()
         if !sawText, !reading.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -226,7 +231,7 @@ public final class SubtitlePipeline {
         lastRequested += 1
         let request = Request(number: lastRequested, source: source, box: box, session: session, read: currentRead)
         lineOnScreen = request.number
-        if let packed = packLookup?(source) {
+        if let packed = packMatch(request) {
             showPacked(request, packed)
             return
         }
@@ -262,13 +267,26 @@ public final class SubtitlePipeline {
         return TextMatch.isRevision(source, of: shown)
     }
 
+    /// Paket önce adlı satırla, bulunmazsa adsız cümleyle aranır (paket anahtarları çoğu zaman adsızdır).
+    private func packMatch(_ request: Request) -> PackMatch? {
+        guard let packLookup else { return nil }
+        if let found = packLookup(request.source) { return found }
+        guard let prefix = request.prefix, let found = packLookup(prefix.body) else { return nil }
+        return PackMatch(text: found.text, spoken: SpeakerPrefix.voiced(found.spoken, prefix: prefix))
+    }
+
+    /// Gösterilecek çeviri: konuşan adı ayara göre başa eklenir ya da atılır.
+    private func present(_ translation: String, _ request: Request) -> String {
+        SpeakerPrefix.present(translation, source: request.source, show: showSpeakerNames)
+    }
+
     /// Paketteki Türkçe hemen gösterilir; süren çevirinin sonucu (eski satır) artık gösterilmez.
     private func showPacked(_ request: Request, _ packed: PackMatch) {
         for old in waiting { log(old, "atıldı: sonraki satır paketten geldi (#\(request.number))") }
         waiting.removeAll()
         packHits += 1
         let source = request.source
-        let translated = packed.text
+        let translated = present(packed.text, request)
         let shouldSend = stabilizer.shouldSend(source: source, translation: translated)
         remember(request.number, source, shouldSend ? translated : nil)
         let pack = packName?().map { "paket:" + $0 } ?? "paket"
@@ -344,10 +362,12 @@ public final class SubtitlePipeline {
         let probe = TranslationProbe()
         do {
             let translator = self.translator
-            let work = Task { try await TranslationProbe.$current.withValue(probe) { try await translator.translate(source) } }
+            let input = request.prefix?.body ?? source
+            let work = Task { try await TranslationProbe.$current.withValue(probe) { try await translator.translate(input) } }
             self.work = work
             defer { self.work = nil }
-            let translated = try await work.value
+            let sentence = try await work.value
+            let translated = present(sentence, request)
             let finished = now()
             let result = "\(probe.outcome()) \(finished - started) ms"
             guard request.session == session else {
@@ -356,7 +376,7 @@ public final class SubtitlePipeline {
             }
             lastError = nil
             onTranslationResult?(nil)
-            let shouldSend = stabilizer.shouldSend(source: source, translation: translated)
+            let shouldSend = stabilizer.shouldSend(source: input, translation: sentence)
             remember(request.number, source, shouldSend ? translated : nil)
             guard request.number > lastShown, shouldSend, !request.superseded else {
                 let reason = !shouldSend ? "zaten hedef dilde"
@@ -382,7 +402,7 @@ public final class SubtitlePipeline {
             lastMetrics = metrics
             onMetrics?(metrics)
             onPair?(source, translated)
-            if let onSpeech { onSpeech(translator.spokenLines(for: source)) }
+            if let onSpeech { onSpeech(SpeakerPrefix.voiced(translator.spokenLines(for: input), prefix: request.prefix)) }
         } catch {
             // Yerine uzamış okuması gelen satırın bırakılan çevirisi hata sayılmaz.
             guard request.session == session, !request.superseded else { return }

@@ -625,6 +625,9 @@ private struct GamePacksPage: View {
             Divider().overlay(Color.csBorder)
             SwitchRow(title: "Ask which game I'm playing", isOn: $model.settings.askGame)
             HintText(text: "If no pack recognises the game, asked once two minutes after translation starts.")
+            Divider().overlay(Color.csBorder)
+            SwitchRow(title: "Show speaker name", isOn: $model.settings.showSpeakerNames)
+            HintText(text: "Keeps the character's name in front of the translation (ARTHUR: …). The name itself is never translated.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .tile()

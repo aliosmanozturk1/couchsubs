@@ -245,6 +245,8 @@ public sealed record UserSettings
     public bool SharePool { get; init; } = LinePool.EnabledByDefault;
     /// <summary>Oynanan oyun paketle tanınmazsa çeviri başladıktan iki dakika sonra bir kez sorulur (bkz. <see cref="GameSense"/>).</summary>
     public bool AskGame { get; init; } = true;
+    /// <summary>Altyazıdaki konuşan adı ("ARTHUR: …") çeviride gösterilir; kapalıysa yalnız Türkçe cümle görünür.</summary>
+    public bool ShowSpeakerNames { get; init; } = true;
     /// <summary>Koyu, açık ya da sistemle aynı. Eski ayar dosyalarında yoktur; onlar da koyu açılır.</summary>
     public AppAppearance Appearance { get; init; } = AppAppearance.Dark;
     /// <summary>Görüntü PS5 bağlantısından mı, bu bilgisayardaki Remote Play penceresinden mi okunur.</summary>

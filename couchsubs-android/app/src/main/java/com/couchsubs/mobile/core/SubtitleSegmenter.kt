@@ -18,7 +18,7 @@ object SubtitleSegmenter {
     )
 
     /** Büyük harfle başlayıp iki noktayla biten ama ad olmayan oyun başlıkları; bunlar çevrilir. */
-    private val notNames = setOf(
+    internal val notNames = setOf(
         "note", "warning", "tip", "hint", "objective", "objectives", "quest", "goal", "new", "reward", "rewards",
         "location", "chapter", "mission", "task", "tutorial", "update", "info", "status", "level", "controls",
         "press", "hold", "tap", "remember", "example", "question", "answer", "result", "results", "time",

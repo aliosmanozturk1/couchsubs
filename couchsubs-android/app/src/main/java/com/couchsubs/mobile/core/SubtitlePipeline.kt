@@ -60,6 +60,8 @@ class SubtitlePipeline(
 
     private class Request(val number: Int, val source: String, val box: TextBox?, val session: Int,
                           val capturedAt: Long? = null, val ocrMs: Int? = null) {
+        /** Baştaki konuşan adı ("ARTHUR: …"); çeviriye yalnız cümle gider. */
+        val prefix = SpeakerPrefix.split(source)
         @Volatile var leftAt: Long? = null
         /** Yerine aynı cümlenin uzamış okuması geldi (daktilo efekti); çevirisi gösterilmez. */
         @Volatile var superseded = false
@@ -87,6 +89,8 @@ class SubtitlePipeline(
 
     /** Oyun paketi: kararlı satırın hazır Türkçesi (yoksa null). Motordan önce bakılır. */
     @Volatile var packLookup: ((String) -> PackMatch?)? = null
+    /** Konuşan adı ("ARTHUR: …") TV'ye giden çeviride gösterilir; kapalıysa yalnız cümle gider (her satırda sorulur). */
+    @Volatile var showSpeakerNames: () -> Boolean = { true }
     /** Hiçbir pakette bulunmayan kararlı satır (ortak havuz için). */
     @Volatile var onPackMissed: ((String) -> Unit)? = null
     /** Yeni çeviri gösterilince. */
@@ -105,7 +109,7 @@ class SubtitlePipeline(
         frameAt = capturedAt
         frameOcrMs = ocrMs
         // Kumanda ipuçları ve yazı tanıma çöpleri çevrilmez; yalnız altyazı bloğu çevrilir.
-        val reading = raw.withoutButtonPrompts().withoutOcrNoise().subtitleBlock(area)
+        val reading = raw.withoutButtonPrompts().withoutOcrNoise().joiningRows().subtitleBlock(area)
         val after: (() -> Unit)? = synchronized(lock) {
             val action = stabilizer.feed(reading.text, signature, reading.box)
             val box = reading.box?.placedIn(area)?.centeredOnScreen()
@@ -140,7 +144,7 @@ class SubtitlePipeline(
     private fun enqueue(source: String, box: TextBox?): (() -> Unit)? {
         val request = Request(++lastRequested, source, box, session, frameAt, frameOcrMs)
         lineOnScreen = request.number
-        packLookup?.invoke(source)?.let { return showPacked(request, it) }
+        packMatch(request)?.let { return showPacked(request, it) }
         val missed = onPackMissed
         val current = inFlight
         if (current == null) {
@@ -163,11 +167,21 @@ class SubtitlePipeline(
     /** Satır az önce gösterilenin uzamış ya da düzelmiş okuması mı (TV yerine koyar, üstüne yığmaz). */
     private fun revisesShown(source: String) = lastShownSource?.let { TextMatch.isRevision(source, it) } ?: false
 
+    /** Paket önce adlı satırla, bulunmazsa adsız cümleyle aranır (paket anahtarları çoğu zaman adsızdır). */
+    private fun packMatch(request: Request): PackMatch? {
+        val lookup = packLookup ?: return null
+        return lookup(request.source) ?: request.prefix?.let { lookup(it.body) }
+    }
+
+    /** Gösterilecek çeviri: konuşan adı ayara göre başa eklenir ya da atılır. */
+    private fun present(translation: String, request: Request) =
+        SpeakerPrefix.present(translation, request.source, showSpeakerNames())
+
     private fun showPacked(request: Request, packed: PackMatch): (() -> Unit)? {
         waiting.clear()
         packHits++
         val source = request.source
-        val translated = packed.text
+        val translated = present(packed.text, request)
         val shouldSend = stabilizer.shouldSend(source, translated)
         remember(request.number, source, if (shouldSend) translated else null)
         if (!shouldSend) return null
@@ -222,9 +236,10 @@ class SubtitlePipeline(
 
     private fun translate(request: Request) {
         val source = request.source
+        val input = request.prefix?.body ?: source
         val started = now()
-        val translated = try {
-            translator.translate(source)
+        val sentence = try {
+            translator.translate(input)
         } catch (error: Exception) {
             synchronized(lock) {
                 // Yerine uzamış okuması gelen satırın bırakılan çevirisi hata sayılmaz.
@@ -236,11 +251,12 @@ class SubtitlePipeline(
             return
         }
         onTranslationResult?.invoke(null)
+        val translated = present(sentence, request)
         val translationMs = maxOf(0, (now() - started).toInt())
         var total: Int? = null
         synchronized(lock) {
             if (request.session != session) return
-            val shouldSend = stabilizer.shouldSend(source, translated)
+            val shouldSend = stabilizer.shouldSend(input, sentence)
             remember(request.number, source, if (shouldSend) translated else null)
             if (request.number <= lastShown || !shouldSend || request.superseded) return
             val onScreen = request.number == lineOnScreen

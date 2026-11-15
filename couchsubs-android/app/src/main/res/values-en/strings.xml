@@ -213,6 +213,8 @@
     <string name="game_last_played">Last played</string>
     <string name="settings_ask_game">Ask which game I\'m playing</string>
     <string name="settings_ask_game_short">If no pack recognises the game, asked once two minutes after translation starts.</string>
+    <string name="settings_speaker_names">Show speaker name</string>
+    <string name="settings_speaker_names_short">Keeps the character\'s name in front of the translation (ARTHUR: …). The name itself is never translated.</string>
     <string name="running_now">Now</string>
     <string name="running_ready_translation">ready translation</string>
     <string name="running_ready">ready</string>

@@ -100,6 +100,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         public string Source { get; } = source;
         public TextBox? Box { get; } = box;
         public int Session { get; } = session;
+        /// <summary>Baştaki konuşan adı ("ARTHUR: …"); çeviriye yalnız cümle gider.</summary>
+        public SpeakerPrefix.Split? Prefix { get; } = SpeakerPrefix.Parse(source);
         /// <summary>Satırın ekrandan kalktığı an (hâlâ ekrandaysa null).</summary>
         public long? LeftAt { get; set; }
         /// <summary>Yerine aynı cümlenin uzamış okuması geldi (daktilo efekti); çevirisi gösterilmez.</summary>
@@ -132,6 +134,20 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     /// motor hiç çağrılmaz ve çeviri beklemeden gösterilir. Uygulama paketler açıkken verir.
     /// </summary>
     public Func<string, PackMatch?>? PackLookup { get; set; }
+    /// <summary>Konuşan adı ("ARTHUR: …") TV'ye giden çeviride gösterilir; kapalıysa yalnız cümle gider.</summary>
+    public bool ShowSpeakerNames { get; set; } = true;
+
+    /// <summary>Paket önce adlı satırla, bulunmazsa adsız cümleyle aranır (paket anahtarları çoğu zaman adsızdır).</summary>
+    private PackMatch? FindPack(string source)
+    {
+        if (PackLookup is not { } lookup) return null;
+        if (lookup(source) is { } found) return found;
+        if (SpeakerPrefix.Parse(source) is not { } prefix || lookup(prefix.Body) is not { } bare) return null;
+        return bare with { Spoken = SpeakerPrefix.Voiced(bare.Spoken, prefix) };
+    }
+
+    /// <summary>Gösterilecek çeviri: konuşan adı ayara göre başa eklenir ya da atılır.</summary>
+    private string Present(string translation, Request request) => SpeakerPrefix.Present(translation, request.Source, ShowSpeakerNames);
     /// <summary>Hiçbir pakette bulunmayan kararlı satır (ortak havuz için).</summary>
     public event Action<string>? PackMissed;
     /// <summary>Son gösterilen çevirinin nereden geldiği: "paket" ya da "motor" (günlük ve sayım için).</summary>
@@ -207,7 +223,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         // Yazı tanımanın uydurduğu sözcük çöpleri ("ou$3e") de çevirmene gitmez.
         // Alandaki menü ve köşe göstergeleri de altyazı değildir; yalnız altyazı bloğu çevrilir ve kutusu ona göre olur.
         var area = new TextBox(region.Left, region.Top, region.Right, region.Bottom);
-        var reading = raw.WithoutButtonPrompts().WithoutOcrNoise().SubtitleBlock(area);
+        var reading = raw.WithoutButtonPrompts().WithoutOcrNoise().JoiningRows().SubtitleBlock(area);
 
         Action? after = null;
         Action? flushed = null;
@@ -234,7 +250,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             if (action.Kind == StabilizerKind.None && translator.Prefetches && reading.Text.Trim() is { Length: >= 6 } early && early != lastPrefetched)
             {
                 lastPrefetched = early;
-                translator.Prefetch(early);
+                translator.Prefetch(SpeakerPrefix.Parse(early)?.Body ?? early);
             }
             if (held is { } waiting)
             {
@@ -243,7 +259,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                     // Bozuk ve yarım okumaların her biri kararlayıcıya yeni satır gibi görünür.
                     var source = action.Text!;
                     var wait = Math.Max(waiting.Wait, WaitFor(source));
-                    if (PackLookup?.Invoke(source) is not null)
+                    if (FindPack(source) is not null)
                     {
                         // Pakette bulundu: bekleyen (bozuk/yarım) okuma çevrilmez, bu okuma her zamanki yoldan gider.
                         held = null;
@@ -287,7 +303,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                     if (!LooksMisread(waiting.Source)) flushed = Enqueue(waiting.Source, waiting.Box, waiting.Read);
                     else Write($"bozuk okuma atıldı: {SubtitleLog.Excerpt(waiting.Source)} beklerken kalktı");
                 }
-                else if (reading.Text.Trim().Length >= 3 && PackLookup?.Invoke(reading.Text) is { } packed)
+                else if (reading.Text.Trim().Length >= 3 && FindPack(reading.Text) is { } packed)
                 {
                     // Aynı satır bu kez düzgün okundu: paketteki Türkçesi gösterilir, bozuk okuma çevrilmez.
                     held = null;
@@ -342,7 +358,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     {
         // Yeniden okuma denetimi gecikme eklemez; bekleme süreleri 0 olsa da çalışır.
         var enabled = PackLookup is not null || HoldWithoutPacks;
-        if (!enabled || PackLookup?.Invoke(source) is not null) return Enqueue(source, box);
+        if (!enabled || FindPack(source) is not null) return Enqueue(source, box);
         // Az önce çevrilen satırın daha iyi olmayan yeniden okuması yeni satır değildir (TV'de üst üste binmesin).
         // Tam cümle gibi görünen gürültülü okuma da ("Yeah? Dihnnr.") buna dahildir; bu yüzden beklemeden önce bakılır.
         if (lastSent is { } last && now() - last.At < RereadWithinMs && AllLinesCovered(source, last.Source) && ReadingScore(source) <= last.Score)
@@ -494,7 +510,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         var request = new Request(++lastRequested, source, box, session) { Read = read ?? currentRead ?? new ReadInfo(now(), null, null) };
         lineOnScreen = request.Number;
         lastSent = (source, ReadingScore(source), now());
-        if (PackLookup?.Invoke(source) is { } packed) return ShowPacked(request, packed);
+        if (FindPack(source) is { } packed) return ShowPacked(request, packed);
         var missed = PackMissed;
         if (inFlight is not { } current)
         {
@@ -537,7 +553,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         waiting.Clear();
         PackHits++;
         var source = request.Source;
-        var translated = packed.Text;
+        var translated = Present(packed.Text, request);
         var shouldSend = stabilizer.ShouldSend(source, translated);
         Remember(request.Number, source, shouldSend ? translated : null);
         var pack = PackName?.Invoke() is { } name ? "paket:" + name : "paket";
@@ -671,14 +687,15 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     private async Task Translate(Request request, CancellationToken token)
     {
         var source = request.Source;
+        var input = request.Prefix?.Body ?? source;
         var started = now();
         // Önbellekten mi geldi, hangi motor çevirdi: yalnız günlük için (bu yöntemin beklediği çağrılar görür).
         var probe = new TranslationProbe();
         TranslationProbe.Current = probe;
-        string translated;
+        string sentence;
         try
         {
-            translated = await translator.TranslateAsync(source, token);
+            sentence = await translator.TranslateAsync(input, token);
         }
         catch (Exception error)
         {
@@ -696,6 +713,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             return;
         }
 
+        var translated = Present(sentence, request);
         var finished = now();
         var result = $"{probe.Outcome()} {now() - started} ms";
         lock (gate)
@@ -713,7 +731,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         lock (gate)
         {
             if (request.Session != session) return;
-            var shouldSend = stabilizer.ShouldSend(source, translated);
+            var shouldSend = stabilizer.ShouldSend(input, sentence);
             Remember(request.Number, source, shouldSend ? translated : null);
             if (request.Number <= lastShown || !shouldSend || request.Superseded)
             {
@@ -742,7 +760,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         }
         MetricsReady?.Invoke(metrics);
         PairShown?.Invoke(source, translated);
-        if (SpeechReady is { } speech) speech(translator.SpokenLines(source));
+        if (SpeechReady is { } speech) speech(SpeakerPrefix.Voiced(translator.SpokenLines(input), request.Prefix));
     }
 
     private void Remember(int number, string source, string? translation)

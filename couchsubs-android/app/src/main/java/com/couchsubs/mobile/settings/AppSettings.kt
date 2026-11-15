@@ -131,6 +131,11 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("askGame", true)
         set(value) = prefs.edit().putBoolean("askGame", value).apply()
 
+    /** Altyazıdaki konuşan adı ("ARTHUR: …") çeviride gösterilir; kapalıysa yalnız Türkçe cümle görünür. */
+    var showSpeakerNames: Boolean
+        get() = prefs.getBoolean("showSpeakerNames", true)
+        set(value) = prefs.edit().putBoolean("showSpeakerNames", value).apply()
+
     /** Bu PS5'te son seçilen oyun ("Hangi oyunu oynuyorsunuz?" kartının ilk önerisi). */
     fun lastGame(console: String): String? = prefs.getString("lastGame.$console", null)
 

@@ -13233,6 +13233,38 @@
         }
       }
     },
+    "Show speaker name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show speaker name"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşan adını göster"
+          }
+        }
+      }
+    },
+    "Keeps the character's name in front of the translation (ARTHUR: …). The name itself is never translated.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keeps the character's name in front of the translation (ARTHUR: …). The name itself is never translated."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Karakterin adı çevirinin başında kalır (ARTHUR: …). Adın kendisi hiçbir zaman çevrilmez."
+          }
+        }
+      }
+    },
     "Ask which game I'm playing": {
       "localizations": {
         "en": {
