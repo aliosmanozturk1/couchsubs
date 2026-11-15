@@ -139,6 +139,7 @@ class TranslationService : Service() {
     @Volatile private var streaming = false
     private var begun = false
     @Volatile private var styleListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
+    @Volatile private var targetListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -242,6 +243,8 @@ class TranslationService : Service() {
         }
         // Çeviri sürerken Ayarlar'da yazı boyu ya da rengi değişirse TV hemen yeni görünüme geçer (iPhone ile aynı).
         styleListener = settings.onStyleChanged { server?.sendStyle(settings.style) }
+        // Çeviri sürerken hedef TV'ye (ya da telefona) çevrilirse altyazı hemen oraya gider (iPhone ile aynı).
+        targetListener = settings.onTargetChanged { server?.sendsToTv = settings.target == SubtitleTarget.TV }
         region = settings.region
         extraAreas = settings.extraAreas.active()
         areasListener = settings.onAreasChanged {
@@ -569,6 +572,8 @@ class TranslationService : Service() {
         PlayedGame.stop()
         styleListener?.let(settings::removeListener)
         styleListener = null
+        targetListener?.let(settings::removeListener)
+        targetListener = null
         areasListener?.let(settings::removeListener)
         areasListener = null
         regionWatcher?.reset()
