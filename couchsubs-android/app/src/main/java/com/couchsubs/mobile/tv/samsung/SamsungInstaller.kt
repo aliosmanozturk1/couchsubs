@@ -34,7 +34,7 @@ class InstallLog(val file: File?) {
 }
 
 /** Kurulumun ilerleyişi; arayüz her adımı Türkçe gösterir. PAIRING ve APPROVE_ON_TV Android TV'nin, KEY LG'nindir. */
-enum class InstallStep { CONNECTING, READING, SIGN_IN, CERTIFICATE, SIGNING, INSTALLING, UNINSTALLING, LAUNCHING, PAIRING, APPROVE_ON_TV, KEY }
+enum class InstallStep { CONNECTING, READING, SIGN_IN, CERTIFICATE, SIGNING, INSTALLING, UNINSTALLING, LAUNCHING, PAIRING, APPROVE_ON_TV, KEY, OPEN_PLAY }
 
 /**
  * CouchSubs'ın Samsung TV uygulamasını geliştirici modu açık TV'ye bu telefondan kurar: TV'nin DUID'ini okur, gerekirse

@@ -941,7 +941,7 @@ final class AppModel: ObservableObject {
 
     /// Kurulumun TV'yi değiştiren adımları (yalnız sürüm okumak değil).
     static func isInstallStep(_ step: String) -> Bool {
-        ["signin", "certificate", "signing", "installing", "uninstalling"].contains(step)
+        ["signin", "certificate", "signing", "installing", "uninstalling", "play"].contains(step)
     }
 
     /// Kurulum hatası ve yardımcının verdiği sebep (TV'nin kurulum çıktısı, Samsung'un yanıtı); sebep de gösterilir.

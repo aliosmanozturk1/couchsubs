@@ -109,6 +109,8 @@ internal fun AndroidTvInstallScreen(onBack: () -> Unit, brandPicker: @Composable
                         pairing = pairing,
                         progress = { step -> main.post { if (state is AndroidState.Working) state = AndroidState.Working(step) } },
                         log = InstallLog(logFile),
+                        // Play'de herkese açıksa ve TV'de Play Store varsa TV'de Play sayfası açılır.
+                        playListed = { AndroidTvInstaller.isListedOnPlay() },
                     ).ensureInstalled({ apk.readBytes() }, version, allowReplace)
                 }
                 AndroidState.Done(result.version, result.installed)

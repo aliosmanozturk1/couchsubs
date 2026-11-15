@@ -85,13 +85,17 @@ public sealed partial class AndroidTvInstaller(string host, string keyDirectory,
         CancellationToken cancellationToken = default)
     {
         await using var adb = await ConnectAsync(cancellationToken);
-        var installed = VersionFromDumpsys(await adb.RunAsync($"shell:dumpsys package {PackageName}", cancellationToken: cancellationToken));
+        var dumpsys = await adb.RunAsync($"shell:dumpsys package {PackageName}", cancellationToken: cancellationToken);
+        var installed = VersionFromDumpsys(dumpsys);
         if (installed is not null && !Versions.IsNewer(version, installed))
         {
             // Bu izni vermeyen eski bir CouchSubs'ın kurduğu güncel uygulama da izni alsın.
             await GrantOverlayAsync(adb, cancellationToken);
             return (installed, false);
         }
+        // Play'de ve TV'de Play Store varsa Play'den (PlayStoreRedirect.cs); olmazsa APK ile.
+        if (await InstallFromPlayAsync(adb, installed, InstalledFromPlay(dumpsys), cancellationToken) is { } fromPlay)
+            return (fromPlay, true);
         await InstallAsync(adb, apkPath, cancellationToken);
         await GrantOverlayAsync(adb, cancellationToken);
         await adb.RunAsync($"shell:am start -n {PackageName}/.MainActivity", cancellationToken: cancellationToken);

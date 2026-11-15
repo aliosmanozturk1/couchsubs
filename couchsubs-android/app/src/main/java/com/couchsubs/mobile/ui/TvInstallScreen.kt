@@ -276,6 +276,7 @@ internal fun stepText(step: InstallStep) = stringResource(when (step) {
     InstallStep.PAIRING -> R.string.tvinstall_step_pairing
     InstallStep.APPROVE_ON_TV -> R.string.tvinstall_step_approve
     InstallStep.KEY -> R.string.tvinstall_step_key
+    InstallStep.OPEN_PLAY -> R.string.tvinstall_step_play
     InstallStep.CONNECTING -> R.string.tvinstall_step_connecting
     InstallStep.READING -> R.string.tvinstall_step_reading
     InstallStep.SIGN_IN -> R.string.tvinstall_step_signin

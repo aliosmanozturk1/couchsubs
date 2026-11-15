@@ -273,6 +273,9 @@ public sealed class LiveServices : IAppServices
         var installer = new AndroidTvInstaller(host, DataDirectory("adb"))
         {
             OnApprovalNeeded = () => onEvent(new TvInstallEvent(TvInstallEventKind.ApproveOnTv)),
+            // CouchSubs TV Play'de ve TV'de Play Store varsa TV'de Play sayfası açılır (PlayStoreRedirect.cs).
+            PlayListed = AndroidTvInstaller.IsListedOnPlayAsync,
+            OnPlayOpened = () => onEvent(new TvInstallEvent(TvInstallEventKind.Progress, Step: "play")),
         };
         try
         {

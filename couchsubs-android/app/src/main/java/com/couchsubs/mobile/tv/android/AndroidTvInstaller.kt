@@ -27,6 +27,10 @@ class AndroidTvInstaller(
     private val log: InstallLog = InstallLog(null),
     private val connector: (AdbKey, () -> Unit) -> AdbConnection = { key, approve -> AdbConnection.connect(host, port, key, approve) },
     private val pairer: (AdbKey, Pairing) -> Unit = { key, pair -> AdbPairing.pair(host, pair.port, pair.code, key) },
+    /** CouchSubs TV Google Play'de herkese açık mı? Açıksa ve TV'de Play Store varsa uygulama Play'den kurulur. */
+    private val playListed: () -> Boolean = { false },
+    private val playWaitMs: Long = 4 * 60 * 1000L,
+    private val playPollMs: Long = 3_000L,
 ) {
     data class Pairing(val port: Int, val code: String)
     data class Result(val version: String, val installed: Boolean)
@@ -40,6 +44,27 @@ class AndroidTvInstaller(
         private val installerName = Regex("""installerPackageName=(\S+)""")
 
         fun versionFromDumpsys(output: String): String? = versionName.find(output)?.groupValues?.get(1)
+
+        const val PLAY_URL = "https://play.google.com/store/apps/details?id=$PACKAGE_NAME"
+        const val OPEN_PLAY_COMMAND = "shell:am start -a android.intent.action.VIEW -d market://details?id=$PACKAGE_NAME"
+
+        /** Play sayfası herkese açık mı (200)? Ağ yoksa ya da sayfa yoksa false. */
+        fun isListedOnPlay(timeoutMs: Int = 5_000): Boolean = try {
+            val connection = java.net.URL(PLAY_URL).openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = timeoutMs
+            connection.readTimeout = timeoutMs
+            connection.instanceFollowRedirects = true
+            try {
+                connection.responseCode == 200
+            } finally {
+                connection.disconnect()
+            }
+        } catch (error: IOException) {
+            false
+        }
+
+        /** `pm list packages com.android.vending` çıktısında Play Store var mı? */
+        fun hasPlayStore(output: String) = output.lineSequence().any { it.trim() == "package:$PLAY_STORE" }
 
         /** Paket Google Play'den mi kurulmuş (Play'in imzası telefondakinden farklıdır)? */
         fun installedFromPlay(output: String) = installerName.find(output)?.groupValues?.get(1) == PLAY_STORE
@@ -133,6 +158,10 @@ class AndroidTvInstaller(
                 return Result(installed, false)
             }
 
+            // CouchSubs TV Play'de ve TV'de Play Store varsa uygulama Play'den kurulur/güncellenir (Play kopyası
+            // kendiliğinden güncel kalır). Kullanıcı Play sayfasında Yükle'ye basmazsa APK ile kurulur.
+            installFromPlay(adb, installed, fromPlay)?.let { return it }
+
             progress(InstallStep.INSTALLING)
             val bytes = apk()
             var output = install(adb, bytes)
@@ -152,6 +181,35 @@ class AndroidTvInstaller(
             launch(adb)
             return Result(after ?: version ?: "", true)
         }
+    }
+
+    /**
+     * TV'de Play sayfasını açar ve kurulmasını (ya da güncellenmesini) bekler; olunca izin verip uygulamayı açar. Play
+     * yolu yoksa, sayfa açılmazsa ya da süre dolarsa null: APK ile kurulur.
+     */
+    private fun installFromPlay(adb: AdbConnection, before: String?, fromPlay: Boolean): Result? {
+        if (!playListed()) return null
+        if (!fromPlay && !hasPlayStore(runCatching { adb.run("shell:pm list packages $PLAY_STORE") }.getOrDefault(""))) {
+            log.write("TV'de Play Store yok; APK ile kuruluyor.")
+            return null
+        }
+        val opened = adb.run(OPEN_PLAY_COMMAND)
+        log.write("Play sayfası açılıyor: ${opened.trim()}")
+        if (opened.contains("Error", ignoreCase = true)) return null
+        progress(InstallStep.OPEN_PLAY)
+        val deadline = System.currentTimeMillis() + playWaitMs
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(playPollMs)
+            val now = versionFromDumpsys(adb.run("shell:dumpsys package $PACKAGE_NAME"))
+            if (now != null && now != before) {
+                log.write("Play'den kuruldu: $now")
+                grantOverlay(adb, log)
+                launch(adb)
+                return Result(now, true)
+            }
+        }
+        log.write("Play'den ${playWaitMs / 1000} sn içinde kurulmadı; APK ile kuruluyor.")
+        return null
     }
 
     /** Android 7 ve sonrası: dosya ayrıca kopyalanmadan paket yöneticisine akıtılır; olmazsa gönderilip `pm install`. */
