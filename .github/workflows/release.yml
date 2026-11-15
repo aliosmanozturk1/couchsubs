@@ -27,6 +27,9 @@ jobs:
   android:
     uses: ./.github/workflows/tv-android.yml
     secrets: inherit
+    # TV paketi TV_KEYSTORE_* sırlarıyla imzalanmalı; yoksa sürüm durur (geliştirme anahtarına düşmez).
+    with:
+      require-signing: true
   mac:
     needs: android
     runs-on: macos-26
