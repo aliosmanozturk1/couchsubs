@@ -254,6 +254,15 @@ class TranslationService : Service() {
             null
         }
         Backend.breadcrumb("çeviri: paketler ${packTitles?.size ?: "yok"}")
+        // Ayarlardan paket içe aktarılınca ya da silinince bu oturumun paketleri hemen yeniden okunur.
+        Services.onLocalPacksChanged = {
+            try {
+                library.reload()
+                if (packTitles != null) packTitles = library.infos.associate { it.id to it.title }
+            } catch (error: OutOfMemoryError) {
+                Log.e(TAG, "packs reload", error)
+            }
+        }
         reader = SubtitleReader()
         pipeline =SubtitlePipeline(translator, subtitleServer).apply {
             packLookup = { text -> if (packTitles != null && settings.packsEnabled) PackLookup.match(library, text) else null }
@@ -479,6 +488,7 @@ class TranslationService : Service() {
 
     override fun onDestroy() {
         synchronized(lifecycle) { destroyed = true }
+        Services.onLocalPacksChanged = null
         settings.translating = false
         if (startedAt > 0) settings.lastSessionMs = System.currentTimeMillis() - startedAt
         if (startedAt > 0) Telemetry.event(Telemetry.SESSION_STOP, "seconds" to (System.currentTimeMillis() - startedAt) / 1000,

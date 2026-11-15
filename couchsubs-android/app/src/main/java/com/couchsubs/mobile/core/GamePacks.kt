@@ -295,7 +295,7 @@ data class PackMatch(val text: String, val packId: String? = null)
 
 /**
  * Uygulamayla gelen ve kullanıcının klasörüne bırakılan paketler (Windows: GamePackLibrary). Sıra: uygulamanınkiler,
- * sonra kullanıcınınkiler (dosya adına göre); aynı anahtarda sonraki kazanır, aynı kimlikli pakette kullanıcının dosyası
+ * sonra kullanıcınınkiler (dosya adına göre), en son içe aktarılanlar; aynı anahtarda sonraki kazanır, aynı kimlikli pakette kullanıcının dosyası
  * uygulamanınkinin yerine geçer. Ayarlarda kapatılan paketlere bakılmaz.
  *
  * Masaüstü paketleri tek sözlükte birleştirir; burada her paket ayrı tutulur ve sondan başa aranır (aynı sonuç), böylece
@@ -308,6 +308,8 @@ class GamePackLibrary(
      */
     private val bundled: (() -> List<Pair<String, () -> ByteArray>>)?,
     private val userDirectory: File?,
+    /** Ayarlar › Oyun paketleri'nden içe aktarılan topluluk paketleri ([GamePackImporter]); en son okunur, çakışan satırda kazanır. */
+    private val importedDirectory: File? = null,
 ) {
     data class Info(val id: String, val title: String, val entries: Int, val builtIn: Boolean)
 
@@ -453,13 +455,15 @@ class GamePackLibrary(
             }
             add(name, data, true)
         }
-        userDirectory?.listFiles()?.filter { it.isFile && isPackFile(it.name) }?.sortedBy { it.name }?.forEach { file ->
-            val data = try {
-                file.readBytes()
-            } catch (error: IOException) {
-                return@forEach
+        for (directory in listOfNotNull(userDirectory, importedDirectory)) {
+            directory.listFiles()?.filter { it.isFile && isPackFile(it.name) }?.sortedBy { it.name }?.forEach { file ->
+                val data = try {
+                    file.readBytes()
+                } catch (error: IOException) {
+                    return@forEach
+                }
+                add(file.name, data, false)
             }
-            add(file.name, data, false)
         }
         packs = list
         scope = null

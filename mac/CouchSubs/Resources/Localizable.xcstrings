@@ -12816,6 +12816,86 @@
           }
         }
       }
+    },
+    "Imported packs": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imported packs"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İçe aktarılan paketler"
+          }
+        }
+      }
+    },
+    "Add a community translation file (JSON, TXT or bilingual SRT) as a game pack. The file stays on this phone and is not sent anywhere.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add a community translation file (JSON, TXT or bilingual SRT) as a game pack. The file stays on this phone and is not sent anywhere."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Topluluk çeviri dosyasını (JSON, TXT ya da iki dilli SRT) oyun paketi olarak ekleyin. Dosya bu telefonda kalır, hiçbir yere gönderilmez."
+          }
+        }
+      }
+    },
+    "Delete": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sil"
+          }
+        }
+      }
+    },
+    "Delete pack?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete pack?"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paket silinsin mi?"
+          }
+        }
+      }
+    },
+    "%@ is removed from this phone. To use it again, import the file again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is removed from this phone. To use it again, import the file again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ bu telefondan silinir. Yeniden kullanmak için dosyayı yeniden içe aktarmanız gerekir."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

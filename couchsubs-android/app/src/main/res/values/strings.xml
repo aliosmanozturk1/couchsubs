@@ -101,6 +101,26 @@
     <string name="packs_refresh">Paketleri güncelle</string>
 
     <string name="packs_loading">Paketler yükleniyor…</string>
+    <string name="packs_imported_title">İçe aktarılan paketler</string>
+    <string name="packs_import_note">Topluluk çeviri dosyasını (JSON, TXT ya da iki dilli SRT) oyun paketi olarak ekleyin. Dosya bu telefonda kalır, hiçbir yere gönderilmez.</string>
+    <string name="packs_import">Paketi içe aktar</string>
+    <string name="packs_import_heading">Oyun paketini içe aktar</string>
+    <string name="packs_import_game_title">Oyunun adı</string>
+    <string name="packs_import_usable">Kullanılabilir satır</string>
+    <string name="packs_import_invalid">Geçersiz kayıt</string>
+    <string name="packs_import_duplicate">Yinelenen çeviri çifti</string>
+    <string name="packs_import_conflict">Çakışan satır</string>
+    <string name="packs_import_install">Paketi yükle</string>
+    <string name="packs_import_replace_title">Oyun paketi değiştirilsin mi?</string>
+    <string name="packs_import_replace">Paketi değiştir</string>
+    <string name="packs_import_replace_body">Bu kimlikle kurulu bir oyun paketi zaten var. Değiştirirseniz yeni paket kurulu paketin üzerine yazılır.</string>
+    <string name="packs_import_read_error">Çeviri dosyası okunamadı.</string>
+    <string name="packs_import_format_error">Çeviri dosyası içe aktarılamadı. Biçimini ve karakter kodlamasını kontrol edin.</string>
+    <string name="packs_import_empty">Dosyada kullanılabilir çeviri yok.</string>
+    <string name="packs_import_install_error">Oyun paketi yüklenemedi.</string>
+    <string name="packs_delete">Sil</string>
+    <string name="packs_delete_title">Paket silinsin mi?</string>
+    <string name="packs_delete_body">%1$s bu telefondan silinir. Yeniden kullanmak için dosyayı yeniden içe aktarmanız gerekir.</string>
 
     <string name="profile">Profil</string>
     <string name="profile_not_paired">Eşlenmedi</string>

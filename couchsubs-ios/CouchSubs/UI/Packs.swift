@@ -44,6 +44,7 @@ struct PacksScreen: View {
                     packTile(pack)
                 }
             }
+            ImportedPacksSection()
             Tile {
                 HStack(spacing: Mobile.Space.gap) {
                     MobileTileIcon(symbol: "arrow.down.circle")

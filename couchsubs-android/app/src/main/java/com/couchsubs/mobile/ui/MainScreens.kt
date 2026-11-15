@@ -336,6 +336,7 @@ fun PacksScreen(onBack: () -> Unit, packInUse: String?) {
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+        ImportedPacksSection()
         Tile(Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
                 TileIcon(Icons.Filled.Refresh)

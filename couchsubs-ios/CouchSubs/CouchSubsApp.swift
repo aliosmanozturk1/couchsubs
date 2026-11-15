@@ -33,9 +33,10 @@ struct CouchSubsApp: App {
         let testing = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         // AppDelegate bu noktada henüz çağrılmadı; Firebase burada da (bir kez) kurulur.
         let firebase = !testing && MainActor.assumeIsolated { Integrations.configureFirebase() }
-        // Uygulamayla gelen paketler, üstüne sunucudan indirilen güncel sürümleri.
+        // Uygulamayla gelen paketler, üstüne sunucudan indirilen güncel sürümleri, en üstte içe aktarılan topluluk paketleri.
         let library = GamePackLibrary(bundled: GamePackLibrary.bundledDirectory,
-                                      user: PackStore.filesDirectory(in: PackStore.defaultDirectory))
+                                      user: PackStore.filesDirectory(in: PackStore.defaultDirectory),
+                                      imported: PackStore.importedDirectory)
         let model = testing ? PhoneModel(store: EphemeralStore(), packs: library)
             : Self.demoStore().map { PhoneModel(store: $0, packs: library) } ?? PhoneModel(packs: library)
         // Çeviri sürerken ekran kararmaz: iOS kilitlenen ya da arka plana geçen uygulamayı askıya alır.

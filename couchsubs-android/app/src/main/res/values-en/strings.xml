@@ -99,6 +99,26 @@
     <string name="packs_refresh">Update packs</string>
 
     <string name="packs_loading">Loading packs…</string>
+    <string name="packs_imported_title">Imported packs</string>
+    <string name="packs_import_note">Add a community translation file (JSON, TXT or bilingual SRT) as a game pack. The file stays on this phone and is not sent anywhere.</string>
+    <string name="packs_import">Import pack</string>
+    <string name="packs_import_heading">Import game pack</string>
+    <string name="packs_import_game_title">Game title</string>
+    <string name="packs_import_usable">Usable entries</string>
+    <string name="packs_import_invalid">Invalid records</string>
+    <string name="packs_import_duplicate">Duplicate pairs</string>
+    <string name="packs_import_conflict">Conflicting entries</string>
+    <string name="packs_import_install">Install pack</string>
+    <string name="packs_import_replace_title">Replace game pack?</string>
+    <string name="packs_import_replace">Replace pack</string>
+    <string name="packs_import_replace_body">A game pack with this ID already exists. Replacing it will overwrite the installed pack.</string>
+    <string name="packs_import_read_error">The translation file could not be read.</string>
+    <string name="packs_import_format_error">The translation file could not be imported. Check its format and encoding.</string>
+    <string name="packs_import_empty">The file contains no usable translations.</string>
+    <string name="packs_import_install_error">The game pack could not be installed.</string>
+    <string name="packs_delete">Delete</string>
+    <string name="packs_delete_title">Delete pack?</string>
+    <string name="packs_delete_body">%1$s is removed from this phone. To use it again, import the file again.</string>
 
     <string name="profile">Profile</string>
     <string name="profile_not_paired">Not paired</string>

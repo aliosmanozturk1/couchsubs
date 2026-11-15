@@ -15,7 +15,7 @@ Let a CouchSubs desktop user install a community translation file from their com
 - Show a preview before writing anything: game title, usable entry count, invalid rows/cues, repeated pairs, and conflicting translations.
 - Write a CouchSubs format-1 JSON pack into the existing per-user pack directory, then reload the library and refresh the installed-pack list.
 - Keep the source file untouched. Do not bundle, publish, or remotely fetch community translations.
-- Keep existing mobile and TV apps on their current downloaded-pack flow for this first version.
+- Phones (follow-up): Android and iPhone add the same action under **Game packs**, with the same parsing rules, preview, replace prompt and 64 MB limit. See *Phones* below. TV apps keep their downloaded-pack flow.
 
 ## Accepted input formats
 
@@ -38,11 +38,17 @@ A numeric `format` marker identifies a CouchSubs pack envelope. Require its `ent
 
 Keep parsing and pack construction in each platform's core (`CouchSubsCore` and `CouchSubs.Core`) so it can be tested without UI. Add small platform-native file-picker and preview/confirmation UI to the existing game-pack settings page. Keep macOS and Windows parsing rules and output envelopes aligned with shared fixtures/golden cases.
 
+## Phones
+
+- **Android:** *Game packs → Import pack* opens the system file picker (Storage Access Framework, `ACTION_OPEN_DOCUMENT`); no storage permission is requested. `core/GamePackImporter.kt` mirrors the Swift importer (same `PackKey` hashing, counts, IDs and envelope; `GamePackImporterTest` repeats the Swift cases). Packs are written to `filesDir/packs-imported`.
+- **iPhone:** the same section uses `.fileImporter` (JSON, plain text, SRT) and the shared `CouchSubsCore.GamePackImporter`. Packs are written to `Application Support/CouchSubs/Packs/imported`.
+- On both phones imported packs live in their own directory, separate from downloaded packs, so a server refresh never deletes them. `GamePackLibrary` reads that directory last, so an imported pack wins on a line that other packs also have. The section lists imported packs with a delete action. Files stay on the phone and are never sent to the server or the shared line pool.
+
 ## Non-goals
 
 - Capture-card, OBS, or other video-input support.
 - Downloading, sharing, or curating community packs from CouchSubs servers.
-- Import on mobile/TV in this iteration.
+- Import on TV apps.
 - Translating mono-language SRT files or guessing which cues are English/Turkish.
 - Importing copyrighted translations into the repository or shipping them with CouchSubs.
 

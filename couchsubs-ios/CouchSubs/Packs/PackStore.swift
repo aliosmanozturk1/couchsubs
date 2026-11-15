@@ -76,6 +76,10 @@ actor PackStore {
             .appendingPathComponent("CouchSubs", isDirectory: true).appendingPathComponent("Packs", isDirectory: true)
     }
 
+    /// Ayarlar › Oyun paketleri'nden içe aktarılan topluluk paketleri (`GamePackImporter`). Yalnız bu telefonda kalır,
+    /// sunucuya gitmez; `refresh` yalnız `files` klasörünü temizlediği için güncellemede silinmez.
+    static var importedDirectory: URL { defaultDirectory.appendingPathComponent("imported", isDirectory: true) }
+
     /// `GamePackLibrary`'nin okuduğu klasör.
     nonisolated var filesDirectory: URL { Self.filesDirectory(in: directory) }
 

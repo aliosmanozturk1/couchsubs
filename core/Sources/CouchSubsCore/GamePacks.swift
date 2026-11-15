@@ -212,8 +212,11 @@ public final class GamePackLibrary: @unchecked Sendable {
     private var distinctive: Int?
     private var infos: [Info] = []
 
-    public init(bundled: URL?, user: URL?) {
-        directories = [bundled.map { (url: $0, builtIn: true) }, user.map { (url: $0, builtIn: false) }].compactMap { $0 }
+    /// `imported`: telefonda Ayarlar › Oyun paketleri'nden içe aktarılan topluluk paketleri (`GamePackImporter`). En son
+    /// okunur, aynı satırda kazanır; sunucudan paket güncellenirken silinmesin diye indirilenlerden ayrı klasördedir.
+    public init(bundled: URL?, user: URL?, imported: URL? = nil) {
+        directories = [bundled.map { (url: $0, builtIn: true) }, user.map { (url: $0, builtIn: false) },
+                       imported.map { (url: $0, builtIn: false) }].compactMap { $0 }
     }
 
     /// Kurulu paketler; ilk çağrıda yüklenir.

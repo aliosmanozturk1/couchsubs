@@ -33,6 +33,11 @@ object Services {
         private set
     lateinit var packStore: PackStore
         private set
+    /** Ayarlar › Oyun paketleri'nden içe aktarılan topluluk paketleri (yalnız bu telefonda; sunucuya gitmez). */
+    lateinit var importedPacksDirectory: File
+        private set
+    /** Çalışan çeviri hizmeti: paket içe aktarılınca ya da silinince kitaplığını yeniden okur. */
+    @Volatile var onLocalPacksChanged: (() -> Unit)? = null
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     /** Paket listesi değişince (indirme) artar; ekranlar yeniden okur. */
     val packsVersion = MutableStateFlow(0)
@@ -73,6 +78,7 @@ object Services {
         Meta.init(app)
         applyMeasurement()
         packStore = PackStore(File(app.filesDir, "packs-remote"), HttpPackServer(BuildConfig.PACKS_URL.trimEnd('/')))
+        importedPacksDirectory = File(app.filesDir, "packs-imported")
         // Açılışta hemen, sonra uygulama açık kaldıkça günde bir yeni ve güncellenen paketlere bakılır (iPhone'daki gibi).
         refreshPacks(force = true)
         scope.launch {
@@ -146,6 +152,31 @@ object Services {
         val bundled: () -> List<Pair<String, () -> ByteArray>> = {
             (context.assets.list("packs") ?: emptyArray()).map { name -> name to { context.assets.open("packs/$name").use { s -> s.readBytes() } } }
         }
-        return GamePackLibrary(bundled, packStore.directory).also { it.setDisabled(settings.disabledPacks) }
+        return GamePackLibrary(bundled, packStore.directory, importedPacksDirectory).also { it.setDisabled(settings.disabledPacks) }
+    }
+
+    /** İçe aktarılan bir paket (Ayarlar › Oyun paketleri'ndeki liste). */
+    data class ImportedPack(val id: String, val title: String, val entries: Int, val file: File)
+
+    /** İçe aktarılan paketler, ada göre (bloklar). */
+    fun importedPacks(): List<ImportedPack> =
+        importedPacksDirectory.listFiles()?.filter { it.isFile && it.name.endsWith(".json") && !it.name.startsWith(".") }?.mapNotNull { file ->
+            try {
+                val pack = com.couchsubs.mobile.core.GamePack.decode(file.readBytes(), GamePackLibrary.baseName(file.name))
+                ImportedPack(pack.id, pack.title, pack.size, file)
+            } catch (error: java.io.IOException) {
+                null
+            }
+        }?.sortedBy { it.title.lowercase() }.orEmpty()
+
+    /** Paket içe aktarıldı ya da silindi: ekranlar ve çalışan çeviri yeniden okur. */
+    fun localPacksChanged() {
+        packsVersion.value++
+        onLocalPacksChanged?.invoke()
+    }
+
+    fun deleteImportedPack(pack: ImportedPack) {
+        if (pack.file.parentFile == importedPacksDirectory) pack.file.delete()
+        localPacksChanged()
     }
 }
