@@ -4,6 +4,8 @@ package com.couchsubs.tv;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputManager;
 import android.media.tv.TvView;
@@ -18,9 +20,13 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.util.List;
 
 /**
  * İki modda çalışır (bkz. DisplayMode):
@@ -42,7 +48,12 @@ public class MainActivity extends Activity implements TvPage.Host {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TvView tvView;
     private TvPage page;
+    private LinearLayout helpBox;
     private TextView help;
+    /** Görüntü gelmeyince açılan giriş seçicinin düğmeleri (her HDMI girişi için bir tane). */
+    private LinearLayout choices;
+    private boolean pickerShown;
+    private boolean pickerClosed;
     private String launchParams = "";
     /** Son açılan HDMI girişi; uygulama öne gelince ya da bağlantı kopunca yeniden açılır. */
     private String tunedInput;
@@ -51,7 +62,6 @@ public class MainActivity extends Activity implements TvPage.Host {
     private boolean watching;
     /** Ekran önde mi; arka plandayken görüntü izlenmez. */
     private boolean resumed;
-    private boolean helpShown;
     private final Runnable watchTick = this::checkFallback;
     private final Runnable hideHelpTask = this::hideHelp;
 
@@ -121,17 +131,27 @@ public class MainActivity extends Activity implements TvPage.Host {
         page = new TvPage(this, this, launchParams, false);
         root.addView(page.webView);
 
+        helpBox = new LinearLayout(this);
+        helpBox.setOrientation(LinearLayout.VERTICAL);
+        helpBox.setVisibility(View.GONE);
+        helpBox.setBackgroundColor(0xE6202024);
+        int pad = Math.round(28 * fitScale());
+        helpBox.setPadding(pad, pad, pad, pad);
         help = new TextView(this);
-        help.setVisibility(View.GONE);
         help.setTextColor(Color.WHITE);
         help.setTextSize(TypedValue.COMPLEX_UNIT_PX, 30 * fitScale());
-        help.setBackgroundColor(0xE6202024);
-        int pad = Math.round(28 * fitScale());
-        help.setPadding(pad, pad, pad, pad);
+        helpBox.addView(help);
+        choices = new LinearLayout(this);
+        choices.setOrientation(LinearLayout.HORIZONTAL);
+        choices.setVisibility(View.GONE);
+        LinearLayout.LayoutParams choicesLayout = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        choicesLayout.topMargin = pad;
+        helpBox.addView(choices, choicesLayout);
         FrameLayout.LayoutParams helpLayout = new FrameLayout.LayoutParams(
-                Math.round(1300 * fitScale()), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+                Math.round(1400 * fitScale()), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         helpLayout.topMargin = Math.round(60 * fitScale());
-        root.addView(help, helpLayout);
+        root.addView(helpBox, helpLayout);
 
         setContentView(root);
         preferLowLatency();
@@ -216,27 +236,139 @@ public class MainActivity extends Activity implements TvPage.Host {
             switchToOverlay(R.string.overlay_fallback);
             return;
         }
-        if (watch.needsPermission(now, source, permitted) && !helpShown) {
-            showPermissionHelp(R.string.overlay_fallback_needs_permission);
+        // Katmana geçilemiyor (Play paketi, izin yok ya da girişte cihaz görünmüyor): ekran siyah kalmasın, giriş seçici ve
+        // ne yapılacağı gösterilir. Eskiden girişte cihaz görünmeyince (PS5 başka HDMI'da) hiçbir şey söylenmiyordu.
+        if (watch.noPicture(now) && !pickerShown && !pickerClosed) {
+            showPicker(source);
         }
         watching = true;
         handler.postDelayed(watchTick, WATCH_EVERY_MS);
     }
 
     private void showPermissionHelp(int message) {
-        if (help == null) return;
-        helpShown = true;
+        if (help == null || pickerShown) return;
         // Play paketinde izin işe yaramaz: katman modu yalnız bilgisayarın kurduğu sürümde var.
         help.setText(BuildConfig.OVERLAY_MODE
                 ? getString(message) + "\n\n" + getString(R.string.overlay_permission_how)
                 : getString(R.string.overlay_unavailable));
-        help.setVisibility(View.VISIBLE);
+        choices.setVisibility(View.GONE);
+        helpBox.setVisibility(View.VISIBLE);
         handler.removeCallbacks(hideHelpTask);
         handler.postDelayed(hideHelpTask, HELP_VISIBLE_MS);
     }
 
+    /**
+     * HDMI görüntüsü gelmiyor: nedenini ve TV'nin HDMI girişlerini gösterir, kullanıcı PS5'in girişini kumandayla seçer.
+     * Yanlış giriş en sık neden: PS5'in girişi kendiliğinden bulunamazsa (birden çok bağlı giriş, CEC adı yok) HDMI 1
+     * açılır. Doğru girişte de siyahsa TV görüntüyü uygulamaya vermiyordur ya da HDCP engelliyordur; o zaman TV'nin kendi
+     * girişine geçmek ve altyazıyı telefonda izlemek önerilir. Seçici görüntü gelince ya da Geri/Kapat ile kapanır.
+     */
+    private void showPicker(boolean sourceConnected) {
+        if (helpBox == null) return;
+        pickerShown = true;
+        handler.removeCallbacks(hideHelpTask);
+        List<HdmiInputs.Choice> inputs = HdmiInputs.choices(this);
+        choices.removeAllViews();
+        StringBuilder text = new StringBuilder();
+        Button focus = null;
+        if (inputs.isEmpty()) {
+            text.append(getString(R.string.hdmi_not_offered));
+        } else {
+            int port = tunedPort(inputs);
+            if (port > 0) {
+                text.append(getString(sourceConnected ? R.string.no_picture : R.string.no_picture_empty, port)).append(' ');
+            }
+            text.append(getString(R.string.no_picture_choose));
+            text.append("\n\n").append(getString(R.string.no_picture_still_black));
+            for (HdmiInputs.Choice input : inputs) {
+                Button button = choiceButton(choiceLabel(input));
+                button.setOnClickListener(v -> choose(input.port));
+                choices.addView(button);
+                // Önce PS5 adıyla görünen, sonra açık olmayan bağlı giriş seçili gelir.
+                boolean console = HdmiInputs.looksLikeConsole(input.device);
+                if (console || (focus == null && input.connected && input.port != port)) focus = button;
+            }
+        }
+        if (BuildConfig.OVERLAY_MODE) {
+            if (!overlayAllowed()) text.append("\n\n").append(getString(R.string.overlay_permission_how));
+        } else {
+            text.append("\n\n").append(getString(R.string.overlay_from_computer));
+        }
+        Button close = choiceButton(getString(R.string.picker_close));
+        close.setOnClickListener(v -> closePicker());
+        choices.addView(close);
+        help.setText(text);
+        choices.setVisibility(View.VISIBLE);
+        helpBox.setVisibility(View.VISIBLE);
+        (focus != null ? focus : choices.getChildAt(0)).requestFocus();
+    }
+
+    /** Açık girişin numarası, bilinmiyorsa 0. */
+    private int tunedPort(List<HdmiInputs.Choice> inputs) {
+        for (HdmiInputs.Choice input : inputs) {
+            if (input.id.equals(tunedInput)) return input.port;
+        }
+        return 0;
+    }
+
+    private String choiceLabel(HdmiInputs.Choice input) {
+        String label = "HDMI " + input.port;
+        if (input.device != null) label += " · " + input.device;
+        else if (input.connected) label += " · " + getString(R.string.picker_connected);
+        return label;
+    }
+
+    private Button choiceButton(String label) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(TypedValue.COMPLEX_UNIT_PX, 28 * fitScale());
+        StateListDrawable background = new StateListDrawable();
+        background.addState(new int[] {android.R.attr.state_focused}, new ColorDrawable(0xFF3B82F6));
+        background.addState(new int[] {}, new ColorDrawable(0xFF3A3A40));
+        button.setBackground(background);
+        int pad = Math.round(16 * fitScale());
+        button.setPadding(2 * pad, pad, 2 * pad, pad);
+        button.setFocusable(true);
+        LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        layout.rightMargin = pad;
+        button.setLayoutParams(layout);
+        return button;
+    }
+
+    /**
+     * Seçilen girişi açar. 1–4 sayfa üzerinden açılır (sayı tuşuyla aynı yol): seçim kaydedilir, sonraki açılışta da o
+     * giriş gelir. Daha büyük numaralar doğrudan açılır. Yeni giriş için görüntü saati baştan başlar.
+     */
+    private void choose(int port) {
+        hidePicker();
+        pickerClosed = false;
+        watch.pause();
+        if (port >= 1 && port <= 4 && page != null) page.key(48 + port);
+        else showHdmi(port);
+    }
+
+    /** Kullanıcı seçiciyi kapattı: başka giriş seçilene kadar yeniden açılmaz. */
+    private void closePicker() {
+        pickerClosed = true;
+        hidePicker();
+    }
+
+    private void hidePicker() {
+        pickerShown = false;
+        hideHelp();
+    }
+
     private void hideHelp() {
-        if (help != null) help.setVisibility(View.GONE);
+        if (helpBox != null) helpBox.setVisibility(View.GONE);
+        if (choices != null && choices.getVisibility() == View.VISIBLE) {
+            choices.setVisibility(View.GONE);
+            choices.removeAllViews();
+            pickerShown = false;
+            if (page != null) page.webView.requestFocus();
+        }
     }
 
     // --- TvPage.Host ---
@@ -246,6 +378,8 @@ public class MainActivity extends Activity implements TvPage.Host {
         String id = HdmiInputs.idForPort(this, port);
         if (tvView == null || id == null) {
             status("sourceError");
+            // TV HDMI girişlerini uygulamalara hiç açmıyor: TvView'da gösterilecek bir şey yok, hemen söylenir.
+            if (tvView != null && !pickerShown && !pickerClosed && HdmiInputs.list(this).isEmpty()) showPicker(false);
             return;
         }
         retuneAttempts = 0;
@@ -288,9 +422,21 @@ public class MainActivity extends Activity implements TvPage.Host {
     /** Geri ve renk tuşlarını sayfaya bildirir; diğerleri WebView'e kendiliğinden gider. */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (pickerShown && pickerKey(event)) return true;
         int code = pageKey(event.getKeyCode());
         if (code == 0 || page == null) return super.dispatchKeyEvent(event);
         if (event.getAction() == KeyEvent.ACTION_DOWN) page.key(code);
+        return true;
+    }
+
+    /** Giriş seçici açıkken: Geri kapatır, 1–4 o girişi açar; ok tuşları ve Tamam düğmelere kendiliğinden gider. */
+    private boolean pickerKey(KeyEvent event) {
+        int key = event.getKeyCode();
+        boolean digit = key >= KeyEvent.KEYCODE_1 && key <= KeyEvent.KEYCODE_4;
+        if (key != KeyEvent.KEYCODE_BACK && !digit) return false;
+        if (event.getAction() != KeyEvent.ACTION_DOWN) return true;
+        if (digit) choose(key - KeyEvent.KEYCODE_0);
+        else closePicker();
         return true;
     }
 
