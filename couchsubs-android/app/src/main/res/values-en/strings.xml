@@ -22,6 +22,7 @@
     <string name="phase_not_found_host">PS5 not found at %1$s. Make sure it is on and on the same network. Reconnecting…</string>
     <string name="phase_network">Can\'t reach the PS5. Reconnecting…</string>
     <string name="phase_registration_invalid">The PS5 didn\'t accept this pairing. Pair the PS5 again with the second account in Settings.</string>
+    <string name="phase_no_picture">No picture from the PS5. Is Remote Play turned off, or is the PS5 in rest mode? Check, then start translating again.</string>
     <string name="phase_not_found">PS5 not found on the network. Are the phone and PS5 on the same network?</string>
     <string name="phase_asleep">PS5 did not wake from rest mode.</string>
     <string name="phase_passcode">The PS5 asks for this account\'s login passcode. Enter it in Settings, or turn off this account\'s login passcode on the PS5.</string>
