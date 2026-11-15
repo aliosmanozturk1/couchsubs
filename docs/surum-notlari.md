@@ -6,17 +6,17 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 **Bu sürümde yeni**
 
-- **Windows Güvenlik Duvarı izni ve Ayarlar kartı (Windows, #128):** TV ve PS5'in bilgisayara ulaşması için gereken Güvenlik Duvarı izninin verilip verilmediği artık Ayarlar'daki yeni kartta görünüyor; izin yoksa "CouchSubs'a Windows Güvenlik Duvarı'nda izin ver" düğmesiyle verilebiliyor. Ağ "Ortak" olarak ayarlıysa (Windows TV'nin bilgisayarı bulmasını engeller) uyarı çıkıyor, TV adımında da ipucu var. Uygulama kaldırılınca eklenen kural da siliniyor.
-- **2016 Samsung TV'ler (Tizen 2.4, deneysel, #71):** TV uygulaması artık 2016 model Samsung TV'lere de kurulabiliyor. Şimdilik kurulum Android telefon ve iPhone uygulamasından yapılıyor; bilgisayardan kurulum sıradaki sürümde gelecek.
-- **Kurulum sihirbazında Remote Play yardımı (Mac ve Windows, #107):** Kurulumda "İkinci hesap yok mu? Remote Play penceresinden oku" kartı, PS Remote Play indirme düğmeleri ve "Hesabı bağla" geldi; ikinci PSN hesabı olmadan kurulum bitirilebiliyor. Katkı: [lones8888](https://github.com/lones8888).
-- **Çeviri ve okuma iyileştirmeleri:** İzlenen alanlarda (görev, bildirim, telefon yazıları) bir çeviri başarısız olursa artık yeniden deneniyor, eski çeviri ekranda takılı kalmıyor (#112). "No!" ile "Not now!" gibi farklı kısa satırlar artık aynı sayılmıyor, önceki satır yerinde kalıyor (#105; TV uygulamasında da). Harfleri bozuk okunan satırlar ("Gtt to the gate") doğrusunun önüne geçmiyor (#120). Farklı yapay zekâ modellerinin çevirileri birbirine karışmıyor (#110). Çeviri başlarken boş bir ısınma isteği gönderilmiyor (#123).
-- **Paketler daha sağlam iniyor:** İlk indirme ya da diske yazma başarısız olursa paket bir sonraki denetimde yeniden indiriliyor (#114, #118); sunucudan eksik ya da bozuk liste gelirse indirdiğiniz paketler silinmiyor (#106).
-- **LG oturum yenileme TV başına (#124):** Geliştirici modu süresi her LG TV için ayrı ayrı uzatılıyor; birden çok LG TV varsa birinin yenilenmesi diğerininkini ertelemiyor.
-- **Görüntü gelmeyince sonsuz "Bağlantı koptu, yeniden bağlanılıyor" döngüsü giderildi (Mac, iPhone, Android, #119).**
-- **TV uygulaması 0.9.20:** kısa satır düzeltmesi (LG) ve 2016 Samsung TV desteği. Masaüstü uygulaması TV'deki eski sürümü görüp güncellemeyi öneriyor.
-- **Android telefon:** [Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile) üzerinden güncelleniyor.
+- **Xbox desteği (Beta, Windows, #139):** Kurulumun başında konsol seçiliyor (PS5 ya da Xbox). Xbox seçilince Microsoft hesabı eşleştiriliyor ve altyazı Xbox görüntü aktarımından okunuyor. Henüz gerçek bir Xbox'ta uzun süre denenmedi; sorun görürseniz bildirin. Xbox ekranlarının metinleri de Türkçe ve İngilizce (#142). Şimdilik yalnız Windows'ta.
+- **Tamamen opak arka plan ve tam genişlik bant (#131):** Altyazı arka planı %100'e çekilince artık tamamen opak (TV dahil). Yeni **Arka plan alanı** seçeneği: Yazı kadar (varsayılan) ya da Tam genişlik bant (TV, Mac, Windows, iPhone, Android).
+- **Topluluk çeviri paketlerini içe aktarma (Mac ve Windows, #132):** Ayarlar › Çeviri › Oyun paketleri'nden JSON, TXT ya da iki dilli SRT dosyası içe aktarılabiliyor. Önce önizleme gösteriliyor (kullanılabilir, hatalı, yinelenen ve çakışan satırlar), oyun adı düzeltilebiliyor; içe aktarılan paket yalnız bilgisayarınızda kalıyor. Telefonlarda da var (#135).
+- **PS5 görüntü bildiriminde çökme giderildi (Mac ve Windows):** PS5 "görüntü yayınlanamaz" iletisi gönderdiğinde (ör. oyun içi korumalı sahneler) uygulama kapanabiliyordu; artık durum günlüğe yazılıyor ve akış sürüyor. Android telefonda aynı düzeltme Play'de (#146).
+- **Telefondan TV kurulumu bitince kurulum bitiyor (#141):** Telefondan TV uygulaması kurulduktan sonra uygulama her açılışta yine kurulum ekranına dönüyordu; artık kurulum tamamlanmış sayılıyor ve "Ana ekrana geç" düğmesi çıkıyor (Android, iPhone).
+- **Çeviri sürerken TV'ye geçiş (Android, #143):** Çeviri sürerken altyazının yeri TV'ye alınınca altyazı hemen TV'ye gidiyor.
+- **Eski TV uygulaması için açık uyarı (Android, iPhone, #144):** Android TV'de eski imzalı CouchSubs TV (0.9.18 ve öncesi) varsa nedeni ve TV'de elle kaldırma yolu açıkça yazıyor.
+- **TV uygulaması 0.9.21:** PS5 oynarken TV ekranı artık açık kalıyor; Android TV'de TV'den oyun modu (düşük gecikme, en az görüntü işleme) isteniyor (#145). Bekleme ekranı telefondan da başlatılabildiğini ve bilgisayar gerekmediğini söylüyor (#136). Google Play mağaza açıklaması: telefon ya da bilgisayar yeter (#137). Masaüstü uygulaması TV'deki eski sürümü görüp güncellemeyi öneriyor.
+- **Android telefon:** [Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile) üzerinden güncelleniyor (0.1.0-beta.52).
 
-Eren Batı ([erenbati](https://github.com/erenbati)) bu sürümde #105, #106, #110, #112, #114, #118, #120, #123 ve #124 ile katkıda bulundu; teşekkürler.
+**beta.43'te gelenler:** Windows Güvenlik Duvarı izni ve Ayarlar kartı (#128), 2016 Samsung TV'ler (deneysel, #71), kurulumda Remote Play yardımı (#107, katkı: [lones8888](https://github.com/lones8888)), çeviri ve okuma iyileştirmeleri ile daha sağlam paket indirme (katkı: [erenbati](https://github.com/erenbati)), TV uygulaması 0.9.20.
 
 **beta.42'de gelenler:** Oynanan oyunun kendiliğinden tanınması, paketlerin sunucudan kendiliğinden güncellenmesi, görüntüyü bu bilgisayardaki PS Remote Play penceresinden okuma (katkı: [lones8888](https://github.com/lones8888), #99), LG'de geliştirici modu parola alanının her zaman görünmesi (#94).
 
