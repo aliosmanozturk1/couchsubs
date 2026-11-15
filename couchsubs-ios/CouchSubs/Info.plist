@@ -46,8 +46,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>CouchSubs does not use the camera. The video library used for Xbox streaming includes camera support, which stays off.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>CouchSubs connects to your PS5 and TV on the home network to read and send translated subtitles, and installs and updates its TV app on your TV.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CouchSubs does not use the microphone. The video library used for Xbox streaming includes microphone support, which stays off.</string>
 	<key>SKAdNetworkItems</key>
 	<array>
 		<dict>

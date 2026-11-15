@@ -156,10 +156,23 @@ struct RootView: View {
     @ViewBuilder private var setup: some View {
         switch model.step {
         case .welcome, .psnLogin:
-            PSNScreen(onBack: { welcomeSeen = false }, onSkip: { model.skipSetup() }, onDone: {
-                if model.step == .welcome { model.advance() }
-                model.advance()
-            })
+            // Önce konsol türü (PlayStation varsayılan, Xbox Beta); Xbox'ta ikinci hesap (PSN) yerine Microsoft girişi.
+            if !model.platformChosen {
+                PlatformScreen(onBack: { welcomeSeen = false }) {}
+            } else if model.isXbox {
+                XboxLoginScreen(onBack: { model.platformChosen = false }, onSkip: { model.skipSetup() }, onDone: {
+                    if model.step == .welcome { model.advance() }
+                    model.advance()
+                })
+            } else {
+                PSNScreen(onBack: { model.platformChosen = false }, onSkip: { model.skipSetup() }, onDone: {
+                    if model.step == .welcome { model.advance() }
+                    model.advance()
+                })
+            }
+        case .console where model.isXbox:
+            XboxConsoleScreen(onBack: { model.back() }, onSkip: { model.skipSetup() }, onSignIn: { model.back() },
+                              onDone: { model.advance() })
         case .console:
             PS5PairScreen(onBack: { model.back() }, onSkip: { model.skipSetup() }, onDone: { model.advance() })
         case .output, .done:
@@ -179,6 +192,19 @@ struct RootView: View {
                 case .packs: PacksScreen()
                 case .target: TargetScreen(setup: false) { path.removeLast() }
                 // Kurulum atlandıysa PSN girişi yoktur: PS5 eşlemeden önce giriş yapılır, ardından eşlemeye geçilir.
+                case .platform:
+                    PlatformScreen(onBack: { path.removeLast() }) {
+                        path.removeLast()
+                        if model.isXbox && (!model.xboxSignedIn || model.xboxConsole == nil) { path.append(.ps5) }
+                    }
+                // Xbox (Beta): giriş yoksa önce Microsoft girişi, ardından Xbox seçimi.
+                case .ps5 where model.isXbox && !model.xboxSignedIn:
+                    XboxLoginScreen(onBack: { path.removeLast() }, onDone: {
+                        path.removeLast()
+                        path.append(.ps5)
+                    })
+                case .ps5 where model.isXbox:
+                    XboxConsoleScreen(onBack: { path.removeLast() }, onSignIn: { model.signOutXbox() }, onDone: { path.removeLast() })
                 case .ps5 where model.accountId == nil:
                     PSNScreen(onBack: { path.removeLast() }, onDone: {
                         path.removeLast()

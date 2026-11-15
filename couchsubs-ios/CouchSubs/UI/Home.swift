@@ -10,6 +10,8 @@ import UIKit
 /// Ana ekrandan açılan sayfalar.
 enum Route: Hashable {
     case settings, profile, packs, target, ps5, psn, about, history
+    /// Konsol türü (PlayStation ya da Xbox Beta).
+    case platform
     /// TV uygulamasını bu telefondan kurmak; `tvUpdate` ana ekrandaki güncellemeyi kendiliğinden başlatır.
     case tvInstall, tvUpdate
 }
@@ -87,9 +89,15 @@ struct HomeScreen: View {
             BentoGrid {
                 // PS5 karosu eşlemeyi açar; kurulum atlandıysa buradan eşlenir (PSN girişi yoksa önce giriş).
                 Button { path.append(.ps5) } label: {
-                    StatTile(symbol: "gamecontroller.fill", tint: .ok, label: "PS5",
-                             value: model.console.map { $0.name.isEmpty ? "PS5" : $0.name } ?? String(localized: "Pair the PS5"),
-                             live: model.console != nil)
+                    if model.isXbox {
+                        StatTile(symbol: "gamecontroller.fill", tint: .ok, label: "Xbox · Beta",
+                                 value: model.xboxConsole.map { $0.name.isEmpty ? "Xbox" : $0.name } ?? String(localized: "Choose your Xbox"),
+                                 live: model.xboxConsole != nil && model.xboxSignedIn)
+                    } else {
+                        StatTile(symbol: "gamecontroller.fill", tint: .ok, label: "PS5",
+                                 value: model.console.map { $0.name.isEmpty ? "PS5" : $0.name } ?? String(localized: "Pair the PS5"),
+                                 live: model.console != nil)
+                    }
                 }
                 .buttonStyle(.plain)
                 Button { path.append(.target) } label: {

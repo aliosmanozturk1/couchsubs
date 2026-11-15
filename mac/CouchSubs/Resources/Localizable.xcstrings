@@ -1,6 +1,550 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Your console": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your console"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konsolunuz"
+          }
+        }
+      }
+    },
+    "Choose the console whose subtitles you want translated. You can change it later in Settings.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose the console whose subtitles you want translated. You can change it later in Settings."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Altyazısını çevireceğiniz konsolu seçin. Sonra Ayarlar'dan değiştirebilirsiniz."
+          }
+        }
+      }
+    },
+    "PlayStation 5": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PlayStation 5"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PlayStation 5"
+          }
+        }
+      }
+    },
+    "With Remote Play and a second PSN account.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With Remote Play and a second PSN account."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Play ile, ikinci bir PSN hesabıyla."
+          }
+        }
+      }
+    },
+    "Xbox": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox"
+          }
+        }
+      }
+    },
+    "With home streaming and your own Microsoft account. No second account needed.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With home streaming and your own Microsoft account. No second account needed."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ev yayınıyla, kendi Microsoft hesabınızla. İkinci hesap gerekmez."
+          }
+        }
+      }
+    },
+    "Xbox support is in Beta. If something goes wrong, tell us and we'll fix it as soon as we can.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox support is in Beta. If something goes wrong, tell us and we'll fix it as soon as we can."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox desteği Beta. Sorun olursa bize yazın; ilk fırsatta düzeltiriz."
+          }
+        }
+      }
+    },
+    "Sign in with Microsoft": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in with Microsoft"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft ile giriş yap"
+          }
+        }
+      }
+    },
+    "Sign in with the Microsoft account you use on your Xbox. The phone watches your Xbox home stream; your game keeps running.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in with the Microsoft account you use on your Xbox. The phone watches your Xbox home stream; your game keeps running."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox'ta kullandığınız Microsoft hesabıyla giriş yapın. Telefon Xbox'ın ev yayınını izler; oyununuz kesilmez."
+          }
+        }
+      }
+    },
+    "Enter this code on the Microsoft page:": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter this code on the Microsoft page:"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açılan Microsoft sayfasına bu kodu yazın:"
+          }
+        }
+      }
+    },
+    "Code copied": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code copied"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kod kopyalandı"
+          }
+        }
+      }
+    },
+    "Waiting for you to finish signing in…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for you to finish signing in…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Girişin tamamlanması bekleniyor…"
+          }
+        }
+      }
+    },
+    "Couldn't sign in: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't sign in: %@"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş tamamlanamadı: %@"
+          }
+        }
+      }
+    },
+    "Open the Microsoft page": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the Microsoft page"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft sayfasını aç"
+          }
+        }
+      }
+    },
+    "Choose your Xbox": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose your Xbox"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox'unuzu seçin"
+          }
+        }
+      }
+    },
+    "The Xboxes on your account. On the Xbox, turn on Settings › Devices & connections › Remote features.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Xboxes on your account. On the Xbox, turn on Settings › Devices & connections › Remote features."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesabınızdaki Xbox'lar. Xbox'ta Ayarlar › Cihazlar ve bağlantılar › Uzak özellikler'i açın."
+          }
+        }
+      }
+    },
+    "No Xbox found on this account. Sign in on your Xbox with the same account and turn on remote features.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Xbox found on this account. Sign in on your Xbox with the same account and turn on remote features."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu hesapta Xbox bulunamadı. Xbox'ta aynı hesapla oturum açın ve uzak özellikleri açın."
+          }
+        }
+      }
+    },
+    "Remote play on": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote play on"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uzaktan oynatma açık"
+          }
+        }
+      }
+    },
+    "Remote play off: turn on Remote features on the Xbox": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote play off: turn on Remote features on the Xbox"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uzaktan oynatma kapalı: Xbox'ta Uzak özellikler'i açın"
+          }
+        }
+      }
+    },
+    "Looking for your Xboxes…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looking for your Xboxes…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox'lar aranıyor…"
+          }
+        }
+      }
+    },
+    "Use this Xbox": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use this Xbox"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Xbox'u kullan"
+          }
+        }
+      }
+    },
+    "Your Microsoft sign-in expired. Sign in again in Settings › Console.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Microsoft sign-in expired. Sign in again in Settings › Console."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft girişinin süresi doldu. Ayarlar › Konsol'dan yeniden giriş yapın."
+          }
+        }
+      }
+    },
+    "The code expired. Try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The code expired. Try again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kodun süresi doldu. Yeniden deneyin."
+          }
+        }
+      }
+    },
+    "This Microsoft account has no Xbox profile. Sign in with the account you use on your Xbox.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Microsoft account has no Xbox profile. Sign in with the account you use on your Xbox."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Microsoft hesabının Xbox profili yok. Xbox'ta kullandığınız hesapla giriş yapın."
+          }
+        }
+      }
+    },
+    "Couldn't connect to the internet. Check your connection and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't connect to the internet. Check your connection and try again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İnternete bağlanılamadı. Bağlantınızı kontrol edip yeniden deneyin."
+          }
+        }
+      }
+    },
+    "The Xbox service sent an unexpected reply (%@).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Xbox service sent an unexpected reply (%@)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox hizmeti beklenmedik yanıt verdi (%@)."
+          }
+        }
+      }
+    },
+    "Can't reach your Xbox. Is it on, and is remote play enabled in Settings › Devices & connections › Remote features? Retrying…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't reach your Xbox. Is it on, and is remote play enabled in Settings › Devices & connections › Remote features? Retrying…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox'a ulaşılamadı. Xbox açık mı ve Ayarlar › Cihazlar ve bağlantılar › Uzak özellikler'de uzaktan oynatma açık mı? Yeniden deneniyor…"
+          }
+        }
+      }
+    },
+    "Your Xbox is in another remote play session. Close it; retrying…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Xbox is in another remote play session. Close it; retrying…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox başka bir uzaktan oynatmada. Onu kapatın; yeniden deneniyor…"
+          }
+        }
+      }
+    },
+    "Your Xbox didn't answer. Retrying…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Xbox didn't answer. Retrying…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox yanıt vermedi. Yeniden deneniyor…"
+          }
+        }
+      }
+    },
+    "The Xbox connection dropped. Reconnecting…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Xbox connection dropped. Reconnecting…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox bağlantısı koptu. Yeniden bağlanılıyor…"
+          }
+        }
+      }
+    },
+    "The Xbox service sent an unexpected reply. Retrying…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Xbox service sent an unexpected reply. Retrying…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox hizmeti beklenmedik yanıt verdi. Yeniden deneniyor…"
+          }
+        }
+      }
+    },
+    "Console": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Console"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konsol"
+          }
+        }
+      }
+    },
+    "Xbox and connection": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox and connection"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox ve bağlantı"
+          }
+        }
+      }
+    },
+    "Sign out of Microsoft": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign out of Microsoft"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft hesabından çıkış"
+          }
+        }
+      }
+    },
     "%@ was damaged while downloading. Try again.": {
       "localizations": {
         "en": {

@@ -42,8 +42,20 @@ struct ProfileScreen: View {
                 .buttonStyle(.plain)
             }
             Tile(spacing: 0) {
+                NavigationLink(value: Route.platform) {
+                    ListRow(symbol: "gamecontroller.fill", title: "Console", detail: model.isXbox ? "Xbox (Beta)" : "PlayStation 5")
+                }
+                RowDivider()
                 NavigationLink(value: Route.ps5) {
-                    ListRow(symbol: "gamecontroller", title: "PS5 and connection", detail: model.console?.name)
+                    if model.isXbox {
+                        ListRow(symbol: "gamecontroller", title: "Xbox and connection", detail: model.xboxConsole?.name)
+                    } else {
+                        ListRow(symbol: "gamecontroller", title: "PS5 and connection", detail: model.console?.name)
+                    }
+                }
+                if model.isXbox && model.xboxSignedIn {
+                    RowDivider()
+                    Button { model.signOutXbox() } label: { ListRow(symbol: "person.crop.circle.badge.xmark", title: "Sign out of Microsoft") }
                 }
                 RowDivider()
                 NavigationLink(value: Route.target) { ListRow(symbol: "tv", title: "Subtitle target", detail: targetName) }

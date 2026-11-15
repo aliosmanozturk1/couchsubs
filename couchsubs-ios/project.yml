@@ -36,6 +36,10 @@ packages:
   Facebook:
     url: https://github.com/facebook/facebook-ios-sdk
     from: 18.0.0
+  # Xbox ev yayını (Beta): Google libwebrtc'nin hazır iOS derlemesi (BSD-3). Görüntü VideoToolbox'la çözülür.
+  WebRTC:
+    url: https://github.com/stasel/WebRTC
+    exactVersion: 150.0.0
 targets:
   CouchSubs:
     type: application
@@ -65,6 +69,8 @@ targets:
         product: FirebaseCrashlytics
       - package: Facebook
         product: FacebookCore
+      - package: WebRTC
+        product: WebRTC
     postBuildScripts:
       # Telefondan TV kurulumu: Samsung paketi kaynaktan, Android TV ve LG paketleri son GitHub sürümünden
       # (scripts/ios-tv-packages.sh; indirilemezse önceki indirilen kullanılır).
@@ -98,6 +104,9 @@ targets:
         # Yalnız standart şifreleme (TLS, Remote Play'in standart AES'i): ihracat beyanı her yüklemede sorulmasın.
         ITSAppUsesNonExemptEncryption: false
         NSLocalNetworkUsageDescription: CouchSubs connects to your PS5 and TV on the home network to read and send translated subtitles, and installs and updates its TV app on your TV.
+        # WebRTC kitaplığı kamera ve mikrofon arayüzlerini içerir; CouchSubs ikisini de hiç açmaz (Xbox yayınında ses de kapalı).
+        NSMicrophoneUsageDescription: CouchSubs does not use the microphone. The video library used for Xbox streaming includes microphone support, which stays off.
+        NSCameraUsageDescription: CouchSubs does not use the camera. The video library used for Xbox streaming includes camera support, which stays off.
         # Samsung girişi sayfası jetonu bu telefondaki http://localhost:4794'e gönderir; TV'lerle düz HTTP konuşulur.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

@@ -19,6 +19,14 @@ final class PhoneModel: ObservableObject {
         didSet { if step == .done, oldValue != .done { store.save(true, for: StoreKey.setupComplete) } }
     }
     @Published var accountId: Data?
+    /// Okunan konsol: PlayStation (varsayılan) ya da Xbox (Beta). `platformChosen` false ise kurulumda sorulur.
+    @Published private(set) var platform: ConsolePlatform
+    @Published var platformChosen: Bool
+    /// Seçilen Xbox ve Microsoft girişi (jeton Anahtar Zinciri'nde).
+    @Published private(set) var xboxConsole: XboxConsole?
+    @Published private(set) var xboxSignedIn: Bool
+    let xboxAuth: XboxAuth
+    private let tokenSink: XboxTokenSink
     @Published var console: RegisteredConsole?
     @Published var tv: LGTV?
     @Published private(set) var tvKeySaved: Bool
@@ -182,13 +190,25 @@ final class PhoneModel: ObservableObject {
         self.tv = tv
         self.tvKeySaved = tvKeySaved
         hasLoginPasscode = LoginPasscode.normalized(store.load(String.self, for: StoreKey.loginPasscode)) != nil
+        let savedPlatform = defaults.string(forKey: XboxStoreKey.platform).flatMap(ConsolePlatform.init(rawValue:))
+        platform = savedPlatform ?? .playstation
+        // PS5'i önceden eşlenmiş kurulumlar PlayStation sayılır, yeniden sorulmaz.
+        platformChosen = savedPlatform != nil || accountId != nil || console != nil
+        xboxConsole = store.load(XboxConsole.self, for: XboxStoreKey.console)
+        let xboxToken = XboxUserToken.parse(store.load(String.self, for: XboxStoreKey.userToken))
+        xboxSignedIn = xboxToken != nil
+        let tokenSink = XboxTokenSink()
+        self.tokenSink = tokenSink
+        xboxAuth = XboxAuth(userToken: xboxToken, onUserToken: { token in tokenSink.handler?(token) })
         let loaded = defaults.data(forKey: StoreKey.settings).flatMap { try? JSONDecoder().decode(UserSettings.self, from: $0) }
         let curated = (loaded ?? UserSettings()).withCuratedModels()
         settings = curated
         // "Şimdilik geç" ile PSN ve PS5 atlandıysa PS5'siz ana ekrana gidilir; altyazı hedefi seçilmediyse oradan sürer.
         let skipped = defaults.bool(forKey: Self.setupSkippedKey)
         let done = (skipped || accountId != nil && console != nil) && store.load(Bool.self, for: StoreKey.setupComplete) == true
-        step = done ? .done : skipped ? .output : .welcome
+        let xboxReady = savedPlatform == .xbox && xboxToken != nil && store.load(XboxConsole.self, for: XboxStoreKey.console) != nil
+        let doneAny = (done || xboxReady && store.load(Bool.self, for: StoreKey.setupComplete) == true)
+        step = doneAny ? .done : skipped ? .output : .welcome
         disabledPacks = Set(defaults.stringArray(forKey: Self.disabledPacksKey) ?? [])
         let testing = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         if !testing {
@@ -213,7 +233,32 @@ final class PhoneModel: ObservableObject {
             if game != nil { self?.onGameStarted() }
         }
         gameChoice.packTitles = { [weak self] in GameCatalog.packGames(self?.installedPacks ?? []) }
+        // Kullanıcı jetonu her yenilendiğinde Anahtar Zinciri'ne yazılır (Windows'taki DPAPI, Android'deki Keystore).
+        tokenSink.handler = { [weak self, store] token in
+            if let token { store.save(token.serialize(), for: XboxStoreKey.userToken) } else { store.remove(XboxStoreKey.userToken) }
+            Task { @MainActor in self?.xboxSignedIn = token != nil }
+        }
     }
+
+    // MARK: - Xbox (Beta)
+
+    func choosePlatform(_ value: ConsolePlatform) {
+        platform = value
+        platformChosen = true
+        defaults.set(value.rawValue, forKey: XboxStoreKey.platform)
+    }
+
+    func chooseXbox(_ console: XboxConsole) {
+        xboxConsole = console
+        store.save(console, for: XboxStoreKey.console)
+    }
+
+    func signOutXbox() {
+        Task { await xboxAuth.signOut() }
+        xboxSignedIn = false
+    }
+
+    var isXbox: Bool { platform == .xbox }
 
     /// Ayarlardaki paket listesi; paketler güncellenince yeniden okunur.
     func reloadPackList() {
@@ -247,8 +292,8 @@ final class PhoneModel: ObservableObject {
     var canAdvance: Bool {
         switch step {
         case .welcome: true
-        case .psnLogin: accountId != nil
-        case .console: console != nil
+        case .psnLogin: isXbox ? xboxSignedIn : accountId != nil
+        case .console: isXbox ? xboxConsole != nil : console != nil
         case .output: hasTV || settings.output == .computer
         case .done: false
         }
@@ -338,6 +383,12 @@ final class PhoneModel: ObservableObject {
         hasLoginPasscode = false
         accountId = nil
         console = nil
+        store.remove(XboxStoreKey.console)
+        xboxConsole = nil
+        signOutXbox()
+        defaults.removeObject(forKey: XboxStoreKey.platform)
+        platform = .playstation
+        platformChosen = false
         tv = nil
         tvKeySaved = false
         tvAppMissing = false
@@ -347,19 +398,33 @@ final class PhoneModel: ObservableObject {
 
     // MARK: - Çeviri
 
-    var canStart: Bool { console != nil && accountId != nil && (settings.output.showsOnComputer || hasTV) }
+    var canStart: Bool {
+        let paired = isXbox ? xboxConsole != nil && xboxSignedIn : console != nil && accountId != nil
+        return paired && (settings.output.showsOnComputer || hasTV)
+    }
 
     func start() async {
-        guard !isRunning, !isStarting, canStart, let console, let accountId else { return }
+        guard !isRunning, !isStarting, canStart else { return }
+        let xbox = isXbox ? xboxConsole : nil
+        guard xbox != nil || console != nil && accountId != nil else { return }
         isStarting = true
         defer { isStarting = false }
         await refreshTranslatorStatus()
         try? await startServer()
         server.sendStyle(settings.style)
         makePipeline()
-        RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)")
-        let session = services.makeStream(console: console, accountId: accountId,
+        let session: StreamControlling
+        let consoleName: String
+        if let xbox {
+            RemotePlayLog.write("Çeviri başladı; Xbox'a bağlanılıyor (Beta): \(xbox.name)")
+            session = XboxStreamSession(auth: xboxAuth, console: xbox, describe: XboxText.session)
+            consoleName = xbox.name.isEmpty ? "Xbox" : xbox.name
+        } else if let console, let accountId {
+            RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)")
+            session = services.makeStream(console: console, accountId: accountId,
                                           loginPasscode: store.load(String.self, for: StoreKey.loginPasscode))
+            consoleName = console.name.isEmpty ? console.host : console.name
+        } else { return }
         session.onState = { [weak self] state in Task { @MainActor in self?.sessionStateChanged(state) } }
         session.onConsoleMoved = { [weak self] moved in Task { @MainActor in self?.consoleMoved(moved) } }
         session.onFrame = { [weak self] frame in
@@ -370,7 +435,7 @@ final class PhoneModel: ObservableObject {
         session.start()
         self.session = session
         startKeeper()
-        gameChoice.start(console: console.name.isEmpty ? console.host : console.name) { [weak self] in
+        gameChoice.start(console: consoleName) { [weak self] in
             guard let self else { return false }
             return self.settings.askGame && self.settings.sharePool
         }
@@ -469,7 +534,7 @@ final class PhoneModel: ObservableObject {
     /// PS5'e bağlanınca çalışan oyun okunmaya başlar, bağlantı gidince bırakılır (havuz satırı oyunsuz gider).
     private func updateGameProbe(connected: Bool) {
         guard probesGame else { return }
-        guard connected, let host = console?.host else {
+        guard connected, !isXbox, let host = console?.host else {
             gameProbe?.cancel()
             gameProbe = nil
             gameChoice.consoleReported(nil)
@@ -904,6 +969,7 @@ final class PhoneModel: ObservableObject {
             case .notFound(let host):
                 return String(format: String(localized: "PS5 not found at %@. Make sure it is on and on the same network. Reconnecting…"), host)
             case .network: return String(localized: "Can't reach the PS5. Reconnecting…")
+            case .other(let detail) where isXbox: return detail
             case .other, .stopped: return String(localized: "Reconnecting…")
             }
         }
