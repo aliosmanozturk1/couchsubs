@@ -206,6 +206,14 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("notify.packs", true)
         set(value) = prefs.edit().putBoolean("notify.packs", value).apply()
 
+    /**
+     * Deneysel: TV uygulamasını bilgisayarsız, bu telefondan kurmak (şimdilik Samsung). Varsayılan kapalı; açılınca
+     * Ayarlar'da ve altyazı hedefi ekranında kurulum girişi görünür.
+     */
+    var experimentalTvInstall: Boolean
+        get() = prefs.getBoolean("experimental.tvInstall", false)
+        set(value) = prefs.edit().putBoolean("experimental.tvInstall", value).apply()
+
     fun apiKey(engine: EngineChoice): String? = secrets.get("key." + engine.name)
     fun setApiKey(engine: EngineChoice, key: String?) = secrets.put("key." + engine.name, key?.trim())
 

@@ -108,6 +108,22 @@ Samsung, uygulamanın her TV için ayrı imzalanmasını ister. CouchSubs bunu s
 - **Kurulduğunu nasıl anlarım:** TV'de CouchSubs açıkken **Tamam**'a basınca panelde **HDMI** (PS5'in girişi,
   "oynatılıyor"), **Uygulama** (bilgisayarın adresi) ve **Bağlantı: bağlı** görünür. Paneli kapatmak için yine **Tamam**.
 
+### Bilgisayarsız: Android telefondan kurulum (deneysel)
+
+Bilgisayarınız yoksa TV uygulamasını CouchSubs'ın Android uygulamasından da kurabilirsiniz. Şimdilik yalnız Samsung TV
+ve akıllı monitörlerde, gerçek TV'lerde henüz az denendi.
+
+1. Telefonda **Ayarlar › Deneysel › TV uygulamasını bu telefondan kur**'u açın, altındaki satıra basın (aynı giriş
+   altyazı hedefi ekranında da görünür).
+2. TV'de geliştirici modunu yukarıdaki gibi açın; **Host PC IP** olarak ekranda yazan **telefonun** adresini girin ve
+   TV'yi yeniden başlatın.
+3. Listeden TV'yi seçip **Kur ve aç**'a basın. Samsung giriş sayfası uygulamanın içinde açılır (açılmazsa
+   **Tarayıcıda aç**); giriş yapınca telefon sertifikayı alır, uygulamayı imzalar, kurar ve açar.
+
+Bilgisayardaki kurulumla aynı adımlardır (`couchsubs-android/.../tv/samsung/`); sertifika telefonda saklanır. Bir sorun
+çıkarsa ekrandaki **Kurulum günlüğünü paylaş** ile günlüğü [Issues](https://github.com/yorulmazsinan/couchsubs/issues)
+sayfasına ekleyin.
+
 ### 2017–2018 Samsung TV'ler (deneysel)
 
 Tizen 3.0 (2017, ör. MU serisi) ve Tizen 4.0 (2018, ör. NU serisi) TV'lerde de kurulum aynı adımlarla denenir. Bu

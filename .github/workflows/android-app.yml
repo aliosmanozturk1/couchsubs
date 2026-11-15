@@ -7,7 +7,8 @@ name: android-app
 on:
   push:
     branches: [main, "feat/android-*"]
-    paths: ["couchsubs-android/**", "core/Sources/CouchSubsCore/Resources/**", ".github/workflows/android-app.yml"]
+    # tv-webos ve tv-tizen: telefondan kurulum için uygulamaya gömülen Samsung paketi bunlardan derlenir.
+    paths: ["couchsubs-android/**", "core/Sources/CouchSubsCore/Resources/**", "tv-webos/**", "tv-tizen/**", ".github/workflows/android-app.yml"]
   workflow_dispatch:
 
 jobs:

@@ -224,7 +224,7 @@ fun registrationErrors(): (RegistrationFailure) -> String {
 }
 
 @Composable
-fun TargetScreen(onBack: (() -> Unit)? = null, onDone: () -> Unit) {
+fun TargetScreen(onBack: (() -> Unit)? = null, onTvInstall: (() -> Unit)? = null, onDone: () -> Unit) {
     val context = LocalContext.current
     val settings = Services.settings
     var target by remember { mutableStateOf(settings.target) }
@@ -259,6 +259,9 @@ fun TargetScreen(onBack: (() -> Unit)? = null, onDone: () -> Unit) {
                 }
             }
             Text(stringResource(R.string.target_tv_body), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+            // Deneysel (Ayarlar'dan açılır): TV uygulamasını bilgisayarsız, bu telefondan kurmak.
+            if (onTvInstall != null && settings.experimentalTvInstall)
+                GhostButton(stringResource(R.string.tvinstall_entry), onClick = onTvInstall)
         }
         TwoColumns(
             { StatusTile(Icons.Filled.Phone, stringResource(R.string.target_phone_note), stringResource(R.string.target_phone), it,

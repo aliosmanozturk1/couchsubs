@@ -36,6 +36,7 @@ object Routes {
     const val PACKS = "packs"
     const val PROFILE = "profile"
     const val SETTINGS = "settings"
+    const val TV_INSTALL = "tvinstall"
 
     /** Kurulumun eksik ilk adımı; hepsi tamamsa ana ekran. */
     fun next(): String {
@@ -91,7 +92,7 @@ class MainActivity : ComponentActivity() {
                     composable(Routes.PAIR) { PairScreen(onBack = back(navigation), onSkip = skip(navigation)) { advance(navigation) } }
                     composable(Routes.TARGET) {
                         val onboarding = navigation.previousBackStackEntry == null
-                        TargetScreen(onBack = back(navigation)) {
+                        TargetScreen(onBack = back(navigation), onTvInstall = { navigation.navigate(Routes.TV_INSTALL) }) {
                             if (onboarding) Telemetry.event(Telemetry.ONBOARDING_DONE, "target" to settings.target.name.lowercase())
                             advance(navigation)
                         }
@@ -123,8 +124,10 @@ class MainActivity : ComponentActivity() {
                     }
                     composable(Routes.SETTINGS) {
                         SettingsScreen(onBack = { navigation.popBackStack() }, onPacks = { navigation.navigate(Routes.PACKS) },
-                            onTarget = { navigation.navigate(Routes.TARGET) }, onPairing = { pairing(navigation) })
+                            onTarget = { navigation.navigate(Routes.TARGET) }, onPairing = { pairing(navigation) },
+                            onTvInstall = { navigation.navigate(Routes.TV_INSTALL) })
                     }
+                    composable(Routes.TV_INSTALL) { TvInstallScreen(onBack = { navigation.popBackStack() }) }
                 }
             }
         }

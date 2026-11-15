@@ -22,6 +22,10 @@ produce the bundled libraries, is available at https://github.com/yorulmazsinan/
 | .NET runtime (Mac TV install helper, Native AOT) | MIT | https://github.com/dotnet/runtime |
 | pocket-tts (Turkish dubbing voice engine, unmodified release binary; includes xn-ptts, Apache-2.0, and SentencePiece, Apache-2.0) | MIT, Copyright (c) Kyutai | https://github.com/kyutai-labs/pocket-tts |
 
+The Android phone app (`couchsubs-android`, experimental "install the TV app from this phone") contains a Kotlin port of
+the TizenSdb.Core sdb protocol and package signing and of the Apps2Samsung sign-in and certificate flow
+(`app/src/main/java/com/couchsubs/mobile/tv/samsung/`), under the same MIT terms below.
+
 Samsung developer CA certificates (`vd_tizen_dev_author_ca`, `author_ca`, `vd_tizen_dev_public2`, `public2`) are
 redistributed unmodified from Tizen Studio, solely so that the TV app can be signed for the user's own Samsung TV. They
 are the property of Samsung Electronics Co., Ltd. and are not covered by the CouchSubs license.
