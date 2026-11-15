@@ -35,6 +35,8 @@ enum TVText {
     static var stepUninstalling: String { String(localized: "Removing the old copy from the TV…") }
     static var stepLaunching: String { String(localized: "Opening the app on the TV…") }
     static func done(_ a0: String) -> String { String(format: String(localized: "Installed: CouchSubs %@ is opening on the TV."), a0) }
+    // Telefondan kuranların çoğunun bilgisayarı yoktur; TV'nin bekleme ekranı hata sanılıyordu (#113, Android ile aynı).
+    static var next: String { String(localized: "CouchSubs opens its waiting screen on the TV. Even if it mentions a computer, that is not an error: the TV is waiting for the phone. Now tap Start translating on the home screen; the TV finds this phone by itself.") }
     static func upToDate(_ a0: String) -> String { String(format: String(localized: "CouchSubs %@ is already on the TV; opening it."), a0) }
     static func details(_ a0: String) -> String { String(format: String(localized: "Details: %@"), a0) }
     static var shareLog: String { String(localized: "Share the install log") }

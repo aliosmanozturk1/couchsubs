@@ -158,6 +158,9 @@ struct InstallResult: View {
             Tile(emphasis: .selected) {
                 Label(installed ? TVText.done(version) : TVText.upToDate(version), systemImage: "checkmark.circle.fill")
                     .font(Mobile.TypeScale.headline).foregroundStyle(Mobile.Palette.text)
+                Text(verbatim: TVText.next)
+                    .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         case .failed(let text):
             MobileNote(text: text)

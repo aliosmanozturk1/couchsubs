@@ -5,8 +5,9 @@
 
   var TEXTS = {
     tr: {
-      waiting: 'Bilgisayarınızda CouchSubs uygulamasını açın.',
-      waitingHint: 'Uygulama bu TV\'yi bulup altyazıları buraya gönderecek.',
+      // Telefondan kuranların çoğunun bilgisayarı yoktur: önce telefon söylenir (#113).
+      waiting: 'Telefonda (ya da bilgisayarda) CouchSubs\'ı açıp Çeviriyi başlat\'a basın.',
+      waitingHint: 'Bilgisayar gerekmez. Altyazı hedefi TV olsun, telefon ve TV aynı Wi-Fi\'da olsun: CouchSubs bu TV\'yi bulup altyazıları buraya gönderir.',
       panelTitle: 'CouchSubs',
       hdmi: 'HDMI',
       lastSubtitle: 'Son altyazı',
@@ -36,8 +37,8 @@
       sourceSwitchClose: 'Kapatmak için Tamam ya da Geri.'
     },
     en: {
-      waiting: 'Open the CouchSubs app on your computer.',
-      waitingHint: 'The app will find this TV and send subtitles here.',
+      waiting: 'Open CouchSubs on your phone (or computer) and start translating.',
+      waitingHint: 'No computer needed. Set the subtitle target to TV and keep the phone and TV on the same Wi-Fi: CouchSubs finds this TV and sends subtitles here.',
       panelTitle: 'CouchSubs',
       hdmi: 'HDMI',
       lastSubtitle: 'Last subtitle',

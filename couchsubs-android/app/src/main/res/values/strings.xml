@@ -77,7 +77,7 @@
     <string name="pair_failed">Eşleme olmadı: %1$s</string>
     <string name="target_title">Altyazı nerede?</string>
     <string name="target_tv">TV\'de, oyunun üstünde</string>
-    <string name="target_tv_body">CouchSubs TV uygulaması açılınca bu telefonu kendisi bulur. TV uygulamasını ilk kez kurmak için bir kez bilgisayardaki CouchSubs\'ı kullan.</string>
+    <string name="target_tv_body">CouchSubs TV uygulaması açılınca bu telefonu kendisi bulur. TV uygulamasını Ayarlar\'dan bu telefonla kurabilirsin; bilgisayar gerekmez.</string>
     <string name="target_phone">Bu telefonda</string>
     <string name="target_tvs_none">Ağda TV görülmedi (TV kapalı olabilir; sorun değil).</string>
 
@@ -275,6 +275,7 @@
     <string name="tvinstall_step_launching">TV\'de uygulama açılıyor…</string>
     <string name="tvinstall_step_play">TV\'de Google Play sayfası açıldı: TV kumandasıyla Yükle\'ye (ya da Güncelle\'ye) basın. Kurulunca uygulama kendiliğinden açılır.</string>
     <string name="tvinstall_done">Kuruldu: TV\'de CouchSubs %1$s açılıyor.</string>
+    <string name="tvinstall_next">TV\'de CouchSubs\'ın bekleme ekranı açılır; bilgisayar istediğini yazsa bile bu bir hata değil, TV telefonu bekliyor. Şimdi ana ekranda Çeviriyi başlat\'a bas; TV bu telefonu kendisi bulur.</string>
     <string name="tvinstall_up_to_date">TV\'de CouchSubs %1$s zaten kurulu; açılıyor.</string>
     <string name="tvinstall_details">Ayrıntı: %1$s</string>
     <string name="tvinstall_share_log">Kurulum günlüğünü paylaş</string>

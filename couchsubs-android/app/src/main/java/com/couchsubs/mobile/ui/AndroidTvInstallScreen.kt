@@ -201,6 +201,8 @@ internal fun AndroidTvInstallScreen(onBack: () -> Unit, brandPicker: @Composable
                     Text(stringResource(if (current.installed) R.string.tvinstall_done else R.string.tvinstall_up_to_date, current.version),
                         style = Tokens.Type.headline, color = Tokens.Color.text)
                 }
+                // Telefondan kuranların çoğunun bilgisayarı yoktur; TV'nin bekleme ekranı hata sanılıyordu (#113).
+                Text(stringResource(R.string.tvinstall_next), style = Tokens.Type.caption, color = Tokens.Color.secondary)
             }
             is AndroidState.Failed -> {
                 NoteTile(androidFailureText(current))
