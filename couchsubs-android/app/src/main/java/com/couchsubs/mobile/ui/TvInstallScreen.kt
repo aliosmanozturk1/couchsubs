@@ -89,7 +89,7 @@ private sealed interface InstallState {
  * TV'nin markası seçilir.
  */
 @Composable
-fun TvInstallScreen(onBack: () -> Unit) {
+fun TvInstallScreen(onBack: () -> Unit, onDone: () -> Unit = onBack) {
     val settings = Services.settings
     // Ana ekrandaki "TV uygulamasını güncelle": bu TV seçilir ve kurulum kendiliğinden başlar.
     val preset = remember { TvAppUpdate.takePending() }
@@ -116,9 +116,9 @@ fun TvInstallScreen(onBack: () -> Unit) {
     }
     val forBrand = preset?.takeIf { it.brand == brand }
     when (brand) {
-        TvBrand.ANDROID_TV -> AndroidTvInstallScreen(onBack, picker, forBrand)
-        TvBrand.LG -> LgInstallScreen(onBack, picker, forBrand)
-        else -> SamsungInstallScreen(onBack, picker, forBrand)
+        TvBrand.ANDROID_TV -> AndroidTvInstallScreen(onBack, onDone, picker, forBrand)
+        TvBrand.LG -> LgInstallScreen(onBack, onDone, picker, forBrand)
+        else -> SamsungInstallScreen(onBack, onDone, picker, forBrand)
     }
 }
 
@@ -145,7 +145,7 @@ internal fun TvAppUpdateCard(onUpdate: (InstalledTv) -> Unit) {
 }
 
 @Composable
-private fun SamsungInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> Unit, preset: InstalledTv?) {
+private fun SamsungInstallScreen(onBack: () -> Unit, onDone: () -> Unit, brandPicker: @Composable () -> Unit, preset: InstalledTv?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val phoneIp = remember { phoneAddress(context) }
@@ -215,7 +215,8 @@ private fun SamsungInstallScreen(onBack: () -> Unit, brandPicker: @Composable ()
 
     ScreenScaffold(top = { TopBar(onBack = onBack) }, bottom = {
         if (!manual && !working) GhostButton(stringResource(R.string.tvinstall_not_found)) { manual = true }
-        PrimaryButton(stringResource(if (state is InstallState.Failed) R.string.tvinstall_retry else R.string.tvinstall_button),
+        if (state is InstallState.Done) PrimaryButton(stringResource(R.string.tvinstall_go_home), onClick = onDone)
+        else PrimaryButton(stringResource(if (state is InstallState.Failed) R.string.tvinstall_retry else R.string.tvinstall_button),
             enabled = !working && host.isNotBlank()) { install() }
     }) {
         Heading(stringResource(R.string.tvinstall_title), stringResource(R.string.tvinstall_body))

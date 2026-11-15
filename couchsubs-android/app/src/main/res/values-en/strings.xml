@@ -295,6 +295,7 @@
     <string name="tvinstall_step_play">The Google Play page opened on the TV: press Install (or Update) with the TV remote. The app opens by itself once it is installed.</string>
     <string name="tvinstall_done">Installed: CouchSubs %1$s is opening on the TV.</string>
     <string name="tvinstall_next">CouchSubs opens its waiting screen on the TV. Even if it mentions a computer, that is not an error: the TV is waiting for the phone. Now tap Start translation on the home screen; the TV finds this phone by itself.</string>
+    <string name="tvinstall_go_home">Go to the home screen</string>
     <string name="tvinstall_up_to_date">CouchSubs %1$s is already on the TV; opening it.</string>
     <string name="tvinstall_details">Details: %1$s</string>
     <string name="tvinstall_share_log">Share the install log</string>

@@ -25,6 +25,7 @@ enum TVText {
     static var phoneIpUnknown: String { String(localized: "Could not find this phone's address; is it on Wi-Fi?") }
     static var signinNote: String { String(localized: "The first install asks you to sign in once with a free Samsung account: Samsung only accepts the app signed with a certificate made for your TV. If the phone's address changes, repeat the Host PC IP step.") }
     static var button: String { String(localized: "Install and open") }
+    static var goHome: String { String(localized: "Go to the home screen") }
     static var retry: String { String(localized: "Try again") }
     static var stepConnecting: String { String(localized: "Connecting to the TV…") }
     static var stepReading: String { String(localized: "Reading the TV…") }

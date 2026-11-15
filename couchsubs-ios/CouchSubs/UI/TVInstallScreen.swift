@@ -15,14 +15,20 @@ enum TVInstallPhase: Equatable {
     case failed(text: String)
 
     var isWorking: Bool { if case .working = self { true } else { false } }
+    var isDone: Bool { if case .done = self { true } else { false } }
 }
 
 struct TVInstallScreen: View {
     @EnvironmentObject private var model: PhoneModel
     /// Ana ekrandaki "TV uygulamasını güncelle": o TV'nin kurulumu kendiliğinden başlar.
     var update: TVAppUpdate?
+    /// Kurulum bitince "Ana ekrana geç" (Android'deki onDone); verilmezse ekran kapanır.
+    var onDone: (() -> Void)?
+    @Environment(\.dismiss) private var dismiss
     @State private var brand: TVBrand?
     @State private var working = false
+
+    private func finish() { if let onDone { onDone() } else { dismiss() } }
 
     var body: some View {
         MobileScreen {
@@ -34,9 +40,9 @@ struct TVInstallScreen: View {
                         get: { brand }, set: { self.brand = $0 }))
                 }
                 switch brand {
-                case .samsung: SamsungInstallSection(update: update?.brand == .samsung ? update : nil, working: $working)
-                case .androidTV: AndroidTVInstallSection(update: update?.brand == .androidTV ? update : nil, working: $working)
-                case .lg: LGInstallSection(update: update?.brand == .lg ? update : nil, working: $working)
+                case .samsung: SamsungInstallSection(update: update?.brand == .samsung ? update : nil, working: $working, onDone: finish)
+                case .androidTV: AndroidTVInstallSection(update: update?.brand == .androidTV ? update : nil, working: $working, onDone: finish)
+                case .lg: LGInstallSection(update: update?.brand == .lg ? update : nil, working: $working, onDone: finish)
                 }
             } else {
                 HStack(spacing: Mobile.Space.gap) {
@@ -210,6 +216,7 @@ struct SamsungInstallSection: View {
     @EnvironmentObject private var model: PhoneModel
     let update: TVAppUpdate?
     @Binding var working: Bool
+    let onDone: () -> Void
     @State private var candidates: [(tv: LGTV, info: SamsungTvInfo?)]?
     @State private var host = ""
     @State private var manual = false
@@ -241,9 +248,14 @@ struct SamsungInstallSection: View {
                      highlight: phoneAddress(near: host) ?? TVText.phoneIpUnknown, after: [TVText.step4])
         Text(verbatim: TVText.signinNote).font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary).fixedSize(horizontal: false, vertical: true)
         InstallResult(phase: phase)
-        Button(phase == .idle || phase.isWorking ? TVText.button : TVText.retry) { install() }
-            .buttonStyle(.mobilePrimary)
-            .disabled(phase.isWorking || host.trimmingCharacters(in: .whitespaces).isEmpty)
+        if phase.isDone {
+            Button(TVText.goHome, action: onDone).buttonStyle(.mobilePrimary)
+        } else {
+            Button(phase == .idle || phase.isWorking ? TVText.button : TVText.retry) { install() }
+                .buttonStyle(.mobilePrimary)
+                .disabled(phase.isWorking || host.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        Color.clear.frame(height: 0)
             .task { await search() }
             .sheet(isPresented: Binding(get: { login != nil }, set: { if !$0 { login?.close(); login = nil } })) {
                 SamsungSignInSheet { login?.close(); login = nil }
@@ -372,6 +384,7 @@ struct AndroidTVInstallSection: View {
     @EnvironmentObject private var model: PhoneModel
     let update: TVAppUpdate?
     @Binding var working: Bool
+    let onDone: () -> Void
     @State private var candidates: [(host: String, debugging: Bool)]?
     @State private var address = ""
     @State private var wireless = false
@@ -414,9 +427,14 @@ struct AndroidTVInstallSection: View {
         if replaceNeeded, !phase.isWorking {
             Button(TVText.androidReplace) { install(allowReplace: true) }.buttonStyle(.mobileDestructive)
         }
-        Button(phase == .idle || phase.isWorking ? TVText.button : TVText.retry) { install() }
-            .buttonStyle(.mobilePrimary)
-            .disabled(phase.isWorking || address.trimmingCharacters(in: .whitespaces).isEmpty)
+        if phase.isDone {
+            Button(TVText.goHome, action: onDone).buttonStyle(.mobilePrimary)
+        } else {
+            Button(phase == .idle || phase.isWorking ? TVText.button : TVText.retry) { install() }
+                .buttonStyle(.mobilePrimary)
+                .disabled(phase.isWorking || address.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        Color.clear.frame(height: 0)
             .task { await search() }
     }
 

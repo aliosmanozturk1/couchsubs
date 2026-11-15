@@ -62,7 +62,7 @@ private sealed interface LgState {
 }
 
 @Composable
-internal fun LgInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> Unit, preset: InstalledTv? = null) {
+internal fun LgInstallScreen(onBack: () -> Unit, onDone: () -> Unit, brandPicker: @Composable () -> Unit, preset: InstalledTv? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val keys = remember { LgKeys(File(context.noBackupFilesDir, "lg")) }
@@ -145,7 +145,9 @@ internal fun LgInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> 
 
     ScreenScaffold(top = { TopBar(onBack = onBack) }, bottom = {
         if (!manual && !working) GhostButton(stringResource(R.string.tvinstall_not_found)) { manual = true }
-        PrimaryButton(stringResource(if (state is LgState.Failed) R.string.tvinstall_retry else R.string.tvinstall_button),
+        // Kurulum bitince ana düğme ana ekrana götürür; kurulumda geri düğmesi 3. adıma dönüyor, kullanıcı orada kalıyordu (#113).
+        if (state is LgState.Done) PrimaryButton(stringResource(R.string.tvinstall_go_home), onClick = onDone)
+        else PrimaryButton(stringResource(if (state is LgState.Failed) R.string.tvinstall_retry else R.string.tvinstall_button),
             enabled = !working && host.isNotBlank() && (passphrase.isNotBlank() || hasKey)) { install() }
     }) {
         Heading(stringResource(R.string.tvinstall_title), stringResource(R.string.tvinstall_lg_body))

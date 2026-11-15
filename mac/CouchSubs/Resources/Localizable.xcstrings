@@ -10641,6 +10641,22 @@
         }
       }
     },
+    "Go to the home screen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to the home screen"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ana ekrana geç"
+          }
+        }
+      }
+    },
     "Install and open": {
       "localizations": {
         "en": {

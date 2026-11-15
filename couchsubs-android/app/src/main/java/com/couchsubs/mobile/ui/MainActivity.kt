@@ -139,7 +139,13 @@ class MainActivity : ComponentActivity() {
                             onTvInstall = { navigation.navigate(Routes.TV_INSTALL) })
                     }
                     composable(Routes.HISTORY) { HistoryScreen(onBack = { navigation.popBackStack() }) }
-                    composable(Routes.TV_INSTALL) { TvInstallScreen(onBack = { navigation.popBackStack() }) }
+                    composable(Routes.TV_INSTALL) {
+                        // Kurulum bitince "Ana ekrana geç": kurulumun 3. adımından gelindiyse kurulum biter (TvAppUpdate.installed).
+                        TvInstallScreen(onBack = { navigation.popBackStack() }) {
+                            if (Routes.next() == Routes.MAIN) navigation.navigate(Routes.MAIN) { popUpTo(0) { inclusive = true } }
+                            else navigation.popBackStack()
+                        }
+                    }
                 }
             }
         }

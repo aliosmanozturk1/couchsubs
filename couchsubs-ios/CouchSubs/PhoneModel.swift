@@ -946,8 +946,18 @@ final class PhoneModel: ObservableObject {
         saveInstalledTVApp(InstalledTVApp(brand: brand, host: host, port: port, version: version))
         if tvAppUpdate?.brand == brand, !Versions.isNewer(tvAppUpdate?.bundled ?? "", than: version) { tvAppUpdate = nil }
         tvAppMissing = false
-        if brand == .androidTV, !(tv?.brand == .androidTV && hasTV) {
-            try? await pair(LGTV(name: "Android TV", host: host, brand: .androidTV))
+        // Kurulan TV altyazı hedefi olur (Android'deki TvAppUpdate.installed gibi); yoksa kurulumun 3. adımında "Devam"
+        // kapalı kalıyor, uygulama her açılışta yine o adımdan başlıyordu (#113).
+        if !(tv?.brand == brand && tv?.host == host && hasTV) {
+            let name = switch brand {
+            case .androidTV: "Android TV"
+            case .lg: "LG TV"
+            case .samsung: "Samsung TV"
+            }
+            try? await pair(LGTV(name: name, host: host, brand: brand))
+        }
+        if hasTV, tv?.host == host, step == .output {
+            store.save(true, for: StoreKey.setupComplete)
         }
     }
 

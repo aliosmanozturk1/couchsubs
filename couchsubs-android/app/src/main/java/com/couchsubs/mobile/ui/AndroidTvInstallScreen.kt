@@ -62,7 +62,7 @@ private sealed interface AndroidState {
 }
 
 @Composable
-internal fun AndroidTvInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> Unit, preset: InstalledTv? = null) {
+internal fun AndroidTvInstallScreen(onBack: () -> Unit, onDone: () -> Unit, brandPicker: @Composable () -> Unit, preset: InstalledTv? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val phoneIp = remember { phoneAddress(context) }
@@ -134,7 +134,8 @@ internal fun AndroidTvInstallScreen(onBack: () -> Unit, brandPicker: @Composable
     LaunchedEffect(preset) { if (preset != null && state is AndroidState.Idle && address.isNotBlank()) install() }
 
     ScreenScaffold(top = { TopBar(onBack = onBack) }, bottom = {
-        PrimaryButton(stringResource(if (state is AndroidState.Failed) R.string.tvinstall_retry else R.string.tvinstall_button),
+        if (state is AndroidState.Done) PrimaryButton(stringResource(R.string.tvinstall_go_home), onClick = onDone)
+        else PrimaryButton(stringResource(if (state is AndroidState.Failed) R.string.tvinstall_retry else R.string.tvinstall_button),
             enabled = !working && address.isNotBlank()) { install() }
     }) {
         Heading(stringResource(R.string.tvinstall_title), stringResource(R.string.tvinstall_android_body))

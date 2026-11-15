@@ -7,6 +7,7 @@ import android.content.Context
 import android.util.Log
 import com.couchsubs.mobile.BuildConfig
 import com.couchsubs.mobile.Services
+import com.couchsubs.mobile.settings.SubtitleTarget
 import com.couchsubs.mobile.tv.android.AndroidTvInstaller
 import com.couchsubs.mobile.tv.lg.JschShell
 import com.couchsubs.mobile.tv.lg.LgInstaller
@@ -59,7 +60,12 @@ object TvAppUpdate {
 
     /** Kurulum ekranı kurulumu ya da sürüm denetimini bitirdi: TV kaydedilir, öneri kalkar. */
     fun installed(tv: InstalledTv) {
-        Services.settings.installedTv = tv
+        val settings = Services.settings
+        settings.installedTv = tv
+        // Kurulumun 3. adımından TV uygulaması kurulunca altyazı TV'ye gider ve kurulum biter; yoksa uygulama her
+        // açılışta yine 3. adımdan (altyazının yeri) başlıyordu, "Devam"a basılmadıysa ana ekrana hiç gelinmiyordu (#113).
+        settings.target = SubtitleTarget.TV
+        settings.onboarded = true
         state.value = tv.version?.takeIf { it.isNotEmpty() }?.let { TvAppStatus.UpToDate(it) } ?: TvAppStatus.Unknown
     }
 

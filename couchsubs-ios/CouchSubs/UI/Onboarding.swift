@@ -410,7 +410,11 @@ struct TargetScreen: View {
         .task { await search() }
         .sheet(isPresented: $showManual) { manualSheet }
         .sheet(isPresented: $showInstall, onDismiss: { Task { await search() } }) {
-            TVInstallScreen().environmentObject(model)
+            // Kurulum bitince sayfa kapanır ve TV eşlendiyse bu adım da geçilir (Android'de ana ekrana geçilir, #113).
+            TVInstallScreen(onDone: {
+                showInstall = false
+                if !setup || model.canAdvance { onDone() }
+            }).environmentObject(model)
         }
     }
 
