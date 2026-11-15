@@ -259,9 +259,8 @@ fun TargetScreen(onBack: (() -> Unit)? = null, onTvInstall: (() -> Unit)? = null
                 }
             }
             Text(stringResource(R.string.target_tv_body), style = Tokens.Type.caption, color = Tokens.Color.secondary)
-            // Deneysel (Ayarlar'dan açılır): TV uygulamasını bilgisayarsız, bu telefondan kurmak.
-            if (onTvInstall != null && settings.experimentalTvInstall)
-                GhostButton(stringResource(R.string.tvinstall_entry), onClick = onTvInstall)
+            // TV uygulamasını bilgisayarsız, bu telefondan kurmak (ilk kurulumda da).
+            if (onTvInstall != null) GhostButton(stringResource(R.string.tvinstall_entry), onClick = onTvInstall)
         }
         TwoColumns(
             { StatusTile(Icons.Filled.Phone, stringResource(R.string.target_phone_note), stringResource(R.string.target_phone), it,

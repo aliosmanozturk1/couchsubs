@@ -107,7 +107,6 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
 fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit, onPairing: () -> Unit, onTvInstall: () -> Unit = {}) {
     val context = LocalContext.current
     val settings = Services.settings
-    var tvInstall by remember { mutableStateOf(settings.experimentalTvInstall) }
     var engine by remember { mutableStateOf(settings.engine) }
     var key by remember(engine) { mutableStateOf(settings.apiKey(engine) ?: "") }
     var scale by remember { mutableStateOf(settings.subtitleScale.toFloat()) }
@@ -197,13 +196,10 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             { RowItem(stringResource(R.string.settings_ps5), settings.console?.name ?: stringResource(R.string.profile_not_paired), onClick = onPairing) },
             { RowItem(stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, onClick = { open(context, context.getString(R.string.url_source)) }) },
         ))
-        // Deneysel: TV uygulamasını bu telefondan kurmak (gerçek TV'lerde az denendi; varsayılan kapalı).
+        // TV uygulamasını bu telefondan kurmak ve güncellemek (bilgisayardaki gibi; Samsung, LG, Android TV).
         Tile(Modifier.fillMaxWidth()) {
-            TileLabel(stringResource(R.string.settings_experimental))
-            RowItem(stringResource(R.string.settings_tv_install), stringResource(R.string.settings_tv_install_note)) {
-                Switch(tvInstall, { tvInstall = it; settings.experimentalTvInstall = it })
-            }
-            if (tvInstall) RowItem(stringResource(R.string.tvinstall_entry), onClick = onTvInstall)
+            TileLabel(stringResource(R.string.settings_tv_app))
+            RowItem(stringResource(R.string.tvinstall_entry), tvAppSummary(), onClick = onTvInstall)
         }
         Text(stringResource(R.string.settings_copyright), style = Tokens.Type.caption, color = Tokens.Color.secondary,
             modifier = Modifier.padding(top = Tokens.Space.inline))

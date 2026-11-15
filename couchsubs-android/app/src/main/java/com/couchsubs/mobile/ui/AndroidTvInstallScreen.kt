@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Deneysel: CouchSubs'ın Android TV uygulamasını bu telefondan ADB ile kurmak (TvInstallScreen'de marka seçimi).
+// CouchSubs'ın Android TV uygulamasını bu telefondan ADB ile kurmak ve güncellemek (TvInstallScreen'de marka seçimi).
 package com.couchsubs.mobile.ui
 
 import android.os.Handler
@@ -27,6 +27,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.couchsubs.mobile.R
+import com.couchsubs.mobile.Services
+import com.couchsubs.mobile.tv.InstalledTv
+import com.couchsubs.mobile.tv.TvAppUpdate
 import com.couchsubs.mobile.tv.TvBrand
 import com.couchsubs.mobile.tv.TvDiscovery
 import com.couchsubs.mobile.tv.TvPackages
@@ -59,12 +62,15 @@ private sealed interface AndroidState {
 }
 
 @Composable
-internal fun AndroidTvInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> Unit) {
+internal fun AndroidTvInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> Unit, preset: InstalledTv? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val phoneIp = remember { phoneAddress(context) }
     var candidates by remember { mutableStateOf<List<AndroidCandidate>?>(null) }
-    var address by remember { mutableStateOf("") }
+    val known = preset ?: Services.settings.installedTv?.takeIf { it.brand == TvBrand.ANDROID_TV }
+    var address by remember {
+        mutableStateOf(known?.let { if (it.port > 0 && it.port != AdbConnection.DEFAULT_PORT) "${it.host}:${it.port}" else it.host } ?: "")
+    }
     var wireless by remember { mutableStateOf(false) }
     var pairAddress by remember { mutableStateOf("") }
     var pairCode by remember { mutableStateOf("") }
@@ -111,6 +117,7 @@ internal fun AndroidTvInstallScreen(onBack: () -> Unit, brandPicker: @Composable
                         log = InstallLog(logFile),
                     ).ensureInstalled({ apk.readBytes() }, version, allowReplace)
                 }
+                TvAppUpdate.installed(InstalledTv(TvBrand.ANDROID_TV, target.first, target.second, result.version))
                 AndroidState.Done(result.version, result.installed)
             } catch (error: AndroidInstallException) {
                 AndroidState.Failed(error.error, error.detail, error.installedFromPlay)
@@ -121,13 +128,16 @@ internal fun AndroidTvInstallScreen(onBack: () -> Unit, brandPicker: @Composable
         }
     }
 
+    // "TV uygulamasını güncelle"den gelindiyse kurulum hemen başlar (kullanıcı ana ekranda onayladı).
+    LaunchedEffect(preset) { if (preset != null && state is AndroidState.Idle && address.isNotBlank()) install() }
+
     ScreenScaffold(top = { TopBar(onBack = onBack) }, bottom = {
         PrimaryButton(stringResource(if (state is AndroidState.Failed) R.string.tvinstall_retry else R.string.tvinstall_button),
             enabled = !working && address.isNotBlank()) { install() }
     }) {
         Heading(stringResource(R.string.tvinstall_title), stringResource(R.string.tvinstall_android_body))
         if (!working) brandPicker()
-        NoteTile(stringResource(R.string.tvinstall_android_experimental), Tokens.Color.secondary)
+        NoteTile(stringResource(R.string.tvinstall_android_supported), Tokens.Color.secondary)
 
         TileLabel(stringResource(R.string.tvinstall_android_tvs))
         when (val list = candidates) {

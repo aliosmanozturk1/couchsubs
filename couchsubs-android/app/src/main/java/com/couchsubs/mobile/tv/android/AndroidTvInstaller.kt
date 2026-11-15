@@ -109,6 +109,17 @@ class AndroidTvInstaller(
         }
     }
 
+    /**
+     * Yalnız TV'deki CouchSubs sürümünü okur (kurmaz, açmaz); uygulama yoksa null. Güncelleme denetimi için: TV bu
+     * telefonu onaylamamışsa onay beklenmez, NOT_APPROVED ile vazgeçilir.
+     */
+    fun installedVersion(): String? {
+        val key = adbKey()
+        return connector(key) { throw AndroidInstallException(AndroidInstallError.NOT_APPROVED, "denetimde onay beklenmez") }.use { adb ->
+            versionFromDumpsys(adb.run("shell:dumpsys package $PACKAGE_NAME"))
+        }
+    }
+
     private fun installCore(apk: () -> ByteArray, version: String?, allowReplace: Boolean): Result {
         val key = adbKey()
         pairing?.let {

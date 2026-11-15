@@ -219,14 +219,17 @@
     <string name="notify_disconnect">PS5 bağlantısı koptuğunda</string>
     <string name="profile_tvs">TV ve altyazı hedefi</string>
 
-    <!-- Deneysel: TV uygulamasını bu telefondan kurmak (Samsung). -->
-    <string name="settings_experimental">Deneysel</string>
-    <string name="settings_tv_install">TV uygulamasını bu telefondan kur</string>
-    <string name="settings_tv_install_note">Bilgisayarsız kurulum. Samsung, LG ve Android TV (Google TV); gerçek TV\'lerde henüz az denendi.</string>
-    <string name="tvinstall_entry">TV uygulamasını bu telefondan kur (deneysel)</string>
+    <!-- TV uygulamasını bu telefondan kurmak ve güncellemek (Samsung, LG, Android TV). -->
+    <string name="tvinstall_entry">TV uygulamasını bu telefondan kur</string>
+    <string name="settings_tv_app">TV uygulaması</string>
+    <string name="tvinstall_any_body">CouchSubs TV uygulamasını Samsung, LG ya da Android TV\'ne bilgisayar olmadan, bu telefondan kurar ve günceller. Ağdaki TV aranıyor; markayı sonra değiştirebilirsin.</string>
+    <string name="tvapp_update_title">TV uygulamasının yeni sürümü var</string>
+    <string name="tvapp_update_body">%1$s TV\'deki CouchSubs %2$s, bu telefondaki %3$s. Güncelleme bir dakika kadar sürer; TV açık ve aynı Wi-Fi\'da kalsın.</string>
+    <string name="tvapp_update_button">TV uygulamasını güncelle</string>
+    <string name="tvapp_update_short">Güncelleme var: %1$s</string>
     <string name="tvinstall_title">TV uygulamasını kur</string>
     <string name="tvinstall_body">CouchSubs TV uygulamasını Samsung TV\'ne bilgisayar olmadan, bu telefondan kurar. Telefon ve TV aynı Wi-Fi\'da olmalı.</string>
-    <string name="tvinstall_experimental">Deneysel: Samsung TV\'ler ve akıllı monitörler (2017 ve sonrası).</string>
+    <string name="tvinstall_supported">Samsung TV\'ler ve akıllı monitörler (2017 ve sonrası).</string>
     <string name="tvinstall_tvs">Ağdaki Samsung TV\'ler</string>
     <string name="tvinstall_searching">TV\'ler aranıyor…</string>
     <string name="tvinstall_none">Samsung TV bulunamadı. TV açık ve aynı Wi-Fi\'da mı? Adresini aşağıya elle de yazabilirsin (TV\'de Ayarlar › Genel › Ağ › Ağ Durumu).</string>
@@ -275,7 +278,7 @@
     <string name="tvinstall_brand_android">Android TV</string>
     <string name="tvinstall_brand_lg">LG</string>
     <string name="tvinstall_lg_body">CouchSubs TV uygulamasını LG TV\'ne (webOS) bilgisayar olmadan, bu telefondan kurar. Telefon ve TV aynı Wi-Fi\'da olmalı.</string>
-    <string name="tvinstall_lg_experimental">Deneysel: TV\'de LG\'nin Developer Mode uygulaması ve ücretsiz LG geliştirici hesabı gerekir.</string>
+    <string name="tvinstall_lg_supported">TV\'de LG\'nin Developer Mode uygulaması ve ücretsiz LG geliştirici hesabı gerekir. CouchSubs geliştirici modunun süresini kendisi uzatır.</string>
     <string name="tvinstall_lg_tvs">Ağdaki LG TV\'ler</string>
     <string name="tvinstall_lg_none">LG TV bulunamadı. TV açık ve aynı Wi-Fi\'da mı? Adresini aşağıya elle de yazabilirsin (TV\'de Ayarlar › Genel › Ağ › bağlı ağ).</string>
     <string name="tvinstall_lg_passphrase">Passphrase (TV ekranında, 6 karakter)</string>
@@ -295,7 +298,7 @@
     <string name="tvinstall_step_approve">TV\'de “USB hata ayıklamasına izin verilsin mi?” sorusuna İzin ver de (“Bu cihazdan her zaman izin ver”i işaretle).</string>
     <string name="tvinstall_step_key">TV\'den geliştirici anahtarı alınıyor…</string>
     <string name="tvinstall_android_body">CouchSubs Android TV uygulamasını Android TV ya da Google TV\'ne bilgisayar olmadan, bu telefondan kurar. Telefon ve TV aynı Wi-Fi\'da olmalı.</string>
-    <string name="tvinstall_android_experimental">Deneysel: TV\'nin geliştirici seçeneklerinde hata ayıklama açık olmalı. Kurulumdan sonra kapatabilirsin.</string>
+    <string name="tvinstall_android_supported">TV\'nin geliştirici seçeneklerinde hata ayıklama açık olmalı. Güncellemeler için açık bırak.</string>
     <string name="tvinstall_android_tvs">Ağdaki Android TV\'ler</string>
     <string name="tvinstall_android_none">Android TV bulunamadı. TV açık ve aynı Wi-Fi\'da mı? Adresini aşağıya elle yazabilirsin (TV\'de Ayarlar › Ağ ve İnternet › bağlı ağ).</string>
     <string name="tvinstall_android_debug_on">Ağ hata ayıklaması açık (5555)</string>

@@ -212,14 +212,16 @@
     <string name="profile_no_account">CouchSubs has no accounts: your settings stay only on this phone. The app and game packs are free.</string>
     <string name="notify_disconnect">When the PS5 connection drops</string>
     <string name="profile_tvs">TV and subtitle target</string>
-
-    <string name="settings_experimental">Experimental</string>
-    <string name="settings_tv_install">Install the TV app from this phone</string>
-    <string name="settings_tv_install_note">No computer needed. Samsung, LG and Android TV (Google TV); barely tested on real TVs yet.</string>
-    <string name="tvinstall_entry">Install the TV app from this phone (experimental)</string>
+    <string name="tvinstall_entry">Install the TV app from this phone</string>
+    <string name="settings_tv_app">TV app</string>
+    <string name="tvinstall_any_body">Installs and updates the CouchSubs TV app on your Samsung, LG or Android TV from this phone, without a computer. Looking for the TV on your network; you can change the brand later.</string>
+    <string name="tvapp_update_title">A new version of the TV app is available</string>
+    <string name="tvapp_update_body">CouchSubs on the %1$s TV is %2$s, this phone has %3$s. Updating takes about a minute; keep the TV on and on the same Wi-Fi.</string>
+    <string name="tvapp_update_button">Update the TV app</string>
+    <string name="tvapp_update_short">Update available: %1$s</string>
     <string name="tvinstall_title">Install the TV app</string>
     <string name="tvinstall_body">Installs the CouchSubs TV app on your Samsung TV from this phone, without a computer. The phone and the TV must be on the same Wi-Fi.</string>
-    <string name="tvinstall_experimental">Experimental: Samsung TVs and smart monitors (2017 and later).</string>
+    <string name="tvinstall_supported">Samsung TVs and smart monitors (2017 and later).</string>
     <string name="tvinstall_tvs">Samsung TVs on the network</string>
     <string name="tvinstall_searching">Looking for TVs…</string>
     <string name="tvinstall_none">No Samsung TV found. Is the TV on and on the same Wi-Fi? You can also type its address below (on the TV: Settings › General › Network › Network Status).</string>
@@ -268,7 +270,7 @@
     <string name="tvinstall_brand_android">Android TV</string>
     <string name="tvinstall_brand_lg">LG</string>
     <string name="tvinstall_lg_body">Installs the CouchSubs TV app on your LG TV (webOS) from this phone, without a computer. The phone and the TV must be on the same Wi-Fi.</string>
-    <string name="tvinstall_lg_experimental">Experimental: needs LG\'s Developer Mode app on the TV and a free LG developer account.</string>
+    <string name="tvinstall_lg_supported">Needs LG\'s Developer Mode app on the TV and a free LG developer account. CouchSubs extends the developer mode session for you.</string>
     <string name="tvinstall_lg_tvs">LG TVs on the network</string>
     <string name="tvinstall_lg_none">No LG TV found. Is the TV on and on the same Wi-Fi? You can also type its address below (on the TV: Settings › General › Network › the connected network).</string>
     <string name="tvinstall_lg_passphrase">Passphrase (on the TV screen, 6 characters)</string>
@@ -288,7 +290,7 @@
     <string name="tvinstall_step_approve">On the TV, answer Allow to “Allow USB debugging?” (tick “Always allow from this device”).</string>
     <string name="tvinstall_step_key">Getting the developer key from the TV…</string>
     <string name="tvinstall_android_body">Installs the CouchSubs Android TV app on your Android TV or Google TV from this phone, without a computer. The phone and the TV must be on the same Wi-Fi.</string>
-    <string name="tvinstall_android_experimental">Experimental: debugging must be on in the TV\'s developer options. You can turn it off after the install.</string>
+    <string name="tvinstall_android_supported">Debugging must be on in the TV\'s developer options. Leave it on so updates can be installed.</string>
     <string name="tvinstall_android_tvs">Android TVs on the network</string>
     <string name="tvinstall_android_none">No Android TV found. Is the TV on and on the same Wi-Fi? You can also type its address below (on the TV: Settings › Network &amp; Internet › the connected network).</string>
     <string name="tvinstall_android_debug_on">Network debugging is on (5555)</string>

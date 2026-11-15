@@ -17,6 +17,15 @@ mağazası varsa ve Play Store yoksa büyük olasılıkla değildir.
 
 Bilgisayar ve TV aynı ev ağında olmalıdır.
 
+**Bilgisayarsız: telefondan kurulum ve güncelleme.** Bilgisayarınız yoksa TV uygulamasını CouchSubs telefon
+uygulamasından ([Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile)) da kurabilirsiniz:
+**Ayarlar › TV uygulaması › TV uygulamasını bu telefondan kur** (aynı giriş ilk kurulumdaki altyazı hedefi adımında da
+var). Telefon ağdaki TV'yi bulup markayı kendisi seçer; her markanın adımları aşağıdaki "Telefondan kurulum"
+bölümlerindedir. Bilgisayar uygulaması gibi telefon da uygulama açılınca ve TV her bağlandığında TV'deki CouchSubs'ın
+sürümüne bakar; telefondaki sürüm daha yeniyse ana ekranda **TV uygulamasını güncelle** çıkar, tek dokunuşla
+güncellenir. Telefondaki TV paketleri her telefon sürümünde en yenisidir (Samsung paketi kaynaktan, LG ve Android TV
+paketleri son [sürümden](https://github.com/yorulmazsinan/couchsubs/releases) gelir).
+
 ## LG TV
 
 ### 1. LG geliştirici hesabı açın
@@ -51,18 +60,17 @@ baştan kurmanız gerekir. TV internetsiz 10 kez yeniden başlarsa da aynısı o
 
 Modu kapatıp yeniden açarsanız TV yeni anahtar üretir ve parola bir kez daha sorulur.
 
-### Bilgisayarsız: Android telefondan kurulum (deneysel)
-
-TV uygulamasını CouchSubs'ın Android uygulamasından da kurabilirsiniz. Gerçek TV'lerde henüz az denendi.
+### Telefondan kurulum
 
 1. Yukarıdaki 1. ve 2. adımlarla geliştirici modunu açın.
-2. Telefonda **Ayarlar › Deneysel › TV uygulamasını bu telefondan kur**'u açın, altındaki satıra basın ve üstten
+2. Telefonda **Ayarlar › TV uygulaması › TV uygulamasını bu telefondan kur**'a basın; LG seçili değilse üstten
    **LG**'yi seçin. Listeden TV'yi seçin (geliştirici modu açıksa "Geliştirici modu açık" yazar) ya da adresini yazın.
 3. TV'de Developer Mode uygulamasında **Key Server**'ı açın, ekrandaki 6 karakterli **Passphrase**'i telefona yazıp
    **Kur ve aç**'a basın. Telefon anahtarı alır, uygulamayı kurar ve açar. Parola yalnız ilk kurulumda gerekir.
 
-Telefon geliştirici modunun süresini **uzatmaz**; süre dolmadan Developer Mode uygulamasındaki **EXTEND**'e basın (ya da
-bilgisayardaki CouchSubs'ı açın). Paket, [Sürümler](https://github.com/yorulmazsinan/couchsubs/releases) sayfasındaki
+Telefon, bilgisayar uygulaması gibi geliştirici modunun süresini günde bir kez kendisi uzatır (kurulumda ve TV'deki
+sürüme her baktığında). Yeni sürüm çıkınca ana ekrandaki **TV uygulamasını güncelle** ile parola sorulmadan güncellenir
+(TV'de geliştirici modu yeniden açıldıysa parola bir kez daha istenir). Paket, [Sürümler](https://github.com/yorulmazsinan/couchsubs/releases) sayfasındaki
 `.ipk` ile aynıdır. Kod: `couchsubs-android/.../tv/lg/`.
 
 ### Elle kurulum
@@ -122,19 +130,20 @@ Samsung, uygulamanın her TV için ayrı imzalanmasını ister. CouchSubs bunu s
 - **Kurulduğunu nasıl anlarım:** TV'de CouchSubs açıkken **Tamam**'a basınca panelde **HDMI** (PS5'in girişi,
   "oynatılıyor"), **Uygulama** (bilgisayarın adresi) ve **Bağlantı: bağlı** görünür. Paneli kapatmak için yine **Tamam**.
 
-### Bilgisayarsız: Android telefondan kurulum (deneysel)
+### Telefondan kurulum
 
-Bilgisayarınız yoksa TV uygulamasını CouchSubs'ın Android uygulamasından ([Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile)) da kurabilirsiniz (Samsung TV ve akıllı
-monitörler; Android TV için aşağıdaki Android TV bölümüne bakın). Gerçek TV'lerde henüz az denendi.
+Samsung TV ve akıllı monitörler için (Android TV için aşağıdaki Android TV bölümüne bakın):
 
-1. Telefonda **Ayarlar › Deneysel › TV uygulamasını bu telefondan kur**'u açın, altındaki satıra basın (aynı giriş
-   altyazı hedefi ekranında da görünür).
+1. Telefonda **Ayarlar › TV uygulaması › TV uygulamasını bu telefondan kur**'a basın; Samsung seçili değilse üstten
+   **Samsung**'u seçin.
 2. TV'de geliştirici modunu yukarıdaki gibi açın; **Host PC IP** olarak ekranda yazan **telefonun** adresini girin ve
    TV'yi yeniden başlatın.
 3. Listeden TV'yi seçip **Kur ve aç**'a basın. Samsung giriş sayfası uygulamanın içinde açılır (açılmazsa
    **Tarayıcıda aç**); giriş yapınca telefon sertifikayı alır, uygulamayı imzalar, kurar ve açar.
 
-Bilgisayardaki kurulumla aynı adımlardır (`couchsubs-android/.../tv/samsung/`); sertifika telefonda saklanır. Bir sorun
+Bilgisayardaki kurulumla aynı adımlardır (`couchsubs-android/.../tv/samsung/`); sertifika telefonda saklanır, sonraki
+güncellemelerde giriş istenmez. Güncelleme için TV'nin geliştirici modunda **Host PC IP** telefonun adresi kalmalıdır
+(telefonun adresi değişirse bu adım yinelenir). Bir sorun
 çıkarsa ekrandaki **Kurulum günlüğünü paylaş** ile günlüğü [Issues](https://github.com/yorulmazsinan/couchsubs/issues)
 sayfasına ekleyin.
 
@@ -205,11 +214,9 @@ CouchSubs TV'yi ağda bulamazsa (bazı TV'ler ağdan hata ayıklamaya izin verme
 3. TV'de dosya yöneticisiyle dosyayı açıp kurun. TV'nizde dosya yöneticisi yoksa Play Store'dan ücretsiz birini kurun.
 4. CouchSubs'ın TV adımında **Android TV / Google TV**'yi seçin ve TV'de CouchSubs'ı açın.
 
-### Bilgisayarsız: Android telefondan kurulum (deneysel)
+### Telefondan kurulum
 
-TV uygulamasını CouchSubs'ın Android uygulamasından da kurabilirsiniz. Gerçek TV'lerde henüz az denendi.
-
-1. Telefonda **Ayarlar › Deneysel › TV uygulamasını bu telefondan kur**'u açın, altındaki satıra basın ve üstten
+1. Telefonda **Ayarlar › TV uygulaması › TV uygulamasını bu telefondan kur**'a basın; Android TV seçili değilse üstten
    **Android TV**'yi seçin.
 2. TV'de hata ayıklamayı yukarıdaki gibi açın ve iki yoldan birini seçin:
    - **USB/ağ hata ayıklama:** Listeden TV'yi seçin (5555 portu açıksa "Ağ hata ayıklaması açık" yazar) ya da adresini
@@ -220,6 +227,9 @@ TV uygulamasını CouchSubs'ın Android uygulamasından da kurabilirsiniz. Gerç
      **Cihazı eşleme kodu ile eşle**'ye basın; açılan penceredeki adresi ve 6 haneli kodu telefona yazıp pencere
      açıkken **Kur ve aç**'a basın. Sonraki kurulumlarda kod gerekmez, yalnız adres ve port (port her açılışta değişir).
 3. Telefon uygulamayı kurar, "diğer uygulamaların üzerinde göster" iznini verir ve açar.
+
+Güncellemeler için TV'de hata ayıklamayı açık bırakın: telefon TV'deki sürüme bakar ve yenisi varsa ana ekranda
+**TV uygulamasını güncelle** önerir (TV bir daha onay sormaz).
 
 Telefondaki paket, [Sürümler](https://github.com/yorulmazsinan/couchsubs/releases) sayfasındaki `CouchSubs-androidtv.apk`
 ile aynıdır (telefon uygulaması derlenirken son sürümden alınır). TV'deki CouchSubs Google Play'den kurulduysa imzası

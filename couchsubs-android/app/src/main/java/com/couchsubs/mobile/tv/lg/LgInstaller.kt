@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Masaüstündeki DevModeInstaller.cs'in (windows/src/CouchSubs.Core/LgTv; Mac'te core/.../LGTV/DevModeInstaller.swift)
-// telefon karşılığı. Fark: geliştirici modunun süresi uzatılmaz.
+// telefon karşılığı; geliştirici modunun süresi de masaüstündeki gibi uzatılır (renewSession).
 package com.couchsubs.mobile.tv.lg
 
 import com.couchsubs.mobile.tv.samsung.InstallLog
@@ -77,6 +77,11 @@ class LgInstaller(
         private const val APP_INFO = "/media/developer/apps/usr/palm/applications/$APP_ID/appinfo.json"
         const val TEMP_DIR = "/media/developer/temp"
         private const val INSTALL_LOG = "$TEMP_DIR/couchsubs-install.log"
+        private const val SESSION_TOKEN = "/var/luna/preferences/devmode_enabled"
+
+        /** LG'nin yanıtındaki kalan süre `999:58:40` (saat:dakika:saniye) biçimindedir. */
+        fun remainingHours(response: String): Int? =
+            Regex("""\d{1,4}:\d{2}:\d{2}""").find(response)?.value?.substringBefore(':')?.toIntOrNull()
 
         fun keyUrl(host: String, port: Int = KEY_SERVER_PORT) = "http://$host:$port/webos_rsa"
 
@@ -196,6 +201,32 @@ class LgInstaller(
             RegexOption.IGNORE_CASE).containsMatchIn(text)
 
         private fun short(text: String) = if (text.length <= 500) text.trim() else text.substring(0, 500).trim() + "…"
+    }
+
+    /**
+     * Geliştirici modunun 1000 saatlik süresini baştan başlatır (TV'deki Developer Mode uygulamasının EXTEND düğmesi,
+     * masaüstündeki DevModeInstaller.renewSession). Kalan saati döner; olmazsa null.
+     */
+    fun renewSession(timeoutMs: Int = 10_000): Int? {
+        val token = shell.run("cat $SESSION_TOKEN", null).output.trim()
+        if (token.isEmpty() || token.contains(' ')) return null
+        fun get(url: String): String? = try {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = timeoutMs
+            connection.readTimeout = timeoutMs
+            try {
+                connection.inputStream.use { String(it.readBytes(), Charsets.UTF_8) }
+            } finally {
+                connection.disconnect()
+            }
+        } catch (error: IOException) {
+            null
+        }
+        val encoded = java.net.URLEncoder.encode(token, "UTF-8")
+        val renewed = get("https://developer.lge.com/secure/ResetDevModeSession.dev?sessionToken=$encoded") ?: return null
+        if (!renewed.contains("success", ignoreCase = true)) return null
+        val checked = get("https://developer.lge.com/secure/CheckDevModeSession.dev?sessionToken=$encoded") ?: return null
+        return remainingHours(checked)
     }
 
     /** TV'deki sürüm; uygulama kurulu değilse null. */

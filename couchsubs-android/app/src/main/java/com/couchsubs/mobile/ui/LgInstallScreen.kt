@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Deneysel: CouchSubs'ın LG webOS uygulamasını bu telefondan geliştirici modu (SSH) ile kurmak (TvInstallScreen'de marka seçimi).
+// CouchSubs'ın LG webOS uygulamasını bu telefondan geliştirici modu (SSH) ile kurmak ve güncellemek (TvInstallScreen'de marka seçimi).
 package com.couchsubs.mobile.ui
 
 import android.os.Handler
@@ -28,6 +28,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import com.couchsubs.mobile.R
+import com.couchsubs.mobile.Services
+import com.couchsubs.mobile.tv.InstalledTv
+import com.couchsubs.mobile.tv.TvAppUpdate
 import com.couchsubs.mobile.tv.TvBrand
 import com.couchsubs.mobile.tv.TvDiscovery
 import com.couchsubs.mobile.tv.TvPackages
@@ -58,12 +61,12 @@ private sealed interface LgState {
 }
 
 @Composable
-internal fun LgInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> Unit) {
+internal fun LgInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> Unit, preset: InstalledTv? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val keys = remember { LgKeys(File(context.noBackupFilesDir, "lg")) }
     var candidates by remember { mutableStateOf<List<LgCandidate>?>(null) }
-    var host by remember { mutableStateOf("") }
+    var host by remember { mutableStateOf(preset?.host ?: Services.settings.installedTv?.takeIf { it.brand == TvBrand.LG }?.host ?: "") }
     var manual by remember { mutableStateOf(false) }
     var passphrase by remember { mutableStateOf("") }
     var state by remember { mutableStateOf<LgState>(LgState.Idle) }
@@ -100,7 +103,13 @@ internal fun LgInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> 
                         log.write("Key Server'dan anahtar alındı.")
                         return key
                     }
-                    fun attempt(key: ByteArray) = LgInstaller(JschShell(target, key), progress, log).ensureInstalled(ipk, name, version)
+                    fun attempt(key: ByteArray): LgInstaller.Result {
+                        val installer = LgInstaller(JschShell(target, key), progress, log)
+                        val result = installer.ensureInstalled(ipk, name, version)
+                        // Masaüstündeki gibi: geliştirici modunun süresi günde bir uzatılır, kullanıcı TV'den uzatmaz.
+                        TvAppUpdate.renewLgSessionIfDue(installer)
+                        return result
+                    }
                     val saved = keys.load(target)
                     if (saved == null) attempt(fresh())
                     else try {
@@ -113,6 +122,7 @@ internal fun LgInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> 
                         attempt(fresh())
                     }
                 }
+                TvAppUpdate.installed(InstalledTv(TvBrand.LG, target, version = result.version))
                 LgState.Done(result.version, result.installed)
             } catch (error: LgInstallException) {
                 LgState.Failed(error.error, error.detail)
@@ -123,6 +133,9 @@ internal fun LgInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> 
         }
     }
 
+    // "TV uygulamasını güncelle"den gelindiyse ve anahtar kayıtlıysa kurulum hemen başlar; değilse parola beklenir.
+    LaunchedEffect(preset) { if (preset != null && state is LgState.Idle && hasKey) install() }
+
     ScreenScaffold(top = { TopBar(onBack = onBack) }, bottom = {
         if (!manual && !working) GhostButton(stringResource(R.string.tvinstall_not_found)) { manual = true }
         PrimaryButton(stringResource(if (state is LgState.Failed) R.string.tvinstall_retry else R.string.tvinstall_button),
@@ -130,7 +143,7 @@ internal fun LgInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> 
     }) {
         Heading(stringResource(R.string.tvinstall_title), stringResource(R.string.tvinstall_lg_body))
         if (!working) brandPicker()
-        NoteTile(stringResource(R.string.tvinstall_lg_experimental), Tokens.Color.secondary)
+        NoteTile(stringResource(R.string.tvinstall_lg_supported), Tokens.Color.secondary)
 
         TileLabel(stringResource(R.string.tvinstall_lg_tvs))
         when (val list = candidates) {

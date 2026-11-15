@@ -60,6 +60,7 @@ import com.couchsubs.mobile.R
 import com.couchsubs.mobile.Services
 import com.couchsubs.mobile.service.LiveStatus
 import com.couchsubs.mobile.settings.SubtitleTarget
+import com.couchsubs.mobile.tv.InstalledTv
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -104,6 +105,7 @@ fun MainScreen(
     onProfile: () -> Unit,
     onSettings: () -> Unit,
     onHistory: () -> Unit = {},
+    onTvUpdate: (InstalledTv) -> Unit = {},
 ) {
     val context = LocalContext.current
     val settings = Services.settings
@@ -133,6 +135,7 @@ fun MainScreen(
                 NoteTile(stringResource(R.string.main_unpaired_note), Tokens.Color.secondary)
             }
             status.error?.let { NoteTile(it) }
+            TvAppUpdateCard(onTvUpdate)
             TwoColumns(
                 { StatusTile(Icons.Filled.PlayArrow, "PS5", settings.console?.name ?: stringResource(R.string.profile_not_paired), it,
                     corner = { if (settings.console != null) StatusLabel(stringResource(R.string.main_paired)) }, onClick = onPairing) },

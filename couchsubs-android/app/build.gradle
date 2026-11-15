@@ -117,7 +117,8 @@ android {
     sourceSets.main.assets.srcDirs += layout.buildDirectory.dir('generated/couchsubs-assets')
     // Paketler ücretsiz ve her derlemede uygulamayla gelir (dokuz paket ~27 MB); sunucudan yalnız yenileri ve güncellemeleri iner.
     sourceSets.main.assets.srcDirs += layout.buildDirectory.dir('generated/couchsubs-packs')
-    // Telefondan TV kurulumu (deneysel): imzasız Samsung paketi; kurulurken TV'ye özel sertifikayla imzalanır.
+    // Telefondan TV kurulumu ve güncellemesi: imzasız Samsung paketi (her derlemede kaynaktan, yani hep en yenisi);
+    // kurulurken TV'ye özel sertifikayla imzalanır.
     sourceSets.main.assets.srcDirs += layout.buildDirectory.dir('generated/couchsubs-tv')
     // Android TV ve LG paketleri: son GitHub sürümünden (tvReleasePackages).
     sourceSets.main.assets.srcDirs += layout.buildDirectory.dir('generated/couchsubs-tv-release')
@@ -162,6 +163,7 @@ def requireTvPackages = (findProperty('couchsubs.requireTvPackages') ?: 'false')
 tasks.register('tvReleasePackages') {
     def outDir = tvReleaseDir
     def required = requireTvPackages
+    def sourceInfo = file("$repoRoot/tv-webos/appinfo.json")
     def token = System.getenv('GITHUB_TOKEN')
     // Sürümdeki ad → uygulamadaki ad.
     // LG paketi (.ipk) de masaüstünün kurduğuyla aynıdır (ares-package çıktısı); adı sürümü taşır.
@@ -195,6 +197,22 @@ tasks.register('tvReleasePackages') {
             }
             new File(outDir, 'tv-packages.properties').text = properties.join('\n') + '\n'
             logger.lifecycle("TV paketleri: ${release.tag_name} (${wanted*.file.join(', ')})")
+            // Telefon TV'deki eski uygulamayı bu paketlerle günceller: depodaki TV uygulaması sürümdekinden yeniyse
+            // (henüz sürüm çıkmadı) uyarılır; bir sonraki sürümden sonra derlenen telefon uygulaması yenisini taşır.
+            def lgMatch = (properties.find { it.startsWith('couchsubs-lg.ipk=') } ?: '') =~ /_([0-9.]+)_all\.ipk/
+            def released = lgMatch.find() ? lgMatch.group(1) : null
+            def source = new groovy.json.JsonSlurper().parse(sourceInfo).version?.toString()
+            def parts = { String v -> v.tokenize('.').collect { it.isInteger() ? it.toInteger() : 0 } }
+            def newer = { String a, String b ->
+                def x = parts(a), y = parts(b)
+                for (int i = 0; i < Math.max(x.size(), y.size()); i++) {
+                    def l = i < x.size() ? x[i] : 0, r = i < y.size() ? y[i] : 0
+                    if (l != r) return l > r
+                }
+                false
+            }
+            if (released && source && newer(source, released))
+                logger.warn("TV uygulaması depoda ${source}, son sürümde ${released}: telefon şimdilik ${released} kurar.")
         } catch (Exception error) {
             if (required) throw new GradleException("TV paketleri indirilemedi: ${error.message}", error)
             if (new File(outDir, 'tv-packages.properties').exists()) logger.warn("TV paketleri yenilenemedi, önceki indirilen kullanılıyor: ${error.message}")

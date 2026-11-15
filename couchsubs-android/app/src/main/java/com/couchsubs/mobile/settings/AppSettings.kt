@@ -12,6 +12,7 @@ import com.couchsubs.mobile.core.SubtitleStyle
 import com.couchsubs.mobile.core.SubtitleTextColor
 import com.couchsubs.mobile.remoteplay.LoginPasscode
 import com.couchsubs.mobile.remoteplay.RegisteredConsole
+import com.couchsubs.mobile.tv.InstalledTv
 import com.couchsubs.mobile.tv.TvBrand
 import org.json.JSONObject
 import java.security.KeyStore
@@ -275,18 +276,31 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("notify.packs", true)
         set(value) = prefs.edit().putBoolean("notify.packs", value).apply()
 
-    /**
-     * Deneysel: TV uygulamasını bilgisayarsız, bu telefondan kurmak (Samsung, Android TV). Varsayılan kapalı; açılınca
-     * Ayarlar'da ve altyazı hedefi ekranında kurulum girişi görünür.
-     */
-    var experimentalTvInstall: Boolean
-        get() = prefs.getBoolean("experimental.tvInstall", false)
-        set(value) = prefs.edit().putBoolean("experimental.tvInstall", value).apply()
+    /** Kurulum ekranında son seçilen marka; hiç seçilmediyse null (ekran ağda bulduğu TV'nin markasını seçer). */
+    var tvInstallBrand: TvBrand?
+        get() = prefs.getString("experimental.tvInstallBrand", null)?.let { runCatching { enumValueOf<TvBrand>(it) }.getOrNull() }
+        set(value) = prefs.edit().putString("experimental.tvInstallBrand", value?.name).apply()
 
-    /** Kurulum ekranında son seçilen marka. */
-    var tvInstallBrand: TvBrand
-        get() = enumOr(prefs.getString("experimental.tvInstallBrand", null), TvBrand.SAMSUNG)
-        set(value) = prefs.edit().putString("experimental.tvInstallBrand", value.name).apply()
+    /**
+     * Bu telefonun TV uygulamasını kurduğu (ya da sürümüne baktığı) TV: marka, adres ve TV'deki sürüm. Uygulama açılınca
+     * ve TV her bağlandığında bu TV'deki sürüme bakılır; telefondaki paketten eskiyse güncelleme önerilir.
+     */
+    var installedTv: InstalledTv?
+        get() {
+            val brand = prefs.getString("tvApp.brand", null)?.let { runCatching { enumValueOf<TvBrand>(it) }.getOrNull() } ?: return null
+            val host = prefs.getString("tvApp.host", null)?.takeIf { it.isNotBlank() } ?: return null
+            return InstalledTv(brand, host, prefs.getInt("tvApp.port", 0), prefs.getString("tvApp.version", null))
+        }
+        set(value) = prefs.edit().apply {
+            if (value == null) listOf("tvApp.brand", "tvApp.host", "tvApp.port", "tvApp.version").forEach { remove(it) }
+            else putString("tvApp.brand", value.brand.name).putString("tvApp.host", value.host).putInt("tvApp.port", value.port)
+                .putString("tvApp.version", value.version)
+        }.apply()
+
+    /** LG geliştirici modunun süresi en son ne zaman uzatıldı (ms); günde en çok bir kez uzatılır. */
+    var lgSessionRenewedAt: Long
+        get() = prefs.getLong("tvApp.lgSessionRenewed", 0L)
+        set(value) = prefs.edit().putLong("tvApp.lgSessionRenewed", value).apply()
 
     fun apiKey(engine: EngineChoice): String? = secrets.get("key." + engine.name)
     fun setApiKey(engine: EngineChoice, key: String?) = secrets.put("key." + engine.name, key?.trim())

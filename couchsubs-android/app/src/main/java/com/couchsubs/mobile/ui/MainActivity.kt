@@ -25,6 +25,7 @@ import com.couchsubs.mobile.account.Telemetry
 import com.couchsubs.mobile.service.LiveState
 import com.couchsubs.mobile.service.TranslationService
 import com.couchsubs.mobile.settings.SubtitleTarget
+import com.couchsubs.mobile.tv.TvAppUpdate
 
 /** Gezinme yolları (Compose Navigation). */
 object Routes {
@@ -67,6 +68,10 @@ class MainActivity : ComponentActivity() {
                     if (status.running && settings.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
+                // Masaüstündeki gibi: uygulama açılınca ve TV her bağlandığında TV'deki CouchSubs sürümüne bakılır;
+                // eskiyse ana ekran "TV uygulamasını güncelle" önerir.
+                val tvConnected = status.connectedTvs > 0
+                LaunchedEffect(tvConnected) { TvAppUpdate.check(applicationContext) }
                 DisposableEffect(navigation) {
                     val listener = androidx.navigation.NavController.OnDestinationChangedListener { _, destination, _ ->
                         destination.route?.let { Telemetry.screen(it.substringBefore('/')) }
@@ -110,6 +115,10 @@ class MainActivity : ComponentActivity() {
                             onProfile = { navigation.navigate(Routes.PROFILE) },
                             onSettings = { navigation.navigate(Routes.SETTINGS) },
                             onHistory = { navigation.navigate(Routes.HISTORY) },
+                            onTvUpdate = { tv ->
+                                TvAppUpdate.pending = tv
+                                navigation.navigate(Routes.TV_INSTALL)
+                            },
                         )
                     }
                     composable(Routes.PACKS) {

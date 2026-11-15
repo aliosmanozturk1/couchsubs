@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Deneysel: TV uygulamasını bilgisayarsız, bu telefondan kurmak (şimdilik Samsung). Ayarlar › Deneysel'den açılır.
+// TV uygulamasını bilgisayarsız, bu telefondan kurmak ve güncellemek (Samsung, LG, Android TV). Ayarlar'dan, altyazı
+// hedefi ekranından ve ana ekrandaki güncelleme önerisinden açılır.
 package com.couchsubs.mobile.ui
 
 import android.annotation.SuppressLint
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +47,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.couchsubs.mobile.BuildConfig
 import com.couchsubs.mobile.R
 import com.couchsubs.mobile.Services
+import com.couchsubs.mobile.tv.InstalledTv
+import com.couchsubs.mobile.tv.TvAppStatus
+import com.couchsubs.mobile.tv.TvAppUpdate
 import com.couchsubs.mobile.tv.TvBrand
 import com.couchsubs.mobile.tv.TvDiscovery
 import com.couchsubs.mobile.tv.samsung.AdbKey
@@ -78,33 +83,74 @@ private sealed interface InstallState {
     data class Failed(val error: SamsungInstallError?, val detail: String?) : InstallState
 }
 
-/** Kurulum ekranı: üstteki seçimle marka değişir (Samsung, Android TV); her markanın akışı ayrıdır. */
+/**
+ * Kurulum ekranı: üstteki seçimle marka değişir (Samsung, LG, Android TV); her markanın akışı ayrıdır. Marka önce
+ * güncellenecek TV'den, sonra bu telefonun kurduğu TV'den, sonra son seçimden gelir; hiçbiri yoksa ağda bulunan ilk
+ * TV'nin markası seçilir.
+ */
 @Composable
 fun TvInstallScreen(onBack: () -> Unit) {
-    var brand by remember { mutableStateOf(Services.settings.tvInstallBrand) }
+    val settings = Services.settings
+    // Ana ekrandaki "TV uygulamasını güncelle": bu TV seçilir ve kurulum kendiliğinden başlar.
+    val preset = remember { TvAppUpdate.takePending() }
+    var brand by remember { mutableStateOf(preset?.brand ?: settings.installedTv?.brand ?: settings.tvInstallBrand) }
     val brands = listOf(TvBrand.SAMSUNG, TvBrand.LG, TvBrand.ANDROID_TV)
     val picker: @Composable () -> Unit = {
         Segmented(listOf(stringResource(R.string.tvinstall_brand_samsung), stringResource(R.string.tvinstall_brand_lg),
             stringResource(R.string.tvinstall_brand_android)),
             brands.indexOf(brand).coerceAtLeast(0)) {
             brand = brands[it]
-            Services.settings.tvInstallBrand = brand
+            settings.tvInstallBrand = brands[it]
         }
     }
+    if (brand == null) {
+        LaunchedEffect(Unit) {
+            val found = withContext(Dispatchers.IO) { runCatching { TvDiscovery.search() }.getOrDefault(emptyList()) }
+            brand = found.firstOrNull { it.brand != TvBrand.ANDROID_TV }?.brand ?: found.firstOrNull()?.brand ?: TvBrand.SAMSUNG
+        }
+        ScreenScaffold(top = { TopBar(onBack = onBack) }) {
+            Heading(stringResource(R.string.tvinstall_title), stringResource(R.string.tvinstall_any_body))
+            Tile(Modifier.fillMaxWidth()) { StatusLabel(stringResource(R.string.tvinstall_searching), live = true) }
+        }
+        return
+    }
+    val forBrand = preset?.takeIf { it.brand == brand }
     when (brand) {
-        TvBrand.ANDROID_TV -> AndroidTvInstallScreen(onBack, picker)
-        TvBrand.LG -> LgInstallScreen(onBack, picker)
-        else -> SamsungInstallScreen(onBack, picker)
+        TvBrand.ANDROID_TV -> AndroidTvInstallScreen(onBack, picker, forBrand)
+        TvBrand.LG -> LgInstallScreen(onBack, picker, forBrand)
+        else -> SamsungInstallScreen(onBack, picker, forBrand)
+    }
+}
+
+/** Ayarlar'daki TV uygulaması satırının değeri: kurulu TV ve sürüm ya da bekleyen güncelleme. */
+@Composable
+internal fun tvAppSummary(): String? {
+    val status by TvAppUpdate.status.collectAsState()
+    (status as? TvAppStatus.Outdated)?.let { return stringResource(R.string.tvapp_update_short, it.bundled) }
+    val tv = Services.settings.installedTv ?: return null
+    return listOfNotNull(brandName(tv.brand), tv.version?.takeIf { it.isNotEmpty() }).joinToString(" · ")
+}
+
+/** Ana ekranda: TV'deki uygulama telefondakinden eskiyse tek dokunuşla güncelleme önerisi. */
+@Composable
+internal fun TvAppUpdateCard(onUpdate: (InstalledTv) -> Unit) {
+    val status by TvAppUpdate.status.collectAsState()
+    val outdated = status as? TvAppStatus.Outdated ?: return
+    Tile(Modifier.fillMaxWidth(), style = TileStyle.ACTIVE) {
+        Text(stringResource(R.string.tvapp_update_title), style = Tokens.Type.headline, color = Tokens.Color.text)
+        Text(stringResource(R.string.tvapp_update_body, brandName(outdated.tv.brand), outdated.installed, outdated.bundled),
+            style = Tokens.Type.body, color = Tokens.Color.secondary)
+        PrimaryButton(stringResource(R.string.tvapp_update_button), Modifier.fillMaxWidth()) { onUpdate(outdated.tv) }
     }
 }
 
 @Composable
-private fun SamsungInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> Unit) {
+private fun SamsungInstallScreen(onBack: () -> Unit, brandPicker: @Composable () -> Unit, preset: InstalledTv?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val phoneIp = remember { phoneAddress(context) }
     var candidates by remember { mutableStateOf<List<SamsungCandidate>?>(null) }
-    var host by remember { mutableStateOf("") }
+    var host by remember { mutableStateOf(preset?.host ?: Services.settings.installedTv?.takeIf { it.brand == TvBrand.SAMSUNG }?.host ?: "") }
     var manual by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf<InstallState>(InstallState.Idle) }
     var login by remember { mutableStateOf<SamsungLogin.Listener?>(null) }
@@ -148,6 +194,7 @@ private fun SamsungInstallScreen(onBack: () -> Unit, brandPicker: @Composable ()
                     installer.ensureInstalled({ context.assets.open("tv/couchsubs-samsung.wgt").use { it.readBytes() } },
                         BuildConfig.TV_SAMSUNG_VERSION)
                 }
+                TvAppUpdate.installed(InstalledTv(TvBrand.SAMSUNG, target, version = result.version))
                 InstallState.Done(result.version, result.installed)
             } catch (error: SamsungInstallException) {
                 InstallState.Failed(error.error, error.detail)
@@ -157,6 +204,9 @@ private fun SamsungInstallScreen(onBack: () -> Unit, brandPicker: @Composable ()
             }
         }
     }
+
+    // "TV uygulamasını güncelle"den gelindiyse kurulum hemen başlar (kullanıcı ana ekranda onayladı).
+    LaunchedEffect(preset) { if (preset != null && state is InstallState.Idle) install() }
 
     login?.let { listener ->
         SamsungSignIn(onClose = { listener.close() })
@@ -170,7 +220,7 @@ private fun SamsungInstallScreen(onBack: () -> Unit, brandPicker: @Composable ()
     }) {
         Heading(stringResource(R.string.tvinstall_title), stringResource(R.string.tvinstall_body))
         if (!working) brandPicker()
-        NoteTile(stringResource(R.string.tvinstall_experimental), Tokens.Color.secondary)
+        NoteTile(stringResource(R.string.tvinstall_supported), Tokens.Color.secondary)
 
         TileLabel(stringResource(R.string.tvinstall_tvs))
         when (val list = candidates) {

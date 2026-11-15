@@ -129,6 +129,9 @@ class SamsungInstaller(
         }
     }
 
+    /** Yalnız TV'deki CouchSubs sürümünü okur (kurmaz, açmaz); uygulama yoksa null. Güncelleme denetimi için. */
+    fun installedVersion(): String? = connect().use { readInstalledVersion(it) }
+
     private fun installCore(wgt: () -> ByteArray, version: String?): Result {
         progress(InstallStep.CONNECTING)
         connect().use { device ->
