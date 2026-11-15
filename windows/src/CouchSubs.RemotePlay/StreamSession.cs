@@ -22,6 +22,55 @@ internal sealed class ReconnectPolicy
     public void Reset() => attempt = 0;
 }
 
+/// <summary>
+/// Bağlı oturumda PS5'ten görüntü gelmiyor mu (Mac'teki PictureWatchdog ve Android'deki eşi ile aynı kural).
+/// libchiaki bir karenin FEC onarımı tutmayınca PS5'ten bir kez yeni anahtar kare (IDR) ister ve o gelene kadar bütün
+/// kareleri atlar (enable_idr_on_fec_failure). İstenen IDR karesinin kendisi de bozuk gelirse yeniden istemez ("Video FEC
+/// failure, already waiting for requested IDR"): bağlantı açık kalır, ama bir daha hiç kare gelmez. Kablosuz ağda bu
+/// birkaç dakikada bir olur; altyazı duruyor, TV bağlı görünüyor ve ancak uygulamayı kapatıp açmak düzeltiyordu.
+/// Bağlıyken <see cref="StallAfter"/> boyunca hiç görüntü gelmezse oturum yeniden kurulur; yeni oturum anahtar kareyle başlar.
+/// </summary>
+internal sealed class PictureWatchdog
+{
+    /// <summary>IDR ile olağan toparlanma bir saniyeden kısa sürer; bundan uzun boşluk takılmadır.</summary>
+    public static readonly TimeSpan StallAfter = TimeSpan.FromSeconds(8);
+    /// <summary>Yeniden bağlanırken ana ekranda "Yeniden bağlanılıyor… (…)" içinde görünen neden.</summary>
+    public const string Reason = "no picture from the PS5";
+
+    private readonly Lock gate = new();
+    /// <summary>Bağlıyken son görüntünün (ya da bağlanmanın) anı (ms); bağlı değilken null.</summary>
+    private long? since;
+
+    /// <summary>Oturum bağlandı: süre bağlanma anından sayılır (ilk kare hiç gelmezse de yakalanır).</summary>
+    public void Connected(long nowMs)
+    {
+        lock (gate) since = nowMs;
+    }
+
+    /// <summary>Görüntü geldi (kare iş parçacığından).</summary>
+    public void Picture(long nowMs)
+    {
+        lock (gate) if (since is not null) since = nowMs;
+    }
+
+    /// <summary>Oturum kapandı ya da yeniden kuruluyor.</summary>
+    public void Ended()
+    {
+        lock (gate) since = null;
+    }
+
+    /// <summary>Bağlıyken <see cref="StallAfter"/>'dan uzun süredir görüntü yoksa boşluğun süresi; yoksa null.</summary>
+    public TimeSpan? Stalled(long nowMs)
+    {
+        lock (gate)
+        {
+            if (since is not { } last) return null;
+            var gap = TimeSpan.FromMilliseconds(nowMs - last);
+            return gap >= StallAfter ? gap : null;
+        }
+    }
+}
+
 internal static class DisconnectReasons
 {
     /// <summary>Yerel kütüphanenin CS_QUIT_* değerini kullanıcıya anlatılabilecek nedene çevirir.</summary>
@@ -134,6 +183,8 @@ public sealed class StreamSession : IStreamSession
     private readonly SerialQueue queue = new("CouchSubs stream session");
     private readonly FrameDelivery delivery;
     private readonly ReconnectPolicy policy = new();
+    /// <summary>Bağlıyken görüntü gelmezse oturum yeniden kurulur (kare iş parçacığından da yazılır, kendi kilidi var).</summary>
+    private readonly PictureWatchdog watchdog = new();
     /// <summary>Yalnız kuyrukta okunup yazılır.</summary>
     private SessionBox? box;
 
@@ -294,6 +345,7 @@ public sealed class StreamSession : IStreamSession
     /// <summary>Geçerli oturumu kapatır. Kapatma join içerdiği için kuyruğu bekletmemek adına arka planda yapılır.</summary>
     private void CloseBox()
     {
+        watchdog.Ended();
         if (box is not { } closing) return;
         box = null;
         Task.Run(closing.TearDown);
@@ -309,7 +361,9 @@ public sealed class StreamSession : IStreamSession
                 {
                     if (box?.Generation != eventGeneration) return;
                     policy.Reset();
+                    watchdog.Connected(Environment.TickCount64);
                     Emit(SessionState.Streaming);
+                    ScheduleWatch(eventGeneration);
                 });
                 break;
             case NativeMethods.EventLoginPin:
@@ -349,6 +403,26 @@ public sealed class StreamSession : IStreamSession
                 });
                 break;
         }
+    }
+
+    /// <summary>
+    /// Bağlıyken saniyede bir bakılır: görüntü <see cref="PictureWatchdog.StallAfter"/>'dan uzun süredir gelmiyorsa
+    /// bağlantı açık görünse de oturum kapatılıp yeniden kurulur (bkz. <see cref="PictureWatchdog"/>).
+    /// </summary>
+    private void ScheduleWatch(int boxGeneration)
+    {
+        queue.PostAfter(TimeSpan.FromSeconds(1), () =>
+        {
+            if (box?.Generation != boxGeneration || !IsCurrent(boxGeneration)) return;
+            if (watchdog.Stalled(Environment.TickCount64) is not { } gap)
+            {
+                ScheduleWatch(boxGeneration);
+                return;
+            }
+            RemotePlayLog.Note($"PS5'ten {(int)gap.TotalSeconds} sn'dir görüntü gelmiyor (bağlantı açık); oturum yeniden kuruluyor");
+            CloseBox();
+            ScheduleReconnect(boxGeneration, new DisconnectReason(DisconnectKind.Other, PictureWatchdog.Reason));
+        });
     }
 
     private void ScheduleReconnect(int current, DisconnectReason reason)
@@ -449,7 +523,10 @@ public sealed class StreamSession : IStreamSession
             try
             {
                 if (From(user) is { } box && bgra != null && width > 0 && height > 0)
+                {
+                    box.owner.watchdog.Picture(Environment.TickCount64);
                     box.owner.delivery.Offer((nint)bgra, width, height, stride);
+                }
             }
             catch (Exception error) { RemotePlayLog.Write(0, $"frame: {error.Message}"); }
         }

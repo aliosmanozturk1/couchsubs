@@ -55,6 +55,40 @@ struct ReconnectPolicy {
     }
 }
 
+/// Bağlı oturumda PS5'ten görüntü gelmiyor mu (Windows'taki PictureWatchdog ve Android'deki eşi ile aynı kural).
+///
+/// libchiaki bir karenin FEC onarımı tutmayınca PS5'ten bir kez yeni anahtar kare (IDR) ister ve o gelene kadar bütün
+/// kareleri atlar (`enable_idr_on_fec_failure`). İstenen IDR karesinin kendisi de bozuk gelirse yeniden istemez
+/// ("Video FEC failure, already waiting for requested IDR"): bağlantı açık kalır, ama bir daha hiç kare gelmez. Kablosuz
+/// ağda bu birkaç dakikada bir olur; altyazı duruyor, TV bağlı görünüyor ve ancak uygulamayı kapatıp açmak düzeltiyordu.
+/// Bağlıyken `stallAfter` boyunca hiç görüntü gelmezse oturum yeniden kurulur; yeni oturum anahtar kareyle başlar.
+struct PictureWatchdog {
+    /// IDR ile olağan toparlanma bir saniyeden kısa sürer; bundan uzun boşluk takılmadır.
+    static let stallAfter: TimeInterval = 8
+    /// Yeniden bağlanırken ana ekranda "Yeniden bağlanılıyor… (…)" içinde görünen neden.
+    static let reason = "no picture from the PS5"
+    /// Bağlıyken son görüntünün (ya da bağlanmanın) anı; bağlı değilken nil.
+    private var since: Date?
+
+    /// Oturum bağlandı: süre bağlanma anından sayılır (ilk kare hiç gelmezse de yakalanır).
+    mutating func connected(at now: Date = Date()) { since = now }
+
+    /// Görüntü geldi.
+    mutating func picture(at now: Date = Date()) {
+        if since != nil { since = now }
+    }
+
+    /// Oturum kapandı ya da yeniden kuruluyor.
+    mutating func ended() { since = nil }
+
+    /// Bağlıyken `stallAfter`'dan uzun süredir görüntü yoksa boşluğun süresi (sn); yoksa nil.
+    func stalled(at now: Date = Date()) -> TimeInterval? {
+        guard let since else { return nil }
+        let gap = now.timeIntervalSince(since)
+        return gap >= Self.stallAfter ? gap : nil
+    }
+}
+
 /// Bağlantının neden koptuğu; kullanıcıya anlatılabilecek biçimde.
 public enum DisconnectReason: Equatable, Sendable {
     case stopped
@@ -273,6 +307,9 @@ public final class StreamSession: @unchecked Sendable {
     private var policy = ReconnectPolicy()
     /// Yalnız `queue` üzerinde okunup yazılır.
     private var box: ChiakiSessionBox?
+    /// Bağlıyken görüntü gelmezse oturum yeniden kurulur. Kare çözme kuyruğundan da yazılır; `watchLock` ile korunur.
+    private var watchdog = PictureWatchdog()
+    private let watchLock = NSLock()
 
     /// Durdurma isteği ve kuşak numarası; her başlat/durdur yeni bir kuşak açar ve eski
     /// bloklar (yeniden deneme, eski oturumun kapanma olayı) kendini iptal eder.
@@ -426,6 +463,7 @@ public final class StreamSession: @unchecked Sendable {
 
     /// Geçerli oturumu kapatır. Kapatma join içerdiği için kuyruğu bekletmemek adına arka planda yapılır.
     private func closeBox() {
+        watch { $0.ended() }
         guard let box else { return }
         self.box = nil
         DispatchQueue.global().async { box.tearDown() }
@@ -438,7 +476,9 @@ public final class StreamSession: @unchecked Sendable {
             queue.async { [weak self] in
                 guard let self, self.box?.generation == eventGeneration else { return }
                 self.policy.connected()
+                self.watch { $0.connected() }
                 self.emit(.streaming)
+                self.scheduleWatch(eventGeneration)
             }
         case CHIAKI_EVENT_LOGIN_PIN_REQUEST:
             // libchiaki olayı state_mutex tutarken verir; şifre kuyrukta (kilit bırakıldıktan sonra) gönderilir.
@@ -477,6 +517,25 @@ public final class StreamSession: @unchecked Sendable {
         }
     }
 
+    private func watch<T>(_ body: (inout PictureWatchdog) -> T) -> T {
+        watchLock.lock()
+        defer { watchLock.unlock() }
+        return body(&watchdog)
+    }
+
+    /// Bağlıyken saniyede bir bakılır: görüntü `PictureWatchdog.stallAfter`'dan uzun süredir gelmiyorsa bağlantı açık
+    /// görünse de oturum kapatılıp yeniden kurulur (bkz. `PictureWatchdog`).
+    private func scheduleWatch(_ boxGeneration: Int) {
+        queue.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, self.box?.generation == boxGeneration, self.isCurrent(boxGeneration) else { return }
+            guard let gap = self.watch({ $0.stalled() }) else { return self.scheduleWatch(boxGeneration) }
+            RemotePlayLog.write("PS5'ten \(Int(gap)) sn'dir görüntü gelmiyor (bağlantı açık); oturum yeniden kuruluyor")
+            self.closeBox()
+            self.policy.ended()
+            self.scheduleReconnect(boxGeneration, reason: .other(PictureWatchdog.reason))
+        }
+    }
+
     private func scheduleReconnect(_ current: Int, reason: DisconnectReason, initialized: Bool = true, box failed: ChiakiSessionBox? = nil) {
         // Başlatılamamış kutunun join edilecek iş parçacığı yok; yalnız belleği bırakılır.
         if let failed, !initialized { failed.markUnused() }
@@ -493,6 +552,7 @@ public final class StreamSession: @unchecked Sendable {
             guard let self else { return }
             let wanted = self.throttle.shouldPass()
             if let image = self.decoder.decode(annexB: sample, makeImage: wanted), wanted {
+                self.watch { $0.picture() }
                 self.onFrame?(image)
             }
         }

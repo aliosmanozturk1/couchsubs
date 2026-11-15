@@ -6,6 +6,7 @@ import android.media.Image
 import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import android.util.Log
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -64,6 +65,48 @@ class ReconnectPolicy {
 }
 
 /**
+ * Bağlı oturumda PS5'ten görüntü gelmiyor mu (Mac ve Windows'taki PictureWatchdog ile aynı kural).
+ * libchiaki bir karenin FEC onarımı tutmayınca PS5'ten bir kez yeni anahtar kare (IDR) ister ve o gelene kadar bütün
+ * kareleri atlar (enable_idr_on_fec_failure). İstenen IDR karesinin kendisi de bozuk gelirse yeniden istemez ("Video FEC
+ * failure, already waiting for requested IDR"): bağlantı açık kalır, ama bir daha hiç kare gelmez; altyazı ancak
+ * uygulamayı kapatıp açınca dönüyordu. Bağlıyken [STALL_AFTER_MS] boyunca hiç görüntü gelmezse oturum yeniden kurulur;
+ * yeni oturum anahtar kareyle başlar.
+ */
+class PictureWatchdog {
+    companion object {
+        /** IDR ile olağan toparlanma bir saniyeden kısa sürer; bundan uzun boşluk takılmadır. */
+        const val STALL_AFTER_MS = 8_000L
+        /** Yeniden bağlanırken görünen neden. */
+        const val REASON = "no picture from the PS5"
+    }
+
+    /** Bağlıyken son görüntünün (ya da bağlanmanın) anı; bağlı değilken null. */
+    private var since: Long? = null
+
+    /** Oturum bağlandı: süre bağlanma anından sayılır (ilk kare hiç gelmezse de yakalanır). */
+    @Synchronized fun connected(nowMs: Long) {
+        since = nowMs
+    }
+
+    /** Görüntü geldi (kare iş parçacığından). */
+    @Synchronized fun picture(nowMs: Long) {
+        if (since != null) since = nowMs
+    }
+
+    /** Oturum kapandı ya da yeniden kuruluyor. */
+    @Synchronized fun ended() {
+        since = null
+    }
+
+    /** Bağlıyken [STALL_AFTER_MS]'den uzun süredir görüntü yoksa boşluğun süresi (ms); yoksa null. */
+    @Synchronized fun stalledMs(nowMs: Long): Long? {
+        val last = since ?: return null
+        val gap = nowMs - last
+        return if (gap >= STALL_AFTER_MS) gap else null
+    }
+}
+
+/**
  * PS5'e (ikinci hesapla) Remote Play bağlantısı kurar; görüntü MediaCodec'le bir ImageReader'a çözülür ve kare kare
  * [onFrame]'e verilir (kare yalnız çağrı süresince geçerlidir). Ses kapalıdır, kol girdisi gönderilmez. Bağlantı koparsa
  * kendiliğinden yeniden bağlanır; PS5 uyuyorsa uyandırılır, adresi değiştiyse ağda yeniden bulunur. Windows'taki
@@ -89,6 +132,8 @@ class StreamSession(
     private val queue = Executors.newSingleThreadScheduledExecutor { Thread(it, "CouchSubs session").apply { isDaemon = true } }
     private val imageThread = HandlerThread("CouchSubs frames").apply { start() }
     private val policy = ReconnectPolicy()
+    /** Bağlıyken görüntü gelmezse oturum yeniden kurulur. */
+    private val watchdog = PictureWatchdog()
     private val stateLock = Any()
     private var running = false
     private var generation = 0
@@ -201,6 +246,7 @@ class StreamSession(
                 null
             } ?: return@setOnImageAvailableListener
             framesReceived++
+            watchdog.picture(SystemClock.elapsedRealtime())
             try {
                 onFrame(image)
             } catch (error: RuntimeException) {
@@ -226,6 +272,7 @@ class StreamSession(
 
     /** Oturumu kapatır (join içerir; yalnız kuyrukta, asla yerel geri çağrıdan değil). */
     private fun closeNative() {
+        watchdog.ended()
         val ptr = native
         if (ptr == 0L) return
         native = 0L
@@ -240,7 +287,9 @@ class StreamSession(
             NativeBridge.EVENT_CONNECTED -> queue.execute {
                 if (nativeGeneration != eventGeneration || native == 0L) return@execute
                 policy.reset()
+                watchdog.connected(SystemClock.elapsedRealtime())
                 emit(SessionState.Streaming)
+                scheduleWatch(eventGeneration)
             }
             // libchiaki olayı kilit tutarken verir; şifre kuyrukta gönderilir.
             NativeBridge.EVENT_LOGIN_PIN -> {
@@ -276,6 +325,28 @@ class StreamSession(
                     scheduleReconnect(eventGeneration, SessionState.Disconnected(kind, text))
                 }
             }
+        }
+    }
+
+    /**
+     * Bağlıyken saniyede bir bakılır: görüntü [PictureWatchdog.STALL_AFTER_MS]'den uzun süredir gelmiyorsa bağlantı açık
+     * görünse de oturum kapatılıp yeniden kurulur (bkz. [PictureWatchdog]).
+     */
+    private fun scheduleWatch(sessionGeneration: Int) {
+        try {
+            queue.schedule({
+                if (nativeGeneration != sessionGeneration || native == 0L || !isCurrent(sessionGeneration)) return@schedule
+                val gap = watchdog.stalledMs(SystemClock.elapsedRealtime())
+                if (gap == null) {
+                    scheduleWatch(sessionGeneration)
+                    return@schedule
+                }
+                Log.w(TAG, "PS5'ten ${gap / 1000} sn'dir görüntü gelmiyor (bağlantı açık); oturum yeniden kuruluyor")
+                closeNative()
+                scheduleReconnect(sessionGeneration, SessionState.Disconnected(DisconnectKind.OTHER, PictureWatchdog.REASON))
+            }, 1, TimeUnit.SECONDS)
+        } catch (error: java.util.concurrent.RejectedExecutionException) {
+            // Oturum kapatıldı (dispose); bakacak bir şey yok.
         }
     }
 

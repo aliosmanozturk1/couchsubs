@@ -22,6 +22,56 @@ public class ReconnectPolicyTests
     }
 }
 
+public class PictureWatchdogTests
+{
+    /// <summary>
+    /// Hata: istenen IDR karesi de bozuk gelince libchiaki yeniden istemiyor, bağlantı açık kalıp hiç kare gelmiyordu;
+    /// oturum hiç yeniden kurulmuyor, altyazı ancak uygulamayı kapatıp açınca dönüyordu.
+    /// </summary>
+    [Fact]
+    public void ConnectedWithoutPictureForEightSecondsIsStalled()
+    {
+        var watchdog = new PictureWatchdog();
+        watchdog.Connected(0);
+        for (var second = 1; second <= 120; second++) watchdog.Picture(second * 1000);
+        // İki dakika görüntü geldi, sonra kesildi.
+        Assert.Null(watchdog.Stalled(127_000));
+        Assert.Equal(PictureWatchdog.StallAfter, watchdog.Stalled(128_000));
+    }
+
+    /// <summary>Olağan FEC duraklaması (IDR bir saniyeden kısa sürede gelir) oturumu yeniden kurdurmaz.</summary>
+    [Fact]
+    public void ShortGapIsNotAStall()
+    {
+        var watchdog = new PictureWatchdog();
+        watchdog.Connected(0);
+        watchdog.Picture(1000);
+        watchdog.Picture(2500);
+        Assert.Null(watchdog.Stalled(9000));
+    }
+
+    /// <summary>Bağlandıktan sonra ilk kare hiç gelmezse de yakalanır.</summary>
+    [Fact]
+    public void NoFirstPictureIsStalled()
+    {
+        var watchdog = new PictureWatchdog();
+        watchdog.Connected(0);
+        Assert.NotNull(watchdog.Stalled((long)PictureWatchdog.StallAfter.TotalMilliseconds));
+    }
+
+    /// <summary>Bağlı değilken görüntü beklenmez; geç gelen eski kare de bekçiyi kurmaz.</summary>
+    [Fact]
+    public void NotConnectedIsNeverStalled()
+    {
+        var watchdog = new PictureWatchdog();
+        watchdog.Picture(0);
+        Assert.Null(watchdog.Stalled(600_000));
+        watchdog.Connected(0);
+        watchdog.Ended();
+        Assert.Null(watchdog.Stalled(600_000));
+    }
+}
+
 public class RegisteredConsoleTests
 {
     [Fact]

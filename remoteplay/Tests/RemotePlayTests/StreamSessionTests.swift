@@ -62,6 +62,47 @@ final class ReconnectPolicyTests: XCTestCase {
     }
 }
 
+final class PictureWatchdogTests: XCTestCase {
+    private let start = Date(timeIntervalSince1970: 0)
+
+    /// Hata: istenen IDR karesi de bozuk gelince libchiaki yeniden istemiyor, bağlantı açık kalıp hiç kare gelmiyordu;
+    /// oturum hiç yeniden kurulmuyor, altyazı ancak uygulamayı kapatıp açınca dönüyordu.
+    func testConnectedWithoutPictureForEightSecondsIsStalled() {
+        var watchdog = PictureWatchdog()
+        watchdog.connected(at: start)
+        for second in 1...120 { watchdog.picture(at: start.addingTimeInterval(Double(second))) }
+        // İki dakika görüntü geldi, sonra kesildi.
+        XCTAssertNil(watchdog.stalled(at: start.addingTimeInterval(127)))
+        XCTAssertEqual(watchdog.stalled(at: start.addingTimeInterval(128)), PictureWatchdog.stallAfter)
+    }
+
+    /// Olağan FEC duraklaması (IDR bir saniyeden kısa sürede gelir) oturumu yeniden kurdurmaz.
+    func testShortGapIsNotAStall() {
+        var watchdog = PictureWatchdog()
+        watchdog.connected(at: start)
+        watchdog.picture(at: start.addingTimeInterval(1))
+        watchdog.picture(at: start.addingTimeInterval(2.5))
+        XCTAssertNil(watchdog.stalled(at: start.addingTimeInterval(9)))
+    }
+
+    /// Bağlandıktan sonra ilk kare hiç gelmezse de yakalanır.
+    func testNoFirstPictureIsStalled() {
+        var watchdog = PictureWatchdog()
+        watchdog.connected(at: start)
+        XCTAssertNotNil(watchdog.stalled(at: start.addingTimeInterval(PictureWatchdog.stallAfter)))
+    }
+
+    /// Bağlı değilken (bağlanıyor, koptu, durduruldu) görüntü beklenmez; geç gelen eski kare de bekçiyi kurmaz.
+    func testNotConnectedIsNeverStalled() {
+        var watchdog = PictureWatchdog()
+        watchdog.picture(at: start)
+        XCTAssertNil(watchdog.stalled(at: start.addingTimeInterval(600)))
+        watchdog.connected(at: start)
+        watchdog.ended()
+        XCTAssertNil(watchdog.stalled(at: start.addingTimeInterval(600)))
+    }
+}
+
 final class RegisteredConsoleTests: XCTestCase {
     func testWakeCredentialIsHexOfRegistKey() {
         let console = RegisteredConsole(host: "192.168.1.253", name: "PS5", registKey: Data("1a2b3c4d".utf8) + Data(repeating: 0, count: 8),
