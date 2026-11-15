@@ -497,6 +497,12 @@ struct AndroidTVInstallSection: View {
         }
     }
 
+    /// Kaldırıp kurmadan sonra da TV "imza tutmuyor" dedi: `pm uninstall` TV'de işe yaramadı. 0.9.18 ve önceki TV
+    /// paketleri her derlemede değişen geliştirme anahtarıyla imzalıydı; bunlar yalnız kaldırılıp yeniden kurularak güncellenir.
+    private func mustRemoveOnTV(_ failure: AndroidInstallFailure) -> Bool {
+        failure.error == .installFailed && AndroidTvInstaller.needsReplace(failure.detail ?? "")
+    }
+
     private func failureText(_ failure: AndroidInstallFailure) -> String {
         let advice: String = switch failure.error {
         case .unreachable: TVText.androidErrUnreachable
@@ -507,9 +513,10 @@ struct AndroidTVInstallSection: View {
         case .notEnoughSpace: TVText.errSpace
         case .connectionLost: TVText.errConnection
         case .packageMissing: TVText.errPackageMissing
-        case .installFailed: TVText.errFailed
+        // Kaldırıp kurma denendi ama TV eski kopyayı kaldırmadı (imza yine tutmuyor): kullanıcı TV'de elle kaldırır.
+        case .installFailed: mustRemoveOnTV(failure) ? TVText.androidErrRemoveManually : TVText.errFailed
         }
-        guard failure.error != .replaceNeeded, let detail = failure.detail, !detail.isEmpty else { return advice }
+        guard failure.error != .replaceNeeded, !mustRemoveOnTV(failure), let detail = failure.detail, !detail.isEmpty else { return advice }
         return advice + "\n\n" + TVText.details(detail)
     }
 }

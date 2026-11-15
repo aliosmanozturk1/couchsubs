@@ -12337,22 +12337,6 @@
         }
       }
     },
-    "CouchSubs on the TV is signed with another key or is newer, so this version cannot be installed over it. The button below removes the TV's copy and installs the new one. The TV app's settings are deleted.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "CouchSubs on the TV is signed with another key or is newer, so this version cannot be installed over it. The button below removes the TV's copy and installs the new one. The TV app's settings are deleted."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "TV'deki CouchSubs başka bir anahtarla imzalı ya da daha yeni; bu sürüm onun üstüne kurulamıyor. Aşağıdaki düğmeyle TV'deki kopya kaldırılır ve yenisi kurulur. TV uygulamasının ayarları silinir."
-          }
-        }
-      }
-    },
     "Install the TV app from this phone": {
       "localizations": {
         "en": {
@@ -13645,6 +13629,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ bu telefondan silinir. Yeniden kullanmak için dosyayı yeniden içe aktarmanız gerekir."
+          }
+        }
+      }
+    },
+    "CouchSubs TV on the TV is signed with another key (0.9.18 and earlier were signed with an old key) or is newer than this phone's, so this version cannot be installed over it. The button below removes the TV's copy and installs the new one; the TV app's settings are deleted. If that fails, on the TV go to Settings › Apps › CouchSubs TV › Uninstall, then press Install and open here.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs TV on the TV is signed with another key (0.9.18 and earlier were signed with an old key) or is newer than this phone's, so this version cannot be installed over it. The button below removes the TV's copy and installs the new one; the TV app's settings are deleted. If that fails, on the TV go to Settings › Apps › CouchSubs TV › Uninstall, then press Install and open here."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'deki CouchSubs TV başka bir anahtarla imzalı (0.9.18 ve önceki sürümler eski bir anahtarla imzalıydı) ya da bu telefondakinden yeni; bu sürüm onun üstüne kurulamıyor. Aşağıdaki düğme TV'deki kopyayı kaldırıp yenisini kurar; TV uygulamasının ayarları silinir. Olmazsa TV'de Ayarlar › Uygulamalar › CouchSubs TV › Kaldır de, sonra burada Kur ve aç'a bas."
+          }
+        }
+      }
+    },
+    "The old CouchSubs TV could not be removed from the TV, so the new one cannot be installed. Remove it on the TV yourself: Settings › Apps › See all apps › CouchSubs TV › Uninstall. Then press Install and open here.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The old CouchSubs TV could not be removed from the TV, so the new one cannot be installed. Remove it on the TV yourself: Settings › Apps › See all apps › CouchSubs TV › Uninstall. Then press Install and open here."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'deki eski CouchSubs TV kaldırılamadı, bu yüzden yenisi kurulamıyor. TV'de kendin kaldır: Ayarlar › Uygulamalar › Tüm uygulamalar › CouchSubs TV › Kaldır. Sonra burada Kur ve aç'a bas."
           }
         }
       }

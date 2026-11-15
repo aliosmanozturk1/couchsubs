@@ -372,7 +372,8 @@
     <string name="tvinstall_android_err_not_paired">TV bu telefonu tanımıyor. Kablosuz hata ayıklamada önce eşle: TV\'de “Cihazı eşleme kodu ile eşle”ye bas, penceredeki adresi ve kodu yazıp tekrar dene.</string>
     <string name="tvinstall_android_err_pairing">Eşleme olmadı: kod yanlış ya da TV\'deki eşleme penceresi kapandı. Pencereyi yeniden aç, yeni kodu ve portu yazıp tekrar dene.</string>
     <string name="tvinstall_android_err_play_copy">TV\'deki CouchSubs Google Play\'den kurulmuş ve bu sürüm onun üstüne kurulamadı. Play\'deki sürümü kullanmaya devam edebilirsin; güncellemeyi Play kendisi getirir. Bu sürümü hemen kurmak istersen aşağıdaki düğmeyle TV\'deki kopya kaldırılır ve yenisi kurulur (TV uygulamasının ayarları silinir).</string>
-    <string name="tvinstall_android_err_other_copy">TV\'deki CouchSubs başka bir anahtarla imzalı ya da daha yeni; bu sürüm onun üstüne kurulamıyor. Aşağıdaki düğmeyle TV\'deki kopya kaldırılır ve yenisi kurulur. TV uygulamasının ayarları silinir.</string>
+    <string name="tvinstall_android_err_other_copy">TV\'deki CouchSubs TV başka bir anahtarla imzalı (0.9.18 ve önceki sürümler eski bir anahtarla imzalıydı) ya da bu telefondakinden yeni; bu sürüm onun üstüne kurulamıyor. Aşağıdaki düğme TV\'deki kopyayı kaldırıp yenisini kurar; TV uygulamasının ayarları silinir. Olmazsa TV\'de Ayarlar › Uygulamalar › CouchSubs TV › Kaldır de, sonra burada Kur ve aç\'a bas.</string>
+    <string name="tvinstall_android_err_remove_manually">TV\'deki eski CouchSubs TV kaldırılamadı, bu yüzden yenisi kurulamıyor. TV\'de kendin kaldır: Ayarlar › Uygulamalar › Tüm uygulamalar › CouchSubs TV › Kaldır. Sonra burada Kur ve aç\'a bas.</string>
     <string name="history">Geçmiş</string>
     <string name="history_note">Çevrilen son %1$d satır bu telefonda saklanır.</string>
     <string name="history_empty">Henüz altyazı yok. Bu ve önceki oturumlarda çevrilen satırlar burada görünür.</string>

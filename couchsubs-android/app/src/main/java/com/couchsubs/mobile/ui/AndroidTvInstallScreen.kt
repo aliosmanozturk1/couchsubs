@@ -230,13 +230,23 @@ private fun androidFailureText(failure: AndroidState.Failed): String {
         AndroidInstallError.NOT_ENOUGH_SPACE -> context.getString(R.string.tvinstall_err_space)
         AndroidInstallError.CONNECTION_LOST -> context.getString(R.string.tvinstall_err_connection)
         AndroidInstallError.PACKAGE_MISSING -> context.getString(R.string.tvinstall_err_package_missing)
-        AndroidInstallError.INSTALL_FAILED, null -> context.getString(R.string.tvinstall_err_failed)
+        // Kaldırıp kurma denendi ama TV eski kopyayı kaldırmadı (imza yine tutmuyor): kullanıcı TV'de elle kaldırır.
+        AndroidInstallError.INSTALL_FAILED -> context.getString(
+            if (mustRemoveOnTv(failure)) R.string.tvinstall_android_err_remove_manually else R.string.tvinstall_err_failed)
+        null -> context.getString(R.string.tvinstall_err_failed)
     }
     // Yeniden kurma önerisinde TV'nin uzun "Failure [...]" metni gösterilmez; günlükte durur.
-    if (failure.error == AndroidInstallError.REPLACE_NEEDED) return advice
+    if (failure.error == AndroidInstallError.REPLACE_NEEDED || mustRemoveOnTv(failure)) return advice
     val detail = failure.detail?.takeIf { it.isNotBlank() } ?: return advice
     return advice + "\n\n" + context.getString(R.string.tvinstall_details, detail)
 }
+
+/**
+ * Kaldırıp kurmadan sonra da TV "imza tutmuyor" dedi: `pm uninstall` TV'de işe yaramadı. 0.9.18 ve önceki TV paketleri
+ * her derlemede değişen geliştirme anahtarıyla imzalıydı; bunlar yalnız kaldırılıp yeniden kurularak güncellenir.
+ */
+private fun mustRemoveOnTv(failure: AndroidState.Failed) =
+    failure.error == AndroidInstallError.INSTALL_FAILED && AndroidTvInstaller.needsReplace(failure.detail.orEmpty())
 
 /** Ağdaki Android TV'ler: SSDP'de DIAL ile görünenler ve ağın /24 bölümünde 5555 portu açık olanlar. */
 private suspend fun findAndroidTvs(phoneIp: String?): List<AndroidCandidate> = withContext(Dispatchers.IO) {
