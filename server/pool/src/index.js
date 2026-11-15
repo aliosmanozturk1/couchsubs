@@ -102,40 +102,31 @@ async function submit(req, env) {
   // Günlükte (wrangler tail) yalnız sayılar ve oyun kimliğinin biçimi: oyun bilgisinin gelip gelmediği görülsün.
   console.log(JSON.stringify(submitSummary(body, lines)));
 
-  // D1'in günlük yazma kotası için satır başına en çok iki yazma: önce görülme kaydı; bu kurulum satırı zaten
-  // bildirdiyse (changes 0) satıra hiç dokunulmaz. Yeni görülmede sayaç sayılarak değil bir artırılarak güncellenir.
-  // Kota satırı istek başına tek yazmadır.
+  // D1'in günlük yazma kotası (ücretsiz 100.000 satır; tablo satırı ve her dizin girdisi ayrı sayılır) için: önce
+  // görülme kaydı (sightings, WITHOUT ROWID: satır başına tek yazma). Bu kurulum satırı zaten bildirdiyse (changes 0)
+  // hiçbir şeye dokunulmaz. Satır havuza (lines) yalnız ikinci farklı kurulumdan gelince yazılır: tek kurulumun
+  // gördüğü satır havuza hiç girmez (paket ve dışa aktarım zaten en az iki kurulum ister). Kota satırı istek
+  // başına tek yazmadır.
   const now = new Date().toISOString();
   const entries = [...fresh];
   const seen = entries.length
     ? await env.DB.batch(entries.map(([k]) =>
       env.DB.prepare("INSERT OR IGNORE INTO sightings(key,install) VALUES(?,?)").bind(k, install)))
     : [];
-  // Oyun bilgisi satırın ilk bilinen oyunudur: sonra gelen başka oyun üstüne yazmaz (COALESCE), ek yazma da yapmaz.
-  const build = (legacy) => {
-    const stmts = [];
-    entries.forEach(([k, line], i) => {
-      if (!(seen[i]?.meta?.changes > 0)) return;
-      stmts.push(legacy
-        ? env.DB.prepare(LEGACY_UPSERT).bind(k, line.text, now, now)
-        : env.DB.prepare(UPSERT).bind(k, line.text, now, now, line.title, line.game));
-    });
-    stmts.push(env.DB.prepare(
-      "INSERT INTO quota(install,day,count) VALUES(?,?,?) ON CONFLICT(install,day) DO UPDATE SET count=count+excluded.count"
-    ).bind(install, day, room));
-    return stmts;
-  };
-  let stmts = build(false);
-  try {
-    await env.DB.batch(stmts);
-  } catch (e) {
-    // Geçiş (migrate-2026-11-14-game.sql) henüz çalışmadıysa oyun sütunları yoktur: eski biçimle yazılır.
-    if (!/no such column|has no column/i.test(String(e?.message || e))) throw e;
-    stmts = build(true);
-    await env.DB.batch(stmts);
-  }
+  // Oyun bilgisi satırın ilk bilinen oyunudur: sonra gelen başka oyun üstüne yazmaz (COALESCE). Metin ve oyun
+  // bilgisi, satırı havuza sokan (ikinci) kurulumun isteğinden alınır.
+  const stmts = [];
+  entries.forEach(([k, line], i) => {
+    if (!(seen[i]?.meta?.changes > 0)) return;
+    stmts.push(env.DB.prepare(UPSERT).bind(k, line.text, now, now, line.title, line.game, k));
+  });
+  const recorded = stmts.length;
+  stmts.push(env.DB.prepare(
+    "INSERT INTO quota(install,day,count) VALUES(?,?,?) ON CONFLICT(install,day) DO UPDATE SET count=count+excluded.count"
+  ).bind(install, day, room));
+  await env.DB.batch(stmts);
   await vote(env, install, entries);
-  return json({ accepted: fresh.size, recorded: stmts.length - 1 });
+  return json({ accepted: fresh.size, recorded });
 }
 
 /** Kimliksiz gelen oyun adları: kurulum başına bir oy (istekte birkaç oyun olsa da en çok üç yazma). Tek kişinin
@@ -157,13 +148,13 @@ async function vote(env, install, entries) {
   }
 }
 
-const UPSERT =
-  "INSERT INTO lines(key,text,installs,first_seen,last_seen,title_id,game) VALUES(?,?,1,?,?,?,?) " +
+// Satırı görenlerin sayısı sightings'ten okunur (az önce yazılan görülme dahil); en az ikiyse lines'a girer ya da
+// sayacı bir artar. Tek kurulumda SELECT boş döner, yazma olmaz.
+export const UPSERT =
+  "INSERT INTO lines(key,text,installs,first_seen,last_seen,title_id,game) " +
+  "SELECT ?,?,n,?,?,?,? FROM (SELECT COUNT(*) AS n FROM sightings WHERE key=?) WHERE n>=2 " +
   "ON CONFLICT(key) DO UPDATE SET installs=installs+1, last_seen=excluded.last_seen, " +
   "title_id=COALESCE(lines.title_id,excluded.title_id), game=COALESCE(lines.game,excluded.game)";
-const LEGACY_UPSERT =
-  "INSERT INTO lines(key,text,installs,first_seen,last_seen) VALUES(?,?,1,?,?) " +
-  "ON CONFLICT(key) DO UPDATE SET installs=installs+1, last_seen=excluded.last_seen";
 
 async function exportLines(url, env) {
   const min = Math.max(1, Number(url.searchParams.get("min") || 2));
@@ -194,11 +185,22 @@ async function markExported(req, env) {
   return json({ marked: keys.length });
 }
 
+// Dağıtımın bellek önbelleği: görülme tablosunu taramak okuma kotası harcar, herkese açık adres sık çağrılmasın.
+let statsCache = { at: 0, body: null };
+const STATS_TTL_MS = 10 * 60 * 1000;
+
 async function stats(env) {
-  const r = await env.DB.prepare(
-    "SELECT COUNT(*) AS lines, SUM(installs>=2) AS confirmed, (SELECT COUNT(DISTINCT install) FROM sightings) AS installs FROM lines"
+  if (statsCache.body && Date.now() - statsCache.at < STATS_TTL_MS) return json(statsCache.body);
+  // lines yalnız en az iki kurulumun gördüğü satırları tutar; tüm satırlar ve kurulumlar sightings'ten sayılır.
+  const seen = await env.DB.prepare(
+    "SELECT COUNT(DISTINCT key) AS lines, COUNT(DISTINCT install) AS installs FROM sightings"
   ).first();
-  return json(r);
+  const confirmed = await env.DB.prepare("SELECT COUNT(*) AS confirmed FROM lines WHERE installs>=2").first();
+  statsCache = {
+    at: Date.now(),
+    body: { lines: seen?.lines ?? 0, confirmed: confirmed?.confirmed ?? 0, installs: seen?.installs ?? 0 },
+  };
+  return json(statsCache.body);
 }
 
 export default {
