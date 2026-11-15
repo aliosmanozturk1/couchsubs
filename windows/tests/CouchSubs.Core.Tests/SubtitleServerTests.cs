@@ -89,6 +89,30 @@ public class SubtitleServerTests
             l.Contains("{\"box\":{\"bottom\":0.84,\"left\":0.4,\"right\":0.6,\"top\":0.8},\"line\":0.04,\"text\":\"Kapıyı aç.\"}"));
     }
 
+    /// <summary>Ek alanın çevirisi kendi olayıyla gider (eski TV uygulamaları tanımadığı olayı yok sayar; Mac ile aynı).</summary>
+    [Fact]
+    public async Task StreamsRegionTranslationsAndTheirClear()
+    {
+        using var server = new SubtitleServer(0);
+        var received = new List<SubtitleEvent>();
+        server.EventSent += received.Add;
+        var port = await server.StartAsync();
+        using var response = await Http.GetAsync($"http://127.0.0.1:{port}/events", HttpCompletionOption.ResponseHeadersRead);
+        await WaitUntil(() => server.ConnectedClients == 1);
+        var box = new TextBox(0.7, 0.05, 0.95, 0.12);
+        server.SendRegion("q", "Demirciyi bul", box, 0.03);
+        server.SendRegion("q", "", null);
+        server.ClearRegions();
+
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+        var lines = await ReadLines(reader, "event: region-clear");
+        Assert.Contains("event: region", lines);
+        Assert.Contains("data: {\"box\":{\"bottom\":0.12,\"left\":0.7,\"right\":0.95,\"top\":0.05},\"id\":\"q\",\"line\":0.03,\"text\":\"Demirciyi bul\"}", lines);
+        Assert.Contains("data: {\"id\":\"q\",\"text\":\"\"}", lines);
+        Assert.Equal([new SubtitleEvent(SubtitleEventKind.Region, "Demirciyi bul", Id: "q", Box: box), new SubtitleEvent(SubtitleEventKind.Region, "", Id: "q"),
+                      new SubtitleEvent(SubtitleEventKind.RegionClear)], received);
+    }
+
     [Fact]
     public async Task ObsOverlayIsServedAndNotCountedAsTv()
     {

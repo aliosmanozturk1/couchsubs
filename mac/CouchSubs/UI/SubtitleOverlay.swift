@@ -201,6 +201,7 @@ struct SubtitleOverlayView: View {
                 resizeHandles
             }
             VStack(spacing: 14 * scale) {
+                ForEach(model.overlayRegions) { regionBox($0) }
                 Spacer(minLength: 0)
                 if lines.isEmpty, adjusting {
                     line(SubtitleStack.Line(id: 0, text: String(localized: "Subtitles appear here."), role: .current,
@@ -292,6 +293,28 @@ struct SubtitleOverlayView: View {
             .background(Color.black.opacity(alpha), in: RoundedRectangle(cornerRadius: corner))
             .opacity(shown)
             .animation(.linear(duration: SubtitleStack.previousFade), value: line.fading)
+            .contentShape(Rectangle())
+            .gesture(moveGesture)
+    }
+
+    /// Ek alanın çevirisi: altyazıdan küçük, koyu zeminli kutu; oyundaki yazının bulunduğu yana yaslı.
+    private func regionBox(_ region: OverlayRegion) -> some View {
+        let style = model.settings.style
+        let size = max(12, CGFloat(style.fontSize) * scale * 0.55)
+        let alignment: Alignment = switch region.side {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+        return Text(verbatim: region.text)
+            .font(.system(size: size, weight: .semibold))
+            .foregroundStyle(Self.color(style.textColor))
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 6 * scale)
+            .padding(.horizontal, 14 * scale)
+            .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 8 * scale))
+            .frame(maxWidth: .infinity, alignment: alignment)
             .contentShape(Rectangle())
             .gesture(moveGesture)
     }

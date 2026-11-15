@@ -326,6 +326,66 @@
     $('screen').innerHTML = '';
   }
 
+  // --- Ek alanlar ---
+  // Bilgisayar altyazının yanında ekranın köşelerindeki yazıları da (görev, telefon mesajı, bildirim) sürekli okur ve
+  // her alanın çevirisini "region" olayıyla gönderir: {id, text, box, line}. Çeviri İngilizce yazının yerinde küçük bir
+  // kutuda durur; ekranın sağ yarısındaki kutu sağa, alt yarısındaki alta yaslanır, Türkçe uzun gelirse kutu ekranın
+  // içine doğru büyür. Boş "text" o alanın kutusunu, "region-clear" hepsini kaldırır. Ana altyazıya dokunulmaz.
+
+  var regionBoxes = {};
+  var REGION_PAD = 0.004;
+  var REGION_MIN_FONT = 18;
+  var REGION_MAX_FONT = 44;
+
+  function showRegion(data) {
+    var id = data && typeof data.id === 'string' ? data.id : '';
+    if (!id) return;
+    var box = validBox(data.box);
+    if (!data.text || !box) return hideRegion(id);
+    var el = regionBoxes[id];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'region';
+      $('regions').appendChild(el);
+      regionBoxes[id] = el;
+    }
+    $('regions').className = '';
+    var width = window.innerWidth || 1920;
+    var height = window.innerHeight || 1080;
+    el.textContent = data.text;
+    el.style.left = el.style.right = el.style.top = el.style.bottom = '';
+    if ((box.left + box.right) / 2 > 0.5) {
+      el.style.right = (Math.max(0, 1 - box.right - REGION_PAD) * 100) + '%';
+    } else {
+      el.style.left = (Math.max(0, box.left - REGION_PAD) * 100) + '%';
+    }
+    if ((box.top + box.bottom) / 2 > 0.5) {
+      el.style.bottom = (Math.max(0, 1 - box.bottom - REGION_PAD) * 100) + '%';
+    } else {
+      el.style.top = (Math.max(0, box.top - REGION_PAD) * 100) + '%';
+    }
+    var boxWidth = (box.right - box.left + 2 * REGION_PAD) * width;
+    el.style.minWidth = Math.round(boxWidth) + 'px';
+    el.style.maxWidth = Math.round(Math.max(boxWidth, width * 0.3)) + 'px';
+    var line = typeof data.line === 'number' && data.line > 0 ? data.line * height : 30;
+    el.style.fontSize = Math.max(REGION_MIN_FONT, Math.min(REGION_MAX_FONT, Math.round(line * 0.9))) + 'px';
+  }
+
+  function hideRegion(id) {
+    var el = regionBoxes[id];
+    if (!el) return;
+    delete regionBoxes[id];
+    $('regions').removeChild(el);
+  }
+
+  function hideRegions() {
+    for (var id in regionBoxes) {
+      if (Object.prototype.hasOwnProperty.call(regionBoxes, id)) $('regions').removeChild(regionBoxes[id]);
+    }
+    regionBoxes = {};
+    $('regions').className = 'hidden';
+  }
+
   // Konum hem CouchSubs uygulamasından hem kumandanın oklarıyla ayarlanır. Kumandayla
   // seçilen konum, uygulamadaki ayar değişene kadar korunur (son değiştiren geçerlidir).
   function setBottom(percent) {
@@ -522,6 +582,7 @@
           dropTimer = null;
           hideSubtitle('drop');
           hideScreen();
+          hideRegions();
         }, DROP_HIDE_MS);
       }
       setStatus('st-conn', t('reconnecting'), 'bad');
@@ -541,6 +602,8 @@
     onEvent('clear', onClear);
     onEvent('screen', function (data) { showScreen(data.items, data.duration); });
     onEvent('screen-clear', hideScreen);
+    onEvent('region', showRegion);
+    onEvent('region-clear', hideRegions);
     onEvent('style', applyStyle);
     onEvent('speech', function (data) { if (data.url) playSpeech(server + data.url); });
     onEvent('speech-stop', stopSpeech);

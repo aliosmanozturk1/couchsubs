@@ -177,6 +177,54 @@
         }
       }
     },
+    "Add extra area": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add extra area"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ek alan ekle"
+          }
+        }
+      }
+    },
+    "Area name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Area name"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alanın adı"
+          }
+        }
+      }
+    },
+    "Besides the subtitle, CouchSubs can keep reading up to three small areas, like a quest, a phone message or a notification. Each area is read about once a second and translated again only when its text changes. The translation shows on the TV next to the original text.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besides the subtitle, CouchSubs can keep reading up to three small areas, like a quest, a phone message or a notification. Each area is read about once a second and translated again only when its text changes. The translation shows on the TV next to the original text."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs altyazının yanında görev yazısı, telefon mesajı ya da bildirim gibi en çok üç küçük alanı da sürekli okuyabilir. Her alan yaklaşık saniyede bir okunur, yazısı değişmedikçe yeniden çevrilmez. Çeviri TV'de asıl yazının yanında görünür."
+          }
+        }
+      }
+    },
     "Enter account ID manually": {
       "localizations": {
         "en": {
@@ -189,6 +237,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hesap kimliğini elle gir"
+          }
+        }
+      }
+    },
+    "Extra areas": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Extra areas"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ek alanlar"
           }
         }
       }
@@ -225,6 +289,86 @@
         }
       }
     },
+    "Keep reading this area": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep reading this area"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu alanı sürekli oku"
+          }
+        }
+      }
+    },
+    "Notification": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notification"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bildirim"
+          }
+        }
+      }
+    },
+    "Notification (bottom left)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notification (bottom left)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bildirim (sol alt)"
+          }
+        }
+      }
+    },
+    "Phone": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phone"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefon"
+          }
+        }
+      }
+    },
+    "Phone (bottom right)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phone (bottom right)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefon (sağ alt)"
+          }
+        }
+      }
+    },
     "PS5 paired: %@ (%@). Press Continue.": {
       "localizations": {
         "en": {
@@ -237,6 +381,70 @@
           "stringUnit": {
             "state": "translated",
             "value": "PS5 eşleşti: %@ (%@). Devam'a basın."
+          }
+        }
+      }
+    },
+    "Quest": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quest"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görev"
+          }
+        }
+      }
+    },
+    "Quest (top right)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quest (top right)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görev (sağ üst)"
+          }
+        }
+      }
+    },
+    "Read this area": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read this area"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu alanı oku"
+          }
+        }
+      }
+    },
+    "Remove": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaldır"
           }
         }
       }
@@ -3885,6 +4093,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "CouchSubs'a hoş geldiniz"
+          }
+        }
+      }
+    },
+    "While translating, this area is read about once a second. Its translation shows where the subtitles show, next to the original text, until the text changes.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While translating, this area is read about once a second. Its translation shows where the subtitles show, next to the original text, until the text changes."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çeviri sürerken bu alan yaklaşık saniyede bir okunur. Çevirisi altyazının gösterildiği yerde, asıl yazının yanında, yazı değişene kadar durur."
           }
         }
       }

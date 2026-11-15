@@ -42,6 +42,7 @@ public sealed partial class SubtitleOverlayWindow : Window
     private readonly Stopwatch clock = Stopwatch.StartNew();
     private readonly DispatcherTimer timer = new();
     private readonly StackPanel linesPanel = new() { VerticalAlignment = VerticalAlignment.Bottom };
+    private readonly StackPanel regionsPanel = new() { VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
     /// <summary>Görünen satırların kutuları; solan satırın animasyonu yeniden çizimde baştan başlamasın.</summary>
     private readonly Dictionary<int, Border> boxes = [];
     private readonly Grid adjustLayer = new() { Visibility = Visibility.Collapsed };
@@ -72,6 +73,7 @@ public sealed partial class SubtitleOverlayWindow : Window
         var root = new Grid();
         root.Children.Add(adjustLayer);
         root.Children.Add(new Border { Padding = new Thickness(24 * Scale, 0, 24 * Scale, 8 * Scale), Child = linesPanel });
+        root.Children.Add(new Border { Padding = new Thickness(24 * Scale, 8 * Scale, 24 * Scale, 0), Child = regionsPanel });
         BuildAdjustLayer();
         Content = root;
         PlaceFromSettings();
@@ -145,6 +147,15 @@ public sealed partial class SubtitleOverlayWindow : Window
                 if (screenUntil > Now) stack.Hide();
                 screenUntil = 0;
                 break;
+            // Ek alanların çevirisi altyazının üstünde, alanın bulunduğu yana yaslı küçük kutularda durur.
+            case SubtitleEventKind.Region:
+                if (e.Id is null) break;
+                regions.Remove(e.Id);
+                if (e.Text.Length > 0) regions[e.Id] = (e.Text, e.Box);
+                break;
+            case SubtitleEventKind.RegionClear:
+                regions.Clear();
+                break;
             default:
                 if (screenUntil <= Now) stack.Clear(Now);
                 break;
@@ -155,9 +166,13 @@ public sealed partial class SubtitleOverlayWindow : Window
     /// <summary>"Ekranı çevir" çevirilerinin pencerede kalacağı an (<see cref="Now"/> saatiyle); yoksa 0.</summary>
     private double screenUntil;
 
+    /// <summary>Ek alanların penceredeki çevirileri (kimlik → metin ve oyundaki yeri).</summary>
+    private readonly Dictionary<string, (string Text, CouchSubs.Core.TextBox? Box)> regions = [];
+
     private void OnHidden() => Guard("gizleme", () =>
     {
         stack.Hide();
+        regions.Clear();
         Refresh();
     });
 
@@ -216,7 +231,10 @@ public sealed partial class SubtitleOverlayWindow : Window
             linesPanel.Children.Add(box);
         }
 
-        var visible = controller.ShowsOnComputer && lines.Count > 0;
+        regionsPanel.Children.Clear();
+        foreach (var (text, area) in regions.Values.OrderBy(region => region.Box?.Top ?? 0)) regionsPanel.Children.Add(MakeRegionBox(text, area));
+
+        var visible = controller.ShowsOnComputer && (lines.Count > 0 || regions.Count > 0);
         if (visible && !IsVisible) Show();
         else if (!visible && IsVisible) Hide();
 
@@ -257,6 +275,32 @@ public sealed partial class SubtitleOverlayWindow : Window
             HorizontalAlignment = HorizontalAlignment.Center,
             Opacity = line.Role switch { SubtitleStack.Role.Current => 1, SubtitleStack.Role.Previous => 0.6, _ => 0.45 },
             Child = text,
+        };
+    }
+
+    /// <summary>Ek alanın çevirisi: altyazıdan küçük, koyu zeminli kutu; oyundaki yazının bulunduğu yana yaslı.</summary>
+    private Border MakeRegionBox(string text, CouchSubs.Core.TextBox? area)
+    {
+        var style = controller.Settings.Style;
+        var scale = Scale;
+        var size = Math.Max(12, OverlayPlacement.FontSize(style.FontSize) * scale * 0.55);
+        var middle = area is { } box ? (box.Left + box.Right) / 2 : 0.5;
+        return new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0xD9, 0, 0, 0)),
+            CornerRadius = new CornerRadius(8 * scale),
+            Padding = new Thickness(14 * scale, 6 * scale, 14 * scale, 6 * scale),
+            Margin = new Thickness(0, 0, 0, 10 * scale),
+            HorizontalAlignment = middle < 0.4 ? HorizontalAlignment.Left : middle > 0.6 ? HorizontalAlignment.Right : HorizontalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = text,
+                FontSize = size,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = style.TextColor == SubtitleTextColor.Yellow ? new SolidColorBrush(Color.FromRgb(0xFF, 0xE1, 0x35)) : Brushes.White,
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = size * 1.25,
+            },
         };
     }
 

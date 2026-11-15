@@ -86,6 +86,10 @@ public enum SubtitleEvent: Equatable, Sendable {
     case screen(text: String, durationMs: Int)
     /// "Ekranı çevir" çevirileri kaldırıldı.
     case screenClear
+    /// Ek alanın (görev, telefon, bildirim) çevirisi; `text` boşsa o alanın kutusu kalkar.
+    case region(id: String, text: String, box: TextBox?)
+    /// Bütün ek alan kutuları kalktı (çeviri durdu).
+    case regionClear
 }
 
 /// TV uygulamasının bağlandığı yerel Server-Sent Events sunucusu.
@@ -230,6 +234,23 @@ public final class SubtitleServer: @unchecked Sendable {
         onEvent?(.screen(text: items.map(\.translation).joined(separator: "\n"), durationMs: durationMs))
     }
 
+    /// Ek alanın çevirisi: `region` olayı alanın kimliğini (`id`), çeviriyi (`text`; boşsa kutu kalkar), yazının karedeki
+    /// yerini (`box`) ve satır yüksekliğini (`line`, ekrana oranla) taşır. TV çeviriyi o yerde küçük bir kutuda gösterir;
+    /// ana altyazıya dokunmaz. Olayı tanımayan eski TV uygulamaları yok sayar.
+    public func sendRegion(id: String, text: String, box: TextBox?, lineHeight: Double? = nil) {
+        var json: [String: Any] = ["id": id, "text": text]
+        if let box { json["box"] = Self.json(box) }
+        if let lineHeight { json["line"] = Decimal(Int((max(0, min(1, lineHeight)) * 10000).rounded())) / 10000 }
+        broadcast(event: "region", json: json)
+        onEvent?(.region(id: id, text: text, box: box))
+    }
+
+    /// Bütün ek alan kutularını kaldırır.
+    public func clearRegions() {
+        broadcast(event: "region-clear", json: [:])
+        onEvent?(.regionClear)
+    }
+
     /// TV'deki "ekranı çevir" çevirilerini kaldırır (altyazıya dokunmaz).
     public func clearScreen() {
         broadcast(event: "screen-clear", json: [:])
@@ -365,7 +386,7 @@ public final class SubtitleServer: @unchecked Sendable {
         queue.async { self.sendToAll(data, includingTVs: !subtitle || self.tvEnabled) }
     }
 
-    static let subtitleEvents: Set<String> = ["subtitle", "clear", "screen", "screen-clear", "style"]
+    static let subtitleEvents: Set<String> = ["subtitle", "clear", "screen", "screen-clear", "style", "region", "region-clear"]
 
     /// Gönderim hatası alan bağlantı kopmuş sayılır ve listeden çıkarılır. `includingTVs` false ise yalnız izleyiciler
     /// (OBS) alır.

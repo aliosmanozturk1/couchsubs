@@ -222,6 +222,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             if (old.GamePacks != value.GamePacks && pipeline is not null) ConnectPacks(pipeline);
             if ((old.MisreadWaitMs != value.MisreadWaitMs || old.PartialWaitMs != value.PartialWaitMs) && pipeline is not null) ApplyWaits(pipeline);
             if (old.SharePool != value.SharePool) services.Pool?.SetEnabled(value.SharePool);
+            UpdateRegionWatcher();
             var translationChanged = old.OnlineTranslation != value.OnlineTranslation || old.OnlineEngine != value.OnlineEngine
                                      || old.GeminiModel != value.GeminiModel || old.OpenAiModel != value.OpenAiModel
                                      || old.ClaudeModel != value.ClaudeModel
@@ -799,6 +800,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             pipeline?.Reset();
             server.Clear();
         }
+        // Duraklatınca ek bölgeler de okunmaz, kutuları kalkar.
+        UpdateRegionWatcher();
         server.SendStyle(settings.Style);
         server.SendSubtitle(text[pause ? "Subtitle translation paused" : "Subtitle translation resumed"], 1800);
     }
@@ -1147,6 +1150,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         pipeline?.Reset();
         if (pipeline is not null) SubtitleLog.Write("oturum bitti");
         pipeline = null;
+        UpdateRegionWatcher();
         // Yeni "Başlat" eski oturumdan kalan (belki takılmış) okumayı beklemeden temiz başlar.
         frameGate.Reset();
         activeReader = null;
@@ -1333,6 +1337,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     {
         pipeline?.Reset();
         pipeline = null;
+        // Ek bölge okuyucusu da yeni dil ve motorla yeniden kurulur.
+        regionWatcher?.Reset();
+        regionWatcher = null;
         // Eski hatta süren okuma beklenmez; yeni hat ilk karesini hemen alır.
         frameGate.Reset();
         ActiveSourceLanguage = settings.SourceLanguage;
@@ -1364,6 +1371,31 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         ApplyWaits(built);
         OnlineIssue = null;
         pipeline = built;
+        UpdateRegionWatcher();
+    }
+
+    /// <summary>Sürekli okunan ek bölgeleri okuyup çeviren; çeviri sürerken ve en az bir bölge sürekli okunurken var.</summary>
+    private RegionWatcher? regionWatcher;
+
+    /// <summary>
+    /// Ek bölge okuyucusu gerekiyorsa kurulur, gerekmiyorsa kaldırılır (kutuları TV'den kalkar). Kendi yazı tanıma motoru
+    /// vardır: aynı motor iki okumayı birden yapamaz, ek bölge okuması altyazıyı bekletmesin. Paketler altyazıyla aynıdır;
+    /// ek bölge satırları havuza önerilmez.
+    /// </summary>
+    private void UpdateRegionWatcher()
+    {
+        if (pipeline is null || subtitlesPaused || settings.WatchedAreas().Count == 0)
+        {
+            regionWatcher?.Reset();
+            regionWatcher = null;
+            return;
+        }
+        if (regionWatcher is null)
+        {
+            if (services.MakeReader(settings.SourceLanguage) is not { } reader) return;
+            regionWatcher = new RegionWatcher(reader, MakeTranslator(), server) { Log = SubtitleLog.Write };
+        }
+        regionWatcher.PackLookup = PacksActive ? services.FindInPacks : null;
     }
 
     // --- Geçmiş ---
@@ -1580,6 +1612,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (state.Phase == SessionPhase.Disconnected)
         {
             pipeline?.Reset();
+            regionWatcher?.Reset();
             server.Clear();
             dubber?.Stop();
         }
@@ -1601,6 +1634,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             // Önceki kare hâlâ işleniyorsa bu kare atlanır; okuma kareleri biriktirmez.
             var current = pipeline;
             if (current is null) return;
+            // Ek bölgeler ayrı ve seyrek okunur (saniyede bir, kendi okuyucusuyla); altyazı okumasını beklemez, onu bekletmez.
+            regionWatcher?.Offer(frame, settings.WatchedAreas());
             var entry = frameGate.TryEnter(Environment.TickCount64);
             if (entry.Kind == FrameGate.EntryKind.Stuck)
             {

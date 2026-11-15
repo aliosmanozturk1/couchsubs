@@ -150,6 +150,13 @@ public sealed record UserSettings
     public ResultTarget ExtraTarget1 { get; init; } = ResultTarget.Tv;
     public ResultTarget ExtraTarget2 { get; init; } = ResultTarget.Tv;
     public ResultTarget ExtraTarget3 { get; init; } = ResultTarget.Tv;
+    /// <summary>
+    /// Ek bölge tuşa basmadan da sürekli okunur (saniyede bir; görev, telefon mesajı, bildirim). Çevirisi altyazının
+    /// gösterildiği yerde, asıl yazının yanında küçük bir kutuda durur (Mac: ek alanlar). Varsayılan kapalı.
+    /// </summary>
+    public bool ExtraLive1 { get; init; }
+    public bool ExtraLive2 { get; init; }
+    public bool ExtraLive3 { get; init; }
     /// <summary>Serbest alan çevirisinin (Num 5) sonucu nerede gösterilir.</summary>
     public ResultTarget FreeAreaTarget { get; init; } = ResultTarget.Tv;
     public SubtitleStyle Style { get; init; } = new();
@@ -257,6 +264,24 @@ public sealed record UserSettings
         3 => this with { ExtraTarget3 = target },
         _ => this,
     };
+
+    /// <summary>Ek bölge sürekli okunuyor mu.</summary>
+    public bool ExtraLive(int slot) => slot switch { 1 => ExtraLive1, 2 => ExtraLive2, 3 => ExtraLive3, _ => false };
+
+    public UserSettings WithExtraLive(int slot, bool live) => slot switch
+    {
+        1 => this with { ExtraLive1 = live },
+        2 => this with { ExtraLive2 = live },
+        3 => this with { ExtraLive3 = live },
+        _ => this,
+    };
+
+    /// <summary>Sürekli okunan ek bölgeler (açık ve "Sürekli oku" seçili olanlar).</summary>
+    public IReadOnlyList<WatchedArea> WatchedAreas() =>
+        [.. Enumerable.Range(1, ExtraRegionCount)
+            .Where(ExtraLive)
+            .Select(slot => ExtraRegion(slot) is { } region ? new WatchedArea("area" + slot, "Area " + slot, region) : null)
+            .OfType<WatchedArea>()];
 }
 
 /// <summary>Tek seferlik çevirinin sonucunun gösterileceği yer.</summary>

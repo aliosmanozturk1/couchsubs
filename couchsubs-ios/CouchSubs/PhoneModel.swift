@@ -630,6 +630,9 @@ final class PhoneModel: ObservableObject {
             stack.show(text, durationMs: durationMs, paragraphs: true, now: now)
         case .screenClear:
             stack.hide()
+        // Telefonda ek alan yok (çeviri TV'de kendi yerinde gösterilir).
+        case .region, .regionClear:
+            return
         }
         phoneRefresh()
     }

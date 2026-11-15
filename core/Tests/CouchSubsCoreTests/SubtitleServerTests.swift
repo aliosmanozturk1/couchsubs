@@ -78,6 +78,27 @@ final class SubtitleServerTests: XCTestCase {
             && $0.contains("\"line\":0.04,\"text\":\"Kapıyı aç.\"}") })
     }
 
+    /// Ek alanın çevirisi kendi olayıyla gider (eski TV uygulamaları tanımadığı olayı yok sayar).
+    func testStreamsRegionTranslationsAndTheirClear() async throws {
+        let server = SubtitleServer(port: 0)
+        let port = try await server.start()
+        defer { server.stop() }
+        let received = LockedEvents()
+        server.onEvent = { received.append($0) }
+        let (bytes, _) = try await URLSession.shared.bytes(from: URL(string: "http://127.0.0.1:\(port)/events")!)
+        try await waitUntil { server.connectedClients == 1 }
+        let box = TextBox(left: 0.7, top: 0.05, right: 0.95, bottom: 0.12)
+        server.sendRegion(id: "q", text: "Demirciyi bul", box: box, lineHeight: 0.03)
+        server.sendRegion(id: "q", text: "", box: nil)
+        server.clearRegions()
+
+        let lines = try await readLines(bytes, until: "event: region-clear")
+        XCTAssertTrue(lines.contains("event: region"))
+        XCTAssertTrue(lines.contains(#"data: {"box":{"bottom":0.12,"left":0.7,"right":0.95,"top":0.05},"id":"q","line":0.03,"text":"Demirciyi bul"}"#), "\(lines)")
+        XCTAssertTrue(lines.contains(#"data: {"id":"q","text":""}"#), "\(lines)")
+        XCTAssertEqual(received.all, [.region(id: "q", text: "Demirciyi bul", box: box), .region(id: "q", text: "", box: nil), .regionClear])
+    }
+
     func testSpeechIsAnnouncedAndServed() async throws {
         let server = SubtitleServer(port: 0)
         let port = try await server.start()

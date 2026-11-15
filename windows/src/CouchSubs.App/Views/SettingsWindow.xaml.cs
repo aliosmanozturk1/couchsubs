@@ -592,6 +592,7 @@ public partial class SettingsWindow : Window
         {
             UseArea.Visibility = Visibility.Collapsed;
             ExtraTargetPanel.Visibility = Visibility.Collapsed;
+            ExtraLivePanel.Visibility = Visibility.Collapsed;
             PresetPanel.Visibility = Visibility.Visible;
             ShowPreset();
             Region.IsEnabled = true;
@@ -606,6 +607,8 @@ public partial class SettingsWindow : Window
             UseArea.IsChecked = extra is not null;
             PresetPanel.Visibility = Visibility.Collapsed;
             ExtraTargetPanel.Visibility = Visibility.Visible;
+            ExtraLivePanel.Visibility = Visibility.Visible;
+            ExtraLive.IsChecked = settings.ExtraLive(slot);
             (settings.ExtraTarget(slot) switch { ResultTarget.Pc => ExtraPc, ResultTarget.Both => ExtraBoth, _ => ExtraTv }).IsChecked = true;
             Region.IsEnabled = extra is not null;
             Region.DefaultRegion = ExtraDefaults[slot - 1];
@@ -631,6 +634,29 @@ public partial class SettingsWindow : Window
         var slot = area;
         var region = Region.Region;
         Update(s => s.WithExtraRegion(slot, on ? region : null));
+    }
+
+    /// <summary>Ek bölge tuşa basmadan da sürekli okunsun (görev, telefon mesajı, bildirim).</summary>
+    private void OnExtraLive(object sender, RoutedEventArgs e)
+    {
+        if (loading || area == 0) return;
+        var slot = area;
+        var live = ExtraLive.IsChecked == true;
+        Update(s => s.WithExtraLive(slot, live));
+    }
+
+    /// <summary>Hazır köşe seçimi: bölge açılır ve çerçeve o köşeye gelir.</summary>
+    private void OnExtraPreset(object sender, RoutedEventArgs e)
+    {
+        if (loading || area == 0 || sender is not Button { Tag: string tag }) return;
+        var slot = area;
+        var region = Enum.Parse<ExtraAreaPreset>(tag).Region();
+        loading = true;
+        UseArea.IsChecked = true;
+        loading = false;
+        Region.IsEnabled = true;
+        Region.ShowRegion(region);
+        Update(s => s.WithExtraRegion(slot, region));
     }
 
     private void OnTest(object sender, RoutedEventArgs e) => controller.SendTestSubtitle();

@@ -260,8 +260,89 @@ private struct AreaCards: View {
             HintText(text: "Adjust the frame so it covers where the game shows its subtitles.")
             HintText(text: "Drag the frame to move it, or drag its corner to resize it.")
         }
+        ExtraAreasCard()
         Card(title: "Translate the screen (⌥⌘T)") {
             HintText(text: "Press ⌥⌘T while playing: every text on the screen is translated once and shown on the TV in its own place. Press again to remove the translations.")
+        }
+    }
+}
+
+/// Altyazının yanında sürekli okunan ek alanlar (en çok üç): görev yazısı, bildirim, telefon mesajı. Her biri
+/// adlandırılır, açılıp kapatılır; çerçevesi canlı önizlemede sürüklenir.
+private struct ExtraAreasCard: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Card(title: "Extra areas") {
+            HintText(text: "Besides the subtitle, CouchSubs can keep reading up to three small areas, like a quest, a phone message or a notification. Each area is read about once a second and translated again only when its text changes. The translation shows on the TV next to the original text.")
+            ForEach(model.settings.extraAreas) { area in
+                ExtraAreaEditor(id: area.id, settings: $model.settings, preview: model.framePreview)
+            }
+            if model.settings.canAddExtraArea {
+                Menu("Add extra area") {
+                    ForEach(ExtraAreaPreset.allCases, id: \.self) { preset in
+                        Button(preset.title) { model.settings.addExtraArea(preset, name: preset.defaultName) }
+                    }
+                }
+                .fixedSize()
+            }
+        }
+    }
+}
+
+private struct ExtraAreaEditor: View {
+    let id: String
+    @Binding var settings: UserSettings
+    @ObservedObject var preview: FramePreview
+
+    var body: some View {
+        if let area = settings.extraAreas.first(where: { $0.id == id }) {
+            VStack(alignment: .leading, spacing: Theme.space("m")) {
+                HStack(spacing: Theme.space("m")) {
+                    TextField("Area name", text: Binding(get: { area.name }, set: { name in settings.updateExtraArea(id: id) { $0.name = name } }))
+                        .textFieldStyle(CSTextFieldStyle())
+                    Toggle("Read this area", isOn: Binding(get: { area.enabled },
+                                                           set: { on in settings.updateExtraArea(id: id) { $0.enabled = on } }))
+                        .fixedSize()
+                    Button("Remove") { settings.removeExtraArea(id: id) }.buttonStyle(.secondary)
+                }
+                Picker("Area preset", selection: Binding(get: { ExtraAreaPreset.matching(area.region) },
+                                                         set: { preset in
+                    guard let preset else { return }
+                    settings.updateExtraArea(id: id) { $0.region = preset.region }
+                })) {
+                    ForEach(ExtraAreaPreset.allCases, id: \.self) { preset in Text(preset.title).tag(Optional(preset)) }
+                    Text("Custom").tag(ExtraAreaPreset?.none)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                RegionPreview(region: area.region, frame: preview.image) { region in
+                    settings.updateExtraArea(id: id) { $0.region = region }
+                }
+                .opacity(area.enabled ? 1 : 0.5)
+            }
+            .padding(Theme.space("m"))
+            .background(Color.csSurface2, in: RoundedRectangle(cornerRadius: Theme.radius("inner"), style: .continuous))
+        }
+    }
+}
+
+extension ExtraAreaPreset {
+    /// Seçimin ekrandaki adı.
+    var title: LocalizedStringKey {
+        switch self {
+        case .quest: "Quest (top right)"
+        case .notification: "Notification (bottom left)"
+        case .phone: "Phone (bottom right)"
+        }
+    }
+
+    /// Yeni alanın adı (kullanıcı değiştirebilir).
+    var defaultName: String {
+        switch self {
+        case .quest: String(localized: "Quest")
+        case .notification: String(localized: "Notification")
+        case .phone: String(localized: "Phone")
         }
     }
 }

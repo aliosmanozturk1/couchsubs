@@ -89,6 +89,8 @@ public struct UserSettings: Codable, Equatable {
     public var region = CropRegion()
     /// Bölgenin hazır seçimi (Alt bölge, Üst bölge, Tam ekran, Özel). Eski kayıtlarda yoktur; bölgeden çıkarılır.
     public var areaPreset = AreaPreset.bottom
+    /// Altyazının yanında sürekli okunan ek alanlar (görev, bildirim, telefon). Varsayılan: hiç yok.
+    public var extraAreas: [ExtraArea] = []
     public var style = SubtitleStyle()
     public var sourceLanguage = "en"
     public var targetLanguage = "tr"
@@ -125,6 +127,8 @@ public struct UserSettings: Codable, Equatable {
         let defaults = UserSettings()
         region = try values.decodeIfPresent(CropRegion.self, forKey: .region) ?? defaults.region
         areaPreset = (try? values.decodeIfPresent(AreaPreset.self, forKey: .areaPreset)) ?? AreaPreset.matching(region)
+        extraAreas = Array(((try? values.decodeIfPresent([ExtraArea].self, forKey: .extraAreas)) ?? defaults.extraAreas)
+            .prefix(ExtraArea.maxCount))
         style = try values.decodeIfPresent(SubtitleStyle.self, forKey: .style) ?? defaults.style
         sourceLanguage = try values.decodeIfPresent(String.self, forKey: .sourceLanguage) ?? defaults.sourceLanguage
         targetLanguage = try values.decodeIfPresent(String.self, forKey: .targetLanguage) ?? defaults.targetLanguage

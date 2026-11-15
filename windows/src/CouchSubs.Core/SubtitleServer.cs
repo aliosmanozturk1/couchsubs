@@ -76,11 +76,14 @@ public interface ISubtitleSender
 /// <c>Screen</c>: "ekranı çevir" sonuçları (metin: grupların çevirisi, yukarıdan aşağı, her biri ayrı satırda);
 /// <c>ScreenClear</c>: onların kaldırılması. Bilgisayardaki altyazı penceresi bunları da gösterir.
 /// </summary>
-public enum SubtitleEventKind { Subtitle, Clear, Screen, ScreenClear }
+public enum SubtitleEventKind { Subtitle, Clear, Screen, ScreenClear, Region, RegionClear }
 
 /// <summary>Sunucudan geçen ve bilgisayar ekranındaki altyazı penceresinin de gösterdiği olay.</summary>
 /// <param name="Replaces">Satır öncekinin uzamış ya da düzelmiş okumasıdır; öncekinin üstüne yığılmaz, yerine geçer.</param>
-public sealed record SubtitleEvent(SubtitleEventKind Kind, string Text = "", int DurationMs = 0, bool Paragraphs = false, bool Replaces = false)
+/// <param name="Id">Ek alan olayında alanın kimliği (<see cref="SubtitleEventKind.Region"/>; metin boşsa kutu kalkar).</param>
+/// <param name="Box">Ek alan olayında yazının karedeki yeri.</param>
+public sealed record SubtitleEvent(SubtitleEventKind Kind, string Text = "", int DurationMs = 0, bool Paragraphs = false, bool Replaces = false,
+                                   string? Id = null, TextBox? Box = null)
 {
     public static readonly SubtitleEvent Cleared = new(SubtitleEventKind.Clear);
 }
@@ -89,7 +92,7 @@ public sealed record SubtitleEvent(SubtitleEventKind Kind, string Text = "", int
 /// TV uygulamasının bağlandığı yerel Server-Sent Events sunucusu.
 /// <c>GET /events</c> akışında <c>subtitle</c>, <c>clear</c> ve <c>style</c> olaylarını yayınlar.
 /// </summary>
-public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = null) : ISubtitleSender, IDisposable
+public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = null) : ISubtitleSender, IRegionSender, IDisposable
 {
     private sealed class Client(TcpClient tcp, bool viewer = false)
     {
@@ -233,6 +236,27 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
         // "Ekran çevriliyor…" görünüyordu.
         EventSent?.Invoke(new SubtitleEvent(SubtitleEventKind.Screen, string.Join('\n', items.Select(item => item.Translation)), durationMs,
                                             Paragraphs: true));
+    }
+
+    /// <summary>
+    /// Ek alanın çevirisi: <c>region</c> olayı alanın kimliğini (<c>id</c>), çeviriyi (<c>text</c>; boşsa kutu kalkar),
+    /// yazının karedeki yerini (<c>box</c>) ve satır yüksekliğini (<c>line</c>) taşır. TV çeviriyi o yerde küçük bir kutuda
+    /// gösterir; ana altyazıya dokunmaz. Olayı tanımayan eski TV uygulamaları yok sayar (Mac ile aynı).
+    /// </summary>
+    public void SendRegion(string id, string text, TextBox? box, double? lineHeight = null)
+    {
+        var json = new SortedDictionary<string, object> { ["id"] = id, ["text"] = text };
+        if (box is { } b) json["box"] = BoxJson(b);
+        if (lineHeight is { } line) json["line"] = Round(line);
+        Broadcast(Frame("region", json), subtitle: true);
+        EventSent?.Invoke(new SubtitleEvent(SubtitleEventKind.Region, text, Id: id, Box: box));
+    }
+
+    /// <summary>Bütün ek alan kutularını kaldırır.</summary>
+    public void ClearRegions()
+    {
+        Broadcast(Frame("region-clear", new SortedDictionary<string, object>()), subtitle: true);
+        EventSent?.Invoke(new SubtitleEvent(SubtitleEventKind.RegionClear));
     }
 
     /// <summary>TV'deki "ekranı çevir" çevirilerini kaldırır (altyazıya dokunmaz).</summary>

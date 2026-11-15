@@ -28,6 +28,55 @@ public class ExtraRegionTests
     }
 
     [Fact]
+    public void ExtraRegionsAreNotReadContinuouslyByDefault()
+    {
+        var settings = new UserSettings();
+        Assert.Empty(settings.WatchedAreas());
+        for (var slot = 1; slot <= UserSettings.ExtraRegionCount; slot++) Assert.False(settings.ExtraLive(slot));
+    }
+
+    [Fact]
+    public void OnlyConfiguredLiveRegionsAreWatched()
+    {
+        var quest = ExtraAreaPreset.Quest.Region();
+        var settings = new UserSettings()
+            .WithExtraRegion(1, quest).WithExtraLive(1, true)
+            .WithExtraRegion(2, new CropRegion())
+            .WithExtraLive(3, true);
+        var watched = Assert.Single(settings.WatchedAreas());
+        Assert.Equal("area1", watched.Id);
+        Assert.Equal(quest, watched.Region);
+    }
+
+    /// <summary>Sürekli okunan bölge tuşa basmadan okunur ve çevirisi "region" olayıyla pencereye (ve TV'ye) gider.</summary>
+    [Fact]
+    public async Task LiveRegionIsReadWithoutAKeyPress()
+    {
+        var (controller, services) = Ready();
+        services.ReaderLines = new Reading([new TextLine("Find the blacksmith", new TextBox(0.1, 0.2, 0.9, 0.3))]);
+        controller.Settings = controller.Settings with { Output = SubtitleOutput.Computer };
+        controller.Settings = controller.Settings.WithExtraRegion(1, ExtraAreaPreset.Quest.Region()).WithExtraLive(1, true);
+        var received = new List<SubtitleEvent>();
+        controller.OverlayEvent += e => { lock (received) received.Add(e); };
+        await controller.StartAsync();
+        // Ek bölgenin kendi okuyucusu vardır (altyazının okumasını bekletmesin).
+        Assert.Equal(2, services.ReaderLanguages.Count);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        SubtitleEvent? region = null;
+        while (region is null && DateTime.UtcNow < deadline)
+        {
+            services.Streams[0].Emit(Frame.Blank(64, 64));
+            await Task.Delay(100);
+            lock (received) region = received.FirstOrDefault(e => e.Kind == SubtitleEventKind.Region);
+        }
+        Assert.NotNull(region);
+        Assert.Equal("area1", region.Id);
+        Assert.NotEqual("", region.Text);
+        controller.Stop();
+        lock (received) Assert.Contains(received, e => e.Kind == SubtitleEventKind.RegionClear);
+    }
+
+    [Fact]
     public void ExtraRegionIsSetAndClearedBySlot()
     {
         var region = new CropRegion(0.1, 0.3, 0.6, 0.95);

@@ -499,6 +499,8 @@ final class AppModel: ObservableObject {
     private var keeper: KeeperControlling?
     @Published private var sleepActivity: NSObjectProtocol?
     private var pipeline: SubtitlePipeline?
+    /// Ek alanları (görev, telefon, bildirim) okuyup çeviren; çeviri sürerken var.
+    private var regionWatcher: RegionWatcher?
     /// Oyundaki altyazının son görüldüğü yer; deneme altyazısı TV'de oraya yerleşir.
     private var lastSubtitleBox: TextBox?
     /// Hatta aynı anda tek kare girer. Durdurma ve yeni hat kapıyı sıfırlar; takılan okuma hattı yeniden kurdurur.
@@ -530,6 +532,8 @@ final class AppModel: ObservableObject {
     // Bilgisayar ekranındaki altyazı penceresi (bkz. AppModel+ComputerScreen.swift)
     /// Pencerede şu an görünen satırlar (TV'dekiyle aynı yığın).
     @Published var overlayLines: [SubtitleStack.Line] = []
+    /// Penceredeki ek alan çevirileri (yukarıdan aşağı).
+    @Published var overlayRegions: [OverlayRegion] = []
     /// Pencerenin yeri ve genişliği ayarlanıyor: örnek yazı görünür, tıklamalar geçmez.
     @Published var overlayAdjusting = false
     var overlayStack = SubtitleStack()
@@ -701,6 +705,8 @@ final class AppModel: ObservableObject {
         let active = settings.gamePacks && settings.sourceLanguage == "en" && settings.targetLanguage == "tr"
         pipeline.packLookup = active ? { packs.match($0) } : nil
         pipeline.packName = { packs.searchScope }
+        // Ek alanlar da pakette aranır ama havuza önerilmez (arayüz yazıları havuzu kirletmesin).
+        regionWatcher?.packLookup = pipeline.packLookup
         guard settings.sourceLanguage == "en" else {
             pipeline.onPackMiss = nil
             return
@@ -1298,11 +1304,22 @@ final class AppModel: ObservableObject {
         pipeline.onReadResult = { [weak self] error in self?.noteRead(error) }
         pipeline.onSpeech = { [weak self] lines in self?.speak(lines) }
         pipeline.onLog = { SubtitleLog.write($0) }
-        connectPacks(to: pipeline)
         onlineIssue = nil
         pipeline.warmUp()
         self.pipeline = pipeline
+        // Ek alan okuyucusu yeni dil ve motorla, ilk ek alan karesinde yeniden kurulur.
+        regionWatcher?.reset()
+        regionWatcher = nil
+        connectPacks(to: pipeline)
         activeLanguages = (settings.sourceLanguage, settings.targetLanguage)
+    }
+
+    /// Ek alanlar aynı dil, motor ve paketlerle okunur; ayrı bir okuyucu ve çevirmenle (altyazının sırasını beklemez).
+    private func makeRegionWatcher(packLookup: ((String) -> PackMatch?)?) -> RegionWatcher {
+        let watcher = RegionWatcher(reader: VisionReader(language: settings.sourceLanguage), translator: makeTranslator(), server: server)
+        watcher.packLookup = packLookup
+        watcher.onLog = { SubtitleLog.write($0) }
+        return watcher
     }
 
     private func refreshTranslatorStatus() async {
@@ -1483,6 +1500,8 @@ final class AppModel: ObservableObject {
         pipeline?.reset()
         if pipeline != nil { SubtitleLog.write("oturum bitti") }
         pipeline = nil
+        regionWatcher?.reset()
+        regionWatcher = nil
         // Yeni "Başlat" eski oturumdan kalan (belki takılmış) okumayı beklemeden temiz başlar.
         frameGate.reset()
         activeLanguages = nil
@@ -1520,6 +1539,7 @@ final class AppModel: ObservableObject {
         // Bağlantı koptuysa TV'de eski altyazı kalmasın.
         if case .disconnected = state {
             pipeline?.reset()
+            regionWatcher?.reset()
             server.clear()
             dubber?.stop()
         }
@@ -1612,6 +1632,10 @@ final class AppModel: ObservableObject {
     private func handle(_ frame: CGImage, capturedAt: Int) async {
         lastFrame = frame
         guard pipeline != nil else { return }
+        // Ek alanlar ayrı ve seyrek okunur (saniyede bir); altyazı okumasını beklemez, onu bekletmez.
+        let areas = settings.activeExtraAreas
+        if regionWatcher == nil, !areas.isEmpty, let pipeline { regionWatcher = makeRegionWatcher(packLookup: pipeline.packLookup) }
+        regionWatcher?.offer(frame, areas: areas)
         // Önceki kare hâlâ işleniyorsa bu kare atlanır; okuma kareleri biriktirmez.
         var entry = frameGate.enter(now: SubtitleStabilizer.uptimeMs())
         if case .stuck(let ms) = entry {
