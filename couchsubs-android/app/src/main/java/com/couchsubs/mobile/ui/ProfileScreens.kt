@@ -69,6 +69,7 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var notifyDisconnect by remember { mutableStateOf(settings.notifyDisconnect) }
     var notifyPacks by remember { mutableStateOf(settings.notifyNewPacks) }
     var pool by remember { mutableStateOf(settings.sharePool) }
+    var askGame by remember { mutableStateOf(settings.askGame) }
     var usage by remember { mutableStateOf(settings.usageData) }
     LaunchedEffect(Unit) { tvs = withContext(Dispatchers.IO) { runCatching { TvDiscovery.search() }.getOrDefault(emptyList()) } }
     ScreenScaffold(top = { TopBar(stringResource(R.string.profile), onBack = onBack) { SettingsAction(onSettings) } }) {
@@ -96,6 +97,9 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
         RowList(listOf(
             { RowItem(stringResource(R.string.settings_pool), stringResource(R.string.settings_pool_short)) {
                 Switch(pool, { pool = it; settings.sharePool = it })
+            } },
+            { RowItem(stringResource(R.string.settings_ask_game), stringResource(R.string.settings_ask_game_short)) {
+                Switch(askGame, { askGame = it; settings.askGame = it })
             } },
             { RowItem(stringResource(R.string.profile_usage), stringResource(R.string.profile_usage_note)) {
                 Switch(usage, { usage = it; Services.setUsageData(it) })

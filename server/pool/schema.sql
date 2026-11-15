@@ -20,6 +20,14 @@ CREATE TABLE IF NOT EXISTS sightings (
   PRIMARY KEY (key, install)
 );
 
+-- Kimliksiz gelen oyun adı (uygulamanın paketten tanıdığı ya da kullanıcının seçtiği): kurulum başına bir oy.
+-- Gece paketi (src/autopack.js) bir adı en az iki kurulum oyladıysa ayrı paket yapar. game_key: src/games.js gameKey.
+CREATE TABLE IF NOT EXISTS game_votes (
+  game_key TEXT NOT NULL,
+  install TEXT NOT NULL,
+  PRIMARY KEY (game_key, install)
+);
+
 CREATE TABLE IF NOT EXISTS quota (
   install TEXT NOT NULL,
   day TEXT NOT NULL,

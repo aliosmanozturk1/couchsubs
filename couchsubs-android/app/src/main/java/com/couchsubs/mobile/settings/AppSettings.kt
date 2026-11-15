@@ -122,6 +122,16 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("sharePool", true)
         set(value) = prefs.edit().putBoolean("sharePool", value).apply()
 
+    /** Oynanan oyun paketle tanınmazsa çeviri başladıktan iki dakika sonra bir kez sorulur (bkz. GameSense). */
+    var askGame: Boolean
+        get() = prefs.getBoolean("askGame", true)
+        set(value) = prefs.edit().putBoolean("askGame", value).apply()
+
+    /** Bu PS5'te son seçilen oyun ("Hangi oyunu oynuyorsunuz?" kartının ilk önerisi). */
+    fun lastGame(console: String): String? = prefs.getString("lastGame.$console", null)
+
+    fun rememberGame(console: String, name: String) = prefs.edit().putString("lastGame.$console", name).apply()
+
     var keepScreenOn: Boolean
         get() = prefs.getBoolean("keepScreenOn", true)
         set(value) = prefs.edit().putBoolean("keepScreenOn", value).apply()

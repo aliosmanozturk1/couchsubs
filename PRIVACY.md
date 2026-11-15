@@ -33,8 +33,10 @@ Android telefon uygulamalarının kimliğe bağlanmayan kullanım istatistikleri
 - **Ortak havuz (Ayarlar › Çeviri'den kapatılabilir):** hiçbir oyun paketinde bulunmayan, okunan İngilizce altyazı
   satırları herkes için daha iyi Türkçe çeviriler hazırlamak üzere `couchsubs-pool.enmera.workers.dev` adresine
   gönderilir. Giden yalnız satırın metni, ondan üretilen anahtar, ilk görüldüğü an, uygulama sürümü, işletim sistemi
-  (mac/windows/ios/android) ve kuruluma özgü rastgele bir kimliktir. Biliniyorsa satırla birlikte PS5'te o an çalışan
-  oyunun kimliği ve adı (ör. PPSA01234, "Grand Theft Auto VI") da gönderilir; bu, satırların hangi oyuna ait olduğunu
+  (mac/windows/ios/android) ve kuruluma özgü rastgele bir kimliktir. Biliniyorsa satırla birlikte oynanan oyunun
+  kimliği ve adı (ör. PPSA01234, "Grand Theft Auto VI") da gönderilir: oyunu PS5 bildirir, uygulama okunan satırları
+  hazır paketlerle eşleştirerek kendisi tanır ya da siz "Hangi oyunu oynuyorsunuz?" sorusunda seçersiniz (soru
+  Ayarlar'dan kapatılabilir); bu, satırların hangi oyuna ait olduğunu
   bilmek içindir ve sizinle ilgili bir bilgi taşımaz. Görüntü, ses, kullanıcı adı, PSN ya da hesap bilgisi gönderilmez.
   En az iki farklı kurulumda okunan satırlar her gece kendiliğinden makine çevirisiyle (kendi Cloudflare
   hesabımızdaki Workers AI) o oyunun Türkçe yamasına dönüştürülür ve herkese dağıtılır; yamada satırı kimin
@@ -123,7 +125,9 @@ sent to DeepL unless you turn this on. PS5 and TV discovery and pairing use your
 in any game pack are sent to `couchsubs-pool.enmera.workers.dev` to make better Turkish translations for
 everyone. Only the line's text, a key derived from it, when it was first seen, the app version, the operating
 system (mac/windows/ios/android) and a random ID made for this installation are sent. When known, the ID and name of
-the game running on the PS5 at that moment (e.g. PPSA01234, "Grand Theft Auto VI") are sent with the line; this is only
+the game being played (e.g. PPSA01234, "Grand Theft Auto VI") are sent with the line: the PS5 reports it, the app
+recognises it by matching the lines it reads with the ready packs, or you pick it when asked "Which game are you
+playing?" (the question can be turned off in Settings); this is only
 to know which game the lines belong to and carries no information about you. Lines read by at least two different installations are
 automatically machine-translated every night (Workers AI on our own Cloudflare account) into that game's Turkish pack,
 which is given to everyone; the pack holds nothing about who sent a line. No picture, audio, user name, PSN or

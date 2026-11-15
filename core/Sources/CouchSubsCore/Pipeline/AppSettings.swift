@@ -118,6 +118,8 @@ public struct UserSettings: Codable, Equatable {
     public var gamePacks = true
     /// Pakette bulunmayan İngilizce satırlar ortak havuza gönderilir (anonim; bkz. `LinePool`).
     public var sharePool = LinePool.enabledByDefault
+    /// Oynanan oyun paketle tanınmazsa çeviri başladıktan iki dakika sonra bir kez sorulur (bkz. `GameSense`).
+    public var askGame = true
     /// Koyu, açık ya da sistemle aynı. Eski kayıtlarda yoktur; onlar da koyu açılır.
     public var appearance = AppAppearance.dark
 
@@ -147,6 +149,7 @@ public struct UserSettings: Codable, Equatable {
         overlayClickThrough = try values.decodeIfPresent(Bool.self, forKey: .overlayClickThrough) ?? defaults.overlayClickThrough
         gamePacks = try values.decodeIfPresent(Bool.self, forKey: .gamePacks) ?? defaults.gamePacks
         sharePool = try values.decodeIfPresent(Bool.self, forKey: .sharePool) ?? defaults.sharePool
+        askGame = try values.decodeIfPresent(Bool.self, forKey: .askGame) ?? defaults.askGame
         appearance = (try? values.decodeIfPresent(AppAppearance.self, forKey: .appearance)) ?? defaults.appearance
     }
 

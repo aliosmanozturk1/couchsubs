@@ -264,6 +264,16 @@
                                                Text="{t:T 'Only the game\'s English text is sent, anonymously. It is used to make better Turkish translations for everyone.'}" />
                                 </StackPanel>
                             </DockPanel>
+                            <Separator Margin="0" />
+                            <DockPanel MinHeight="{DynamicResource size.buttonLarge}" Margin="0,8">
+                                <CheckBox x:Name="AskGame" DockPanel.Dock="Right" Margin="16,0,0,0" VerticalAlignment="Center"
+                                          AutomationProperties.Name="{t:T 'Ask which game I\'m playing'}" Checked="OnAskGame" Unchecked="OnAskGame" />
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{t:T 'Ask which game I\'m playing'}" Style="{StaticResource HeadlineText}" />
+                                    <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                               Text="{t:T 'If no pack recognises the game, asked once two minutes after translation starts.'}" />
+                                </StackPanel>
+                            </DockPanel>
                         </StackPanel>
                     </c:Card>
                 </StackPanel>

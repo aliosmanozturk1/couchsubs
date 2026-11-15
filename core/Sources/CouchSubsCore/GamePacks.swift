@@ -209,6 +209,7 @@ public final class GamePackLibrary: @unchecked Sendable {
     /// Son tam eşleşmenin geldiği paket: bulanık arama yalnız orada yapılır (oynanan oyun). Satır birden çok pakette
     /// varsa kapsam o paketlerden biri değilse ilkine geçer; hiç tam eşleşme olmadıysa bulanık arama yapılmaz.
     private var scope: Int?
+    private var distinctive: Int?
     private var infos: [Info] = []
 
     public init(bundled: URL?, user: URL?) {
@@ -292,11 +293,22 @@ public final class GamePackLibrary: @unchecked Sendable {
         lock.withLock { scope.flatMap { $0 < infos.count ? infos[$0].title : nil } }
     }
 
+    /// Son `takeDistinctiveHit` çağrısından beri yalnız tek bir pakette bulunan satırın paketi; okununca silinir.
+    /// Okunan satırlar art arda aynı paketten geliyorsa oynanan oyun o pakettir (`GameSense`). Birkaç pakette ortak
+    /// satırlar ("Okay.", "Let's go.") sayılmaz: yoksa paketi olmayan oyunda bile alfabede ilk paket tanınırdı.
+    public func takeDistinctiveHit() -> Info? {
+        lock.withLock {
+            defer { distinctive = nil }
+            return distinctive.flatMap { $0 < infos.count ? infos[$0] : nil }
+        }
+    }
+
     private func noteHit(_ key: UInt64, in searchable: [Searchable]) {
         let owners = searchable.indices.filter { searchable[$0].contains(key) }
         guard let first = owners.first else { return }
         lock.withLock {
             if owners.count == 1 {
+                distinctive = first
                 scope = first
             } else if scope.map({ !owners.contains($0) }) ?? true {
                 scope = first
@@ -324,6 +336,7 @@ public final class GamePackLibrary: @unchecked Sendable {
         entries = merged
         searchable = packs.map { Searchable(keys: $0.pack.keys, fuzzy: $0.pack.fuzzy) }
         scope = nil
+        distinctive = nil
         infos = packs.map { Info(id: $0.pack.id, title: $0.pack.title, entries: $0.pack.entries.count, builtIn: $0.builtIn) }
     }
 

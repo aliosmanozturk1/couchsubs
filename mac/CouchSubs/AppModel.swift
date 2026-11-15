@@ -513,6 +513,8 @@ final class AppModel: ObservableObject {
     /// Ayarlarda listelenen paketler (açılışta arka planda yüklenince dolar).
     @Published var installedPacks: [GamePackLibrary.Info] = []
     private let pool: LinePool
+    /// Oynanan oyun: PS5'in bildirdiği, paketten tanınan ya da kullanıcının seçtiği (havuza giden satırlar bu oyunla gider).
+    let gameChoice: GameChoice
     private var poolTimer: Task<Void, Never>?
     private var terminateObserver: NSObjectProtocol?
     /// Bağlıyken birkaç dakikada bir PS5'e çalışan oyunu sorar (havuza giden satırlar oyunla gider). Testlerde kapalı.
@@ -592,6 +594,7 @@ final class AppModel: ObservableObject {
         }
         pool = LinePool(file: poolFile, app: AppIdentity.version, platform: "mac", enabled: curated.sharePool && !testing)
         probesGame = !testing
+        gameChoice = GameChoice(defaults: defaults)
         if !testing {
             historyFile = SubtitleHistory.defaultFile
             history = SubtitleHistory.load(from: SubtitleHistory.defaultFile)
@@ -604,6 +607,13 @@ final class AppModel: ObservableObject {
             engine.storeKey.flatMap { store.load(String.self, for: $0) }?.isEmpty == false
         })
         attachServer()
+        let pool = self.pool
+        gameChoice.onChange = { [weak self] game in
+            Task { await pool.setGame(game) }
+            // Bu oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir.
+            if game != nil { self?.packsForGame() }
+        }
+        gameChoice.packTitles = { [weak self] in GameCatalog.packGames(self?.installedPacks ?? []) }
 
         // Paketler ilk altyazıyı bekletmesin diye açılışta arka planda yüklenir.
         let packs = self.packs
@@ -662,12 +672,10 @@ final class AppModel: ObservableObject {
         guard connected, let host = console?.host else {
             gameProbe?.cancel()
             gameProbe = nil
-            let pool = self.pool
-            Task { await pool.setGame(nil) }
+            gameChoice.consoleReported(nil)
             return
         }
         guard gameProbe == nil else { return }
-        let pool = self.pool
         let services = self.services
         gameProbe = Task { [weak self] in
             var last: RunningGame?
@@ -675,11 +683,10 @@ final class AppModel: ObservableObject {
                 let game = await services.runningGame(host: host)
                 // Bu arada bağlantı bittiyse oyun yazılmaz (bırakılan oyun geri gelmesin).
                 guard !Task.isCancelled else { break }
-                await pool.setGame(game)
+                self?.gameChoice.consoleReported(game)
                 if game != last, let game {
-                    SubtitleLog.write("PS5'te çalışan oyun: \(game.name ?? "?") (\(game.titleId))")
-                    // Bu oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir.
-                    self?.packsForGame()
+                    // Paket sunucusuna bakılması `gameChoice.onChange`te.
+                    SubtitleLog.write("PS5'te çalışan oyun: \(game.name ?? "?") (\(game.titleId ?? "?"))")
                 }
                 last = game
                 try? await Task.sleep(for: Self.gameProbeInterval)
@@ -1168,6 +1175,10 @@ final class AppModel: ObservableObject {
         self.session = session
 
         startKeeper()
+        gameChoice.start(console: console.name.isEmpty ? console.host : console.name) { [weak self] in
+            guard let self else { return false }
+            return self.settings.askGame && self.settings.sharePool
+        }
 
         // Mac uykudan uyanınca bağlantıları hemen yenile.
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
@@ -1328,6 +1339,7 @@ final class AppModel: ObservableObject {
             self?.lastSource = source
             self?.lastTranslation = translation
             self?.addToHistory(source: source, translation: translation, origin: pipeline?.lastOrigin == "paket" ? .pack : .engine)
+            if let self { self.gameChoice.noteLine(fromPack: pipeline?.lastOrigin == "paket", packs: self.packs) }
             if let box = pipeline?.lastBox { self?.lastSubtitleBox = box }
         }
         pipeline.onMetrics = { [weak self] metrics in self?.lastMetrics = metrics }
@@ -1529,6 +1541,7 @@ final class AppModel: ObservableObject {
         session?.stop()
         session = nil
         updateGameProbe(connected: false)
+        gameChoice.stop()
         keeper?.stop()
         keeper = nil
         pipeline?.reset()

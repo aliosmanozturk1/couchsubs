@@ -111,6 +111,7 @@ struct MainControls: View {
                 if model.settings.output.showsOnTV { TVStatusTile() }
             }
             .fixedSize(horizontal: false, vertical: true)
+            if model.isRunning { GameSection(choice: model.gameChoice) }
             SubtitleOutputCard()
             HStack(alignment: .top, spacing: Theme.space("gap")) {
                 StatusTile(symbol: "globe", title: "Translation", value: engineName)

@@ -150,6 +150,8 @@ final class PhoneModel: ObservableObject {
     /// Oyun paketleri: uygulamayla gelenler ve sunucudan indirilen güncel sürümleri (ücretsiz, herkese).
     let packs: GamePackLibrary
     private let pool: LinePool
+    /// Oynanan oyun: PS5'in bildirdiği, paketten tanınan ya da kullanıcının seçtiği (havuza giden satırlar bu oyunla gider).
+    let gameChoice: GameChoice
     /// Bağlıyken birkaç dakikada bir PS5'e çalışan oyunu sorar (havuza giden satırlar oyunla gider). Testlerde kapalı.
     private var gameProbe: Task<Void, Never>?
     private let probesGame: Bool
@@ -187,12 +189,20 @@ final class PhoneModel: ObservableObject {
             .appendingPathComponent(AppIdentity.name, isDirectory: true).appendingPathComponent("pool.json")
         pool = LinePool(file: poolFile, app: AppIdentity.version, platform: "ios", enabled: curated.sharePool && !testing)
         probesGame = !testing
+        gameChoice = GameChoice(defaults: defaults)
         savedKeys = Set(TranslationEngine.allCases.filter { engine in
             engine.storeKey.flatMap { store.load(String.self, for: $0) }?.isEmpty == false
         })
         installedTVApp = defaults.data(forKey: StoreKey.tvAppInstalled).flatMap { try? JSONDecoder().decode(InstalledTVApp.self, from: $0) }
         attachServer()
         reloadPackList()
+        let pool = self.pool
+        gameChoice.onChange = { [weak self] game in
+            Task { await pool.setGame(game) }
+            // Bu oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir.
+            if game != nil { self?.onGameStarted() }
+        }
+        gameChoice.packTitles = { [weak self] in GameCatalog.packGames(self?.installedPacks ?? []) }
     }
 
     /// Ayarlardaki paket listesi; paketler güncellenince yeniden okunur.
@@ -350,6 +360,10 @@ final class PhoneModel: ObservableObject {
         session.start()
         self.session = session
         startKeeper()
+        gameChoice.start(console: console.name.isEmpty ? console.host : console.name) { [weak self] in
+            guard let self else { return false }
+            return self.settings.askGame && self.settings.sharePool
+        }
         isRunning = true
         startedAt = Date()
         runningSince = startedAt
@@ -372,6 +386,7 @@ final class PhoneModel: ObservableObject {
         }
         runningSince = nil
         packInUse = nil
+        gameChoice.stop()
         session?.stop()
         session = nil
         updateGameProbe(connected: false)
@@ -444,25 +459,21 @@ final class PhoneModel: ObservableObject {
     /// PS5'e bağlanınca çalışan oyun okunmaya başlar, bağlantı gidince bırakılır (havuz satırı oyunsuz gider).
     private func updateGameProbe(connected: Bool) {
         guard probesGame else { return }
-        let pool = self.pool
         guard connected, let host = console?.host else {
             gameProbe?.cancel()
             gameProbe = nil
-            Task { await pool.setGame(nil) }
+            gameChoice.consoleReported(nil)
             return
         }
         guard gameProbe == nil else { return }
         let services = self.services
         gameProbe = Task { [weak self] in
-            var last: RunningGame?
             while !Task.isCancelled {
                 let game = await services.runningGame(host: host)
                 // Bu arada bağlantı bittiyse oyun yazılmaz (bırakılan oyun geri gelmesin).
                 guard !Task.isCancelled else { break }
-                await pool.setGame(game)
-                // Yeni oyun: o oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir (Android'deki gibi).
-                if let game, game != last { self?.onGameStarted() }
-                last = game
+                // Yeni oyunda paket sunucusuna bakılması `gameChoice.onChange`te (Android'deki gibi).
+                self?.gameChoice.consoleReported(game)
                 try? await Task.sleep(for: Self.gameProbeInterval)
             }
         }
@@ -494,6 +505,7 @@ final class PhoneModel: ObservableObject {
             self?.lastTranslation = translation
             let fromPack = pipeline?.lastOrigin == "paket"
             if fromPack, let title = self?.packs.scopeTitle { self?.packInUse = title }
+            if let self { self.gameChoice.noteLine(fromPack: fromPack, packs: self.packs) }
             self?.addToHistory(source: source, translation: translation, origin: fromPack ? .pack : .engine)
             self?.noteLine(source: source, translation: translation, fromPack: fromPack)
         }

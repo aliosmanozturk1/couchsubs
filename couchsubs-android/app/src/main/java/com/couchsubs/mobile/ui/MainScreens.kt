@@ -217,6 +217,7 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
         }
         Text(status.phase, style = Tokens.Type.caption, color = Tokens.Color.secondary)
         status.error?.let { NoteTile(it) }
+        GameSection(status)
         val current = status.recent.firstOrNull()
         Tile(Modifier.fillMaxWidth()) {
             TileLabel(stringResource(R.string.running_now))

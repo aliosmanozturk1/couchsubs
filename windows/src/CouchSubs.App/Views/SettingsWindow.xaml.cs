@@ -68,6 +68,7 @@ public partial class SettingsWindow : Window
         ShowEngine();
         GamePacks.IsChecked = settings.GamePacks;
         SharePool.IsChecked = settings.SharePool;
+        AskGame.IsChecked = settings.AskGame;
         ShowPacks();
         AppearanceChoice.SelectedItem = AppearanceChoice.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == settings.Appearance.ToString());
         ShowPasscode();
@@ -186,6 +187,8 @@ public partial class SettingsWindow : Window
     private void OnGamePacks(object sender, RoutedEventArgs e) => Update(s => s with { GamePacks = GamePacks.IsChecked == true });
 
     private void OnSharePool(object sender, RoutedEventArgs e) => Update(s => s with { SharePool = SharePool.IsChecked == true });
+
+    private void OnAskGame(object sender, RoutedEventArgs e) => Update(s => s with { AskGame = AskGame.IsChecked == true });
 
     /// <summary>Seçili motor (ayarlarda ücretsiz ise Free).</summary>
     private TranslationEngine SelectedEngine =>

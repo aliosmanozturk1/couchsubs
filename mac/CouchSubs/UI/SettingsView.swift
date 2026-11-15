@@ -534,6 +534,9 @@ private struct GamePacksPage: View {
             Divider().overlay(Color.csBorder)
             SwitchRow(title: "Send the English subtitles read to the shared pool", isOn: $model.settings.sharePool)
             HintText(text: "Only the game's English text is sent, anonymously. It is used to make better Turkish translations for everyone.")
+            Divider().overlay(Color.csBorder)
+            SwitchRow(title: "Ask which game I'm playing", isOn: $model.settings.askGame)
+            HintText(text: "If no pack recognises the game, asked once two minutes after translation starts.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .tile()

@@ -11,6 +11,8 @@ public static class StoreKeys
     public const string AccountId = "accountId";
     public const string Console = "console";
     public const string Tv = "tv";
+    /// <summary>PS5'in adına göre son seçilen oyun ("Hangi oyunu oynuyorsunuz?" kartının ilk önerisi).</summary>
+    public const string LastGames = "lastGames";
     public const string TvKey = "tvKey";
     public const string TvDevKey = "tvDevKey";
     /// <summary>Samsung ve Android TV'ye CouchSubs'ın kurduğu sürüm (LG'de sürüm TV'den okunur).</summary>
@@ -226,6 +228,8 @@ public sealed record UserSettings
     public bool GamePacks { get; init; } = true;
     /// <summary>Pakette bulunmayan İngilizce satırlar ortak havuza gönderilir (anonim; bkz. <see cref="LinePool"/>).</summary>
     public bool SharePool { get; init; } = LinePool.EnabledByDefault;
+    /// <summary>Oynanan oyun paketle tanınmazsa çeviri başladıktan iki dakika sonra bir kez sorulur (bkz. <see cref="GameSense"/>).</summary>
+    public bool AskGame { get; init; } = true;
     /// <summary>Koyu, açık ya da sistemle aynı. Eski ayar dosyalarında yoktur; onlar da koyu açılır.</summary>
     public AppAppearance Appearance { get; init; } = AppAppearance.Dark;
 

@@ -22,6 +22,7 @@ import com.couchsubs.mobile.account.Telemetry
 import com.couchsubs.mobile.core.CropRegion
 import com.couchsubs.mobile.core.active
 import com.couchsubs.mobile.core.GamePackLibrary
+import com.couchsubs.mobile.core.GameSense
 import com.couchsubs.mobile.core.LinePool
 import com.couchsubs.mobile.packs.PackStore
 import com.couchsubs.mobile.core.PackLookup
@@ -259,6 +260,7 @@ class TranslationService : Service() {
             onPackMissed = { text -> linePool.offer(text) }
             onPairShown = { pair ->
                 LiveState.shown(pair, pair.packId?.let { packTitles?.get(it) ?: it })
+                if (replacement == null) PlayedGame.noteLine(pair.origin == "paket", library)
                 Services.addToHistory(pair.source, pair.translation,
                     if (pair.origin == "paket") com.couchsubs.mobile.core.SubtitleHistory.PACK else com.couchsubs.mobile.core.SubtitleHistory.ENGINE)
                 // Paket başına oturumda bir kez (her satırda olay göndermeyelim); toplam sayı oturum sonunda gider.
@@ -309,32 +311,36 @@ class TranslationService : Service() {
         val onState: (SessionState) -> Unit = { state ->
             streaming = state == SessionState.Streaming
             if (!streaming) {
-                linePool.setGame(null)
+                PlayedGame.consoleReported(null)
                 regionWatcher?.reset()
             }
             LiveState.update { it.copy(phase = describe(state)) }
         }
-        // Bağlıyken iki dakikada bir PS5'e çalışan oyun sorulur: havuza giden satırlar oyunla gider (klipte sorulmaz).
+        // Oynanan oyun (PS5'in bildirdiği, paketten tanınan ya da kullanıcının seçtiği; bkz. PlayedGame): havuza giden
+        // satırlar bu oyunla gider. Klipte oyun aranmaz, sorulmaz.
         if (replacement == null) {
-            var lastGame: String? = null
+            PlayedGame.packTitles = { packTitles?.filterKeys { it != GameSense.GENERAL_PACK }?.values?.toList() ?: emptyList() }
+            PlayedGame.onChange = { game ->
+                linePool.setGame(game)
+                // Yeni oyun: o oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir; inerse bu oturumun
+                // paketleri hemen yeniden okunur (iPhone'daki gibi).
+                if (game != null) Services.refreshPacks(force = false, maxAgeMs = PackStore.GAME_CHECK_MS) {
+                    try {
+                        library.reload()
+                        if (packTitles != null) packTitles = library.infos.associate { it.id to it.title }
+                    } catch (error: OutOfMemoryError) {
+                        Log.e(TAG, "packs reload", error)
+                    }
+                }
+            }
+            PlayedGame.start(console.name.ifEmpty { console.host }, settings, startedAt)
+            // Oyun iki dakikada tanınmazsa kart açılır (ayar ve ortak havuz açıksa, oturumda bir kez).
+            background.scheduleWithFixedDelay({ PlayedGame.checkAsk(System.currentTimeMillis()) }, 15, 15, TimeUnit.SECONDS)
+            // Bağlıyken iki dakikada bir PS5'e çalışan oyun sorulur.
             background.scheduleWithFixedDelay({
                 try {
                     val host = settings.console?.host ?: console.host
-                    val game = if (streaming) ConsoleDiscovery.runningGame(host) else null
-                    if (streaming) linePool.setGame(game)
-                    // Yeni oyun: o oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir; inerse bu oturumun
-                    // paketleri hemen yeniden okunur (iPhone'daki gibi).
-                    if (game != null && game.titleId != lastGame) {
-                        lastGame = game.titleId
-                        Services.refreshPacks(force = false, maxAgeMs = PackStore.GAME_CHECK_MS) {
-                            try {
-                                library.reload()
-                                if (packTitles != null) packTitles = library.infos.associate { it.id to it.title }
-                            } catch (error: OutOfMemoryError) {
-                                Log.e(TAG, "packs reload", error)
-                            }
-                        }
-                    }
+                    if (streaming) PlayedGame.consoleReported(ConsoleDiscovery.runningGame(host))
                 } catch (error: Exception) {
                     Log.w(TAG, "running game", error)
                 }
@@ -445,6 +451,7 @@ class TranslationService : Service() {
 
     /** Kurulan parçaları kapatır; onDestroy'dan ve hizmet kurulum bitmeden durdurulduysa kurulum iş parçacığından çağrılır. */
     private fun releaseParts() = synchronized(lifecycle) {
+        PlayedGame.stop()
         styleListener?.let(settings::removeListener)
         styleListener = null
         areasListener?.let(settings::removeListener)

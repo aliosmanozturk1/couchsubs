@@ -31,6 +31,10 @@ data class LiveStatus(
     /** Bu oturumda gösterilen satır ve paketten gelenler. */
     val shownLines: Int = 0,
     val packLines: Int = 0,
+    /** Oynanan oyun (PS5'in bildirdiği, paketten tanınan ya da seçilen; bkz. [PlayedGame]); bilinmiyorsa null. */
+    val game: String? = null,
+    /** "Hangi oyunu oynuyorsunuz?" kartı açık. */
+    val askingGame: Boolean = false,
 ) {
     /**
      * Sunucunun olayı telefon ekranına: yeni satır öncekini üste iter; aynı cümlenin uzamış ya da düzelmiş okuması

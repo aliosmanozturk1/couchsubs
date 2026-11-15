@@ -194,6 +194,7 @@ struct RunningScreen: View {
             if model.sessionState != .streaming {
                 MobileNote(text: model.ps5StatusText, tone: Mobile.Palette.secondary)
             }
+            GameSection(choice: model.gameChoice)
             Tile {
                 Text("Now").font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
                 if let current = model.recentLines.first {

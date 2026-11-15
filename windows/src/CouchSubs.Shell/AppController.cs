@@ -81,6 +81,15 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Bağlıyken iki dakikada bir PS5'e çalışan oyunu sorar (havuza giden satırlar oyunla gider).</summary>
     private CancellationTokenSource? gameProbe;
     public static readonly TimeSpan GameProbeInterval = TimeSpan.FromMinutes(2);
+    /// <summary>
+    /// Oynanan oyun: PS5'in bildirdiği, paketten tanınan ya da kullanıcının seçtiği (havuza giden satırlar bu oyunla gider;
+    /// Mac ve iPhone'daki GameChoice ile aynı davranış).
+    /// </summary>
+    private readonly GameSense gameSense = new();
+    private RunningGame? publishedGame;
+    private string? playedGame;
+    private bool askingGame;
+    private CancellationTokenSource? gameAsk;
     private Timer? packTimer;
     private string metricsText = "";
     /// <summary>Çevrilen satırların geçmişi (arayüz iş parçacığında değişir).</summary>
@@ -1059,6 +1068,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             session = stream;
 
             StartKeeper();
+            StartGameSense();
 
             sleep.Begin();
             IsRunning = true;
@@ -1171,6 +1181,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         session?.Dispose();
         session = null;
         UpdateGameProbe(connected: false);
+        StopGameSense();
         keeper?.Stop();
         keeper = null;
         pipeline?.Reset();
@@ -1264,6 +1275,97 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Ayarlarda listelenen paketler (açılışta arka planda yüklenince dolar).</summary>
     public IReadOnlyList<GamePackLibrary.Info> InstalledPacks { get => installedPacks; private set => Set(ref installedPacks, value); }
 
+    /// <summary>Oynanan oyunun adı (bilinmiyorsa null): ana ekrandaki "Oynanan oyun: X · Değiştir".</summary>
+    public string? PlayedGame { get => playedGame; private set => Set(ref playedGame, value); }
+
+    /// <summary>"Hangi oyunu oynuyorsunuz?" kartı açık.</summary>
+    public bool AskingGame { get => askingGame; private set => Set(ref askingGame, value); }
+
+    /// <summary>Bu PS5'te son seçilen oyun.</summary>
+    public string? LastPlayedGame =>
+        GameConsoleName is { } name && store.Load<Dictionary<string, string>>(StoreKeys.LastGames) is { } saved ? saved.GetValueOrDefault(name) : null;
+
+    private string? GameConsoleName => console is null ? null : string.IsNullOrEmpty(console.Name) ? console.Host : console.Name;
+
+    /// <summary>Kartın önerileri: son oynanan, kurulu paketlerin oyunları ve popüler oyunlar.</summary>
+    public IReadOnlyList<string> GameSuggestions(string query) =>
+        GameCatalog.Suggestions(query, GameCatalog.PackGames(installedPacks), LastPlayedGame);
+
+    /// <summary>Kullanıcı bir oyun seçti ya da adını yazdı; seçim PS5'in adıyla saklanır.</summary>
+    public void ChooseGame(string name)
+    {
+        if (RunningGame.Named(name)?.Name is not { } clean) return;
+        gameSense.Choose(clean);
+        if (GameConsoleName is { } consoleName)
+        {
+            var saved = store.Load<Dictionary<string, string>>(StoreKeys.LastGames) ?? new Dictionary<string, string>();
+            saved[consoleName] = clean;
+            store.Save(StoreKeys.LastGames, saved);
+        }
+        AskingGame = false;
+        PublishGame();
+    }
+
+    /// <summary>"Değiştir": kart elle açılır.</summary>
+    public void AskGame()
+    {
+        gameSense.MarkAsked();
+        AskingGame = true;
+    }
+
+    /// <summary>"Sorma": bu oturumda bir daha sorulmaz.</summary>
+    public void DismissGame()
+    {
+        gameSense.MarkAsked();
+        AskingGame = false;
+    }
+
+    /// <summary>Oyun değiştiyse havuza bildirilir; yeni oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir.</summary>
+    private void PublishGame()
+    {
+        var current = gameSense.Current;
+        PlayedGame = current?.Name;
+        if (current == publishedGame) return;
+        publishedGame = current;
+        services.Pool?.SetGame(current);
+        if (current is not null && services.PackUpdates is { } packUpdater) _ = RefreshPacksAsync(packUpdater, maxAge: PackUpdater.GameCheckInterval);
+    }
+
+    /// <summary>Çeviri başladı: oyun penceresi sıfırlanır, iki dakika sonra oyun hâlâ bilinmiyorsa kart açılır.</summary>
+    private void StartGameSense()
+    {
+        gameSense.StartSession();
+        publishedGame = null;
+        AskingGame = false;
+        PublishGame();
+        gameAsk?.Cancel();
+        gameAsk?.Dispose();
+        var cancel = new CancellationTokenSource();
+        gameAsk = cancel;
+        var token = cancel.Token;
+        var started = DateTime.UtcNow;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try { await Task.Delay(TimeSpan.FromSeconds(15), token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return; }
+                if (!gameSense.ShouldAsk(DateTime.UtcNow - started, settings.AskGame && settings.SharePool)) continue;
+                gameSense.MarkAsked();
+                post(() => { if (!token.IsCancellationRequested) AskingGame = true; });
+                return;
+            }
+        }, CancellationToken.None);
+    }
+
+    private void StopGameSense()
+    {
+        gameAsk?.Cancel();
+        gameAsk?.Dispose();
+        gameAsk = null;
+        AskingGame = false;
+    }
+
     /// <summary>Paketler yalnız İngilizce→Türkçede ve ayar açıkken kullanılır.</summary>
     private bool PacksActive => settings.GamePacks && settings.SourceLanguage == "en" && settings.TargetLanguage == "tr" && services.GamePacks is not null;
 
@@ -1313,13 +1415,14 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>PS5'e bağlanınca çalışan oyun okunmaya başlar, bağlantı gidince bırakılır (havuz satırı oyunsuz gider).</summary>
     private void UpdateGameProbe(bool connected)
     {
-        if (services.Pool is not { } pool) return;
+        if (services.Pool is null) return;
         if (!connected || console?.Host is not { } host)
         {
             gameProbe?.Cancel();
             gameProbe?.Dispose();
             gameProbe = null;
-            pool.SetGame(null);
+            gameSense.SetConsole(null);
+            PublishGame();
             return;
         }
         if (gameProbe is not null) return;
@@ -1336,13 +1439,10 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 catch (Exception) { game = null; }
                 // Bu arada bağlantı bittiyse oyun yazılmaz (bırakılan oyun geri gelmesin).
                 if (token.IsCancellationRequested) break;
-                pool.SetGame(game);
-                if (game is not null && game != last)
-                {
-                    SubtitleLog.Write($"PS5'te çalışan oyun: {game.Name ?? "?"} ({game.TitleId})");
-                    // Bu oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir.
-                    if (services.PackUpdates is { } packUpdater) _ = RefreshPacksAsync(packUpdater, maxAge: PackUpdater.GameCheckInterval);
-                }
+                gameSense.SetConsole(game);
+                // Paket sunucusuna bakılması PublishGame'de.
+                post(() => { if (!token.IsCancellationRequested) PublishGame(); });
+                if (game is not null && game != last) SubtitleLog.Write($"PS5'te çalışan oyun: {game.Name ?? "?"} ({game.TitleId ?? "?"})");
                 last = game;
                 try { await Task.Delay(GameProbeInterval, token).ConfigureAwait(false); }
                 catch (OperationCanceledException) { break; }
@@ -1390,8 +1490,16 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         {
             var box = built.LastBox;
             var origin = built.LastOrigin == "paket" ? LineOrigin.Pack : LineOrigin.Engine;
+            // Satır yalnız tek bir pakette bulunduysa o pakete bir oy: son 20 satırın 5'i aynı paketten gelince oyun odur.
+            var hit = services.GamePacks?.TakeDistinctiveHit();
+            var recognised = gameSense.NoteLine(origin == LineOrigin.Pack ? hit?.Id : null, origin == LineOrigin.Pack ? hit?.Title : null);
             post(() =>
             {
+                if (recognised)
+                {
+                    AskingGame = false;
+                    PublishGame();
+                }
                 LastSource = source;
                 LastTranslation = translation;
                 if (box is not null) lastSubtitleBox = box;

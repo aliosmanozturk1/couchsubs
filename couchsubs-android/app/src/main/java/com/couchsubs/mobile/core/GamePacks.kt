@@ -320,6 +320,7 @@ class GamePackLibrary(
      * çok pakette varsa kapsam o paketlerden biri değilse ilkine geçer; hiç tam eşleşme olmadıysa bulanık arama yapılmaz.
      */
     private var scope: Int? = null
+    private var distinctive: Int? = null
 
     val infos: List<Info>
         get() = synchronized(lock) {
@@ -390,12 +391,23 @@ class GamePackLibrary(
         return found
     }
 
+    /**
+     * Son çağrıdan beri yalnız tek bir pakette bulunan satırın paketi; okununca silinir. Okunan satırlar art arda aynı
+     * paketten geliyorsa oynanan oyun o pakettir ([GameSense]). Birkaç pakette ortak satırlar ("Okay.") sayılmaz.
+     */
+    fun takeDistinctiveHit(): Info? = synchronized(lock) {
+        val index = distinctive
+        distinctive = null
+        index?.let { packs.getOrNull(it) }?.let { (pack, builtIn) -> Info(pack.id, pack.title, pack.size, builtIn) }
+    }
+
     private fun noteHit(current: List<Pair<GamePack, Boolean>>, number: Long) {
         val off = disabled
         val owners = current.indices.filter { current[it].first.id !in off && current[it].first.contains(number) }
         val first = owners.firstOrNull() ?: return
         synchronized(lock) {
             if (packs !== current) return
+            if (owners.size == 1) distinctive = first
             if (owners.size == 1 || scope !in owners) scope = first
         }
     }
@@ -451,6 +463,7 @@ class GamePackLibrary(
         }
         packs = list
         scope = null
+        distinctive = null
     }
 
     companion object {

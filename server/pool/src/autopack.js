@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Havuzdan kendiliğinden oyun paketi (Cron Trigger, her gece 03:07–04:57 UTC arasında on dakikada bir).
 //
-// Bir oyunun (title_id) satırları en az MIN_INSTALLS farklı kurulumda aynı biçimde (aynı canon anahtarla) okunduysa
+// Bir oyunun (title_id; kimlik yoksa src/games.js'teki anahtarıyla oyun adı) satırları en az MIN_INSTALLS farklı kurulumda aynı biçimde (aynı canon anahtarla) okunduysa
 // tools/packs/poolpack.py'deki kurallarla temizlenir, Workers AI ile Türkçeye çevrilir ve R2'ye (couchsubs-packs kovası)
 // `packs/pool-<oyun kimliği>.json.gz` olarak yazılır; index.json'a sürümü artırılarak girer. Uygulamalar paketi
 // kendileri indirir (server/packs). Yeni kimlik bilgisi yoktur: D1, R2 ve Workers AI bu Worker'ın bağlarıdır.
@@ -15,6 +15,7 @@
 
 import { accepts } from "./filter.js";
 import { canon, key } from "./index.js";
+import { gameKey, gameSlug } from "./games.js";
 
 /** Bir satırın pakete girmesi için onu okuyan en az farklı kurulum sayısı. */
 export const MIN_INSTALLS = 2;
@@ -32,10 +33,15 @@ export const SOURCE = `CouchSubs havuzu (en az ${MIN_INSTALLS} oyuncu) + Workers
  *  bilinen paketlerden sonra hazırlanır. */
 export const GENERAL = "GENEL";
 export const GENERAL_TITLE = "Ortak havuz (çeşitli oyunlar)";
+/** Kimliksiz, yalnız adıyla gelen oyun ayrı paket için en az bu kadar farklı kurulumdan oy almalı (game_votes):
+ *  tek kişinin yanlış seçimi paket açmasın. Oyu yetmeyen adın satırları ortak pakete gider. */
+export const MIN_VOTERS = 2;
+/** Bir ad grubunda en çok bu kadar yazım ("GTA 6", "Grand Theft Auto VI"…) sorguya girer. */
+const MAX_VARIANTS = 20;
 
 const STATE = "auto/state.json";
 const KNOWN = "auto/known-keys.bin";
-const cacheFile = (titleId) => `auto/tr/${titleId}.json`;
+const cacheFile = (job) => (job.titleId ? `auto/tr/${job.titleId}.json` : `auto/tr/name-${gameSlug(job.gameKey)}.json`);
 
 // poolpack.py ile aynı: konuşmacı etiketi, Türkçe harf, yazı tanıma çöpü.
 const LABEL = /^[-•\s]*([A-Z][A-Za-z .'’-]{1,28}?)\s*[•:]\s+(?=\S)/;
@@ -50,6 +56,38 @@ const ENGLISH = new Set(("the a an to of and or but with for from my your his he
 /** Oyun kimliğinden paket kimliği: "PPSA01234" → "pool-ppsa01234" (server/packs'in kimlik biçimine uyar). */
 export function packId(titleId) {
   return "pool-" + String(titleId).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+/** İşin paket kimliği: oyun kimliği varsa ondan, yoksa adın anahtarından ("gta 6" → "pool-gta-6"). */
+export function jobPackId(job) {
+  return job.titleId ? packId(job.titleId) : "pool-" + gameSlug(job.gameKey);
+}
+
+/** Kimliksiz satırların oyun adları ("game" sütunu, yazımına göre sayılmış) anahtara göre birleşir; en az MIN_VOTERS
+ *  kurulumun oyladığı anahtarlar iş olur. Görünen ad en çok satırı olan yazımdır. */
+export function nameJobs(rows, votes) {
+  const groups = new Map();
+  for (const r of rows) {
+    const k = gameKey(r.game);
+    if (!k || !gameSlug(k) || gameSlug(k) === "genel") continue;
+    const g = groups.get(k) ?? { titleId: null, gameKey: k, game: r.game, best: 0, lines: 0, games: [] };
+    g.lines += r.lines;
+    if (g.games.length < MAX_VARIANTS) g.games.push(r.game);
+    if (r.lines > g.best) { g.best = r.lines; g.game = r.game; }
+    groups.set(k, g);
+  }
+  return [...groups.values()]
+    .filter((g) => (votes.get(g.gameKey) ?? 0) >= MIN_VOTERS)
+    .map(({ best, ...g }) => g)
+    .sort((a, b) => b.lines - a.lines);
+}
+
+async function allRows(stmt) {
+  try { return (await stmt.all()).results ?? []; } catch (e) {
+    // Geçiş çalışmadıysa (game_votes ya da game sütunu yok) ad grupları yoktur.
+    if (/no such (table|column)/i.test(String(e?.message || e))) return [];
+    throw e;
+  }
 }
 
 /** Havuz satırının çevrilecek gövdesi (konuşmacı etiketi atılmış) ya da pakete uygun değilse null. */
@@ -155,7 +193,7 @@ async function gzip(text) {
 const sorted = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 
 /** Çeviri önbelleğinden paket gövdesi (elle hazırlanmış paketlerdeki anahtarlar hariç). */
-export function packBody(id, title, cache, known) {
+export function packBody(id, title, cache, known, titleId = null) {
   const entries = {};
   const segments = {};
   for (const [pool, line] of Object.entries(cache.lines)) {
@@ -167,7 +205,9 @@ export function packBody(id, title, cache, known) {
   }
   for (const k of Object.keys(segments)) if (k in entries) delete segments[k];
   const count = Object.keys(entries).length;
-  const body = JSON.stringify({ format: 2, id, title, source: SOURCE, entries: sorted(entries), segments: sorted(segments) });
+  // Oyun kimliği uygulamalara da gider: paketle tanınan oyun havuza kimliğiyle döner.
+  const head = titleId ? { format: 2, id, title, titleId } : { format: 2, id, title };
+  const body = JSON.stringify({ ...head, source: SOURCE, entries: sorted(entries), segments: sorted(segments) });
   return { body, count };
 }
 
@@ -176,9 +216,9 @@ async function readIndex(env) {
 }
 
 async function buildPack(env, job, cache, known) {
-  const id = packId(job.titleId);
+  const id = jobPackId(job);
   const title = job.titleId === GENERAL ? GENERAL_TITLE : job.game || job.titleId;
-  const { body, count } = packBody(id, title, cache, known);
+  const { body, count } = packBody(id, title, cache, known, job.titleId === GENERAL ? null : job.titleId);
   const packs = await readIndex(env);
   const previous = packs.find((p) => p.id === id);
   if (!previous && count < MIN_LINES) return { id, built: false, entries: count };
@@ -192,11 +232,13 @@ async function buildPack(env, job, cache, known) {
   });
   const fresh = await readIndex(env);
   const version = (fresh.find((p) => p.id === id)?.version ?? 0) + 1;
-  const entry = { id, title, version, sha256, size: data.length, entries: count, auto: true, titleId: job.titleId };
+  const entry = { id, title, version, sha256, size: data.length, entries: count, auto: true };
+  if (job.titleId) entry.titleId = job.titleId;
+  else entry.game = job.gameKey;
   const list = fresh.filter((p) => p.id !== id).concat(entry).sort((a, b) => (a.id < b.id ? -1 : 1));
   await putJson(env, "index.json", { packs: list });
   cache.contentSha = contentSha;
-  await putJson(env, cacheFile(job.titleId), cache);
+  await putJson(env, cacheFile(job), cache);
   return { id, built: true, version, entries: count, size: data.length };
 }
 
@@ -212,12 +254,25 @@ export async function runAutopack(env, now = new Date()) {
     ).bind(MIN_INSTALLS).all();
     const packs = await readIndex(env);
     const titles = results.map((r) => ({ titleId: r.title_id, game: r.game, lines: r.lines }));
+    // Kimliksiz ama adıyla gelen oyunlar: adın anahtarına göre birleşir, en az iki kurulumun oyladığı ayrı iş olur.
+    const voted = await allRows(env.DB.prepare(
+      "SELECT game_key, COUNT(*) AS installs FROM game_votes GROUP BY game_key HAVING COUNT(*)>=?"
+    ).bind(MIN_VOTERS));
+    const votes = new Map(voted.map((r) => [r.game_key, r.installs]));
+    const named = votes.size ? nameJobs(await allRows(env.DB.prepare(
+      "SELECT game, COUNT(*) AS lines FROM lines WHERE title_id IS NULL AND game IS NOT NULL AND installs>=? " +
+      "GROUP BY game ORDER BY lines DESC LIMIT 300"
+    ).bind(MIN_INSTALLS)), votes).slice(0, 30) : [];
+    titles.push(...named);
     const general = await env.DB.prepare("SELECT COUNT(*) AS lines FROM lines WHERE title_id IS NULL AND installs>=?")
       .bind(MIN_INSTALLS).first();
-    titles.push({ titleId: GENERAL, game: null, lines: general?.lines ?? 0 });
+    const namedLines = named.reduce((sum, g) => sum + g.lines, 0);
+    titles.push({ titleId: GENERAL, game: null, lines: Math.max(0, (general?.lines ?? 0) - namedLines) });
     // Ham satır sayısı temizlikten önce: eşiğin altındaki oyun beklemeye kalır (paketi zaten varsa güncellenir).
-    const queue = titles.filter((t) => t.lines >= MIN_LINES || packs.some((p) => p.id === packId(t.titleId)));
-    state = { night, titles, queue, translated: 0, done: [] };
+    const queue = titles.filter((t) => t.lines >= MIN_LINES || packs.some((p) => p.id === jobPackId(t)));
+    // Ortak paket, kendi paketi hazırlanan adların satırlarını almaz.
+    const namedGames = named.filter((g) => queue.includes(g)).flatMap((g) => g.games);
+    state = { night, titles, queue, namedGames, translated: 0, done: [] };
     await putJson(env, STATE, state);
     return { phase: "plan", titles: titles.length, queued: queue.length };
   }
@@ -226,15 +281,26 @@ export async function runAutopack(env, now = new Date()) {
 
   const known = await loadKnown(env);
   if (!known) return { phase: "waiting", reason: "auto/known-keys.bin yok" };
-  const cache = (await getJson(env, cacheFile(job.titleId))) ?? { lines: {}, skip: {}, fail: {} };
+  const cache = (await getJson(env, cacheFile(job))) ?? { lines: {}, skip: {}, fail: {} };
   cache.fail ??= {};
-  const { results: rows } = await (job.titleId === GENERAL
-    ? env.DB.prepare(
-      "SELECT key, text FROM lines WHERE title_id IS NULL AND installs>=? ORDER BY installs DESC, last_seen DESC LIMIT 5000"
-    ).bind(MIN_INSTALLS)
-    : env.DB.prepare(
+  const separate = new Set(state.namedGames ?? []);
+  let rows;
+  if (job.titleId === GENERAL) {
+    rows = (await env.DB.prepare(separate.size
+      ? "SELECT key, text, game FROM lines WHERE title_id IS NULL AND installs>=? ORDER BY installs DESC, last_seen DESC LIMIT 5000"
+      : "SELECT key, text FROM lines WHERE title_id IS NULL AND installs>=? ORDER BY installs DESC, last_seen DESC LIMIT 5000"
+    ).bind(MIN_INSTALLS).all()).results.filter((r) => !r.game || !separate.has(r.game));
+  } else if (job.titleId) {
+    ({ results: rows } = await env.DB.prepare(
       "SELECT key, text FROM lines WHERE title_id=? AND installs>=? ORDER BY installs DESC LIMIT 5000"
-    ).bind(job.titleId, MIN_INSTALLS)).all();
+    ).bind(job.titleId, MIN_INSTALLS).all());
+  } else {
+    const games = (job.games?.length ? job.games : [job.game]).slice(0, MAX_VARIANTS);
+    ({ results: rows } = await env.DB.prepare(
+      `SELECT key, text FROM lines WHERE title_id IS NULL AND game IN (${games.map(() => "?").join(",")}) AND installs>=? ` +
+      "ORDER BY installs DESC LIMIT 5000"
+    ).bind(...games, MIN_INSTALLS).all());
+  }
 
   const budget = Math.min(LINES_PER_RUN, NIGHTLY_LIMIT - state.translated);
   const todo = [];
@@ -269,9 +335,9 @@ export async function runAutopack(env, now = new Date()) {
       });
     }
     state.translated += todo.length;
-    await putJson(env, cacheFile(job.titleId), cache);
+    await putJson(env, cacheFile(job), cache);
     await putJson(env, STATE, state);
-    return { phase: "translate", titleId: job.titleId, looked, translated: todo.length };
+    return { phase: "translate", titleId: job.titleId, game: job.gameKey, looked, translated: todo.length };
   }
 
   // Çevrilecek yeni satır kalmadı (ya da gecenin sınırı doldu): paket.
@@ -279,5 +345,5 @@ export async function runAutopack(env, now = new Date()) {
   state.queue.shift();
   state.done.push({ ...job, ...result });
   await putJson(env, STATE, state);
-  return { phase: "build", titleId: job.titleId, ...result };
+  return { phase: "build", titleId: job.titleId, game: job.gameKey, ...result };
 }

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // CouchSubs subtitle pool (Cloudflare Worker + D1).
 // POST /v1/lines   : uygulamalar paketlerde bulunmayan İngilizce satırları gönderir. Satırda isteğe bağlı olarak
-//                    PS5'te o an çalışan oyunun kimliği (titleId, ör. "PPSA01234") ve adı (game) gelir.
+//                    PS5'te o an çalışan oyunun kimliği (titleId, ör. "PPSA01234") ve adı (game) gelir. Kimlik
+//                    yoksa ad uygulamanın paketten tanıdığı ya da kullanıcının seçtiği oyundur; kurulum başına bir
+//                    "oy" (game_votes) yazılır, gece paketi en az iki kurulumun bildirdiği adla açılır.
 // GET  /v1/export  : (yönetici) en az N kurulumun gördüğü, henüz çevrilmemiş satırlar; `title=` ya da `game=` ile
 //                    yalnız bir oyunun satırları.
 // POST /v1/exported: (yönetici) çeviriye alınan anahtarları işaretler.
@@ -10,6 +12,7 @@
 
 import { accepts } from "./filter.js";
 import { runAutopack } from "./autopack.js";
+import { gameKey } from "./games.js";
 
 const MAX_LINES = 200;
 const DAILY_LIMIT = 5000;
@@ -131,7 +134,27 @@ async function submit(req, env) {
     stmts = build(true);
     await env.DB.batch(stmts);
   }
+  await vote(env, install, entries);
   return json({ accepted: fresh.size, recorded: stmts.length - 1 });
+}
+
+/** Kimliksiz gelen oyun adları: kurulum başına bir oy (istekte birkaç oyun olsa da en çok üç yazma). Tek kişinin
+ *  yanlış seçimi paket açmasın diye autopack en az iki kurulumun oyladığı adı ayrı paket yapar. Tablo yoksa
+ *  (migrate-2026-11-15-game-votes.sql çalışmadıysa) sessizce atlanır. */
+async function vote(env, install, entries) {
+  const keys = new Set();
+  for (const [, line] of entries) {
+    if (line.title || !line.game) continue;
+    const k = gameKey(line.game);
+    if (k) keys.add(k);
+  }
+  if (!keys.size) return;
+  try {
+    await env.DB.batch([...keys].slice(0, 3).map((k) =>
+      env.DB.prepare("INSERT OR IGNORE INTO game_votes(game_key,install) VALUES(?,?)").bind(k, install)));
+  } catch (e) {
+    if (!/no such table/i.test(String(e?.message || e))) throw e;
+  }
 }
 
 const UPSERT =

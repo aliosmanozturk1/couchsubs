@@ -226,6 +226,7 @@ public sealed class GamePackLibrary(Func<IEnumerable<(string Name, byte[] Data)>
     /// varsa kapsam o paketlerden biri değilse ilkine geçer; hiç tam eşleşme olmadıysa bulanık arama yapılmaz.
     /// </summary>
     private int? scope;
+    private int? distinctive;
     private IReadOnlyList<Info> infos = [];
 
     /// <summary>Uygulamaya gömülü paketler (core/Sources/CouchSubsCore/Resources/packs, ad: "packs/x.json.gz").</summary>
@@ -294,9 +295,26 @@ public sealed class GamePackLibrary(Func<IEnumerable<(string Name, byte[] Data)>
         if (owners.Count > 0)
         {
             lock (gate)
+            {
+                if (owners.Count == 1) distinctive = owners[0];
                 if (owners.Count == 1 || scope is not { } chosen || !owners.Contains(chosen)) scope = owners[0];
+            }
         }
         return turkish;
+    }
+
+    /// <summary>
+    /// Son çağrıdan beri yalnız tek bir pakette bulunan satırın paketi; okununca silinir. Okunan satırlar art arda aynı
+    /// paketten geliyorsa oynanan oyun o pakettir (<see cref="GameSense"/>). Birkaç pakette ortak satırlar ("Okay.") sayılmaz.
+    /// </summary>
+    public Info? TakeDistinctiveHit()
+    {
+        lock (gate)
+        {
+            var hit = distinctive is { } index && index < infos.Count ? infos[index] : null;
+            distinctive = null;
+            return hit;
+        }
     }
 
     /// <summary>
@@ -394,6 +412,7 @@ public sealed class GamePackLibrary(Func<IEnumerable<(string Name, byte[] Data)>
         entries = merged;
         loadedPacks = [.. packs.Select(p => p.Pack)];
         scope = null;
+        distinctive = null;
         infos = [.. packs.Select(p => new Info(p.Pack.Id, p.Pack.Title, p.Pack.Entries.Count, p.BuiltIn))];
     }
 

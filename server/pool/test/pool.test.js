@@ -5,7 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { accepts } from "../src/filter.js";
 import worker, { gameName, titleId } from "../src/index.js";
-import { GENERAL, runAutopack } from "../src/autopack.js";
+import { GENERAL, jobPackId, nameJobs, runAutopack } from "../src/autopack.js";
+import { gameKey, gameSlug } from "../src/games.js";
 
 test("Türkçe arayüz, bozulmuş Türkçe, sistem yazısı ve yarım okumalar alınmaz", () => {
   for (const line of [
@@ -189,4 +190,42 @@ test("oyunu bilinmeyen satırlar ortak pakete sıralanır (oyunu bilinenlerden s
   assert.equal(plan.queued, 2);
   const state = JSON.parse(stored.get("auto/state.json"));
   assert.deepEqual(state.queue.map((t) => t.titleId), ["PPSA01234", GENERAL]);
+});
+
+test("oyun adı anahtarı aynı oyunun farklı yazımlarını birleştirir", () => {
+  for (const name of ["Grand Theft Auto VI", "GTA 6", "gta vi", "GTA6", "Grand Theft Auto VI™"]) assert.equal(gameKey(name), "gta 6", name);
+  assert.equal(gameKey("Marvel's Spider-Man 2"), "marvels spider man 2");
+  assert.equal(gameKey("The Witcher 3: Wild Hunt"), "witcher 3 wild hunt");
+  assert.equal(gameKey("Call of Duty: Black Ops 7"), "cod black ops 7");
+  assert.equal(gameKey(""), "");
+  assert.equal(gameSlug("gta 6"), "gta-6");
+});
+
+test("kimliksiz oyun adları anahtara göre birleşir; tek kurulumun adı ayrı paket açmaz", () => {
+  const rows = [{ game: "GTA 6", lines: 200 }, { game: "Grand Theft Auto VI", lines: 300 }, { game: "Yanlış Oyun", lines: 900 }];
+  const jobs = nameJobs(rows, new Map([["gta 6", 3], ["yanlis oyun", 1]]));
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].game, "Grand Theft Auto VI");
+  assert.equal(jobs[0].lines, 500);
+  assert.deepEqual(jobs[0].games, ["GTA 6", "Grand Theft Auto VI"]);
+  assert.equal(jobPackId(jobs[0]), "pool-gta-6");
+});
+
+test("kimliksiz oyun adı kurulum başına bir oy yazar", async () => {
+  const DB = fakeDB();
+  const votes = [];
+  const batch = DB.batch;
+  DB.batch = async (stmts) => {
+    if (stmts.every((s) => s.sql.startsWith("INSERT OR IGNORE INTO game_votes"))) {
+      votes.push(...stmts.map((s) => s.args));
+      return stmts.map(() => ({ meta: { changes: 1 } }));
+    }
+    return batch(stmts);
+  };
+  await postLines({ DB }, install(1), [
+    { text: "Get in the car, Lucia.", game: "Grand Theft Auto VI" },
+    { text: "Keep your head down.", game: "GTA 6" },
+    { text: "Who is that over there?", titleId: "PPSA12345", game: "Other" },
+  ]);
+  assert.deepEqual(votes, [["gta 6", install(1)]]);
 });

@@ -56,6 +56,9 @@ struct ProfileScreen: View {
                 RowDivider()
                 toggleRow("Contribute to the shared pool", "English lines that are read, anonymous", isOn: $model.settings.sharePool)
                 RowDivider()
+                toggleRow("Ask which game I'm playing", "If no pack recognises the game, asked once two minutes after translation starts.",
+                          isOn: $model.settings.askGame)
+                RowDivider()
                 toggleRow("Usage data", "Error and usage statistics", isOn: $usageData)
             }
             Tile(spacing: 0) {

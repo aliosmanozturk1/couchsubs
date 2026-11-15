@@ -8,9 +8,11 @@ namespace CouchSubs.Core;
 /// <summary>
 /// PS5'te o an çalışan oyun: keşif yanıtındaki <c>running-app-titleid</c> ve <c>running-app-name</c>. Ortak havuza giden
 /// satıra eklenir; yeni bir oyun (ör. GTA 6) çıkınca o oyunun satırları ayrı toplanıp hızla paket yapılır. Yalnız oyunun
-/// kimliği ve adı gider. Mac'teki CouchSubsCore/RunningGame.swift ile aynı kurallar (sunucu da aynısını doğrular).
+/// kimliği ve adı gider. PS5 çoğu zaman çalışan oyunu bildirmiyor; o zaman oyun uygulamanın paketten tanıdığı ya da
+/// kullanıcının seçtiği addır (<see cref="GameSense"/>): kimlik yoktur, yalnız ad gider. Mac'teki
+/// CouchSubsCore/RunningGame.swift ile aynı kurallar (sunucu da aynısını doğrular).
 /// </summary>
-public sealed partial record RunningGame(string TitleId, string? Name)
+public sealed partial record RunningGame(string? TitleId, string? Name)
 {
     public const int MaxName = 120;
 
@@ -20,9 +22,18 @@ public sealed partial record RunningGame(string TitleId, string? Name)
     /// <summary>Kimlik PS5 biçiminde değilse null.</summary>
     public static RunningGame? Create(string? titleId, string? name)
     {
-        var id = titleId?.Trim().ToUpperInvariant();
-        if (id is null || !TitleIdPattern().IsMatch(id)) return null;
+        if (NormalizedTitleId(titleId) is not { } id) return null;
         return new RunningGame(id, NormalizedName(name));
+    }
+
+    /// <summary>Yalnız adıyla bilinen oyun (paketten tanındı ya da kullanıcı seçti); ad boşsa null. Kimlik geçerliyse o da tutulur.</summary>
+    public static RunningGame? Named(string? name, string? titleId = null) =>
+        NormalizedName(name) is { } clean ? new RunningGame(NormalizedTitleId(titleId), clean) : null;
+
+    internal static string? NormalizedTitleId(string? value)
+    {
+        var id = value?.Trim().ToUpperInvariant();
+        return id is not null && TitleIdPattern().IsMatch(id) ? id : null;
     }
 
     /// <summary>Denetim karakterleri ve fazla boşluk atılır, en çok 120 karakter; boşsa null.</summary>
