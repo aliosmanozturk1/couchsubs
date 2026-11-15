@@ -23,6 +23,7 @@ import com.couchsubs.mobile.core.CropRegion
 import com.couchsubs.mobile.core.active
 import com.couchsubs.mobile.core.GamePackLibrary
 import com.couchsubs.mobile.core.LinePool
+import com.couchsubs.mobile.packs.PackStore
 import com.couchsubs.mobile.core.PackLookup
 import com.couchsubs.mobile.core.SubtitleEvent
 import com.couchsubs.mobile.core.SubtitlePipeline
@@ -245,7 +246,7 @@ class TranslationService : Service() {
         pool = linePool
         // Paketler burada açılır (ilk altyazı beklemesin); kapalıysa hiç açılmaz. Bellek yetmezse paketsiz sürülür:
         // çeviri motoru çalışır, uygulama kapanmaz ve PS5 bağlantısı kopmaz.
-        val packTitles = if (!settings.packsEnabled) null else try {
+        var packTitles = if (!settings.packsEnabled) null else try {
             library.infos.associate { it.id to it.title }
         } catch (error: OutOfMemoryError) {
             Log.e(TAG, "packs", error)
@@ -315,11 +316,25 @@ class TranslationService : Service() {
         }
         // Bağlıyken iki dakikada bir PS5'e çalışan oyun sorulur: havuza giden satırlar oyunla gider (klipte sorulmaz).
         if (replacement == null) {
+            var lastGame: String? = null
             background.scheduleWithFixedDelay({
                 try {
                     val host = settings.console?.host ?: console.host
                     val game = if (streaming) ConsoleDiscovery.runningGame(host) else null
                     if (streaming) linePool.setGame(game)
+                    // Yeni oyun: o oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir; inerse bu oturumun
+                    // paketleri hemen yeniden okunur (iPhone'daki gibi).
+                    if (game != null && game.titleId != lastGame) {
+                        lastGame = game.titleId
+                        Services.refreshPacks(force = false, maxAgeMs = PackStore.GAME_CHECK_MS) {
+                            try {
+                                library.reload()
+                                if (packTitles != null) packTitles = library.infos.associate { it.id to it.title }
+                            } catch (error: OutOfMemoryError) {
+                                Log.e(TAG, "packs reload", error)
+                            }
+                        }
+                    }
                 } catch (error: Exception) {
                     Log.w(TAG, "running game", error)
                 }

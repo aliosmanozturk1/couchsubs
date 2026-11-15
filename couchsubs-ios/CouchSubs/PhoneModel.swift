@@ -122,6 +122,8 @@ final class PhoneModel: ObservableObject {
     /// PS5 bağlantısı kendiliğinden koptu (kullanıcı durdurmadı). Uygulama, etkin değilken yerel bildirim gösterir;
     /// testlerde boş.
     var onConnectionLost: () -> Void = {}
+    /// PS5'te yeni bir oyun tanındı (paket sunucusuna o oyun için bakılır).
+    var onGameStarted: () -> Void = {}
     /// Çeviri başlarken bildirim izni istenir (tercih açıksa; iOS yalnız ilk seferde sorar). Testlerde boş.
     var requestNotificationPermission: () -> Void = {}
     private var startedAt: Date?
@@ -451,12 +453,16 @@ final class PhoneModel: ObservableObject {
         }
         guard gameProbe == nil else { return }
         let services = self.services
-        gameProbe = Task {
+        gameProbe = Task { [weak self] in
+            var last: RunningGame?
             while !Task.isCancelled {
                 let game = await services.runningGame(host: host)
                 // Bu arada bağlantı bittiyse oyun yazılmaz (bırakılan oyun geri gelmesin).
                 guard !Task.isCancelled else { break }
                 await pool.setGame(game)
+                // Yeni oyun: o oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir (Android'deki gibi).
+                if let game, game != last { self?.onGameStarted() }
+                last = game
                 try? await Task.sleep(for: Self.gameProbeInterval)
             }
         }

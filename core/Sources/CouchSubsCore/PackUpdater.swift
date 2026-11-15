@@ -24,7 +24,7 @@ public struct RemotePack: Codable, Equatable, Sendable {
 
 /// Sunucudaki yeni ve güncellenen oyun paketleri (ücretsiz, hesapsız): Android'deki PackStore'un Mac ve iPhone karşılığı.
 /// Liste alınır, değişen paket indirilir, SHA-256 ile doğrulanır ve paket klasörüne (`GamePackLibrary.userDirectory`)
-/// konur; uygulamayla gelen aynı kimlikli paketin yerine geçer. Haftada bir bakılır; sürümü değişmeyen paket yeniden
+/// konur; uygulamayla gelen aynı kimlikli paketin yerine geçer. Açılışta, günde bir ve yeni oyunda bakılır; sürümü değişmeyen paket yeniden
 /// inmez, sunucudan kalkan paket silinir. Yarım ya da bozuk dosya hiç yüklenmez (önce geçici dosya, doğrulanınca yerine).
 ///
 /// Klasörde kullanıcının kendi bıraktığı dosyalar da durur: sunucudan inmemiş (durum dosyasında olmayan ya da sonradan
@@ -33,7 +33,11 @@ public struct RemotePack: Codable, Equatable, Sendable {
 /// Sunucu adresi yapılandırmadan gelir (`configuredBaseURL`); adres yoksa özellik kapalıdır. Windows'taki
 /// CouchSubs.Core/PackUpdater.cs ile aynı kurallar.
 public actor PackUpdater {
-    public static let refreshInterval: TimeInterval = 7 * 24 * 3600
+    /// Açılışta ve günde bir bakılır. Havuzdan her gece otomatik üretilen paketler (server/pool, `pool-<oyun kimliği>`)
+    /// böylece en geç bir gün sonra gelir.
+    public static let refreshInterval: TimeInterval = 24 * 3600
+    /// PS5'te yeni bir oyun tanınınca son bakış bundan eskiyse hemen bakılır (o oyunun paketi yeni çıkmış olabilir).
+    public static let gameCheckInterval: TimeInterval = 10 * 60
     /// Paket kimliği sunucudakiyle aynı biçimde (dosya adına girer; "../" gibi yollar baştan elenir).
     static let maxIdLength = 64
     /// Tek paket en çok bu kadar olabilir (bugünkü en büyük paket ~3 MB).
@@ -111,12 +115,12 @@ public actor PackUpdater {
         return checked > 0 ? Date(timeIntervalSince1970: checked) : nil
     }
 
-    /// Süresi geldiyse (ya da `force`) sunucuya bakar ve değişen paketleri indirir. Liste alınamazsa elde olanlar kalır;
-    /// inemeyen paket sonraki açılışta yeniden denenir.
-    public func refresh(force: Bool = false) async -> Refresh {
+    /// Son bakış `maxAge`'den eskiyse (ya da `force`) sunucuya bakar ve değişen paketleri indirir. Liste alınamazsa elde
+    /// olanlar kalır; inemeyen paket sonraki açılışta yeniden denenir.
+    public func refresh(force: Bool = false, maxAge: TimeInterval = PackUpdater.refreshInterval) async -> Refresh {
         let state = load()
         let now = clock()
-        if !force, state.checked > 0, now.timeIntervalSince1970 - state.checked < Self.refreshInterval,
+        if !force, state.checked > 0, now.timeIntervalSince1970 - state.checked < maxAge,
            !state.packs.contains(where: { $0.version == -1 }) {
             return Refresh(skipped: true)
         }

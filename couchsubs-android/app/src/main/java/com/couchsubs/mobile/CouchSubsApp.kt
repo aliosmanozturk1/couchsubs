@@ -73,8 +73,14 @@ object Services {
         Meta.init(app)
         applyMeasurement()
         packStore = PackStore(File(app.filesDir, "packs-remote"), HttpPackServer(BuildConfig.PACKS_URL.trimEnd('/')))
-        // Açılışta (haftada bir) yeni ve güncellenen paketlere bakılır.
-        refreshPacks(force = false)
+        // Açılışta hemen, sonra uygulama açık kaldıkça günde bir yeni ve güncellenen paketlere bakılır (iPhone'daki gibi).
+        refreshPacks(force = true)
+        scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(PackStore.REFRESH_INTERVAL_MS)
+                refreshPacks(force = false)
+            }
+        }
         reportPreviousExits(app)
     }
 
@@ -103,11 +109,16 @@ object Services {
         applyMeasurement()
     }
 
-    fun refreshPacks(force: Boolean) {
+    /**
+     * Paket sunucusuna bakar (son bakış [maxAgeMs]'den eskiyse; [force] ile hemen). Yeni ya da güncellenen paket inince
+     * [onChanged] çağrılır (çalışan çeviri hizmeti kendi kitaplığını yeniden okur).
+     */
+    fun refreshPacks(force: Boolean, maxAgeMs: Long = PackStore.REFRESH_INTERVAL_MS, onChanged: (() -> Unit)? = null) {
         if (BuildConfig.PACKS_URL.isBlank()) return
         scope.launch(Dispatchers.IO) {
             try {
-                val result = packStore.refresh(force)
+                val result = packStore.refresh(force, maxAgeMs)
+                if (result.downloaded.isNotEmpty() || result.removed.isNotEmpty()) onChanged?.invoke()
                 if (!result.skipped) packsVersion.value++
             } catch (error: Exception) {
                 Log.w(TAG, "paketler", error)
@@ -135,6 +146,6 @@ object Services {
         val bundled: () -> List<Pair<String, () -> ByteArray>> = {
             (context.assets.list("packs") ?: emptyArray()).map { name -> name to { context.assets.open("packs/$name").use { s -> s.readBytes() } } }
         }
-        return GamePackLibrary(bundled, packStore.files().firstOrNull()?.parentFile).also { it.setDisabled(settings.disabledPacks) }
+        return GamePackLibrary(bundled, packStore.directory).also { it.setDisabled(settings.disabledPacks) }
     }
 }

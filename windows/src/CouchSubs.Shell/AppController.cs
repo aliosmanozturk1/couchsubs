@@ -1279,20 +1279,25 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>
-    /// Paket sunucusu yapılandırıldıysa açılışta ve günde bir bakılır; asıl indirme haftada birdir
-    /// (<see cref="PackUpdater.RefreshInterval"/>). Yeni paket inince paketler yeniden okunur.
+    /// Paket sunucusu yapılandırıldıysa açılışta ve günde bir bakılır; PS5'te yeni bir oyun tanınınca da
+    /// (<see cref="PackUpdater.GameCheckInterval"/>). Yeni paket inince paketler yeniden okunur.
     /// </summary>
     private void StartPackUpdates()
     {
         if (services.PackUpdates is not { } updater) return;
-        packTimer = new Timer(_ => _ = RefreshPacksAsync(updater), null, TimeSpan.Zero, TimeSpan.FromDays(1));
+        var first = true;
+        packTimer = new Timer(_ =>
+        {
+            _ = RefreshPacksAsync(updater, force: first);
+            first = false;
+        }, null, TimeSpan.Zero, PackUpdater.RefreshInterval);
     }
 
-    private async Task RefreshPacksAsync(PackUpdater updater)
+    private async Task RefreshPacksAsync(PackUpdater updater, bool force = false, TimeSpan? maxAge = null)
     {
         try
         {
-            var result = await updater.RefreshAsync().ConfigureAwait(false);
+            var result = await updater.RefreshAsync(force, maxAge: maxAge).ConfigureAwait(false);
             if (!result.Changed || services.GamePacks is not { } packs) return;
             packs.Reload();
             var list = packs.Packs;
@@ -1332,7 +1337,12 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 // Bu arada bağlantı bittiyse oyun yazılmaz (bırakılan oyun geri gelmesin).
                 if (token.IsCancellationRequested) break;
                 pool.SetGame(game);
-                if (game is not null && game != last) SubtitleLog.Write($"PS5'te çalışan oyun: {game.Name ?? "?"} ({game.TitleId})");
+                if (game is not null && game != last)
+                {
+                    SubtitleLog.Write($"PS5'te çalışan oyun: {game.Name ?? "?"} ({game.TitleId})");
+                    // Bu oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir.
+                    if (services.PackUpdates is { } packUpdater) _ = RefreshPacksAsync(packUpdater, maxAge: PackUpdater.GameCheckInterval);
+                }
                 last = game;
                 try { await Task.Delay(GameProbeInterval, token).ConfigureAwait(false); }
                 catch (OperationCanceledException) { break; }

@@ -20,7 +20,7 @@ public sealed record RemotePack(
 /// <summary>
 /// Sunucudaki yeni ve güncellenen oyun paketleri (ücretsiz, hesapsız): Android'deki PackStore'un Windows karşılığı.
 /// Liste alınır, değişen paket indirilir, SHA-256 ile doğrulanır ve paket klasörüne (<see cref="GamePackLibrary.UserDirectory"/>)
-/// konur; uygulamayla gelen aynı kimlikli paketin yerine geçer. Haftada bir bakılır; sürümü değişmeyen paket yeniden inmez,
+/// konur; uygulamayla gelen aynı kimlikli paketin yerine geçer. Açılışta, günde bir ve PS5'te yeni oyun başlayınca bakılır; sürümü değişmeyen paket yeniden inmez,
 /// sunucudan kalkan paket silinir. Yarım ya da bozuk dosya hiç yüklenmez (önce geçici dosya, doğrulanınca yerine).
 /// Klasöre kullanıcının kendi bıraktığı (sunucudan inmemiş ya da sonradan değiştirilmiş) dosyanın üstüne yazılmaz, o dosya
 /// silinmez. Sunucu adresi yapılandırmadan gelir (<see cref="ConfiguredBaseUrl"/>); adres yoksa özellik kapalıdır.
@@ -28,7 +28,10 @@ public sealed record RemotePack(
 /// </summary>
 public sealed partial class PackUpdater : IDisposable
 {
-    public static readonly TimeSpan RefreshInterval = TimeSpan.FromDays(7);
+    /// <summary>Açılışta ve günde bir bakılır (havuzdan her gece üretilen <c>pool-*</c> paketleri en geç bir gün sonra gelir).</summary>
+    public static readonly TimeSpan RefreshInterval = TimeSpan.FromDays(1);
+    /// <summary>PS5'te yeni bir oyun tanınınca son bakış bundan eskiyse hemen bakılır.</summary>
+    public static readonly TimeSpan GameCheckInterval = TimeSpan.FromMinutes(10);
     internal const int MaxPackBytes = 64 * 1024 * 1024;
 
     [GeneratedRegex("^[a-z0-9][a-z0-9-]{0,63}$")]
@@ -98,10 +101,10 @@ public sealed partial class PackUpdater : IDisposable
     public IReadOnlyList<Installed> InstalledPacks => Load().Packs;
 
     /// <summary>
-    /// Süresi geldiyse (ya da <paramref name="force"/>) sunucuya bakar ve değişen paketleri indirir. Liste alınamazsa elde
+    /// Son bakış <paramref name="maxAge"/>'den (yoksa <see cref="RefreshInterval"/>) eskiyse ya da <paramref name="force"/> ise sunucuya bakar ve değişen paketleri indirir. Liste alınamazsa elde
     /// olanlar kalır; inemeyen paket sonraki açılışta yeniden denenir.
     /// </summary>
-    public async Task<Refresh> RefreshAsync(bool force = false, CancellationToken cancellationToken = default)
+    public async Task<Refresh> RefreshAsync(bool force = false, CancellationToken cancellationToken = default, TimeSpan? maxAge = null)
     {
         await running.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -109,7 +112,7 @@ public sealed partial class PackUpdater : IDisposable
             var state = Load();
             var now = clock();
             var nowSeconds = now.ToUnixTimeMilliseconds() / 1000.0;
-            if (!force && state.Checked > 0 && nowSeconds - state.Checked < RefreshInterval.TotalSeconds && state.Packs.All(p => p.Version != -1))
+            if (!force && state.Checked > 0 && nowSeconds - state.Checked < (maxAge ?? RefreshInterval).TotalSeconds && state.Packs.All(p => p.Version != -1))
                 return new Refresh([], [], Skipped: true);
             var remote = await ListAsync(cancellationToken).ConfigureAwait(false);
             if (remote is null) return new Refresh([], [], Failed: true);

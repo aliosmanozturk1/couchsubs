@@ -87,6 +87,18 @@ final class PackUpdaterTests: XCTestCase {
         XCTAssertEqual(server.downloads.count, count)
     }
 
+    func testNewGameChecksAfterTenMinutes() async {
+        server.add("gta-6", version: 1, data: Data("one".utf8))
+        let updater = makeUpdater()
+        _ = await updater.refresh()
+        server.add("pool-ppsa01234", version: 1, data: Data("auto".utf8))
+        let soon = await updater.refresh(maxAge: PackUpdater.gameCheckInterval)
+        XCTAssertTrue(soon.skipped)
+        clock.advance(PackUpdater.gameCheckInterval + 1)
+        let later = await updater.refresh(maxAge: PackUpdater.gameCheckInterval)
+        XCTAssertEqual(later.downloaded, ["pool-ppsa01234"])
+    }
+
     func testWrongChecksumIsNeverInstalled() async {
         server.add("gta-6", version: 1, data: Data("good".utf8))
         server.files["gta-6"] = Data("tampered".utf8)

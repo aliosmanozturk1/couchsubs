@@ -55,7 +55,7 @@ android {
         versionCode((findProperty('couchsubs.versionCode') ?: '37').toString().toInteger())
         versionName((findProperty('couchsubs.versionName') ?: '0.1.0-beta.37').toString())
         ndk { abiFilters(*abis) }
-        buildConfigField 'String', 'PACKS_URL', "\"${secret('packs.url')}\""
+        buildConfigField 'String', 'PACKS_URL', "\"${secret('packs.url', 'https://couchsubs-packs.enmera.workers.dev')}\""
         buildConfigField 'String', 'FACEBOOK_APP_ID', "\"${secret('facebook.appId')}\""
         buildConfigField 'boolean', 'HAS_FIREBASE', "${hasGoogleServices}"
         buildConfigField 'String', 'TV_SAMSUNG_VERSION', "\"${tizenVersion}\""

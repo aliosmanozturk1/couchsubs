@@ -521,6 +521,7 @@ final class AppModel: ObservableObject {
     static let gameProbeInterval: Duration = .seconds(120)
     /// Paket sunucusundan yeni ve güncellenen paketler (adres yapılandırılmadıysa nil; bkz. `PackUpdater`).
     private var packUpdates: Task<Void, Never>?
+    private var packUpdater: PackUpdater?
 
     // Dublaj
     private var dubber: Dubber?
@@ -617,26 +618,42 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Paket sunucusunun adresi yapılandırıldıysa (Info.plist `CSPacksBaseURL`) açılışta ve günde bir bakılır; asıl
-    /// indirme haftada birdir (`PackUpdater.refreshInterval`). Yeni paket inince paketler yeniden okunur.
+    /// Paket sunucusunun adresi yapılandırıldıysa (Info.plist `CSPacksBaseURL`) açılışta ve günde bir bakılır; PS5'te
+    /// yeni bir oyun tanınınca da (`packsForGame`). Yeni paket inince paketler yeniden okunur.
     private func startPackUpdates() {
         guard let base = PackUpdater.configuredBaseURL() else { return }
         let state = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(AppIdentity.name, isDirectory: true).appendingPathComponent("packs-remote.json")
         let updater = PackUpdater(baseURL: base, directory: GamePackLibrary.userDirectory, stateFile: state)
+        packUpdater = updater
         let packs = self.packs
         packUpdates = Task.detached(priority: .background) { [weak self] in
+            var force = true
             while !Task.isCancelled {
-                let result = await updater.refresh()
-                if result.changed {
-                    packs.reload()
-                    let list = packs.packs
-                    await MainActor.run { self?.installedPacks = list }
-                    RemotePlayLog.write("Paketler güncellendi: \((result.downloaded + result.removed).joined(separator: ", "))")
-                }
-                try? await Task.sleep(for: .seconds(24 * 3600))
+                let result = await updater.refresh(force: force)
+                force = false
+                await Self.applyPackRefresh(result, packs: packs, model: self)
+                try? await Task.sleep(for: .seconds(PackUpdater.refreshInterval))
             }
         }
+    }
+
+    /// PS5'te yeni bir oyun başladı: o oyunun paketi sunucuda yeni çıkmış olabilir, son bakış eskiyse hemen bakılır.
+    private func packsForGame() {
+        guard let updater = packUpdater else { return }
+        let packs = self.packs
+        Task.detached(priority: .utility) { [weak self] in
+            let result = await updater.refresh(maxAge: PackUpdater.gameCheckInterval)
+            await Self.applyPackRefresh(result, packs: packs, model: self)
+        }
+    }
+
+    private nonisolated static func applyPackRefresh(_ result: PackUpdater.Refresh, packs: GamePackLibrary, model: AppModel?) async {
+        guard result.changed else { return }
+        packs.reload()
+        let list = packs.packs
+        await MainActor.run { model?.installedPacks = list }
+        RemotePlayLog.write("Paketler güncellendi: \((result.downloaded + result.removed).joined(separator: ", "))")
     }
 
     /// PS5'e bağlanınca çalışan oyun okunmaya başlar, bağlantı gidince bırakılır (havuz satırı oyunsuz gider).
@@ -652,7 +669,7 @@ final class AppModel: ObservableObject {
         guard gameProbe == nil else { return }
         let pool = self.pool
         let services = self.services
-        gameProbe = Task {
+        gameProbe = Task { [weak self] in
             var last: RunningGame?
             while !Task.isCancelled {
                 let game = await services.runningGame(host: host)
@@ -661,6 +678,8 @@ final class AppModel: ObservableObject {
                 await pool.setGame(game)
                 if game != last, let game {
                     SubtitleLog.write("PS5'te çalışan oyun: \(game.name ?? "?") (\(game.titleId))")
+                    // Bu oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir.
+                    self?.packsForGame()
                 }
                 last = game
                 try? await Task.sleep(for: Self.gameProbeInterval)

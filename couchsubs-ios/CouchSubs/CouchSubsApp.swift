@@ -53,6 +53,7 @@ struct CouchSubsApp: App {
         let app = AppModel(analytics: analytics, packStore: store, library: library)
         model.onAnalytics = { [analytics] event in analytics.log(event) }
         app.onPacksChanged = { [weak model] in model?.packsChanged() }
+        model.onGameStarted = { [weak app] in Task { await app?.gameStarted() } }
         _model = StateObject(wrappedValue: model)
         _app = StateObject(wrappedValue: app)
     }
