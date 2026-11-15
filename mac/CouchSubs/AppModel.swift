@@ -537,6 +537,17 @@ final class AppModel: ObservableObject {
     /// Pencerenin yeri ve genişliği ayarlanıyor: örnek yazı görünür, tıklamalar geçmez.
     @Published var overlayAdjusting = false
     var overlayStack = SubtitleStack()
+    /// "Yayın penceresi" açık: altyazı bilgisayar ekranında gösterilmese de satırlar yığına gelir (bkz. StreamWindow.swift).
+    @Published var streamWindowOpen = false {
+        didSet {
+            guard streamWindowOpen != oldValue, !streamWindowOpen, !settings.output.showsOnComputer else { return }
+            overlayHide()
+        }
+    }
+    /// Yayın penceresinin zemin rengi (chroma key ile silinir).
+    @Published var streamBackground = StreamBackground.green {
+        didSet { defaults.set(streamBackground.rawValue, forKey: StoreKey.streamBackground) }
+    }
     /// "Ekranı çevir" çevirilerinin pencerede kalacağı an (`overlayClock` saatiyle); yoksa 0.
     var overlayScreenUntil: TimeInterval = 0
     var overlayTimer: Task<Void, Never>?
@@ -561,6 +572,7 @@ final class AppModel: ObservableObject {
         let loaded = defaults.data(forKey: StoreKey.settings).flatMap { try? JSONDecoder().decode(UserSettings.self, from: $0) } ?? UserSettings()
         let curated = loaded.withCuratedModels()
         settings = curated
+        streamBackground = StreamBackground(stored: defaults.string(forKey: StoreKey.streamBackground))
         // Pencereler açılmadan önce: açılışta açık temanın bir an görünmesi olmaz.
         curated.appearance.apply()
         let poolFile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -1177,7 +1189,10 @@ final class AppModel: ObservableObject {
     /// Altyazının yeri değişti: TV seçildiyse TV uygulaması açılır, kaldırıldıysa artık açık tutulmaz.
     private func outputChanged() {
         server.sendsToTV = settings.output.showsOnTV
-        if !settings.output.showsOnComputer { overlayHide() }
+        if !settings.output.showsOnComputer {
+            // Yayın penceresi açıksa satırları kalır; yalnız saydam pencerenin yer ayarı biter.
+            if streamWindowOpen { overlayAdjusting = false } else { overlayHide() }
+        }
         updateClickThroughHotkey()
         guard isRunning else { return }
         if settings.output.showsOnTV {

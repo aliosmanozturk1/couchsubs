@@ -50,6 +50,11 @@ public partial class SettingsWindow : Window
         (settings.FreeAreaTarget switch { ResultTarget.Pc => FreePc, ResultTarget.Both => FreeBoth, _ => FreeTv }).IsChecked = true;
         Region.Frame = controller.LastFrame;
         ObsAddress.Text = $"http://localhost:{controller.ServerPort}/obs";
+        // Localhost'u kabul etmeyen yayın programları (TikTok LIVE Studio) için aynı adres bilgisayarın ağ adresiyle.
+        if (controller.NetworkObsAddress is { } networkObs) NetworkObsAddress.Text = networkObs;
+        else NetworkObsPanel.Visibility = Visibility.Collapsed;
+        var streamBackground = controller.StreamBackground.ToString();
+        StreamBackgroundChoice.SelectedItem = StreamBackgroundChoice.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == streamBackground);
         ShowArea(0);
         // Num 8: oyunun o anki görüntüsü önizlemeye alınır.
         controller.SnapshotRequested += OnSnapshot;
@@ -684,4 +689,22 @@ public partial class SettingsWindow : Window
         }
         catch (System.Runtime.InteropServices.COMException) { }
     }
+
+    private void OnNetworkObsCopy(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Clipboard.SetText(NetworkObsAddress.Text);
+            NetworkObsCopy.Content = Localizer.Current["Copied"];
+        }
+        catch (System.Runtime.InteropServices.COMException) { }
+    }
+
+    private void OnStreamBackground(object sender, SelectionChangedEventArgs e)
+    {
+        if (StreamBackgroundChoice.SelectedItem is ComboBoxItem { Tag: string tag } && Enum.TryParse<StreamBackground>(tag, out var background))
+            controller.StreamBackground = background;
+    }
+
+    private void OnOpenStreamWindow(object sender, RoutedEventArgs e) => StreamWindow.Open(controller);
 }

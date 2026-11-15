@@ -26,6 +26,8 @@ public enum StoreKey {
     public static let claudeKey = "claudeKey"
     /// Yerel model sunucusunun (Ollama, LM Studio) isteğe bağlı anahtarı.
     public static let localAIKey = "localAIKey"
+    /// "Yayın penceresi"nin zemin rengi (`StreamBackground`).
+    public static let streamBackground = "streamBackground"
 }
 
 /// Ayarlardaki çeviri motoru seçimi. Ücretsiz olan cihaz üstü çeviridir; bulut motorları kullanıcının kendi anahtarıyla

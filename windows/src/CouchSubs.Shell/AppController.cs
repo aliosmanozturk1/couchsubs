@@ -1135,9 +1135,35 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     private void OnSubtitleEvent(SubtitleEvent e)
     {
+        post(() => StreamEvent?.Invoke(e));
         if (!ShowsOnComputer) return;
         post(() => OverlayEvent?.Invoke(e));
     }
+
+    // --- Yayın penceresi (yayın programlarının pencere yakalamayla aldığı düz zeminli altyazı) ---
+
+    /// <summary>
+    /// <see cref="OverlayEvent"/> ile aynı olaylar, ama altyazı yalnız TV'de gösterilse de gelir: yayın penceresi açıkken
+    /// yayındaki altyazı ekrandaki seçimden bağımsızdır.
+    /// </summary>
+    public event Action<SubtitleEvent>? StreamEvent;
+    /// <summary>Yayın penceresindeki her şey hemen kalksın (çeviri durdu).</summary>
+    public event Action? StreamHidden;
+
+    /// <summary>Yayın penceresinin zemin rengi (chroma key ile silinir).</summary>
+    public StreamBackground StreamBackground
+    {
+        get => StreamBackgrounds.FromStored(store.Load<string>(StoreKeys.StreamBackground));
+        set
+        {
+            if (value == StreamBackground) return;
+            store.Save(StoreKeys.StreamBackground, value.StoredName());
+            Changed(nameof(StreamBackground));
+        }
+    }
+
+    /// <summary>Bilgisayarın ağ adresiyle OBS sayfası; localhost'u kabul etmeyen yayın programları (TikTok LIVE Studio) için.</summary>
+    public string? NetworkObsAddress => LocalAddress(null) is { } address ? $"http://{address}:{ServerPort}/obs" : null;
 
     public void Stop()
     {
@@ -1169,6 +1195,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         firewallRuleSeen = false;
         ClearFirewallPrompt();
         OverlayHidden?.Invoke();
+        StreamHidden?.Invoke();
     }
 
     /// <summary>Bilgisayar uykudan uyanınca bağlantıları hemen yenile.</summary>

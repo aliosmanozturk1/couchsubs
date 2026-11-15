@@ -12,6 +12,8 @@ struct CouchSubsApp: App {
     @StateObject private var model = Self.makeModel()
     /// Bilgisayar ekranındaki altyazı penceresi.
     @State private var overlay = SubtitleOverlayController()
+    /// Yayın programlarının yakaladığı düz zeminli altyazı penceresi (Ayarlar > OBS'ten açılır).
+    @State private var stream = StreamWindowController()
     #if !APP_STORE
     /// Sparkle: her açılışta ve uygulama açıkken saatte bir GitHub'daki son sürüme bakar; testlerde başlamaz.
     private let updater = SPUStandardUpdaterController(
@@ -31,6 +33,7 @@ struct CouchSubsApp: App {
                 // Sparkle kendi takviminde günde bir bakar; yeni sürüm her açılışta fark edilsin diye açılışta da sessizce bakılır.
                 .task {
                     overlay.attach(model)
+                    stream.attach(model)
                     #if !APP_STORE
                     guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
                     updater.updater.checkForUpdatesInBackground()

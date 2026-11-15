@@ -372,6 +372,61 @@ private struct OBSCard: View {
                 .buttonStyle(.secondary)
             }
             HintText(text: "If OBS runs on another computer, use this Mac's network address instead of localhost. The overlay only shows subtitles while the translation is running.")
+            if let networkAddress {
+                HintText(text: "Your streaming app does not accept localhost (TikTok LIVE Studio, for example)? Use this address with the computer's network address:")
+                AddressRow(address: networkAddress)
+            }
+        }
+        StreamWindowCard()
+    }
+
+    /// Aynı adres bu Mac'in ağ adresiyle; localhost'u kabul etmeyen yayın programları için.
+    private var networkAddress: String? {
+        AppModel.localAddress(near: nil).map { "http://\($0):\(model.serverPort)/obs" }
+    }
+}
+
+/// Kopyalanabilir adres satırı.
+private struct AddressRow: View {
+    let address: String
+    @State private var copied = false
+
+    var body: some View {
+        HStack(spacing: Theme.space("m")) {
+            Text(verbatim: address)
+                .font(.csBody.monospaced())
+                .textSelection(.enabled)
+                .padding(.horizontal, Theme.space("l"))
+                .frame(maxWidth: .infinity, minHeight: Theme.size("buttonHeight"), alignment: .leading)
+                .background(Color.csSurface2, in: RoundedRectangle(cornerRadius: Theme.radius("control"), style: .continuous))
+            Button(copied ? "Copied" : "Copy") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(address, forType: .string)
+                copied = true
+            }
+            .buttonStyle(.secondary)
+        }
+    }
+}
+
+/// Şeffaflık tanımayan yayın programları için düz zeminli altyazı penceresi (bkz. StreamWindow.swift).
+private struct StreamWindowCard: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Card(title: "Stream window") {
+            HintText(text: "For streaming apps without a transparent browser source (TikTok LIVE Studio, Streamlabs and others): open the stream window, add it with Window capture (the window is called CouchSubs Stream) and remove its background with a Chroma key filter.")
+            Picker("Background", selection: $model.streamBackground) {
+                Text("Green").tag(StreamBackground.green)
+                Text("Black").tag(StreamBackground.black)
+                Text("Magenta").tag(StreamBackground.magenta)
+            }
+            .pickerStyle(.segmented)
+            Button(model.streamWindowOpen ? "Close the stream window" : "Open the stream window") {
+                model.streamWindowOpen.toggle()
+            }
+            .buttonStyle(.secondary)
+            HintText(text: "Keep the window open and uncovered while streaming. Subtitles appear in it while the translation is running, even when they are shown only on the TV.")
         }
     }
 }

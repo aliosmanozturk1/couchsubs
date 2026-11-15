@@ -33,7 +33,7 @@ extension AppModel {
     var overlayIgnoresMouse: Bool { settings.overlayClickThrough && !overlayAdjusting }
 
     func overlayReceive(_ event: SubtitleEvent) {
-        guard settings.output.showsOnComputer else { return }
+        guard settings.output.showsOnComputer || streamWindowOpen else { return }
         let now = overlayClock()
         switch event {
         case .subtitle(let text, let durationMs, let paragraphs, let replaces):

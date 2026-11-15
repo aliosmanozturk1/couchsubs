@@ -9968,6 +9968,166 @@
           }
         }
       }
+    },
+    "CouchSubs Stream": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs Stream"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CouchSubs Yayın"
+          }
+        }
+      }
+    },
+    "Stream window": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stream window"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yayın penceresi"
+          }
+        }
+      }
+    },
+    "Green": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Green"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeşil"
+          }
+        }
+      }
+    },
+    "Black": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Black"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siyah"
+          }
+        }
+      }
+    },
+    "Magenta": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Magenta"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mor"
+          }
+        }
+      }
+    },
+    "Open the stream window": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the stream window"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yayın penceresini aç"
+          }
+        }
+      }
+    },
+    "Close the stream window": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close the stream window"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yayın penceresini kapat"
+          }
+        }
+      }
+    },
+    "For streaming apps without a transparent browser source (TikTok LIVE Studio, Streamlabs and others): open the stream window, add it with Window capture (the window is called CouchSubs Stream) and remove its background with a Chroma key filter.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For streaming apps without a transparent browser source (TikTok LIVE Studio, Streamlabs and others): open the stream window, add it with Window capture (the window is called CouchSubs Stream) and remove its background with a Chroma key filter."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saydam tarayıcı kaynağı olmayan yayın programları (TikTok LIVE Studio, Streamlabs ve diğerleri) için: yayın penceresini açın, programda Pencere yakalama ile ekleyin (pencerenin adı CouchSubs Yayın) ve zeminini Chroma key filtresiyle silin."
+          }
+        }
+      }
+    },
+    "Keep the window open and uncovered while streaming. Subtitles appear in it while the translation is running, even when they are shown only on the TV.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep the window open and uncovered while streaming. Subtitles appear in it while the translation is running, even when they are shown only on the TV."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yayın boyunca pencereyi açık ve önü kapalı olmadan tutun. Çeviri sürerken altyazılar, yalnız TV'de gösterilseler bile bu pencerede görünür."
+          }
+        }
+      }
+    },
+    "Your streaming app does not accept localhost (TikTok LIVE Studio, for example)? Use this address with the computer's network address:": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your streaming app does not accept localhost (TikTok LIVE Studio, for example)? Use this address with the computer's network address:"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yayın programınız localhost'u kabul etmiyor mu (ör. TikTok LIVE Studio)? Bilgisayarın ağ adresiyle bu adresi kullanın:"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -183,6 +183,32 @@ final class SubtitleServerTests: XCTestCase {
         XCTAssertTrue(lines.contains("event: subtitle"))
     }
 
+    /// Şeffaflık tanımayan yayın programları için düz zemin (?bg=green) ve OBS'te kapalı ipucu; adresteki
+    /// parametreler sayfayı değiştirmez, aynı dosya gelir.
+    func testObsOverlayOffersSolidBackgroundAndHint() async throws {
+        let server = SubtitleServer(port: 0)
+        let port = try await server.start()
+        defer { server.stop() }
+
+        let (data, response) = try await URLSession.shared.data(from: URL(string: "http://127.0.0.1:\(port)/obs?bg=green&hint=1")!)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let page = String(decoding: data, as: UTF8.self)
+        for background in StreamBackground.allCases {
+            XCTAssertTrue(page.contains("\(background.rawValue): '#"), "sayfada \(background.rawValue) zemini yok")
+        }
+        XCTAssertTrue(page.contains("window.obsstudio"))
+        XCTAssertTrue(page.contains("-webkit-font-smoothing: antialiased"))
+    }
+
+    func testStreamBackgroundDefaultsToGreenAndOpaqueBox() {
+        XCTAssertEqual(StreamBackground(stored: nil), .green)
+        XCTAssertEqual(StreamBackground(stored: "bozuk"), .green)
+        XCTAssertEqual(StreamBackground(stored: "magenta"), .magenta)
+        XCTAssertEqual(StreamBackground.green.rgb.green, 0xFF)
+        XCTAssertEqual(StreamBackground.boxOpacity(background: 60), 1)
+        XCTAssertEqual(StreamBackground.boxOpacity(background: 0), 0)
+    }
+
     /// Altyazı yalnız bilgisayar ekranındayken TV'ye altyazı gitmez; OBS katmanı ve dublaj sesi gitmeye devam eder.
     func testSubtitlesSkipTVsWhenTVOutputIsOff() async throws {
         let server = SubtitleServer(port: 0)

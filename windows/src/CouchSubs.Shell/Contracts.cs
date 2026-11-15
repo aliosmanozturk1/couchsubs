@@ -29,6 +29,35 @@ public static class StoreKeys
     public const string SetupComplete = "setupComplete";
     /// <summary>İkinci hesabın PS5 giriş şifresi (4 hane, isteğe bağlı); PS5 isterse oturum açılırken gönderilir.</summary>
     public const string LoginPasscode = "loginPasscode";
+    /// <summary>"Yayın penceresi"nin zemin rengi (<see cref="StreamBackground"/>).</summary>
+    public const string StreamBackground = "streamBackground";
+}
+
+/// <summary>
+/// "Yayın penceresi"nin ve OBS sayfasının (<c>/obs?bg=green</c>) düz zemin rengi (Mac: StreamBackground.swift). Şeffaflık
+/// tanımayan yayın programları (TikTok LIVE Studio, pencere yakalama) pencereyi yakalar, zemini chroma key ile siler.
+/// </summary>
+public enum StreamBackground { Green, Black, Magenta }
+
+public static class StreamBackgrounds
+{
+    /// <summary>0-255 RGB; chroma key'in varsayılanlarıyla (yeşil #00FF00, mor #FF00FF) aynı.</summary>
+    public static (byte Red, byte Green, byte Blue) Rgb(this StreamBackground background) => background switch
+    {
+        StreamBackground.Black => (0x00, 0x00, 0x00),
+        StreamBackground.Magenta => (0xFF, 0x00, 0xFF),
+        _ => (0x00, 0xFF, 0x00),
+    };
+
+    /// <summary>Kayıttaki ad (Mac ile aynı: green, black, magenta).</summary>
+    public static string StoredName(this StreamBackground background) => background.ToString().ToLowerInvariant();
+
+    /// <summary>Kayıtlı değer okunamazsa yeşil (chroma key'in en yaygın rengi).</summary>
+    public static StreamBackground FromStored(string? stored) =>
+        Enum.TryParse<StreamBackground>(stored, ignoreCase: true, out var value) && Enum.IsDefined(value) ? value : StreamBackground.Green;
+
+    /// <summary>Düz zeminde yarı saydam altyazı kutusu zeminle karışır ve chroma key'i bozar: kutu ya tam koyu ya hiç yoktur.</summary>
+    public static double BoxOpacity(int backgroundPercent) => backgroundPercent > 0 ? 1 : 0;
 }
 
 /// <summary>Altyazının gösterileceği yer (Mac'teki SubtitleOutput ile aynı).</summary>

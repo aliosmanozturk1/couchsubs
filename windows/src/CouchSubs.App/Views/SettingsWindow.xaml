@@ -392,6 +392,32 @@
                             </DockPanel>
                             <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,12,0,0"
                                        Text="{t:T 'If OBS runs on another computer, use the network address of this PC instead of localhost. The overlay only shows subtitles while the translation is running.'}" />
+                            <StackPanel x:Name="NetworkObsPanel">
+                                <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,12,0,8"
+                                           Text="{t:T 'Your streaming app does not accept localhost (TikTok LIVE Studio, for example)? Use this address with the computer\'s network address:'}" />
+                                <DockPanel>
+                                    <Button x:Name="NetworkObsCopy" DockPanel.Dock="Right" Content="{t:T 'Copy'}" Margin="12,0,0,0" Click="OnNetworkObsCopy" />
+                                    <TextBox x:Name="NetworkObsAddress" IsReadOnly="True" FontFamily="Consolas" VerticalContentAlignment="Center" />
+                                </DockPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </c:Card>
+                    <!-- Şeffaflık tanımayan yayın programları için düz zeminli altyazı penceresi (StreamWindow.cs). -->
+                    <c:Card Title="{t:T 'Stream window'}" Margin="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,12"
+                                       Text="{t:T 'For streaming apps without a transparent browser source (TikTok LIVE Studio, Streamlabs and others): open the stream window, add it with Window capture (the window is called CouchSubs Stream) and remove its background with a Chroma key filter.'}" />
+                            <DockPanel Margin="0,0,0,12">
+                                <TextBlock Text="{t:T 'Background'}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <ComboBox x:Name="StreamBackgroundChoice" Width="180" HorizontalAlignment="Left" SelectionChanged="OnStreamBackground">
+                                    <ComboBoxItem Content="{t:T 'Green'}" Tag="Green" />
+                                    <ComboBoxItem Content="{t:T 'Black'}" Tag="Black" />
+                                    <ComboBoxItem Content="{t:T 'Magenta'}" Tag="Magenta" />
+                                </ComboBox>
+                            </DockPanel>
+                            <Button Content="{t:T 'Open the stream window'}" HorizontalAlignment="Left" Click="OnOpenStreamWindow" />
+                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,12,0,0"
+                                       Text="{t:T 'Keep the window open and uncovered while streaming. Subtitles appear in it while the translation is running, even when they are shown only on the TV.'}" />
                         </StackPanel>
                     </c:Card>
                 </StackPanel>
