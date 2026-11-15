@@ -20,7 +20,7 @@ import java.util.zip.ZipOutputStream
  * Android'de XML imza kütüphanesi (javax.xml.crypto) yoktur. İmzalanan iki parça (SignedInfo ve `#prop` nesnesi) bu
  * sınıfın kendi yazdığı, yapısı sabit XML olduğundan kanonik biçimleri doğrudan üretilir: SignedInfo exclusive C14N,
  * nesne C14N 1.1 ile (ikisinde de boşluk yok, öznitelikler sıralı, öğeler açık kapanışlı). Dosyaya da aynı metin
- * yazılır; TV kendi kanonikleştirdiğinde aynı baytları bulur. Birim testi imzayı JDK'nın XML imza doğrulayıcısıyla denetler.
+ * yazılır; TV kendi kanonikleştirdiğinde aynı baytları bulur. Birim testi imzayı Apache Santuario'nun XML imza doğrulayıcısıyla denetler.
  */
 object WgtSigner {
     private const val DSIG = "http://www.w3.org/2000/09/xmldsig#"

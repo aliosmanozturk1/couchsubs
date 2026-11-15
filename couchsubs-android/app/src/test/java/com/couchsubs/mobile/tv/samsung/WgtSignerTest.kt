@@ -13,14 +13,15 @@ import java.security.cert.X509Certificate
 import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import javax.xml.crypto.OctetStreamData
-import javax.xml.crypto.URIDereferencer
-import javax.xml.crypto.dsig.XMLSignatureFactory
-import javax.xml.crypto.dsig.dom.DOMValidateContext
 import javax.xml.parsers.DocumentBuilderFactory
+import org.apache.xml.security.Init
+import org.apache.xml.security.signature.XMLSignature
+import org.apache.xml.security.signature.XMLSignatureInput
+import org.apache.xml.security.utils.resolver.ResourceResolverContext
+import org.apache.xml.security.utils.resolver.ResourceResolverSpi
 
 /**
- * Paket imzası: JDK'nın XML imza doğrulayıcısı (javax.xml.crypto; Android'de yok) imzayı, bütün dosya özetlerini ve
+ * Paket imzası: Apache Santuario'nun XML imza doğrulayıcısı (yalnız testlerde) imzayı, bütün dosya özetlerini ve
  * `#prop` nesnesinin C14N 1.1 özetini kabul etmeli. Böylece elle üretilen kanonik biçim bağımsız olarak denetlenir.
  */
 class WgtSignerTest {
@@ -116,22 +117,22 @@ class WgtSignerTest {
         val document = parse(xml)
         val root = document.documentElement
         val prop = root.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#", "Object").item(0) as Element
-        val factory = XMLSignatureFactory.getInstance("DOM")
-        val context = DOMValidateContext(certificate.publicKey, root)
-        context.setIdAttributeNS(prop, null, "Id")
-        context.setProperty("org.jcp.xml.dsig.secureValidation", false)
-        val fallback = factory.uriDereferencer
-        context.uriDereferencer = URIDereferencer { reference, ctx ->
-            val uri = reference.uri
-            if (uri.startsWith("#")) fallback.dereference(reference, ctx)
-            else OctetStreamData(ByteArrayInputStream(entries.getValue(uri)), uri, null)
-        }
-        val signature = factory.unmarshalXMLSignature(context)
-        val valid = signature.validate(context)
-        val references = signature.signedInfo.references.map { it as javax.xml.crypto.dsig.Reference }
-        val broken = references.filter { !it.validate(context) }.map { it.uri }
-        assertTrue("imza değeri: ${signature.signatureValue.validate(context)}, bozuk referanslar: $broken", valid)
-        return references.map { it.uri }
+        prop.setIdAttributeNS(null, "Id", true)
+        Init.init()
+        val signature = XMLSignature(root, "", false)
+        // Paketin dosyaları (URI = zip'teki ad) testteki haritadan okunur; "#prop" Santuario'nun kendi çözücüsüyle.
+        signature.addResourceResolver(object : ResourceResolverSpi() {
+            override fun engineCanResolveURI(context: ResourceResolverContext) =
+                context.uriToResolve != null && !context.uriToResolve.startsWith("#") && context.uriToResolve in entries
+            override fun engineResolveURI(context: ResourceResolverContext) =
+                XMLSignatureInput(entries.getValue(context.uriToResolve))
+        })
+        val valid = signature.checkSignatureValue(certificate.publicKey)
+        val info = signature.signedInfo
+        val uris = (0 until info.length).map { info.item(it).uri }
+        val broken = (0 until info.length).filter { runCatching { !info.getVerificationResult(it) }.getOrDefault(true) }.map { uris[it] }
+        assertTrue("imza geçersiz; bozuk referanslar: $broken", valid)
+        return uris
     }
 
     private fun parse(xml: ByteArray) = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }

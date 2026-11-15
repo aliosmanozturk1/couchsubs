@@ -193,4 +193,6 @@ dependencies {
     testImplementation 'org.json:json:20240303'
     // Yalnız testlerde: Samsung sertifika isteğini ayrıştırmak ve sahte sertifika vermek için (MIT lisanslı).
     testImplementation 'org.bouncycastle:bcpkix-jdk18on:1.79'
+    // Yalnız testlerde: paket imzasını bağımsız bir XML imza doğrulayıcısıyla denetlemek için (Apache-2.0).
+    testImplementation 'org.apache.santuario:xmlsec:3.0.4'
 }
