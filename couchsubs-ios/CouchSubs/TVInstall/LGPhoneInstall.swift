@@ -543,14 +543,15 @@ struct LGInstallSection: View {
         Text(verbatim: TVText.lgSessionNote).font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary).fixedSize(horizontal: false, vertical: true)
         InstallResult(phase: phase)
         // Kurulum bitince ana düğme ana ekrana götürür; kurulumda kullanıcı 3. adımda kalıyordu (#113).
-        if phase.isDone {
-            Button(TVText.goHome, action: onDone).buttonStyle(.mobilePrimary)
-        } else {
-            Button(phase == .idle || phase.isWorking ? TVText.button : TVText.retry) { install() }
-                .buttonStyle(.mobilePrimary)
-                .disabled(phase.isWorking || host.trimmingCharacters(in: .whitespaces).isEmpty || (passphrase.isEmpty && !hasKey))
+        Group {
+            if phase.isDone {
+                Button(TVText.goHome, action: onDone).buttonStyle(.mobilePrimary)
+            } else {
+                Button(phase == .idle || phase.isWorking ? TVText.button : TVText.retry) { install() }
+                    .buttonStyle(.mobilePrimary)
+                    .disabled(phase.isWorking || host.trimmingCharacters(in: .whitespaces).isEmpty || (passphrase.isEmpty && !hasKey))
+            }
         }
-        Color.clear.frame(height: 0)
             .task { await search() }
     }
 

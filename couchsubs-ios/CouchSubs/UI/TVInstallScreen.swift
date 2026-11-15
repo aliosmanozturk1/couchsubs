@@ -248,14 +248,15 @@ struct SamsungInstallSection: View {
                      highlight: phoneAddress(near: host) ?? TVText.phoneIpUnknown, after: [TVText.step4])
         Text(verbatim: TVText.signinNote).font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary).fixedSize(horizontal: false, vertical: true)
         InstallResult(phase: phase)
-        if phase.isDone {
-            Button(TVText.goHome, action: onDone).buttonStyle(.mobilePrimary)
-        } else {
-            Button(phase == .idle || phase.isWorking ? TVText.button : TVText.retry) { install() }
-                .buttonStyle(.mobilePrimary)
-                .disabled(phase.isWorking || host.trimmingCharacters(in: .whitespaces).isEmpty)
+        Group {
+            if phase.isDone {
+                Button(TVText.goHome, action: onDone).buttonStyle(.mobilePrimary)
+            } else {
+                Button(phase == .idle || phase.isWorking ? TVText.button : TVText.retry) { install() }
+                    .buttonStyle(.mobilePrimary)
+                    .disabled(phase.isWorking || host.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
         }
-        Color.clear.frame(height: 0)
             .task { await search() }
             .sheet(isPresented: Binding(get: { login != nil }, set: { if !$0 { login?.close(); login = nil } })) {
                 SamsungSignInSheet { login?.close(); login = nil }
@@ -427,14 +428,15 @@ struct AndroidTVInstallSection: View {
         if replaceNeeded, !phase.isWorking {
             Button(TVText.androidReplace) { install(allowReplace: true) }.buttonStyle(.mobileDestructive)
         }
-        if phase.isDone {
-            Button(TVText.goHome, action: onDone).buttonStyle(.mobilePrimary)
-        } else {
-            Button(phase == .idle || phase.isWorking ? TVText.button : TVText.retry) { install() }
-                .buttonStyle(.mobilePrimary)
-                .disabled(phase.isWorking || address.trimmingCharacters(in: .whitespaces).isEmpty)
+        Group {
+            if phase.isDone {
+                Button(TVText.goHome, action: onDone).buttonStyle(.mobilePrimary)
+            } else {
+                Button(phase == .idle || phase.isWorking ? TVText.button : TVText.retry) { install() }
+                    .buttonStyle(.mobilePrimary)
+                    .disabled(phase.isWorking || address.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
         }
-        Color.clear.frame(height: 0)
             .task { await search() }
     }
 
