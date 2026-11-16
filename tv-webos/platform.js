@@ -6,6 +6,15 @@
   window.COUCHSUBS_PLATFORM = {
     backKey: 461,
 
+    // HDMI görüntüsü gelmezse app.js nedenini ve giriş seçimini gösterir (Android TV bunu kendi ekranında yapar).
+    noPictureHelp: true,
+
+    // Görüntü 'playing' olayı gelmeden de gelmiş olabilir: <video> kare aldıysa görüntü var sayılır.
+    hasPicture: function () {
+      var video = document.querySelector('#video-host video');
+      return !!video && (video.readyState >= 2 || video.videoWidth > 0);
+    },
+
     // Oyun kumandayla oynanır, TV kumandasına dokunulmaz; TV bunu boşta sanıp ekran koruyucuya ve sonra uykuya
     // geçer. TV ekran koruyucuyu açmadan önce abonelere zaman damgalı bir istek yollar; ack:false yanıtı onu erteler
     // (Kodi'nin webOS sürümünün yaptığı gibi). Servis yoksa ya da izin verilmezse sessizce geçilir.

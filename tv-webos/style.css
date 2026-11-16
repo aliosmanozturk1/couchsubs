@@ -241,3 +241,39 @@ body.band #subtitle-text, body.band #subtitle-prev-text, body.band #subtitle-pre
 #source-tip.hidden { display: none; }
 #source-tip b { display: block; color: #F5B83D; font-size: 30px; margin-bottom: 8px; }
 #source-tip .close { display: block; margin-top: 12px; font-size: 22px; color: #A9A59C; }
+
+/* HDMI görüntüsü gelmeyince ortada açılan kutu: neden, ne yapılacağı ve HDMI girişi düğmeleri (◀▶ ve Tamam, ya da 1–4). */
+#no-picture {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  -webkit-transform: translate(-50%, -50%);
+  z-index: 22;
+  width: 1300px;
+  box-sizing: border-box;
+  padding: 36px 48px;
+  border-radius: 24px;
+  border: 2px solid #F5B83D;
+  background: rgba(20, 21, 24, 0.96);
+  color: #F3EEE4;
+  font-size: 28px;
+  line-height: 1.45;
+}
+#no-picture.hidden { display: none; }
+#no-picture b { display: block; color: #F5B83D; font-size: 36px; margin-bottom: 12px; }
+#no-picture span { display: block; white-space: pre-line; }
+#no-picture-choices { margin-top: 26px; }
+#no-picture .button {
+  display: inline-block;
+  margin: 0 14px 10px 0;
+  padding: 14px 30px;
+  border-radius: 14px;
+  border: 3px solid #30333A;
+  background: #1C1E22;
+  color: #F3EEE4;
+  font-size: 28px;
+  font-weight: 600;
+}
+#no-picture .button.current { border-color: #A9A59C; }
+#no-picture .button.focused { background: #F5B83D; border-color: #FFFFFF; color: #1A1A1A; }

@@ -128,9 +128,124 @@
       inputError: ['inputError', 'bad'],
       sourceError: ['sourceError', 'bad']
     };
+    watchPicture(port);
     platform.showHdmi(port, $('video-host'), function (kind) {
       setStatus('st-video', t(statuses[kind][0]), statuses[kind][1]);
+      notePicture(port, kind);
     });
+  }
+
+  // --- HDMI görüntüsü gelmiyor ---
+  // LG'de HDMI girişi <video> ile (ext://hdmi), Samsung'da TVWindow ile açılır. Giriş açılamazsa ya da 10 sn içinde
+  // görüntü gelmezse ekran sessizce siyah kalıyordu (LG QNED: "Çeviriyi başlat"a basınca TV kararıyor). Artık nedeni ve
+  // HDMI girişi düğmeleri gösterilir; doğru girişte de siyahsa TV'nin kendi girişine dönüp altyazıyı telefonda izlemek
+  // önerilir. Android TV'deki giriş seçiciyle (#155) aynı akış; Android bunu kendi ekranında yaptığından orada kapalıdır.
+
+  var NO_PICTURE_MS = 10000;
+  var pictureTimer = null;
+  var pictureOk = false;
+  var noPictureClosed = false;
+  var noPictureFocus = 0;
+  var noPictureActions = [];
+
+  function watchPicture(port) {
+    clearTimeout(pictureTimer);
+    pictureOk = false;
+    noPictureClosed = false;
+    hideNoPicture();
+    if (!platform.noPictureHelp) return;
+    pictureTimer = setTimeout(function () {
+      // Bazı TV'ler görüntüyü gösterip 'playing' olayını hiç göndermiyor; görüntü varsa kutu açılmaz.
+      if (pictureOk || (platform.hasPicture && platform.hasPicture())) return;
+      showNoPicture(port, false);
+    }, NO_PICTURE_MS);
+  }
+
+  function notePicture(port, kind) {
+    if (port !== hdmiPort) return;
+    if (kind === 'ready' || kind === 'playing') {
+      pictureOk = true;
+      clearTimeout(pictureTimer);
+      hideNoPicture();
+    } else if (kind === 'inputError' || kind === 'sourceError') {
+      clearTimeout(pictureTimer);
+      if (platform.noPictureHelp) showNoPicture(port, true);
+    }
+  }
+
+  function noPictureShown() { return $('no-picture').className !== 'hidden'; }
+
+  function showNoPicture(port, failed) {
+    if (noPictureClosed || pictureOk || demoRunning()) return;
+    $('no-picture-text').textContent = t(failed ? 'noPictureError' : 'noPicture').replace('%1', port) + ' ' +
+      t('noPictureChoose') + '\n\n' + t('noPictureStillBlack');
+    var box = $('no-picture-choices');
+    box.innerHTML = '';
+    var actions = [];
+    for (var i = 1; i <= 4; i++) actions.push({ label: 'HDMI ' + i, port: i });
+    actions.push({ label: t('noPictureExit'), exit: true });
+    actions.push({ label: t('noPictureClose'), close: true });
+    for (var j = 0; j < actions.length; j++) {
+      var button = document.createElement('div');
+      button.className = 'button' + (actions[j].port === port ? ' current' : '');
+      button.textContent = actions[j].label;
+      button.addEventListener('click', choiceClick(actions[j], j));
+      actions[j].el = button;
+      box.appendChild(button);
+    }
+    noPictureActions = actions;
+    $('panel').className = 'hidden';
+    $('waiting').className = 'hidden';
+    $('no-picture').className = '';
+    // Açık olandan sonraki giriş seçili gelir (HDMI 1 açıksa HDMI 2).
+    focusNoPicture(port % 4);
+  }
+
+  function choiceClick(action, index) {
+    return function (e) {
+      e.stopPropagation();
+      // Tamam tuşu işaretçi görünürken tıklama da gönderir; tuşla seçilen bir daha seçilmez.
+      if (Date.now() - lastOkKey < 400) return;
+      focusNoPicture(index);
+      runNoPicture(action);
+    };
+  }
+
+  function focusNoPicture(index) {
+    var count = noPictureActions.length;
+    noPictureFocus = (index + count) % count;
+    for (var i = 0; i < count; i++) {
+      var el = noPictureActions[i].el;
+      el.className = el.className.replace(' focused', '') + (i === noPictureFocus ? ' focused' : '');
+    }
+  }
+
+  function runNoPicture(action) {
+    if (action.exit) {
+      hideNoPicture();
+      leaving = true;
+      platform.exit();
+    } else if (action.close) {
+      closeNoPicture();
+    } else {
+      hdmiPort = action.port;
+      save('hdmi', hdmiPort);
+      showHdmi(hdmiPort);
+      showPanel(true);
+    }
+  }
+
+  // Kullanıcı kutuyu kapattı: başka giriş seçilene ya da uygulama yeniden başlatılana kadar yeniden açılmaz.
+  function closeNoPicture() {
+    noPictureClosed = true;
+    hideNoPicture();
+  }
+
+  function hideNoPicture() {
+    var el = $('no-picture');
+    if (!el || el.className === 'hidden') return;
+    el.className = 'hidden';
+    if (!server && !demoRunning()) $('waiting').className = '';
   }
 
   function autoSelectConsole(onNotFound) {
@@ -1121,6 +1236,7 @@
   // Geri tuşu: önce ipucu, demo ya da panel kapanır; giriş ekranında TV'nin ana ekranına dönülür.
   function goBack() {
     if (sourceTipShown()) return hideSourceTip();
+    if (noPictureShown()) return closeNoPicture();
     if (demoRunning()) return stopDemo();
     if ($('panel').className !== 'hidden') return hidePanel();
     leaving = true;
@@ -1226,6 +1342,7 @@
   document.addEventListener('click', function () {
     if (Date.now() - lastOkKey < 400) return;
     if (sourceTipShown()) hideSourceTip();
+    else if (noPictureShown()) return;
     else if ($('waiting').className !== 'hidden') startDemo();
     else if (!demoRunning()) togglePanel();
   });
@@ -1235,6 +1352,11 @@
     if (code === KEY.OK) lastOkKey = Date.now();
     if (code === KEY.OK && sourceTipShown()) {
       hideSourceTip();
+    } else if (noPictureShown() && (code === KEY.LEFT || code === KEY.RIGHT || code === KEY.UP || code === KEY.DOWN)) {
+      focusNoPicture(noPictureFocus + (code === KEY.RIGHT || code === KEY.DOWN ? 1 : -1));
+      e.preventDefault();
+    } else if (noPictureShown() && code === KEY.OK) {
+      runNoPicture(noPictureActions[noPictureFocus]);
     } else if (code === 48) { // 0: elle seçimi unut, konsolu yeniden ara
       save('hdmi', '');
       autoSelectConsole(function () {
