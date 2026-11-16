@@ -46,8 +46,8 @@ public final class SubtitlePipeline {
     /// Son çevrilen (motora ya da pakete giden) okuma, puanı ve zamanı.
     private var lastSent: (source: String, score: Int, at: Int)?
     /// Yarım ya da bozuk okuma kısa süre bekletilip aynı satırın en iyi okuması mı çevrilsin (Windows'ta yazım denetimiyle
-    /// açık). iPhone uygulaması açar; kapalıyken her kararlı okuma hemen çevrilir.
-    public var holdReadings = false
+    /// açık). Mac ve iPhone'da açık (Windows ve Android ile aynı); kapalıyken her kararlı okuma hemen çevrilir.
+    public var holdReadings = true
     /// Bozuk okumanın bekleme süresi (0: beklenmez); testler değiştirir.
     public var packWait = SubtitlePipeline.packWaitMs
     /// Yarım olabilecek temiz okumanın bekleme süresi (0: beklenmez); testler değiştirir.
@@ -569,7 +569,11 @@ public final class SubtitlePipeline {
             // Dil paketi eksikse ya da geçici bir hata olduysa satır ekranda kaldıkça (saniyede en çok bir kez) yeniden denenir.
             lastError = error as? TranslatorError
             onTranslationResult?(lastError)
-            if request.number == lineOnScreen { stabilizer.forgetSent() }
+            if request.number == lineOnScreen {
+                stabilizer.forgetSent()
+                // Çevrilemeyen satırın yeniden okuması "az önce çevrilen" sayılıp atlanmasın; yeniden denensin.
+                if lastSent?.source == request.source { lastSent = nil }
+            }
         }
     }
 

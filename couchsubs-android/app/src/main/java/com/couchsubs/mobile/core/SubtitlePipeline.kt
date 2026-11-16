@@ -412,7 +412,11 @@ class SubtitlePipeline(
                 // Yerine uzamış okuması gelen ya da bırakılan satırın çevirisi hata sayılmaz.
                 if (request.session != session || request.superseded || request.abandoned) return
                 // Model eksikse ya da geçici hata olduysa satır ekranda kaldıkça (saniyede en çok bir kez) yeniden denenir.
-                if (request.number == lineOnScreen) stabilizer.forgetSent()
+                if (request.number == lineOnScreen) {
+                    stabilizer.forgetSent()
+                    // Çevrilemeyen satırın yeniden okuması "az önce çevrilen" sayılıp atlanmasın; yeniden denensin.
+                    if (lastSent?.source == request.source) lastSent = null
+                }
             }
             onTranslationResult?.invoke(error)
             return

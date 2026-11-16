@@ -764,7 +764,12 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 Write(request, $"hata ({now() - started} ms): {(error as TranslatorException)?.Status.ToString() ?? error.GetType().Name}{retry}");
                 // Model eksikse ya da geçici bir hata olduysa satır ekranda kaldıkça (saniyede en çok bir kez) yeniden denenir.
                 LastError = (error as TranslatorException)?.Status;
-                if (request.Number == lineOnScreen) stabilizer.ForgetSent();
+                if (request.Number == lineOnScreen)
+                {
+                    stabilizer.ForgetSent();
+                    // Çevrilemeyen satırın yeniden okuması "az önce çevrilen" sayılıp atlanmasın; yeniden denensin.
+                    if (lastSent is { } sent && sent.Source == request.Source) lastSent = null;
+                }
             }
             TranslationResult?.Invoke(LastError);
             return;
