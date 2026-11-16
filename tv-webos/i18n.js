@@ -39,7 +39,7 @@
       noPicture: 'HDMI %1 girişinden görüntü gelmiyor.',
       noPictureError: 'HDMI %1 girişi bu uygulamada açılamadı.',
       noPictureChoose: 'PS5 başka girişe bağlıysa aşağıdan seçin (◀▶ ve Tamam, ya da 1–4 sayı tuşları).',
-      noPictureStillBlack: 'Doğru girişte de siyah mı? PS5\'te HDR açıksa kapatın (Ayarlar › Ekran ve Video › Video Çıkışı › HDR: Kapalı): bazı LG TV\'ler HDR görüntüyü uygulama içinde gösteremiyor, ekran kararıyor. Olmazsa bu TV HDMI görüntüsünü uygulamalara vermiyor ya da HDCP engelliyordur: PS5\'te Ayarlar › Sistem › HDMI › HDCP\'yi Etkinleştir\'i kapatmayı deneyin. Olmazsa CouchSubs\'tan çıkın, TV\'yi kumandadan PS5\'in HDMI girişine alın ve altyazıyı telefon ya da bilgisayar ekranından izleyin.',
+      noPictureStillBlack: 'Doğru girişte de siyah mı? PS5\'te HDR açıksa kapatın (Ayarlar › Ekran ve Video › Video Çıkışı › HDR: Kapalı): Uzaktan Oynatma açıkken HDR görüntü kararabiliyor. Olmazsa bu TV HDMI görüntüsünü uygulamalara vermiyor ya da HDCP engelliyordur: PS5\'te Ayarlar › Sistem › HDMI › HDCP\'yi Etkinleştir\'i kapatmayı deneyin. Olmazsa CouchSubs\'tan çıkın, TV\'yi kumandadan PS5\'in HDMI girişine alın ve altyazıyı telefon ya da bilgisayar ekranından izleyin.',
       noPictureExit: 'Çık, TV girişine dön',
       noPictureClose: 'Kapat'
     },
@@ -77,7 +77,7 @@
       noPicture: 'No picture from HDMI %1.',
       noPictureError: 'HDMI %1 could not be opened in this app.',
       noPictureChoose: 'If the PS5 is on another input, choose it below (◀▶ and OK, or number keys 1–4).',
-      noPictureStillBlack: 'Still black on the right input? If HDR is on, turn it off on the PS5 (Settings › Screen and Video › Video Output › HDR: Off): some LG TVs cannot show an HDR picture inside an app and go black. Otherwise this TV may not hand its HDMI picture to apps, or HDCP blocks it: try turning off Settings › System › HDMI › Enable HDCP on the PS5. Otherwise exit CouchSubs, switch the TV to the PS5\'s HDMI input with the remote and read the subtitles on your phone or computer.',
+      noPictureStillBlack: 'Still black on the right input? If HDR is on, turn it off on the PS5 (Settings › Screen and Video › Video Output › HDR: Off): with Remote Play active an HDR picture can turn dark. Otherwise this TV may not hand its HDMI picture to apps, or HDCP blocks it: try turning off Settings › System › HDMI › Enable HDCP on the PS5. Otherwise exit CouchSubs, switch the TV to the PS5\'s HDMI input with the remote and read the subtitles on your phone or computer.',
       noPictureExit: 'Exit to the TV input',
       noPictureClose: 'Close'
     }
