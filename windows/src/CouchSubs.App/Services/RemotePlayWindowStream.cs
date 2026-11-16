@@ -332,9 +332,27 @@ public sealed class RemotePlayWindowStream : IStreamSession
             pool = Direct3D11CaptureFramePool.CreateFreeThreaded(device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, size);
             session = pool.CreateCaptureSession(item);
             session.IsCursorCaptureEnabled = false;
+            HideCaptureBorder(session);
             item.Closed += (_, _) => owner.CaptureEnded(this, number, "pencere kapandı");
             pool.FrameArrived += OnFrameArrived;
             session.StartCapture();
+        }
+
+        /// <summary>Windows yakalanan pencerenin çevresine sarı bir çerçeve çizer. Destekleyen sürümlerde (Windows 11,
+        /// Windows 10 20348+) çerçevesiz yakalama izni istenip çerçeve kapatılır; eski sürümlerde hiçbir şey değişmez.</summary>
+        private static void HideCaptureBorder(GraphicsCaptureSession session)
+        {
+            if (!Windows.Foundation.Metadata.ApiInformation.IsPropertyPresent("Windows.Graphics.Capture.GraphicsCaptureSession", "IsBorderRequired"))
+                return;
+            try
+            {
+                if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
+                {
+                    GraphicsCaptureAccess.RequestAccessAsync(GraphicsCaptureAccessKind.Borderless).AsTask().GetAwaiter().GetResult();
+                    session.IsBorderRequired = false;
+                }
+            }
+            catch (Exception) { /* İzin verilmezse çerçeve kalır; yakalama sürer. */ }
         }
 
         private void OnFrameArrived(Direct3D11CaptureFramePool sender, object args)
