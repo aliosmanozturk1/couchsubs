@@ -10,5 +10,8 @@
   "bgColor": "#000000",
   "resolution": "1920x1080",
   "requiredACG": [],
-  "disableBackHistoryAPI": true
+  "disableBackHistoryAPI": true,
+  "screenSaverProperties": {
+    "preferredType": 2
+  }
 }
