@@ -550,8 +550,9 @@
     cover.style.bottom = Math.round(height - bottom) + 'px';
     cover.style.width = Math.round(right - left) + 'px';
     cover.style.height = Math.round(bottom - top) + 'px';
-    // %100 zemin tamamen opak: örtünün varsayılan %97'si altındaki yazıyı silik de olsa gösterirdi.
-    cover.style.background = solidBackground ? '#000' : '';
+    // Örtü telefondaki "Arka plan koyuluğu"na uyar: eskiden hep %97'ydi, kaydırıcı %0'da da kutu opak kalıyordu.
+    // %100 tamamen opaktır; koyuluğu göndermeyen eski sürümlerde style.css'teki %97 geçerlidir.
+    cover.style.background = coverBackground;
     cover.className = '';
   }
 
@@ -574,8 +575,9 @@
   // Çevirinin zemini (bilgisayardaki "Zemin koyuluğu"); boşsa style.css'teki varsayılan. Örtü varken saydam olur.
   var textBackground = '';
 
-  // Zemin %100 mü (tamamen opak) ve tam genişlik bant mı; eski bilgisayar uygulamaları alanı göndermez, yazı kadar kalır.
-  var solidBackground = false;
+  // Örtünün zemini (koyuluğa göre, %100'de tamamen opak; boşsa style.css'teki %97) ve tam genişlik bant mı; eski
+  // bilgisayar uygulamaları alanı göndermez, yazı kadar kalır.
+  var coverBackground = '';
   var bandShape = false;
 
   // Bilgisayardaki "Yazı rengi" seçimi; bilinmeyen değer gelirse renk değişmez.
@@ -595,8 +597,8 @@
     document.body.className = bandShape ? 'band' : '';
     if (typeof style.background === 'number') {
       var alpha = Math.max(0, Math.min(100, style.background)) / 100;
-      solidBackground = style.background >= 100;
       textBackground = 'rgba(0, 0, 0, ' + alpha + ')';
+      coverBackground = style.background >= 100 ? '#000' : textBackground;
       $('subtitle-text').style.background = textBackground;
       $('subtitle-prev-text').style.background = 'rgba(0, 0, 0, ' + (alpha * 0.83).toFixed(2) + ')';
       $('subtitle-prev2-text').style.background = 'rgba(0, 0, 0, ' + (alpha * 0.83).toFixed(2) + ')';

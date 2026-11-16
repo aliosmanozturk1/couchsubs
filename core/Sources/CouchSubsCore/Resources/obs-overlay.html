@@ -271,9 +271,10 @@
       line.style.top = ((box.top + box.bottom) / 2 * 100) + '%';
       // Bant: zemin sayfanın tüm genişliğini kaplar (eski sürümler alanı göndermez, yazı kadar kalır).
       line.style.minWidth = band ? '100vw' : ((box.right - box.left) * 100) + 'vw';
-      // %100 zemin tamamen opak; altındaki yazı hiç görünmesin.
-      var solid = (fixed.bg !== null ? Number(fixed.bg) : (lastStyle && lastStyle.background)) >= 100;
-      line.style.background = solid ? '#000' : 'rgba(0, 0, 0, 0.97)';
+      // Örtü de "Arka plan koyuluğu"na uyar (eskiden hep %97'ydi, kaydırıcı örtüde işe yaramıyordu); %100 tamamen
+      // opaktır. Koyuluğu göndermeyen eski sürümlerde örtü %97 kalır.
+      var bg = fixed.bg !== null ? Number(fixed.bg) : (lastStyle && lastStyle.background);
+      line.style.background = typeof bg === 'number' && !isNaN(bg) ? (bg >= 100 ? '#000' : boxColor(bg)) : 'rgba(0, 0, 0, 0.97)';
       if (pageColor) line.style.background = '#000';
       line.className = 'on cover';
     } else {
