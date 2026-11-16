@@ -134,9 +134,42 @@ enum XboxChannels {
         return data
     }
 
+    /// Oynatıcı bir pakette en çok 29 kare onaylar (Input.ts `getMetadataQueue(30)` → `splice(0, 29)`).
+    static let maxFrameAcks = 29
+
+    /// `input` kanalının kare onayı paketi (Input/Packet.ts, rapor türü 1 = Metadata): tür (u16), sıra no (u32), zaman
+    /// (f64, ms), kare sayısı (u8), her kare için yedi u32: serverDataKey (RTP zaman damgası), varış, gönderim, çözülme,
+    /// gösterim, paket hazırlama ve gönderme anları (ms). Hepsi küçük sonlu; Android'deki `frameAckPacket` ile aynı.
+    static func frameAckPacket(sequence: UInt32, timestampMs: Double, frames: [XboxFrameAck]) -> Data {
+        var data = Data()
+        func u32(_ value: UInt32) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
+        func ms(_ value: Double) -> UInt32 { UInt32(truncatingIfNeeded: Int64(value)) }
+        withUnsafeBytes(of: UInt16(1).littleEndian) { data.append(contentsOf: $0) }
+        u32(sequence)
+        withUnsafeBytes(of: timestampMs.bitPattern.littleEndian) { data.append(contentsOf: $0) }
+        data.append(UInt8(frames.count))
+        for frame in frames {
+            u32(frame.serverDataKey)
+            u32(ms(frame.arrivalMs))
+            u32(ms(frame.arrivalMs))
+            u32(ms(frame.decodedMs))
+            u32(ms(frame.decodedMs))
+            u32(ms(timestampMs))
+            u32(ms(timestampMs))
+        }
+        return data
+    }
+
     /// Oynatıcının SDP düzeltmesi: stereo ses (ilk `useinbandfec=1`).
     static func mungeOffer(_ sdp: String) -> String {
         guard let range = sdp.range(of: "useinbandfec=1") else { return sdp }
         return sdp.replacingCharacters(in: range, with: "useinbandfec=1; stereo=1")
     }
+}
+
+/// Gösterilen bir görüntü karesinin onayı: [serverDataKey] karenin RTP zaman damgası, anlar oturum saatine göre ms.
+struct XboxFrameAck: Equatable {
+    let serverDataKey: UInt32
+    let arrivalMs: Double
+    let decodedMs: Double
 }

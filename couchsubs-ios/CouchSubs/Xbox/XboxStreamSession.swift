@@ -19,6 +19,8 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
     private static let firstFrameSeconds: TimeInterval = 20
     /// Okuma saniyede birkaç kez yapılır; her kareyi CGImage'a çevirmeye gerek yok.
     private static let frameInterval: TimeInterval = 0.066
+    /// Kare onayları oynatıcıdaki gibi 16 ms'de bir paketlenir (Input.ts `_inputInterval`).
+    private static let ackIntervalNs: UInt64 = 16_000_000
 
     private let auth: XboxAuth
     private let console: XboxConsole
@@ -37,6 +39,16 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
     private var sessionId: String?
     private var lastConverted: TimeInterval = 0
     private(set) var framesReceived = 0
+    /// Kare onayı (Windows'taki xbox-xcloud-player her gösterilen karede yapar): Xbox onay gelmeyen yayını kısa sürede
+    /// kapatır (Greenlight wiki, WebRTC: "Without sending any data back the stream will only last for +- 40 seconds").
+    private var pendingAcks: [XboxFrameAck] = []
+    private var acking = false
+    private var ackSequence: UInt32 = 0
+    private var acksSent = 0
+    private var ackTask: Task<Void, Never>?
+    /// Onay paketlerindeki anların sıfırı (oynatıcıdaki performance.now() gibi).
+    private var clockStart: TimeInterval = 0
+    private var firstFrameAt: TimeInterval = 0
 
     init(auth: XboxAuth, console: XboxConsole, describe: @escaping (XboxErrorKind) -> String) {
         self.auth = auth
@@ -122,13 +134,25 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
                 action = locked { machine.fail(.service, error.localizedDescription) }
                 report(.service, error.localizedDescription)
             }
+            summarize()
             await teardown()
             guard !Task.isCancelled, !stopped, case let .retry(delay?) = action else { break }
             try? await Task.sleep(nanoseconds: UInt64(delay) * 1_000_000)
         }
     }
 
+    /// Bağlantı bitince: kaç kare geldi, kaç onay gitti, ilk kareden kaç saniye sonra ve neden bitti.
+    private func summarize() {
+        let (frames, sent, first, reason, error) = locked { (framesReceived, acksSent, firstFrameAt, endReason, lastError) }
+        guard frames > 0 || reason != nil || error != nil else { return }
+        let lived = first > 0 ? "\(Int(ProcessInfo.processInfo.systemUptime - first)) sn" : "ilk kare yok"
+        log("bağlantı bitti: \(reason ?? error ?? "durduruldu"); kare \(frames), onay \(sent), ilk kareden sonra \(lived)")
+    }
+
+    private var lastError: String?
+
     private func report(_ kind: XboxErrorKind, _ detail: String) {
+        locked { lastError = "\(kind.rawValue): \(detail)" }
         guard !stopped else { return }
         log("hata (\(kind.rawValue)): \(detail)")
         onState?(.disconnected(.other(describe(kind))))
@@ -136,6 +160,12 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
 
     private func teardown() async {
         keepaliveTask?.cancel()
+        ackTask?.cancel()
+        ackTask = nil
+        locked {
+            acking = false
+            pendingAcks = []
+        }
         let (peer, channels, id) = locked { () -> (RTCPeerConnection?, [RTCDataChannel], String?) in
             let result = (self.peer, Array(self.channels.values), self.sessionId)
             self.peer = nil
@@ -157,6 +187,13 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
             localCandidates = []
             gatheringComplete = false
             framesReceived = 0
+            firstFrameAt = 0
+            lastError = nil
+            acking = false
+            pendingAcks = []
+            ackSequence = 0
+            acksSent = 0
+            clockStart = ProcessInfo.processInfo.systemUptime
         }
         let config = RTCConfiguration()
         config.iceServers = [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]), RTCIceServer(urlStrings: ["stun:stun1.l.google.com:19302"])]
@@ -224,7 +261,7 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
         while !Task.isCancelled && !stopped {
             if locked({ endReason }) != nil { return }
             if locked({ framesReceived }) == 0 && Date().timeIntervalSince(negotiatedAt) > Self.firstFrameSeconds {
-                throw XboxError(.consoleUnavailable, "Xbox'tan görüntü gelmedi")
+                throw XboxError(.consoleUnavailable, "Xbox'tan \(Int(Self.firstFrameSeconds)) sn içinde görüntü gelmedi")
             }
             try await Task.sleep(nanoseconds: 1_000_000_000)
         }
@@ -252,12 +289,54 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
     }
 
     fileprivate func channelMessage(_ name: String, _ buffer: RTCDataBuffer) {
-        guard name == "message", !buffer.isBinary, XboxChannels.isHandshakeAck(String(decoding: buffer.data, as: UTF8.self)) else { return }
+        if buffer.isBinary {
+            // input kanalından gelenler: 16 = ServerMetadata, 128 = titreşim (her an gelir, yazılmaz).
+            let type = buffer.data.first.map { Int($0) } ?? -1
+            if type != 128 { log("kanal \(name): ikili ileti, tür \(type), \(buffer.data.count) bayt") }
+            return
+        }
+        let text = String(decoding: buffer.data, as: UTF8.self)
+        guard name == "message", XboxChannels.isHandshakeAck(text) else {
+            // Xbox'ın kapatma bildirimi gibi iletiler (ör. TransactionStart) burada görünür.
+            log("kanal \(name): \(text.prefix(300))")
+            return
+        }
         log("el sıkışma tamam")
         send("control", Data(XboxChannels.authorization.utf8), binary: false)
         send("control", Data(XboxChannels.gamepadAdded.utf8), binary: false)
-        send("input", XboxChannels.clientMetadataPacket(timestampMs: ProcessInfo.processInfo.systemUptime * 1000), binary: true)
+        send("input", XboxChannels.clientMetadataPacket(timestampMs: sessionMs()), binary: true)
         XboxChannels.configurationMessages().forEach { send("message", Data($0.utf8), binary: false) }
+        startAcks()
+    }
+
+    private func sessionMs(_ at: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Double {
+        (at - locked { clockStart }) * 1000
+    }
+
+    /// El sıkışmadan sonra gösterilen karelerin onayı 16 ms'de bir `input` kanalına gider (oynatıcıdaki döngü).
+    private func startAcks() {
+        ackTask?.cancel()
+        locked {
+            pendingAcks = []
+            acking = true
+        }
+        ackTask = Task.detached { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.ackIntervalNs)
+                guard let self, !Task.isCancelled else { return }
+                let batch = self.locked { () -> (frames: [XboxFrameAck], sequence: UInt32)? in
+                    guard self.acking, !self.pendingAcks.isEmpty else { return nil }
+                    let frames = Array(self.pendingAcks.prefix(XboxChannels.maxFrameAcks))
+                    self.pendingAcks.removeFirst(frames.count)
+                    self.ackSequence &+= 1
+                    self.acksSent += frames.count
+                    return (frames, self.ackSequence)
+                }
+                guard let batch else { continue }
+                self.send("input", XboxChannels.frameAckPacket(sequence: batch.sequence, timestampMs: self.sessionMs(), frames: batch.frames), binary: true)
+                if batch.sequence == 1 { self.log("kare onayı başladı") }
+            }
+        }
     }
 
     private func send(_ name: String, _ data: Data, binary: Bool) {
@@ -287,8 +366,15 @@ extension XboxStreamSession: RTCVideoRenderer {
         let now = ProcessInfo.processInfo.systemUptime
         let (count, due) = locked { () -> (Int, Bool) in
             framesReceived += 1
+            if framesReceived == 1 { firstFrameAt = now }
             let due = now - lastConverted >= Self.frameInterval
             if due { lastConverted = now }
+            if acking {
+                // timeStamp: karenin RTP zaman damgası (90 kHz), oynatıcıdaki serverDataKey (rtpTimestamp).
+                let at = (now - clockStart) * 1000
+                if pendingAcks.count >= 600 { pendingAcks.removeFirst() }
+                pendingAcks.append(XboxFrameAck(serverDataKey: UInt32(bitPattern: frame.timeStamp), arrivalMs: at, decodedMs: at))
+            }
             return (framesReceived, due)
         }
         if count == 1 {

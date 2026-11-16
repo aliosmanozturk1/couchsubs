@@ -13,7 +13,6 @@ import com.couchsubs.mobile.remoteplay.FrameSource
 import com.couchsubs.mobile.remoteplay.SessionState
 import com.couchsubs.mobile.remoteplay.VideoFrame
 import org.webrtc.DataChannel
-import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
 import org.webrtc.MediaStream
@@ -51,6 +50,8 @@ class XboxStreamSession(
         const val FIRST_FRAME_MS = 20_000L
         /** OCR saniyede beş kez okur; her kareyi I420'ye çevirmeye gerek yok. */
         const val FRAME_INTERVAL_MS = 66L
+        /** Kare onayları oynatıcıdaki gibi 16 ms'de bir paketlenir (Input.ts `_inputInterval`). */
+        const val ACK_INTERVAL_MS = 16L
     }
 
     private val appContext = context.applicationContext
@@ -70,6 +71,20 @@ class XboxStreamSession(
     @Volatile private var keepalive: ScheduledFuture<*>? = null
     @Volatile private var lastConverted = 0L
     @Volatile private var firstFrameAt = 0L
+    /** Kare onayları (bkz. XboxFrameAcks.kt): el sıkışmadan sonra gönderilir. */
+    private val acks = XboxFrameAckQueue()
+    @Volatile private var acking = false
+    @Volatile private var ackSequence = 0
+    @Volatile private var acksSent = 0L
+    @Volatile private var ackTask: ScheduledFuture<*>? = null
+    /** Onay paketlerindeki anların sıfırı (oynatıcıdaki performance.now() gibi). */
+    @Volatile private var clockStart = 0L
+    /** Oturumda bir kez Crashlytics'e kopma özeti gider (nedeni sahadan görmek için). */
+    private val endReported = AtomicBoolean(false)
+    private val decoded = DecodedFrameListener { rtpMs, arrivedAt, decodedAt ->
+        if (!acking) return@DecodedFrameListener
+        acks.offer(XboxFrameAck(XboxFrameAckQueue.serverDataKey(rtpMs), arrivedAt - clockStart, decodedAt - clockStart))
+    }
     private val channels = HashMap<String, DataChannel>()
 
     override val framesReceived: Long get() = frameCounter.totalFrames
@@ -136,6 +151,7 @@ class XboxStreamSession(
                 action = machine.fail(XboxError.SERVICE, error.message ?: error.javaClass.simpleName)
                 report(XboxError.SERVICE, error.message)
             } finally {
+                summarize()
                 closePeer()
                 stopRemote()
             }
@@ -149,7 +165,25 @@ class XboxStreamSession(
         }
     }
 
+    /**
+     * Bağlantı bitince: kaç kare geldi, kaç onay gitti, ilk kareden kaç saniye sonra ve neden bitti. "Görüntü hiç
+     * gelmedi" (ilk kare sınırı) ile "görüntü geldi, Xbox kapattı" (onay) birbirinden bu satırla ayrılır.
+     */
+    private fun summarize() {
+        val session = frameSession ?: return
+        val frames = frameCounter.framesInSession(session)
+        val now = SystemClock.elapsedRealtime()
+        val lived = if (firstFrameAt > 0) "${(now - firstFrameAt) / 1000} sn" else "ilk kare yok"
+        val reason = endReason ?: lastError ?: "durduruldu"
+        val text = "bağlantı bitti: $reason; kare $frames, onay $acksSent, ilk kareden sonra $lived"
+        log(text)
+        if (!stopped.get() && endReported.compareAndSet(false, true)) Backend.recordError(XboxSessionEnded(text))
+    }
+
+    @Volatile private var lastError: String? = null
+
     private fun report(kind: XboxError, detail: String?) {
+        lastError = "$kind: $detail"
         if (stopped.get()) return
         log("hata ($kind): $detail")
         onState(SessionState.Disconnected(DisconnectKind.OTHER, describe(kind)))
@@ -177,7 +211,8 @@ class XboxStreamSession(
         return PeerConnectionFactory.builder()
             .setAudioDeviceModule(audio)
             // EGL bağlamı yok: donanım çözücüsü kareyi bellekte verir, Y düzlemi doğrudan okunur.
-            .setVideoDecoderFactory(DefaultVideoDecoderFactory(null))
+            // Kare onayı için çözülen karenin RTP zaman damgası gerekir; çözücü seçimi DefaultVideoDecoderFactory'ninki.
+            .setVideoDecoderFactory(XboxDecoderFactory(decoded))
             .setVideoEncoderFactory(SoftwareVideoEncoderFactory())
             .createPeerConnectionFactory()
             .also { audio.release() }
@@ -210,6 +245,13 @@ class XboxStreamSession(
         }
         val done = CountDownLatch(1).also { ended = it }
         endReason = null
+        lastError = null
+        firstFrameAt = 0L
+        acking = false
+        acks.clear()
+        ackSequence = 0
+        acksSent = 0L
+        clockStart = SystemClock.elapsedRealtime()
         val pcFactory = createFactory().also { factory = it }
         val gathered = CountDownLatch(1)
         val local = ArrayList<XboxIceCandidate>()
@@ -282,7 +324,7 @@ class XboxStreamSession(
         while (!stopped.get()) {
             if (done.await(1, TimeUnit.SECONDS)) break
             if (frameCounter.framesInSession(negotiatedFrames) == 0L && SystemClock.elapsedRealtime() - negotiatedAt > FIRST_FRAME_MS) {
-                endReason = "Xbox'tan görüntü gelmedi"
+                endReason = "Xbox'tan ${FIRST_FRAME_MS / 1000} sn içinde görüntü gelmedi"
                 throw XboxException(XboxError.CONSOLE_UNAVAILABLE, endReason!!)
             }
         }
@@ -305,15 +347,25 @@ class XboxStreamSession(
         }
 
         override fun onMessage(buffer: DataChannel.Buffer) {
-            if (name != "message" || buffer.binary) return
             val bytes = ByteArray(buffer.data.remaining()).also { buffer.data.get(it) }
+            if (buffer.binary) {
+                // input kanalından gelenler: 16 = ServerMetadata, 128 = titreşim (her an gelir, yazılmaz).
+                val type = if (bytes.isEmpty()) -1 else bytes[0].toInt() and 0xff
+                if (type != 128) log("kanal $name: ikili ileti, tür $type, ${bytes.size} bayt")
+                return
+            }
             val text = String(bytes, Charsets.UTF_8)
-            if (!XboxChannels.isHandshakeAck(text)) return
+            if (name != "message" || !XboxChannels.isHandshakeAck(text)) {
+                // Xbox'ın kapatma bildirimi gibi iletiler (ör. TransactionStart) burada görünür.
+                log("kanal $name: ${text.take(300)}")
+                return
+            }
             log("el sıkışma tamam")
             sendText("control", XboxChannels.AUTHORIZATION)
             sendText("control", XboxChannels.GAMEPAD_ADDED)
-            send("input", XboxChannels.clientMetadataPacket(0, SystemClock.elapsedRealtimeNanos() / 1e6), binary = true)
+            send("input", XboxChannels.clientMetadataPacket(0, (SystemClock.elapsedRealtime() - clockStart).toDouble()), binary = true)
             XboxChannels.configurationMessages().forEach { sendText("message", it) }
+            startAcks()
         }
     }
 
@@ -323,6 +375,25 @@ class XboxStreamSession(
         val channel = synchronized(channels) { channels[name] } ?: return
         if (channel.state() != DataChannel.State.OPEN) return
         channel.send(DataChannel.Buffer(ByteBuffer.wrap(bytes), binary))
+    }
+
+    /** El sıkışmadan sonra çözülen karelerin onayı 16 ms'de bir `input` kanalına gider (oynatıcıdaki döngü). */
+    private fun startAcks() {
+        ackTask?.cancel(false)
+        acks.clear()
+        acking = true
+        ackTask = timers.scheduleWithFixedDelay({
+            try {
+                val frames = acks.drain()
+                if (frames.isEmpty()) return@scheduleWithFixedDelay
+                val sequence = ++ackSequence
+                send("input", XboxChannels.frameAckPacket(sequence, (SystemClock.elapsedRealtime() - clockStart).toDouble(), frames), binary = true)
+                acksSent += frames.size
+                if (sequence == 1) log("kare onayı başladı")
+            } catch (error: Exception) {
+                log("kare onayı: ${error.message}")
+            }
+        }, ACK_INTERVAL_MS, ACK_INTERVAL_MS, TimeUnit.MILLISECONDS)
     }
 
     private fun startKeepalive() {
@@ -342,6 +413,10 @@ class XboxStreamSession(
         frameSession = null
         keepalive?.cancel(false)
         keepalive = null
+        acking = false
+        ackTask?.cancel(false)
+        ackTask = null
+        acks.clear()
         synchronized(channels) {
             channels.values.forEach { runCatching { it.unregisterObserver(); it.dispose() } }
             channels.clear()
@@ -395,3 +470,6 @@ private object WebRtc {
         ready = true
     }
 }
+
+/** Crashlytics'e giden tanı kaydı: Xbox bağlantısının neden ve ne kadar sürede bittiği (çökme değildir). */
+private class XboxSessionEnded(message: String) : Exception(message)

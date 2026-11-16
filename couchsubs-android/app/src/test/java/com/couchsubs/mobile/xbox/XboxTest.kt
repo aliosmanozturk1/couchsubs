@@ -326,6 +326,35 @@ class XboxChannelsTest {
         assertEquals(2, packet[14].toInt())
     }
 
+    @Test fun frameAckPacketMatchesPlayer() {
+        // Input/Packet.ts: 14 bayt başlık + 1 bayt sayı + kare başına 28 bayt; tür 1 = Metadata.
+        val frames = listOf(XboxFrameAck(0x1_0000_0005L, 100, 104), XboxFrameAck(3000, 116, 120))
+        val packet = XboxChannels.frameAckPacket(7, 130.0, frames)
+        assertEquals(14 + 1 + 28 * 2, packet.size)
+        val buffer = ByteBuffer.wrap(packet).order(ByteOrder.LITTLE_ENDIAN)
+        assertEquals(1, buffer.getShort(0).toInt())
+        assertEquals(7, buffer.getInt(2))
+        assertEquals(130.0, buffer.getDouble(6), 0.0)
+        assertEquals(2, packet[14].toInt())
+        // serverDataKey alt 32 bit; varış/gönderim, çözülme/gösterim, paket anı ikişer kez.
+        assertEquals(listOf(5, 100, 100, 104, 104, 130, 130), (0 until 7).map { buffer.getInt(15 + it * 4) })
+        assertEquals(3000, buffer.getInt(15 + 28))
+    }
+
+    @Test fun frameAckQueueDrainsInPlayerSizedBatches() {
+        val queue = XboxFrameAckQueue(capacity = 40)
+        repeat(45) { queue.offer(XboxFrameAck(it.toLong(), 0, 0)) }
+        val first = queue.drain()
+        assertEquals(XboxChannels.MAX_FRAME_ACKS, first.size)
+        // Sığa ulaşınca en eskiler düşer: 0-4 atıldı.
+        assertEquals(5L, first.first().serverDataKey)
+        assertEquals(11, queue.drain().size)
+        assertTrue(queue.drain().isEmpty())
+        // libwebrtc damgayı ms'ye yuvarlar (RtpTimestamp / 90); 90 kHz'e geri çevrilir.
+        assertEquals(90_000L, XboxFrameAckQueue.serverDataKey(1000))
+        assertEquals((47_721_858L * 90) and 0xFFFFFFFFL, XboxFrameAckQueue.serverDataKey(47_721_858))
+    }
+
     @Test fun configurationMessagesMatchPlayer() {
         val messages = XboxChannels.configurationMessages().map(::JSONObject)
         assertEquals(6, messages.size)

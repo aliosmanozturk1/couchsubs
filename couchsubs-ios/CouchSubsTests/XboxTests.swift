@@ -221,6 +221,19 @@ final class XboxProtocolTests: XCTestCase {
         XCTAssertEqual(Double(bitPattern: bits), 1234.5)
     }
 
+    func testFrameAckPacketMatchesPlayer() {
+        // Input/Packet.ts: 14 bayt başlık + 1 bayt sayı + kare başına 28 bayt; tür 1 = Metadata.
+        let frames = [XboxFrameAck(serverDataKey: 5, arrivalMs: 100, decodedMs: 104), XboxFrameAck(serverDataKey: 3000, arrivalMs: 116, decodedMs: 120)]
+        let packet = XboxChannels.frameAckPacket(sequence: 7, timestampMs: 130, frames: frames)
+        XCTAssertEqual(packet.count, 14 + 1 + 28 * 2)
+        func u32(_ offset: Int) -> UInt32 { packet[offset..<offset + 4].enumerated().reduce(UInt32(0)) { $0 | UInt32($1.element) << (8 * UInt32($1.offset)) } }
+        XCTAssertEqual(packet[0], 1)
+        XCTAssertEqual(u32(2), 7)
+        XCTAssertEqual(packet[14], 2)
+        XCTAssertEqual((0..<7).map { u32(15 + $0 * 4) }, [5, 100, 100, 104, 104, 130, 130])
+        XCTAssertEqual(u32(15 + 28), 3000)
+    }
+
     func testMessagesAndMunging() throws {
         let messages = try XboxChannels.configurationMessages().map { try parseJSON($0) }
         XCTAssertEqual(messages.count, 6)
