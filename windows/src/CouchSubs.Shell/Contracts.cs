@@ -372,7 +372,12 @@ public interface ISettingsStore
 /// <summary>Çeviri sürerken bilgisayarın boşta uykuya geçmesini engeller.</summary>
 public interface ISleepGuard
 {
-    void Begin();
+    /// <param name="keepDisplayOn">
+    /// Ekran da kapanmasın: görüntü bu bilgisayardaki bir pencereden okunuyor ya da altyazı bu ekranda gösteriliyor.
+    /// Ekran kapanınca pencere yakalama kare vermez; kullanıcı TV'de oynadığı için bilgisayar ekranı birkaç dakikada
+    /// (Windows ve macOS'ta prizdeyken çoğu zaman 10 dakika) kapanır ve altyazı kesilirdi. Çeviri sürerken yeniden çağrılabilir.
+    /// </param>
+    void Begin(bool keepDisplayOn);
     void End();
 }
 

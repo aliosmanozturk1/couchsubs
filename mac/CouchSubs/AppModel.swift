@@ -1248,8 +1248,7 @@ final class AppModel: ObservableObject {
                 self?.keeper?.reconnect()
             }
         }
-        sleepActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .idleSystemSleepDisabled],
-                                                              reason: "Translating game subtitles")
+        keepAwake()
         isRunning = true
         if screenHotkey == nil { screenHotkey = GlobalHotkey(.translateScreen) { [weak self] in self?.translateScreen() } }
         screenHotkey?.enabled = true
@@ -1279,6 +1278,23 @@ final class AppModel: ObservableObject {
         Task { await refreshTVApp() }
     }
 
+    /// Çeviri sürerken bilgisayar ekranı da açık kalsın mı: görüntü bu Mac'teki Remote Play penceresinden okunuyorsa
+    /// (ekran kapanınca ScreenCaptureKit kare vermez) ya da altyazı bu ekranda gösteriliyorsa. X'te bildirildi: kullanıcı
+    /// TV'de oynayıp Mac'e dokunmayınca ekran kendi ayarıyla (prizdeyken çoğu zaman 10 dakika) kapanıyor, altyazı
+    /// kesiliyordu. PS5'ten doğrudan okunup yalnız TV'ye gönderiliyorsa ekran kendi ayarıyla kapanabilir.
+    var keepsDisplayOn: Bool {
+        settings.frameSource == .remotePlayWindow || settings.output.showsOnComputer
+    }
+
+    /// Mac'in boşta uyuması (ve gerekiyorsa ekranın kapanması) engellenir; çeviri sürerken ayar değişince yeniden kurulur.
+    private func keepAwake() {
+        var options: ProcessInfo.ActivityOptions = [.userInitiated, .idleSystemSleepDisabled]
+        if keepsDisplayOn { options.insert(.idleDisplaySleepDisabled) }
+        let previous = sleepActivity
+        sleepActivity = ProcessInfo.processInfo.beginActivity(options: options, reason: "Translating game subtitles")
+        if let previous { ProcessInfo.processInfo.endActivity(previous) }
+    }
+
     /// Altyazının yeri değişti: TV seçildiyse TV uygulaması açılır, kaldırıldıysa artık açık tutulmaz.
     private func outputChanged() {
         server.sendsToTV = settings.output.showsOnTV
@@ -1288,6 +1304,7 @@ final class AppModel: ObservableObject {
         }
         updateClickThroughHotkey()
         guard isRunning else { return }
+        keepAwake()
         if settings.output.showsOnTV {
             startKeeper()
         } else {

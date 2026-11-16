@@ -482,6 +482,6 @@ public sealed class FileSettingsStore : ISettingsStore
 
 public sealed class WindowsSleepGuard : ISleepGuard
 {
-    public void Begin() => SleepGuard.Begin();
+    public void Begin(bool keepDisplayOn) => SleepGuard.Begin(keepDisplayOn);
     public void End() => SleepGuard.End();
 }

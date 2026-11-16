@@ -26,8 +26,9 @@ internal sealed class MemorySettings : ISettingsStore
 internal sealed class FakeSleep : ISleepGuard
 {
     public bool Active { get; private set; }
-    public void Begin() => Active = true;
-    public void End() => Active = false;
+    public bool DisplayOn { get; private set; }
+    public void Begin(bool keepDisplayOn) => (Active, DisplayOn) = (true, keepDisplayOn);
+    public void End() => (Active, DisplayOn) = (false, false);
 }
 
 internal sealed class FakeStream : IStreamSession
@@ -886,6 +887,36 @@ public class AppControllerRunTests
         Assert.True(controller.SetLoginPasscode("1111"));
         controller.ResetSetup();
         Assert.False(controller.HasLoginPasscode);
+        controller.Dispose();
+    }
+
+    /// <summary>
+    /// X'te bildirildi: Remote Play penceresinden okurken altyazı ~10 dakikada bir kesiliyordu. Kullanıcı TV'de oynayıp
+    /// bilgisayara dokunmayınca ekran kendi ayarıyla kapanıyor, kapalı ekranda pencere yakalama kare vermiyordu. Pencereden
+    /// okunurken ya da altyazı bu ekrandayken ekran açık tutulur; PS5'ten okunup yalnız TV'ye gidiyorsa tutulmaz.
+    /// </summary>
+    [Fact]
+    public async Task DisplayStaysOnWhileReadingAWindowOrShowingOnComputer()
+    {
+        var (controller, _, sleep) = Ready();
+        Assert.Equal(FrameSource.Ps5, controller.Settings.FrameSource);
+        controller.Settings = controller.Settings with { Output = SubtitleOutput.Tv };
+        await controller.StartAsync();
+        Assert.True(sleep.Active);
+        Assert.False(sleep.DisplayOn);
+        // Çeviri sürerken altyazı bilgisayar ekranına da alınırsa ekran açık kalır, geri alınınca yine kapanabilir.
+        controller.Settings = controller.Settings with { Output = SubtitleOutput.Both };
+        Assert.True(sleep.DisplayOn);
+        controller.Settings = controller.Settings with { Output = SubtitleOutput.Tv };
+        Assert.False(sleep.DisplayOn);
+        controller.Stop();
+        Assert.False(sleep.Active);
+
+        controller.Settings = controller.Settings with { FrameSource = FrameSource.RemotePlayWindow };
+        await controller.StartAsync();
+        Assert.True(sleep.DisplayOn);
+        controller.Stop();
+        Assert.False(sleep.DisplayOn);
         controller.Dispose();
     }
 

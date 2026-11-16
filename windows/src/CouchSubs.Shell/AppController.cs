@@ -1250,7 +1250,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             StartKeeper();
             StartGameSense();
 
-            sleep.Begin();
+            sleep.Begin(KeepsDisplayOn);
             IsRunning = true;
             UpdateTroubleClocks();
         }
@@ -1283,6 +1283,14 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>Altyazının yeri değişti: TV seçildiyse TV uygulaması açılır, kaldırıldıysa artık açık tutulmaz.</summary>
+    /// <summary>
+    /// Çeviri sürerken bilgisayar ekranı da açık kalsın mı: görüntü bu bilgisayardaki Remote Play ya da seçilen pencereden
+    /// okunuyorsa (ekran kapanınca yakalama kare vermez) ya da altyazı bu ekranda gösteriliyorsa. PS5'ten ya da Xbox'tan
+    /// doğrudan okunup yalnız TV'ye gönderiliyorsa ekran kendi ayarıyla kapanabilir.
+    /// </summary>
+    private bool KeepsDisplayOn =>
+        (!IsXbox && settings.FrameSource is FrameSource.RemotePlayWindow or FrameSource.CaptureWindow) || ShowsOnComputer;
+
     private void OutputChanged()
     {
         server.SendsToTv = ShowsOnTv;
@@ -1294,6 +1302,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         Changed(nameof(ShowsOnTv), nameof(ShowsOnComputer), nameof(NeedsTv), nameof(CanStart), nameof(CanAdvance));
         UpdateTroubleClocks();
         if (!isRunning) return;
+        sleep.Begin(KeepsDisplayOn);
         if (ShowsOnTv) StartKeeper();
         else
         {
