@@ -376,7 +376,10 @@ class GamePackLibrary(
     /** Bulanık aramanın yapılacağı paketin kimliği (son tam eşleşmenin paketi); yoksa null. */
     val searchScope: String? get() = synchronized(lock) { scope?.let { packs.getOrNull(it)?.first?.id } }
 
-    /** Oynanan oyunun adı: son tam eşleşmenin geldiği paketin başlığı; yoksa null. */
+    /**
+     * Son tam eşleşmenin geldiği paketin başlığı; yoksa null. Tek satırla değişebilir: yapay zekâya giden oyun adı bu
+     * değil, [GameSense.current]'tır (#27).
+     */
     val scopeTitle: String? get() = synchronized(lock) { scope?.let { packs.getOrNull(it)?.first?.title } }
 
     /** Tek OCR düzeltmesiyle [pack]'te tam bulunan satırın Türkçesi; düzeltmelerin hepsi aynı Türkçeye çıkmıyorsa null. */

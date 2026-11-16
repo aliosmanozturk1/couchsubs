@@ -359,7 +359,10 @@ public sealed class GamePackLibrary(Func<IEnumerable<(string Name, byte[] Data)>
         get { lock (gate) return scope is { } chosen && chosen < infos.Count ? infos[chosen].Id : null; }
     }
 
-    /// <summary>Oynanan oyunun adı: son tam eşleşmenin geldiği paketin başlığı; yoksa null. Yapay zekâya bağlam olarak gider.</summary>
+    /// <summary>
+    /// Son tam eşleşmenin geldiği paketin başlığı; yoksa null. Tek satırla değişebilir: yapay zekâya giden oyun adı bu
+    /// değil, <see cref="GameSense.Current"/>'tır (#27).
+    /// </summary>
     public string? ScopeTitle
     {
         get { lock (gate) return scope is { } chosen && chosen < infos.Count ? infos[chosen].Title : null; }

@@ -475,12 +475,15 @@ public interface IAppServices
     /// <summary>DeepL çevirmeni; <paramref name="fallback"/> DeepL'e ulaşılamayan satırları çevirir. Bu derlemede yoksa null.</summary>
     ITextTranslator? MakeOnlineTranslator(string key, ITextTranslator? fallback) => null;
     Task<OnlineKeyCheck> CheckOnlineKeyAsync(string key) => Task.FromResult(new OnlineKeyCheck(OnlineKeyState.Unreachable));
-    /// <summary>Yapay zekâ çevirmeni; <paramref name="fallback"/> hizmete ulaşılamayan satırları çevirir. Bu derlemede yoksa null.</summary>
-    ITextTranslator? MakeAiTranslator(AiProvider provider, string key, string model, ITextTranslator? fallback) => null;
+    /// <summary>
+    /// Yapay zekâ çevirmeni; <paramref name="fallback"/> hizmete ulaşılamayan satırları çevirir, <paramref name="game"/>
+    /// oynanan oyunun adını verir (istem ve önbellek anahtarı; bilinmiyorsa null). Bu derlemede yoksa null.
+    /// </summary>
+    ITextTranslator? MakeAiTranslator(AiProvider provider, string key, string model, ITextTranslator? fallback, Func<string?>? game) => null;
     /// <summary>Yapay zekâ anahtarını örnek bir satırı çevirerek dener.</summary>
     Task<AiTestResult> TestAiKeyAsync(AiProvider provider, string key, string model) => Task.FromResult(new AiTestResult(OnlineKeyState.Unreachable));
     /// <summary>Yerel model (Ollama, LM Studio) çevirmeni; anahtar boş olabilir. Bu derlemede yoksa null.</summary>
-    ITextTranslator? MakeLocalAiTranslator(LocalAiServer server, string key, ITextTranslator? fallback) => null;
+    ITextTranslator? MakeLocalAiTranslator(LocalAiServer server, string key, ITextTranslator? fallback, Func<string?>? game) => null;
     /// <summary>Yerel model sunucusunu örnek bir satırı çevirerek dener ("Bağlantıyı dene").</summary>
     Task<AiTestResult> TestLocalAiAsync(LocalAiServer server, string key) => Task.FromResult(new AiTestResult(OnlineKeyState.Unreachable));
     /// <summary>Türkçe dublaj modeli; bu derlemede yoksa null.</summary>

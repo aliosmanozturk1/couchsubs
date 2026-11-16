@@ -1806,17 +1806,21 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         var fallback = local is UnavailableTranslator || services.Translation.EngineFailed ? null : local;
         var engine = settings.OnlineEngine;
         if (!OnlineTranslationActive || engine.StoreKey() is not { } storeKey) return local;
+        // Oynanan oyunun adı modele bağlam olarak gider, önbellek de oyuna göre ayrılır. Ad kararlı oyundur (GameSense:
+        // PS5'in bildirdiği, son 20 satırın 5'i aynı paketten gelince o paketin oyunu ya da kullanıcının seçtiği); son
+        // eşleşen paket değil, yoksa tek bir ortak satır adı başka oyuna geçirirdi (#27). Oyun bilinmiyorsa ad gitmez.
+        Func<string?> game = () => gameSense.Current?.Name;
         ITextTranslator? online;
         if (engine == TranslationEngine.Local && settings.LocalAiServer is { } server)
         {
             // Yerel modelin anahtarı isteğe bağlıdır; önbellekte sunucu ve model ayrı tutulur.
-            online = services.MakeLocalAiTranslator(server, store.Load<string>(storeKey) ?? "", fallback);
+            online = services.MakeLocalAiTranslator(server, store.Load<string>(storeKey) ?? "", fallback, game);
         }
         else
         {
             if (store.Load<string>(storeKey) is not { Length: > 0 } key) return local;
             online = engine.Provider() is { } provider
-                ? services.MakeAiTranslator(provider, key, provider.Model(settings.ModelFor(provider)).Id, fallback)
+                ? services.MakeAiTranslator(provider, key, provider.Model(settings.ModelFor(provider)).Id, fallback, game)
                 : services.MakeOnlineTranslator(key, fallback);
         }
         if (online is null) return local;

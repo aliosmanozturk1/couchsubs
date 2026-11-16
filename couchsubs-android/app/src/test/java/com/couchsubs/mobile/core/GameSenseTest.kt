@@ -19,6 +19,32 @@ class GameSenseTest {
         assertEquals("", GameName.key(""))
     }
 
+    /** Yapay zekâya giden ad kararlı oyundur: tek bir yabancı satır değiştirmez, 20 satırın 5'i değiştirir (#27). */
+    @Test
+    fun oneStrayLineDoesNotChangeTheGame() {
+        val sense = GameSense()
+        repeat(5) { sense.noteLine("gta-v", "Grand Theft Auto V") }
+        assertEquals("Grand Theft Auto V", sense.current?.name)
+        assertFalse(sense.noteLine("rdr-2", "Red Dead Redemption 2"))
+        assertEquals("Grand Theft Auto V", sense.current?.name)
+        repeat(3) { assertFalse(sense.noteLine("rdr-2", "Red Dead Redemption 2")) }
+        assertEquals("Grand Theft Auto V", sense.current?.name)
+        assertTrue(sense.noteLine("rdr-2", "Red Dead Redemption 2"))
+        assertEquals("Red Dead Redemption 2", sense.current?.name)
+    }
+
+    /** Paketle tanınmayan oyunda ad gitmez; kullanıcı seçtiyse onun seçtiği, PS5 bildirdiyse PS5'in bildirdiği gider. */
+    @Test
+    fun withoutAStableGameTheChosenNameOrNothingIsSent() {
+        val sense = GameSense()
+        repeat(4) { sense.noteLine("rdr-2", "Red Dead Redemption 2") }
+        assertNull(sense.current)
+        sense.choose("Grand Theft Auto V")
+        assertEquals("Grand Theft Auto V", sense.current?.name)
+        sense.setConsole(RunningGame(null, "Mafia: The Old Country"))
+        assertEquals("Mafia: The Old Country", sense.current?.name)
+    }
+
     @Test
     fun fiveOfTwentyLinesFromOnePackRecogniseTheGame() {
         val sense = GameSense()

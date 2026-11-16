@@ -291,7 +291,8 @@ public final class GamePackLibrary: @unchecked Sendable {
         lock.withLock { scope.flatMap { $0 < infos.count ? infos[$0].id : nil } }
     }
 
-    /// Oynanan oyunun adı: son tam eşleşmenin geldiği paketin başlığı; yoksa nil. Yapay zekâya bağlam olarak gider.
+    /// Son tam eşleşmenin geldiği paketin başlığı; yoksa nil. Tek satırla değişebilir: yapay zekâya giden oyun adı bu
+    /// değil, `GameSense.current`tır (#27).
     public var scopeTitle: String? {
         lock.withLock { scope.flatMap { $0 < infos.count ? infos[$0].title : nil } }
     }

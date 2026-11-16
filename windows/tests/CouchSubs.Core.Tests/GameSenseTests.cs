@@ -34,6 +34,34 @@ public class GameSenseTests
         Assert.False(sense.NoteLine("gta-v", "Grand Theft Auto V"));
     }
 
+    /// <summary>Yapay zekâya giden ad kararlı oyundur: tek bir yabancı satır değiştirmez, 20 satırın 5'i değiştirir (#27).</summary>
+    [Fact]
+    public void OneStrayLineDoesNotChangeTheGame()
+    {
+        var sense = new GameSense();
+        for (var i = 0; i < 5; i++) sense.NoteLine("gta-v", "Grand Theft Auto V");
+        Assert.Equal("Grand Theft Auto V", sense.Current?.Name);
+        Assert.False(sense.NoteLine("rdr-2", "Red Dead Redemption 2"));
+        Assert.Equal("Grand Theft Auto V", sense.Current?.Name);
+        for (var i = 0; i < 3; i++) Assert.False(sense.NoteLine("rdr-2", "Red Dead Redemption 2"));
+        Assert.Equal("Grand Theft Auto V", sense.Current?.Name);
+        Assert.True(sense.NoteLine("rdr-2", "Red Dead Redemption 2"));
+        Assert.Equal("Red Dead Redemption 2", sense.Current?.Name);
+    }
+
+    /// <summary>Paketle tanınmayan oyunda ad gitmez; kullanıcı seçtiyse onun seçtiği, PS5 bildirdiyse PS5'in bildirdiği gider.</summary>
+    [Fact]
+    public void WithoutAStableGameTheChosenNameOrNothingIsSent()
+    {
+        var sense = new GameSense();
+        for (var i = 0; i < 4; i++) sense.NoteLine("rdr-2", "Red Dead Redemption 2");
+        Assert.Null(sense.Current);
+        sense.Choose("Grand Theft Auto V");
+        Assert.Equal("Grand Theft Auto V", sense.Current?.Name);
+        sense.SetConsole(new RunningGame(null, "Mafia: The Old Country"));
+        Assert.Equal("Mafia: The Old Country", sense.Current?.Name);
+    }
+
     [Fact]
     public void GeneralPackIsNotAGameAndTitleIdComesFromAutoPack()
     {

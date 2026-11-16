@@ -147,7 +147,7 @@ internal sealed class FakeServices : IAppServices
         AiTests.Add((provider, key, model));
         return Task.FromResult(AiTest);
     }
-    public ITextTranslator? MakeAiTranslator(AiProvider provider, string key, string model, ITextTranslator? fallback)
+    public ITextTranslator? MakeAiTranslator(AiProvider provider, string key, string model, ITextTranslator? fallback, Func<string?>? game)
     {
         AiTranslators.Add((provider, key, model));
         return fallback ?? Translation.Create("en", "tr");
@@ -159,7 +159,7 @@ internal sealed class FakeServices : IAppServices
         LocalTests.Add((server, key));
         return Task.FromResult(AiTest);
     }
-    public ITextTranslator? MakeLocalAiTranslator(LocalAiServer server, string key, ITextTranslator? fallback)
+    public ITextTranslator? MakeLocalAiTranslator(LocalAiServer server, string key, ITextTranslator? fallback, Func<string?>? game)
     {
         LocalTranslators.Add((server, key));
         return fallback ?? Translation.Create("en", "tr");

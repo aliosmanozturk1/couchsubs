@@ -1450,9 +1450,11 @@ final class AppModel: ObservableObject {
         let engine = settings.onlineEngine
         guard onlineTranslationActive, let storeKey = engine.storeKey else { return local }
         let online: TextTranslator & OnlineTranslating
-        // Oyun paketi eşleştiyse oyunun adı modele bağlam olarak gider.
-        let packs = self.packs
-        let game: @Sendable () -> String? = { packs.scopeTitle }
+        // Oynanan oyunun adı modele bağlam olarak gider, önbellek de oyuna göre ayrılır. Ad kararlı oyundur (`GameSense`:
+        // PS5'in bildirdiği, son 20 satırın 5'i aynı paketten gelince o paketin oyunu ya da kullanıcının seçtiği); son
+        // eşleşen paket değil, yoksa tek bir ortak satır adı başka oyuna geçirirdi (#27). Oyun bilinmiyorsa ad gitmez.
+        let sense = gameChoice.sense
+        let game: @Sendable () -> String? = { sense.current?.name }
         if engine == .local, let server = settings.localAIServer {
             // Yerel modelin anahtarı isteğe bağlıdır; önbellekte sunucu ve model ayrı tutulur.
             let key = store.load(String.self, for: storeKey) ?? ""

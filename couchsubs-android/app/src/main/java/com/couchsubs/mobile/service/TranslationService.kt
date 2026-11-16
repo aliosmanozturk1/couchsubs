@@ -531,7 +531,8 @@ class TranslationService : Service() {
                 val models = aiModels()[provider.id].orEmpty()
                 val model = models.firstOrNull { it.id == settings.aiModel } ?: models.firstOrNull() ?: return null
                 AiTranslator(provider, key, model, free, cache = cache(AiTranslator.engineId(provider, model)),
-                    playedGame = { packs?.scopeTitle })
+                    // Kararlı oyun (GameSense.current), son eşleşen paket değil: tek satır adı başka oyuna geçirmez (#27).
+                    playedGame = { PlayedGame.sense.current?.name })
             }
         }
     }
