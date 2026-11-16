@@ -136,6 +136,11 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("showSpeakerNames", true)
         set(value) = prefs.edit().putBoolean("showSpeakerNames", value).apply()
 
+    /** Değişmeyen altyazı bölgesi 20 yerine en fazla 2 kare yeniden kullanılır (Mac/Windows ile aynı); varsayılan kapalı. */
+    var fastSubtitleDetection: Boolean
+        get() = prefs.getBoolean("fastSubtitleDetection", false)
+        set(value) = prefs.edit().putBoolean("fastSubtitleDetection", value).apply()
+
     /** Bu PS5'te son seçilen oyun ("Hangi oyunu oynuyorsunuz?" kartının ilk önerisi). */
     fun lastGame(console: String): String? = prefs.getString("lastGame.$console", null)
 

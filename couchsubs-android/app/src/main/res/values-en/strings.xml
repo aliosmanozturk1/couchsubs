@@ -223,6 +223,8 @@
     <string name="settings_ask_game_short">If no pack recognises the game, asked once two minutes after translation starts.</string>
     <string name="settings_speaker_names">Show speaker name</string>
     <string name="settings_speaker_names_short">Keeps the character\'s name in front of the translation (ARTHUR: …). The name itself is never translated.</string>
+    <string name="settings_fast_reading">Check unchanged subtitle areas more often</string>
+    <string name="settings_fast_reading_short">When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.</string>
     <string name="running_now">Now</string>
     <string name="running_ready_translation">ready translation</string>
     <string name="running_ready">ready</string>

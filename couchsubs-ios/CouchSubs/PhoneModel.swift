@@ -55,9 +55,9 @@ final class PhoneModel: ObservableObject {
             let translationChanged = settings.onlineTranslation != oldValue.onlineTranslation
                 || settings.onlineEngine != oldValue.onlineEngine || settings.geminiModel != oldValue.geminiModel
                 || settings.openAIModel != oldValue.openAIModel || settings.claudeModel != oldValue.claudeModel
-            if translationChanged {
-                Task { await refreshTranslatorStatus() }
-                if isRunning { makePipeline() }
+            if translationChanged { Task { await refreshTranslatorStatus() } }
+            if isRunning, translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection {
+                makePipeline()
             }
         }
     }
@@ -576,8 +576,10 @@ final class PhoneModel: ObservableObject {
         pipeline?.reset()
         // Eski hatta süren okuma beklenmez; yeni hat ilk karesini hemen alır.
         frameGate.reset()
+        let scheduler = ReadScheduler(maxReuse: settings.fastSubtitleDetection
+            ? ReadScheduler.fastMaxReuse : ReadScheduler.defaultMaxReuse)
         let pipeline = SubtitlePipeline(reader: VisionReader(language: settings.sourceLanguage), translator: makeTranslator(),
-                                        server: server, scheduler: ReadScheduler())
+                                        server: server, scheduler: scheduler)
         pipeline.showSpeakerNames = settings.showSpeakerNames
         pipeline.onPair = { [weak self, weak pipeline] source, translation in
             self?.lastSource = source

@@ -229,6 +229,8 @@
     <string name="settings_ask_game_short">Oyun paketle tanınmazsa çeviri başladıktan iki dakika sonra bir kez sorulur.</string>
     <string name="settings_speaker_names">Konuşan adını göster</string>
     <string name="settings_speaker_names_short">Karakterin adı çevirinin başında kalır (ARTHUR: …). Adın kendisi hiçbir zaman çevrilmez.</string>
+    <string name="settings_fast_reading">Değişmeyen altyazı alanını daha sık oku</string>
+    <string name="settings_fast_reading_short">Altyazı alanı değişmemiş görünüyorsa 20 yerine 2 kare sonra yeniden oku. Daha fazla CPU kullanır.</string>
     <string name="running_now">Şimdi</string>
     <string name="running_ready_translation">hazır çeviri</string>
     <string name="running_ready">hazır</string>

@@ -67,6 +67,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 class TranslationService : Service() {
     companion object {
         private const val TAG = "CouchSubsService"
+        /** Değişmeyen bölgenin son okuması kaç kare yeniden kullanılır (Mac/iPhone/Windows ReadScheduler ile aynı). */
+        private const val DEFAULT_MAX_REUSE = 20
+        private const val FAST_MAX_REUSE = 2
         private const val CHANNEL = "translation"
         private const val NOTIFICATION_ID = 1
         private const val ACTION_STOP = "com.couchsubs.mobile.STOP"
@@ -126,6 +129,7 @@ class TranslationService : Service() {
     private var lastSignature = 0L
     private var lastReading = com.couchsubs.mobile.core.Reading.Empty
     private var lastOcrMs: Int? = null
+    private var reusedReads = 0
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     /** Altyazı bölgesi ve ek alanlar (Ayarlar › Altyazı alanı); çeviri sürerken değişirse hemen yenisi okunur. */
@@ -505,9 +509,11 @@ class TranslationService : Service() {
     private fun read(pixels: RegionPixels, area: CropRegion, capturedAt: Long) {
         try {
             // Bölge değişmediyse (aynı altyazı duruyor) yeniden okunmaz; son okuma hattı yine besler (kararlılık ve
-            // silme saate bağlıdır, Windows'taki ReadScheduler gibi).
+            // silme saate bağlıdır, Windows'taki ReadScheduler gibi). Aynı okuma en çok 20 kare (hızlı okumada 2) kullanılır.
             val current = pipeline ?: return
-            val reused = pixels.signature == lastSignature
+            val maxReuse = if (settings.fastSubtitleDetection) FAST_MAX_REUSE else DEFAULT_MAX_REUSE
+            val reused = pixels.signature == lastSignature && reusedReads < maxReuse
+            reusedReads = if (reused) reusedReads + 1 else 0
             val started = com.couchsubs.mobile.core.monotonicClock()
             val result = if (reused) lastReading else reader?.read(pixels) ?: return
             val ocrMs = if (reused) lastOcrMs else (com.couchsubs.mobile.core.monotonicClock() - started).toInt()
