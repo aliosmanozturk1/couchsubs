@@ -46,9 +46,9 @@ final class GameSenseTests: XCTestCase {
         XCTAssertEqual(sense.current?.name, "Mafia: The Old Country")
         XCTAssertEqual(sense.source, .console)
         XCTAssertNil(sense.packLimit)
-        // PS5 başka oyun bildirdiyse elle seçim eskidi: PS5 bildirmeyi bırakınca eski oyun geri gelmez, arama sınırlanmaz.
+        // PS5 başka oyun bildirdiyse elle seçim eskidi: PS5 bildirmeyi bırakınca eski seçim geri gelmez (paketten tanınan gelir), arama sınırlanmaz.
         sense.setConsole(nil)
-        XCTAssertNil(sense.current)
+        XCTAssertEqual(sense.current?.name, rdr.title)
         XCTAssertNil(sense.packLimit)
     }
 

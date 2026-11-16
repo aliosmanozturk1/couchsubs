@@ -61,9 +61,9 @@ class GameSenseTest {
         assertEquals("Mafia: The Old Country", sense.current?.name)
         assertEquals(GameSense.Source.CONSOLE, sense.source)
         assertNull(sense.packLimit)
-        // PS5 başka oyun bildirdiyse elle seçim eskidi: PS5 bildirmeyi bırakınca eski oyun geri gelmez, arama sınırlanmaz.
+        // PS5 başka oyun bildirdiyse elle seçim eskidi: PS5 bildirmeyi bırakınca eski seçim geri gelmez (paketten tanınan gelir), arama sınırlanmaz.
         sense.setConsole(null)
-        assertNull(sense.current)
+        assertEquals("Red Dead Redemption 2", sense.current?.name)
         assertNull(sense.packLimit)
     }
 
