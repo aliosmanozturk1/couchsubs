@@ -66,7 +66,8 @@
     <string name="psn_browser">Tarayıcıda aç</string>
     <string name="psn_browser_reopen">Tarayıcıyı yeniden aç</string>
     <string name="psn_browser_title">Tarayıcıda giriş</string>
-    <string name="psn_browser_body">Açılan tarayıcıda ikinci hesabınla giriş yap. Giriş bitince tarayıcı remoteplay.dl.playstation.net ile başlayan bir sayfaya gider (boş ya da hata sayfası olabilir). O sayfanın adresini adres çubuğundan kopyala, buraya yapıştır ve İleri\'ye dokun.</string>
+    <string name="psn_browser_body">Açılan tarayıcıda ikinci hesabınla giriş yap. Giriş bitince tarayıcı uygulamaya kendiliğinden dönmez: üstünde yalnız \"redirect\" yazan remoteplay.dl.playstation.net sayfasında kalır. Adres çubuğuna dokun, adresin tamamını kopyala ve CouchSubs\'a dön. Uygulama kopyaladığın adresi kendisi alır; almazsa aşağıya yapıştırıp İleri\'ye dokun.</string>
+    <string name="psn_browser_google">Google ile giriş uygulama içinde açılmıyor (Google buna izin vermiyor), bu yüzden giriş tarayıcıya taşındı. Tarayıcıda yine \"Google ile giriş yap\"ı seçebilirsin.</string>
     <string name="psn_browser_field">Sayfanın adresi</string>
     <string name="psn_browser_wrong">Bu adreste giriş kodu yok. Adres https://remoteplay.dl.playstation.net/remoteplay/redirect?code= ile başlamalı.</string>
     <string name="psn_problem_offline">İnternete ya da Sony\'ye ulaşılamadı. Bağlantını kontrol et.</string>

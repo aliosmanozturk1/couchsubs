@@ -79,6 +79,15 @@ class RemotePlayLogicTest {
     }
 
     @Test
+    fun googleSignInIsDetected() {
+        assertTrue(PsnAccount.isGoogleSignIn("https://accounts.google.com/o/oauth2/v2/auth?client_id=x"))
+        assertTrue(PsnAccount.isGoogleSignIn("https://ACCOUNTS.google.com/signin"))
+        assertFalse(PsnAccount.isGoogleSignIn("https://my.account.sony.com/?next=accounts.google.com"))
+        assertFalse(PsnAccount.isGoogleSignIn("https://accounts.google.com.evil.example/"))
+        assertFalse(PsnAccount.isGoogleSignIn("not a url"))
+    }
+
+    @Test
     fun loginPageProblemsAreTold() {
         assertEquals(PsnPageProblem.OFFLINE, PsnPageProblem.fromWebError(-2))
         assertEquals(PsnPageProblem.OFFLINE, PsnPageProblem.fromWebError(-6))

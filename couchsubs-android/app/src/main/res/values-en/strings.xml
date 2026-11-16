@@ -64,7 +64,8 @@
     <string name="psn_browser">Open in browser</string>
     <string name="psn_browser_reopen">Open the browser again</string>
     <string name="psn_browser_title">Sign in in the browser</string>
-    <string name="psn_browser_body">Sign in with your second account in the browser that opens. When you finish, the browser goes to a page starting with remoteplay.dl.playstation.net (it may be blank or an error page). Copy that page\'s address from the address bar, paste it here and tap Next.</string>
+    <string name="psn_browser_body">Sign in with your second account in the browser that opens. When you finish, the browser does not come back to the app by itself: it stays on a remoteplay.dl.playstation.net page that only says \"redirect\". Tap the address bar, copy the whole address and switch back to CouchSubs. The app picks up the copied address by itself; if it does not, paste it below and tap Next.</string>
+    <string name="psn_browser_google">Google sign-in does not open inside the app (Google does not allow it), so sign-in moved to the browser. You can choose \"Continue with Google\" there again.</string>
     <string name="psn_browser_field">Page address</string>
     <string name="psn_browser_wrong">This address has no sign-in code. It should start with https://remoteplay.dl.playstation.net/remoteplay/redirect?code=</string>
     <string name="psn_problem_offline">Couldn\'t reach the internet or Sony. Check your connection.</string>
