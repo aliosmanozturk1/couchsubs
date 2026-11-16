@@ -51,6 +51,22 @@ public class GameSenseTests
         Assert.Equal("Mafia: The Old Country", sense.Current?.Name);
         Assert.Equal(GameSense.GameSource.Console, sense.Source);
         Assert.Null(sense.PackLimit);
+        // PS5 başka oyun bildirdiyse elle seçim eskidi: PS5 bildirmeyi bırakınca eski oyun geri gelmez, arama sınırlanmaz.
+        sense.SetConsole(null);
+        Assert.Null(sense.Current);
+        Assert.Null(sense.PackLimit);
+    }
+
+    /// <summary>PS5 elle seçilen oyunu bildirirse (adı aynı) seçim kalır.</summary>
+    [Fact]
+    public void SameGameFromTheConsoleKeepsTheChoice()
+    {
+        var sense = new GameSense();
+        sense.Choose("GTA 5");
+        sense.SetConsole(new RunningGame(null, "Grand Theft Auto V"));
+        sense.SetConsole(null);
+        Assert.Equal("GTA 5", sense.Current?.Name);
+        Assert.Equal("GTA 5", sense.PackLimit);
     }
 
     /// <summary>Yapay zekâya giden ad kararlı oyundur: tek bir yabancı satır değiştirmez, 20 satırın 5'i değiştirir (#27).</summary>

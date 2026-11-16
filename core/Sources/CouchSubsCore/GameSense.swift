@@ -68,9 +68,14 @@ public final class GameSense: @unchecked Sendable {
     @discardableResult
     public func noteLine(pack: GamePackLibrary.Info?) -> Bool { noteLine(packId: pack?.id, title: pack?.title) }
 
-    /// PS5'in bildirdiği oyun (keşif yanıtı; bilinmiyorsa nil).
+    /// PS5'in bildirdiği oyun (keşif yanıtı; bilinmiyorsa nil). PS5 elle seçilenden başka bir oyun bildirirse elle seçim
+    /// eskimiştir ve silinir: yoksa PS5 bildirmeyi bırakınca (bağlantı kopunca) eski oyun geri gelir, paket araması da
+    /// yine yalnız onun paketinde yapılır (#227 sonrası "oyun değişince eski oyunda kalıyor").
     public func setConsole(_ game: RunningGame?) {
-        lock.withLock { console = game }
+        lock.withLock {
+            console = game
+            if let reported = game?.name, let picked = chosen?.name, GameName.key(reported) != GameName.key(picked) { chosen = nil }
+        }
     }
 
     /// Kullanıcının seçimi ("Hangi oyunu oynuyorsunuz?" ya da "Değiştir"); nil seçimi siler.

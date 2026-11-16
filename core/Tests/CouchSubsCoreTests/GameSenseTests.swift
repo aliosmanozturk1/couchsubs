@@ -46,5 +46,19 @@ final class GameSenseTests: XCTestCase {
         XCTAssertEqual(sense.current?.name, "Mafia: The Old Country")
         XCTAssertEqual(sense.source, .console)
         XCTAssertNil(sense.packLimit)
+        // PS5 başka oyun bildirdiyse elle seçim eskidi: PS5 bildirmeyi bırakınca eski oyun geri gelmez, arama sınırlanmaz.
+        sense.setConsole(nil)
+        XCTAssertNil(sense.current)
+        XCTAssertNil(sense.packLimit)
+    }
+
+    /// PS5 elle seçilen oyunu bildirirse (adı aynı) seçim kalır.
+    func testSameGameFromTheConsoleKeepsTheChoice() {
+        let sense = GameSense()
+        sense.choose("GTA 5")
+        sense.setConsole(RunningGame(name: "Grand Theft Auto V"))
+        sense.setConsole(nil)
+        XCTAssertEqual(sense.current?.name, "GTA 5")
+        XCTAssertEqual(sense.packLimit, "GTA 5")
     }
 }

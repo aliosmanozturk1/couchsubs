@@ -79,7 +79,13 @@ public sealed class GameSense
     /// <summary>PS5'in bildirdiği oyun (keşif yanıtı; bilinmiyorsa null).</summary>
     public void SetConsole(RunningGame? game)
     {
-        lock (gate) console = game;
+        lock (gate)
+        {
+            console = game;
+            // PS5 elle seçilenden başka bir oyun bildirirse elle seçim eskimiştir ve silinir: yoksa PS5 bildirmeyi bırakınca
+            // (bağlantı kopunca) eski oyun geri gelir, paket araması da yine yalnız onun paketinde yapılır (#227 sonrası).
+            if (game?.Name is { } reported && chosen?.Name is { } picked && GameName.Key(reported) != GameName.Key(picked)) chosen = null;
+        }
     }
 
     /// <summary>Kullanıcının seçimi ("Hangi oyunu oynuyorsunuz?" ya da "Değiştir"); null seçimi siler.</summary>

@@ -61,8 +61,17 @@ class GameSense {
         true
     }
 
-    /** PS5'in bildirdiği oyun (keşif yanıtı; bilinmiyorsa null). */
-    fun setConsole(game: RunningGame?) = synchronized(lock) { console = game }
+    /**
+     * PS5'in bildirdiği oyun (keşif yanıtı; bilinmiyorsa null). PS5 elle seçilenden başka bir oyun bildirirse elle seçim
+     * eskimiştir ve silinir: yoksa PS5 bildirmeyi bırakınca (bağlantı kopunca) eski oyun geri gelir, paket araması da yine
+     * yalnız onun paketinde yapılır (#227 sonrası "oyun değişince eski oyunda kalıyor").
+     */
+    fun setConsole(game: RunningGame?) = synchronized(lock) {
+        console = game
+        val reported = game?.name
+        val picked = chosen?.name
+        if (reported != null && picked != null && GameName.key(reported) != GameName.key(picked)) chosen = null
+    }
 
     /** Kullanıcının seçimi ("Hangi oyunu oynuyorsunuz?" ya da "Değiştir"); null seçimi siler. */
     fun choose(name: String?) = synchronized(lock) {

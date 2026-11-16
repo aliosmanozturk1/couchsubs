@@ -61,6 +61,21 @@ class GameSenseTest {
         assertEquals("Mafia: The Old Country", sense.current?.name)
         assertEquals(GameSense.Source.CONSOLE, sense.source)
         assertNull(sense.packLimit)
+        // PS5 başka oyun bildirdiyse elle seçim eskidi: PS5 bildirmeyi bırakınca eski oyun geri gelmez, arama sınırlanmaz.
+        sense.setConsole(null)
+        assertNull(sense.current)
+        assertNull(sense.packLimit)
+    }
+
+    /** PS5 elle seçilen oyunu bildirirse (adı aynı) seçim kalır. */
+    @Test
+    fun sameGameFromTheConsoleKeepsTheChoice() {
+        val sense = GameSense()
+        sense.choose("GTA 5")
+        sense.setConsole(RunningGame(null, "Grand Theft Auto V"))
+        sense.setConsole(null)
+        assertEquals("GTA 5", sense.current?.name)
+        assertEquals("GTA 5", sense.packLimit)
     }
 
     @Test
