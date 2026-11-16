@@ -67,6 +67,11 @@ struct StreamWindowView: View {
         GeometryReader { proxy in
             let scale = max(0.2, proxy.size.height / 1080)
             VStack(spacing: 14 * scale) {
+                // Sürekli okunan ek alanların çevirisi saydam penceredeki gibi üstte, alanın yanına yaslı.
+                VStack(spacing: 10 * scale) {
+                    ForEach(model.overlayRegions) { regionBox($0, scale: scale) }
+                }
+                .padding(.top, 16 * scale)
                 Spacer(minLength: 0)
                 ForEach(model.overlayLines) { line(line: $0, scale: scale) }
             }
@@ -80,6 +85,26 @@ struct StreamWindowView: View {
     static func color(_ background: StreamBackground) -> Color {
         let rgb = background.rgb
         return Color(.sRGB, red: Double(rgb.red) / 255, green: Double(rgb.green) / 255, blue: Double(rgb.blue) / 255)
+    }
+
+    /// Ek alanın çevirisi: altyazıdan küçük, tam koyu kutu (düz zeminde chroma key bozulmasın).
+    private func regionBox(_ region: OverlayRegion, scale: CGFloat) -> some View {
+        let style = model.settings.style
+        let size = max(12, CGFloat(style.fontSize) * scale * 0.55)
+        let alignment: Alignment = switch region.side {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
+        return Text(verbatim: region.text)
+            .font(.system(size: size, weight: .semibold))
+            .foregroundStyle(SubtitleOverlayView.color(style.textColor))
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 6 * scale)
+            .padding(.horizontal, 14 * scale)
+            .background(Color.black, in: RoundedRectangle(cornerRadius: 8 * scale))
+            .frame(maxWidth: .infinity, alignment: alignment)
     }
 
     private func line(line: SubtitleStack.Line, scale: CGFloat) -> some View {
