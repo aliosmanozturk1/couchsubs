@@ -450,6 +450,14 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         Changed(nameof(HasAccount), nameof(CanAdvance));
     }
 
+    /// <summary>Sony'nin giriş sayfası sistem tarayıcısında açılır. Uygulama içi pencerede Sony "Can't connect to the
+    /// server" derse giriş bu yoldan yapılır; kullanıcı yönlendirme adresini kopyalayıp <see cref="CompletePsnLoginAsync"/>'e verir.</summary>
+    public void OpenPsnLoginInBrowser()
+    {
+        RemotePlayLog.Note("PSN girişi tarayıcıda açılıyor");
+        OpenInBrowser(PsnAccount.AuthorizeUrl);
+    }
+
     public Task<IReadOnlyList<ConsoleInfo>> DiscoverConsolesAsync() => services.DiscoverConsolesAsync();
 
     /// <summary>PS5'e kayıt olur. Her başarısızlık <see cref="AppException"/> ile anlatılır; sessiz dönüş yok.</summary>
