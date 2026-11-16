@@ -37,6 +37,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private string? xboxToken;
     private XboxConsole? xboxConsole;
     private int xboxGeneration;
+    private bool xboxNameChecked;
     private LgTv? tv;
     private TvAppState tvApp = TvAppState.Unknown;
     /// <summary>Son eşleşmede TV uygulaması açılamadı.</summary>
@@ -223,8 +224,40 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             store.Save(StoreKeys.XboxToken, token);
         });
     }
-    public Task<IReadOnlyList<XboxConsole>> DiscoverXboxConsolesAsync() =>
-        (services.Xbox ?? throw new InvalidOperationException(text["Xbox streaming isn't available in this version."])).DiscoverAsync(xboxToken ?? throw new InvalidOperationException(text["Microsoft sign-in isn't finished."]));
+    public async Task<IReadOnlyList<XboxConsole>> DiscoverXboxConsolesAsync()
+    {
+        var found = await (services.Xbox ?? throw new InvalidOperationException(text["Xbox streaming isn't available in this version."])).DiscoverAsync(xboxToken ?? throw new InvalidOperationException(text["Microsoft sign-in isn't finished."]));
+        RenameSelectedXbox(found);
+        return found;
+    }
+
+    /// <summary>
+    /// Kayıtlı Xbox'ın adı listedekiyle değiştirilir: eski sürümler köprünün UTF-8 çıktısını yanlış kodlamayla okuyup
+    /// "Oturma Odası"nı "Oturma OdasA+" diye kaydediyordu (#223). Konsol yeniden seçilmeden ad düzelir.
+    /// </summary>
+    private void RenameSelectedXbox(IReadOnlyList<XboxConsole> found)
+    {
+        if (xboxConsole is not { } saved || found.FirstOrDefault(item => item.Id == saved.Id) is not { } current || current.Name == saved.Name) return;
+        xboxConsole = saved with { Name = current.Name };
+        store.Save(StoreKeys.XboxConsole, xboxConsole);
+        Changed(nameof(SelectedXboxConsole), nameof(Ps5StatusText));
+    }
+
+    /// <summary>
+    /// Xbox görüntüsü ilk kez gelince liste arka planda bir kez sorulur; yalnız kayıtlı adı tazeler, hata yok sayılır.
+    /// Görüntü gelene kadar beklenir: köprüye o sırada yayının yenilediği jeton yüklüdür, iki istek çakışmaz.
+    /// </summary>
+    private async Task RefreshXboxNameAsync()
+    {
+        if (services.Xbox is not { } xbox || xboxToken is not { } token) return;
+        var generation = xboxGeneration;
+        try
+        {
+            var found = await xbox.DiscoverAsync(token);
+            post(() => { if (generation == xboxGeneration) RenameSelectedXbox(found); });
+        }
+        catch (Exception) { /* Ad tazelemesi isteğe bağlıdır; yayın kendi hatasını gösterir. */ }
+    }
     public void SelectXboxConsole(XboxConsole selected)
     {
         if (!selected.StreamingEnabled) return;
@@ -1224,6 +1257,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             {
                 RemotePlayLog.Note($"Çeviri başladı; {ConsoleTitle} bağlantısı açılıyor.");
                 stream = (services.Xbox ?? throw new InvalidOperationException(text["Xbox streaming isn't available in this version."])).MakeStream(xboxConsole!, xboxToken!);
+                xboxNameChecked = false;
             }
             else if (readsWindow)
             {
@@ -1989,6 +2023,11 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         SessionState = state;
         UpdateTroubleClocks();
         if (!IsXbox) UpdateGameProbe(state.Phase == SessionPhase.Streaming);
+        else if (state.Phase == SessionPhase.Streaming && !xboxNameChecked)
+        {
+            xboxNameChecked = true;
+            _ = RefreshXboxNameAsync();
+        }
         // Bağlantı koptuysa TV'de eski altyazı kalmasın.
         if (state.Phase == SessionPhase.Disconnected)
         {

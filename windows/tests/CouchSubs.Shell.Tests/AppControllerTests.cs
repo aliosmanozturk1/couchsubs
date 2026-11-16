@@ -103,6 +103,7 @@ internal sealed class FakeReader(Reading? lines = null) : ITextReader
 
 internal sealed class FakeServices : IAppServices
 {
+    public IXboxService? Xbox { get; set; }
     /// <summary>PS Remote Play / chiaki-ng bu bilgisayarda kurulu mu (Ayarlar'daki indirme satırları, ana ekran uyarısı).</summary>
     public bool RemotePlayIsInstalled { get; set; } = true;
     public bool RemotePlayInstalled(RemotePlayApp app) => RemotePlayIsInstalled;
@@ -473,6 +474,20 @@ public class AppControllerTests
         {
             RemotePlayLog.MessageLogged -= Collect;
         }
+    }
+
+    /// Eski sürüm Xbox adını bozuk kaydettiyse (#223) liste sorulunca kayıtlı ad düzelir; konsol yeniden seçilmez.
+    [Fact]
+    public async Task XboxDiscoveryRepairsSavedConsoleName()
+    {
+        var store = new MemoryStore();
+        store.Save(StoreKeys.XboxToken, "{}");
+        store.Save(StoreKeys.XboxConsole, new XboxConsole("F4", "Oturma OdasA+ Xbox", "XboxSeriesX", true));
+        var xbox = new FakeXbox([new XboxConsole("F4", "Oturma Odası Xbox", "XboxSeriesX", true)]);
+        var controller = new AppController(new FakeServices { Xbox = xbox }, store, new MemorySettings(), new FakeSleep(), Localizer.ForLanguage("tr"), action => action());
+        await controller.DiscoverXboxConsolesAsync();
+        Assert.Equal("Oturma Odası Xbox", controller.SelectedXboxConsole?.Name);
+        Assert.Equal("Oturma Odası Xbox", store.Load<XboxConsole>(StoreKeys.XboxConsole)?.Name);
     }
 
     [Fact]
@@ -1765,4 +1780,14 @@ internal sealed class FakeDubbingModel(bool installed) : IDubbingModel
     public Task DownloadAsync(IProgress<double> progress, CancellationToken cancellationToken) => Task.CompletedTask;
     public byte[] VoiceFile(DubbingVoice voice) => [];
     public ISpeechSynthesizer CreateSynthesizer() => throw new NotSupportedException();
+}
+
+internal sealed class FakeXbox(IReadOnlyList<XboxConsole> consoles) : IXboxService
+{
+    public event Action<string>? TokenUpdated { add { } remove { } }
+    public void Clear() { }
+    public Task<XboxLoginChallenge> BeginLoginAsync() => throw new NotSupportedException();
+    public Task<string> CompleteLoginAsync() => throw new NotSupportedException();
+    public Task<IReadOnlyList<XboxConsole>> DiscoverAsync(string token) => Task.FromResult(consoles);
+    public IStreamSession MakeStream(XboxConsole console, string token) => new FakeStream();
 }
