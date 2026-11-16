@@ -65,8 +65,11 @@ import com.couchsubs.mobile.Services
 import com.couchsubs.mobile.remoteplay.PsnAccount
 import com.couchsubs.mobile.remoteplay.PsnLoadWatch
 import com.couchsubs.mobile.remoteplay.PsnPageProblem
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -85,6 +88,15 @@ fun PsnLoginScreen(onBack: (() -> Unit)? = null, onSkip: (() -> Unit)? = null, o
     var why by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    // Önceki girişin verisi giriş ekranı görünür görünmez silinir: kullanıcı "Giriş"e basana kadar WebView ısınır ve
+    // temizlik biter. Eskiden temizlik sayfa açılmadan hemen önce yapılıyordu; ilk açılışta (WebView soğukken) 2 sn'de
+    // bitmiyor, sayfa yine açılıyor, geç biten temizlik Sony'nin ilk yönlendirmede koyduğu çerezleri ve sayfa verisini
+    // siliyordu: giriş sayfası boş kalıyor, ancak "Tarayıcıda aç" ile girilebiliyordu (GitHub #54). Ekranın kapsamında
+    // çalışır: "Giriş"e basılınca yarıda kesilmez.
+    var earlyCleanup by remember { mutableStateOf<Deferred<Result<Unit>>?>(null) }
+    LaunchedEffect(mode) {
+        if (mode == PsnMode.INTRO) earlyCleanup = scope.async { PsnWebData.clear() }
+    }
 
     // Yönlendirme (uygulama içinden ya da tarayıcıdan yapıştırılan) hesap kimliğine çevrilir.
     fun finish(redirect: String) {
@@ -137,6 +149,7 @@ fun PsnLoginScreen(onBack: (() -> Unit)? = null, onSkip: (() -> Unit)? = null, o
             if (why) InfoDialog(stringResource(R.string.psn_why), stringResource(R.string.psn_why_body)) { why = false }
         }
         PsnMode.WEB -> PsnWebLogin(
+            earlyCleanup = earlyCleanup,
             onRedirect = ::finish,
             onClose = { mode = PsnMode.INTRO },
             onBrowser = ::openBrowser,
@@ -163,7 +176,12 @@ private fun openInBrowser(context: Context) {
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun PsnWebLogin(onRedirect: (String) -> Unit, onClose: () -> Unit, onBrowser: () -> Unit) {
+private fun PsnWebLogin(
+    earlyCleanup: Deferred<Result<Unit>>?,
+    onRedirect: (String) -> Unit,
+    onClose: () -> Unit,
+    onBrowser: () -> Unit,
+) {
     // Her "Yeniden dene" yeni bir WebView kurar (çöken sayfa süreci de böyle atılır).
     var attempt by remember { mutableIntStateOf(0) }
     var progress by remember { mutableIntStateOf(0) }
@@ -206,23 +224,20 @@ private fun PsnWebLogin(onRedirect: (String) -> Unit, onClose: () -> Unit, onBro
                         }
                     }
                     // Her girişte temiz oturum: önceki çerezler (ör. kendi hesabın) karışmasın. Silme eşzamansızdır; sayfa
-                    // bittikten sonra açılır (yoksa Sony'nin ilk yönlendirmede koyduğu çerezler yolda silinir), ama bazı
+                    // bittikten sonra açılır (yoksa Sony'nin ilk yönlendirmede koyduğu çerezler yolda silinir). İlk denemede
+                    // temizlik giriş ekranında başlamıştır; "Yeniden dene"de (WebView artık sıcak) yeniden yapılır. Bazı
                     // telefonlarda geri çağrı hiç dönmez: en çok COOKIE_WAIT_MS beklenir, sonra sayfa yine açılır.
                     LaunchedEffect(Unit) {
-                        try {
-                            WebStorage.getInstance().deleteAllData()
-                            val cleared = withTimeoutOrNull(PsnLoadWatch.COOKIE_WAIT_MS) {
-                                suspendCancellableCoroutine { done ->
-                                    CookieManager.getInstance().removeAllCookies { if (done.isActive) done.resume(it) }
-                                }
-                            }
-                            if (cleared == null) Log.w(TAG, "Çerez silme ${PsnLoadWatch.COOKIE_WAIT_MS} ms'de dönmedi; sayfa yine açılıyor")
-                            cookiesReady = true
-                        } catch (error: RuntimeException) {
+                        val cleanup = earlyCleanup.takeIf { attempt == 0 } ?: scope.async { PsnWebData.clear() }
+                        val result = withTimeoutOrNull(PsnLoadWatch.COOKIE_WAIT_MS) { cleanup.await() }
+                        val error = result?.exceptionOrNull()
+                        if (error != null) {
                             // WebView kurulu değil ya da güncelleniyor: CookieManager açılamaz.
-                            Log.w(TAG, "WebView açılamadı", error)
                             fail(PsnPageProblem.CRASHED, error.javaClass.simpleName)
+                            return@LaunchedEffect
                         }
+                        if (result == null) Log.w(TAG, "Çerez silme ${PsnLoadWatch.COOKIE_WAIT_MS} ms'de dönmedi; sayfa yine açılıyor")
+                        cookiesReady = true
                     }
                     if (cookiesReady) AndroidView(
                         modifier = Modifier.fillMaxSize(),
@@ -309,6 +324,26 @@ private fun PsnWebLogin(onRedirect: (String) -> Unit, onClose: () -> Unit, onBro
                 GhostButton(stringResource(R.string.close), color = Tokens.Color.secondary, onClick = onClose)
             }
         }
+    }
+}
+
+/** Uygulama içi girişin WebView verisi (çerezler, sayfa depoları). */
+private object PsnWebData {
+    /**
+     * Sayfa depolarını (localStorage, IndexedDB, service worker) ve çerezleri siler. Çerez silme bitene
+     * kadar bekler; sayfa depolarının silinmesinin geri çağrısı yoktur, bu yüzden sayfa yüklenmeden önce yapılmalıdır.
+     * Hata (WebView kurulu değil ya da güncelleniyor) sonuçta döner, iş parçacığını düşürmez.
+     */
+    suspend fun clear(): Result<Unit> = try {
+        WebStorage.getInstance().deleteAllData()
+        val cookies = CookieManager.getInstance()
+        suspendCancellableCoroutine { done -> cookies.removeAllCookies { if (done.isActive) done.resume(Unit) } }
+        Result.success(Unit)
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: RuntimeException) {
+        Log.w(TAG, "WebView verisi silinemedi", error)
+        Result.failure(error)
     }
 }
 
