@@ -623,6 +623,17 @@ public class AiTranslatorTests
         Assert.Equal(["[gülüyor] Hadi gidelim."], AiRequest.Translations("[gülüyor] Hadi gidelim.", 1));
     }
 
+    /// <summary>Yerel modellerin bitiş işaretleri (<c>&lt;/s&gt;</c>, <c>&lt;|im_end|&gt;</c>) ekranda kalmaz; sondaki fazla virgül diziyi bozmaz (#27).</summary>
+    [Fact]
+    public void ControlTokensAndTrailingComma()
+    {
+        Assert.Equal(["Yere yat!"], AiRequest.Translations("[\"Yere yat!\"]</s>", 1));
+        Assert.Equal(["Yere yat!"], AiRequest.Translations("[Yere yat!]</s>", 1));
+        Assert.Equal(["Defol buradan!"], AiRequest.Translations("Defol buradan!<|im_end|>", 1));
+        Assert.Equal(["Bir.", "İki."], AiRequest.Translations("<s>[\"Bir.\", \"İki.\",]<|eot_id|>", 2));
+        Assert.Equal(["<b> etiketi kalır"], AiRequest.Translations("[\"<b> etiketi kalır\"]", 1));
+    }
+
     [Fact]
     public void UnquotedArrayForSeveralSentences()
     {

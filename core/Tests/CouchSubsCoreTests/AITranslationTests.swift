@@ -484,6 +484,15 @@ final class AITranslationTests: XCTestCase {
         XCTAssertEqual(try AIRequest.translations(from: "<think>…</think>Gidelim.", count: 1), ["Gidelim."])
     }
 
+    /// Yerel modellerin bitiş işaretleri (`</s>`, `<|im_end|>`) ekranda kalmaz; sondaki fazla virgül diziyi bozmaz.
+    func testLocalControlTokensAndTrailingComma() throws {
+        XCTAssertEqual(try AIRequest.translations(from: "[\"Yere yat!\"]</s>", count: 1), ["Yere yat!"])
+        XCTAssertEqual(try AIRequest.translations(from: "[Yere yat!]</s>", count: 1), ["Yere yat!"])
+        XCTAssertEqual(try AIRequest.translations(from: "Defol buradan!<|im_end|>", count: 1), ["Defol buradan!"])
+        XCTAssertEqual(try AIRequest.translations(from: "<s>[\"Bir.\", \"İki.\",]<|eot_id|>", count: 2), ["Bir.", "İki."])
+        XCTAssertEqual(try AIRequest.translations(from: "[\"<b> etiketi kalır\"]", count: 1), ["<b> etiketi kalır"])
+    }
+
     /// Sunucu kapalıysa ya da model indirilmemişse o satır ücretsiz çeviriyle gelir, durum bildirilir.
     func testLocalFailuresFallBack() async throws {
         FakeAI.timeout = true

@@ -193,6 +193,7 @@ public static class AiRequest
         // Düşünen yerel modeller (ör. Qwen3, DeepSeek-R1) yanıtın başına <think>…</think> koyar; yalnız sonrası alınır.
         var thought = trimmed.LastIndexOf("</think>", StringComparison.Ordinal);
         if (thought >= 0) trimmed = trimmed[(thought + "</think>".Length)..].Trim();
+        trimmed = StripControlTokens(trimmed);
         // ```json … ``` çitini at.
         if (trimmed.StartsWith("```", StringComparison.Ordinal))
             trimmed = string.Join("\n", trimmed.Split('\n').Skip(1).Where(l => !l.StartsWith("```", StringComparison.Ordinal))).Trim();
@@ -201,7 +202,7 @@ public static class AiRequest
         {
             try
             {
-                if (JsonNode.Parse(trimmed[start..(end + 1)]) is JsonArray array && array.All(n => n?.GetValueKind() == JsonValueKind.String))
+                if (JsonNode.Parse(WithoutTrailingComma(trimmed[start..(end + 1)])) is JsonArray array && array.All(n => n?.GetValueKind() == JsonValueKind.String))
                 {
                     if (array.Count != count) throw new AiException(OnlineKeyState.Unreachable);
                     return [.. array.Select(n => n!.GetValue<string>().Trim())];
@@ -213,6 +214,18 @@ public static class AiRequest
         if (count != 1) throw new AiException(OnlineKeyState.Unreachable);
         return [trimmed.Trim('"', '“', '”')];
     }
+
+    /// <summary>
+    /// Yerel modellerin metne sızan bitiş/rol işaretleri (<c>&lt;/s&gt;</c>, <c>&lt;|im_end|&gt;</c>, <c>&lt;|eot_id|&gt;</c>,
+    /// <c>&lt;end_of_turn&gt;</c> …) ekranda görünmesin; yalnız bu kalıplar silinir, altyazıdaki başka yazılara dokunulmaz.
+    /// </summary>
+    internal static string StripControlTokens(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text,
+            @"</?s>|<\|[A-Za-z0-9_]{1,32}\|>|</?(?:start|end)_of_turn>|</?(?:eos|bos|pad)>", "").Trim();
+
+    /// <summary><c>["Bir.", "İki.",]</c> gibi sondaki fazla virgül JSON'u bozmasın.</summary>
+    internal static string WithoutTrailingComma(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text, @",\s*\]$", "]");
 
     /// <summary>
     /// Tırnaksız dizi: bazı yerel modeller JSON istense de <c>[Hareket etmemiz lazım.]</c> ya da

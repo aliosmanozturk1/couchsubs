@@ -417,6 +417,7 @@ object AiRequest {
         // Düşünen modeller yanıtın başına <think>…</think> koyar; yalnız sonrası alınır.
         val thought = trimmed.lastIndexOf("</think>")
         if (thought >= 0) trimmed = trimmed.substring(thought + "</think>".length).trim()
+        trimmed = stripControlTokens(trimmed)
         if (trimmed.startsWith("```")) trimmed = trimmed.split('\n').drop(1).filter { !it.startsWith("```") }.joinToString("\n").trim()
         val start = trimmed.indexOf('[')
         val end = trimmed.lastIndexOf(']')
@@ -425,7 +426,7 @@ object AiRequest {
         val quoted = start >= 0 && trimmed.substring(start + 1).trimStart().let { it.startsWith('"') || it.startsWith(']') }
         if (quoted && end > start) {
             try {
-                val array = JSONArray(trimmed.substring(start, end + 1))
+                val array = JSONArray(withoutTrailingComma(trimmed.substring(start, end + 1)))
                 if ((0 until array.length()).all { array.opt(it) is String }) {
                     if (array.length() != count) throw OnlineException(OnlineKeyState.UNREACHABLE)
                     return (0 until array.length()).map { array.getString(it).trim() }
@@ -438,6 +439,18 @@ object AiRequest {
         if (count != 1) throw OnlineException(OnlineKeyState.UNREACHABLE)
         return listOf(trimmed.trim('"', '“', '”'))
     }
+
+    private val controlTokens = Regex("""</?s>|<\|[A-Za-z0-9_]{1,32}\|>|</?(?:start|end)_of_turn>|</?(?:eos|bos|pad)>""")
+    private val trailingComma = Regex(""",\s*]$""")
+
+    /**
+     * Yerel modellerin metne sızan bitiş/rol işaretleri (`</s>`, `<|im_end|>`, `<|eot_id|>`, `<end_of_turn>` …) ekranda
+     * görünmesin; yalnız bu kalıplar silinir, altyazıdaki başka yazılara dokunulmaz.
+     */
+    fun stripControlTokens(text: String): String = controlTokens.replace(text, "").trim()
+
+    /** `["Bir.", "İki.",]` gibi sondaki fazla virgül JSON'u bozmasın. */
+    fun withoutTrailingComma(text: String): String = trailingComma.replace(text, "]")
 
     /**
      * Tırnaksız dizi: bazı modeller JSON istense de `[Hareket etmemiz lazım.]` ya da `[Satır bir., Satır iki.]` döndürür.

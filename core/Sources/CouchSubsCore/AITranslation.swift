@@ -373,13 +373,14 @@ public enum AIRequest {
         if let end = trimmed.range(of: "</think>", options: .backwards) {
             trimmed = String(trimmed[end.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        trimmed = stripControlTokens(trimmed)
         // ```json … ``` çitini at.
         if trimmed.hasPrefix("```") {
             trimmed = trimmed.split(separator: "\n", omittingEmptySubsequences: false).dropFirst()
                 .filter { !$0.hasPrefix("```") }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         }
         if let start = trimmed.firstIndex(of: "["), let end = trimmed.lastIndex(of: "]"), start < end,
-           let data = String(trimmed[start...end]).data(using: .utf8),
+           let data = withoutTrailingComma(String(trimmed[start...end])).data(using: .utf8),
            let list = try? JSONSerialization.jsonObject(with: data) as? [String] {
             guard list.count == count else { throw AIFailure.unreachable }
             return list.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -387,6 +388,19 @@ public enum AIRequest {
         if let list = unquotedList(trimmed, count: count) { return list }
         guard count == 1 else { throw AIFailure.unreachable }
         return [trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "\"“”"))]
+    }
+
+    /// Yerel modellerin metne sızan bitiş/rol işaretleri (`</s>`, `<|im_end|>`, `<|eot_id|>`, `<end_of_turn>` …)
+    /// ekranda görünmesin; yalnız bu kalıplar silinir, altyazıdaki başka `<…>` yazılara dokunulmaz.
+    static func stripControlTokens(_ text: String) -> String {
+        text.replacingOccurrences(of: #"</?s>|<\|[A-Za-z0-9_]{1,32}\|>|</?(?:start|end)_of_turn>|</?(?:eos|bos|pad)>"#,
+                                  with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// `["Bir.", "İki.",]` gibi sondaki fazla virgül JSON'u bozmasın.
+    static func withoutTrailingComma(_ text: String) -> String {
+        text.replacingOccurrences(of: #",\s*\]$"#, with: "]", options: .regularExpression)
     }
 
     /// Tırnaksız dizi: bazı yerel modeller JSON istense de `[Hareket etmemiz lazım.]` ya da `[Satır bir., Satır iki.]`

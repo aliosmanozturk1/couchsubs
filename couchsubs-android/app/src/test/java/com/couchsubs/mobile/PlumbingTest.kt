@@ -178,6 +178,12 @@ class OnlineTranslationTest {
         assertNull(AiRequest.unquotedList("[Dur, bekle, gitme.]", 2))
         assertEquals(listOf("Dur, bekle, gitme."), AiRequest.translations("[Dur, bekle, gitme.]", 1))
         assertNull(AiRequest.unquotedList("[Satır bir.]", 2))
+        // Yerel modellerin bitiş işaretleri ekranda kalmaz; sondaki fazla virgül diziyi bozmaz (#27).
+        assertEquals(listOf("Yere yat!"), AiRequest.translations("[\"Yere yat!\"]</s>", 1))
+        assertEquals(listOf("Yere yat!"), AiRequest.translations("[Yere yat!]</s>", 1))
+        assertEquals(listOf("Defol buradan!"), AiRequest.translations("Defol buradan!<|im_end|>", 1))
+        assertEquals(listOf("Bir.", "İki."), AiRequest.translations("<s>[\"Bir.\", \"İki.\",]<|eot_id|>", 2))
+        assertEquals(listOf("<b> etiketi kalır"), AiRequest.translations("[\"<b> etiketi kalır\"]", 1))
         assertEquals(OnlineKeyState.INVALID, AiRequest.failure(400, "API key not valid"))
         assertEquals(OnlineKeyState.MODEL_REJECTED, AiRequest.failure(404, ""))
     }
