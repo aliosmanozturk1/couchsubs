@@ -211,8 +211,13 @@ public class DisconnectReasonTests
     public void SessionRequestLogLinesAreClassified(string line, DisconnectKind kind) =>
         Assert.Equal(new DisconnectReason(kind), DisconnectReasons.SessionRequestHint(line));
 
+    /// <summary>PS5 kayıt dışı bir kodla reddetti: kod ayrıntıda (libchiaki "unknown" der).</summary>
+    [Fact]
+    public void OtherApplicationReasonIsRejection() =>
+        Assert.Equal(new DisconnectReason(DisconnectKind.Rejected, "0x80108bff"),
+                     DisconnectReasons.SessionRequestHint("Reported Application Reason: 0x80108bff (unknown)"));
+
     [Theory]
-    [InlineData("Reported Application Reason: 0x80108b33 (unknown)")]
     [InlineData("Reported Application Reason: garbage")]
     [InlineData("Session request successful")]
     [InlineData("Failed to parse session request response")]
@@ -225,8 +230,12 @@ public class DisconnectReasonTests
     {
         var invalid = new DisconnectReason(DisconnectKind.RegistrationInvalid);
         Assert.Equal(invalid, DisconnectReasons.FromNative(NativeMethods.QuitOther, DisconnectReasons.UnknownSessionRequest, invalid));
-        Assert.Equal(new DisconnectReason(DisconnectKind.Other, DisconnectReasons.UnknownSessionRequest),
+        Assert.Equal(new DisconnectReason(DisconnectKind.Rejected),
                      DisconnectReasons.FromNative(NativeMethods.QuitOther, DisconnectReasons.UnknownSessionRequest, null));
+        var rejected = new DisconnectReason(DisconnectKind.Rejected, "0x80108bff");
+        Assert.Equal(rejected, DisconnectReasons.FromNative(NativeMethods.QuitOther, DisconnectReasons.UnknownSessionRequest, rejected));
+        // PS5 oturum isteğine yanıt verdi: reddetmesi "bulunamadı" değildir.
+        Assert.Equal(rejected, StreamSession.Classify(rejected, false, "192.168.1.70"));
         Assert.Equal(new DisconnectReason(DisconnectKind.Other, "Version Mismatch"),
                      DisconnectReasons.FromNative(NativeMethods.QuitOther, "Version Mismatch", invalid));
         Assert.Equal(new DisconnectReason(DisconnectKind.InUse), DisconnectReasons.FromNative(NativeMethods.QuitInUse, null, invalid));

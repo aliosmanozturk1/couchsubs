@@ -109,16 +109,19 @@ internal static class DisconnectReasons
             var token = line[(at + marker.Length)..].TrimStart().Split(' ', 2)[0];
             if (token.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) token = token[2..];
             if (!uint.TryParse(token, System.Globalization.NumberStyles.HexNumber, null, out var code)) return null;
-            return RegistrationRejectedCodes.Contains(code) ? new(DisconnectKind.RegistrationInvalid) : null;
+            return RegistrationRejectedCodes.Contains(code)
+                ? new(DisconnectKind.RegistrationInvalid)
+                : new(DisconnectKind.Rejected, $"0x{code:x8}");
         }
         // PS5'e bağlanılamadı ya da yanıt gelmedi: PS5 dinlenmeden yeni uyandıysa ilk denemelerde olağandır.
         return UnreachableLines.Any(line.Contains) ? new(DisconnectKind.Network) : null;
     }
 
-    /// <summary>Oturum isteği bilinmeyen nedenle düştüyse günlükten anlaşılan neden kullanılır.</summary>
+    /// <summary>Oturum isteği bilinmeyen nedenle düştüyse günlükten anlaşılan neden kullanılır. Günlükte neden yoksa
+    /// (PS5'in yanıtı okunamadı) PS5 oturumu başlatmamıştır: anlamsız İngilizce metin yerine <see cref="DisconnectKind.Rejected"/>.</summary>
     public static DisconnectReason FromNative(int quit, string? text, DisconnectReason? sessionRequestHint) =>
-        quit == NativeMethods.QuitOther && text == UnknownSessionRequest && sessionRequestHint is not null
-            ? sessionRequestHint
+        quit == NativeMethods.QuitOther && text == UnknownSessionRequest
+            ? sessionRequestHint ?? new(DisconnectKind.Rejected)
             : FromNative(quit, text);
 }
 

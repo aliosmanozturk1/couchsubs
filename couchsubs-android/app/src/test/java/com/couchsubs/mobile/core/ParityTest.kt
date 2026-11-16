@@ -2,6 +2,7 @@
 package com.couchsubs.mobile.core
 
 import com.couchsubs.mobile.remoteplay.DisconnectKind
+import com.couchsubs.mobile.remoteplay.SessionState
 import com.couchsubs.mobile.service.LiveStatus
 import com.couchsubs.mobile.settings.AppSettings
 import com.couchsubs.mobile.translation.GameEnglish
@@ -193,17 +194,19 @@ class ParityTest {
     @Test
     fun sessionRequestLogLinesAreClassified() {
         assertEquals(DisconnectKind.REGISTRATION_INVALID,
-            DisconnectKind.sessionRequestHint("Reported Application Reason: 0x80108b09 (Regist failed, probably invalid PIN)"))
-        assertEquals(DisconnectKind.REGISTRATION_INVALID, DisconnectKind.sessionRequestHint("Reported Application Reason: 0x80108B02 (Invalid PSN ID)"))
-        assertNull(DisconnectKind.sessionRequestHint("Reported Application Reason: 0x80108b33 (unknown)"))
+            DisconnectKind.sessionRequestHint("Reported Application Reason: 0x80108b09 (Regist failed, probably invalid PIN)")?.kind)
+        assertEquals(DisconnectKind.REGISTRATION_INVALID, DisconnectKind.sessionRequestHint("Reported Application Reason: 0x80108B02 (Invalid PSN ID)")?.kind)
+        // PS5 kayıt dışı bir kodla reddetti: kod ayrıntıda (GitHub #33, #202).
+        assertEquals(SessionState.Disconnected(DisconnectKind.REJECTED, "0x80108bff"),
+            DisconnectKind.sessionRequestHint("Reported Application Reason: 0x80108bff (unknown)"))
         assertNull(DisconnectKind.sessionRequestHint("Reported Application Reason: garbage"))
-        assertEquals(DisconnectKind.NETWORK, DisconnectKind.sessionRequestHint("Session request connect failed eventually."))
-        assertEquals(DisconnectKind.NETWORK, DisconnectKind.sessionRequestHint("Failed to receive session request response"))
-        assertEquals(DisconnectKind.NETWORK, DisconnectKind.sessionRequestHint("Failed to send session request"))
+        assertEquals(DisconnectKind.NETWORK, DisconnectKind.sessionRequestHint("Session request connect failed eventually.")?.kind)
+        assertEquals(DisconnectKind.NETWORK, DisconnectKind.sessionRequestHint("Failed to receive session request response")?.kind)
+        assertEquals(DisconnectKind.NETWORK, DisconnectKind.sessionRequestHint("Failed to send session request")?.kind)
         assertNull(DisconnectKind.sessionRequestHint("Session request successful"))
         assertNull(DisconnectKind.sessionRequestHint("Failed to parse session request response"))
         assertEquals(DisconnectKind.REGISTRATION_INVALID, DisconnectKind.sessionRequestHint(listOf("Failed to send session request",
-            "Reported Application Reason: 0x80108b09 (Regist failed)")))
+            "Reported Application Reason: 0x80108b09 (Regist failed)"))?.kind)
     }
 
     @Test

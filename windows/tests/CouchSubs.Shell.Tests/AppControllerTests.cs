@@ -1354,6 +1354,11 @@ public class AppControllerRunTests
             AppController.StatusText(SessionState.Disconnected(DisconnectKind.Other, "Session Request RP Version Mismatch"), true, text));
         Assert.Equal("Reconnecting…", AppController.StatusText(SessionState.Disconnected(DisconnectKind.Other), true, text));
         Assert.Equal("Not connected", AppController.StatusText(SessionState.Disconnected(DisconnectKind.Stopped), false, text));
+        // PS5 oturum isteğini reddetti: libchiaki'nin "Unknown Session Request Error"u yerine anlamlı metin ve kod.
+        Assert.Equal("PS5 bağlantıyı reddetti (kod 0x80108bff). Başka bir Uzaktan Oynatma (PS Remote Play) açık olabilir ya da PS5 başka bir oturumda olabilir. PS Remote Play'i kapatın, PS5'i yeniden başlatıp tekrar deneyin.",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.Rejected, "0x80108bff"), true, Localizer.ForLanguage("tr")));
+        Assert.Equal("The PS5 didn't start the session. Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again.",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.Rejected), true, text));
     }
 
     /// Eşleştirme başarılıyken çeviri başlamadan ana ekran "Bağlı değil" demez (kullanıcı PS5'i bağlanmamış sanıyordu).

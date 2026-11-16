@@ -975,6 +975,10 @@ final class PhoneModel: ObservableObject {
             case .notFound(let host):
                 return String(format: String(localized: "PS5 not found at %@. Make sure it is on and on the same network. Reconnecting…"), host)
             case .network: return String(localized: "Can't reach the PS5. Reconnecting…")
+            // Eskiden "Yeniden bağlanılıyor…" ile anlamsız libchiaki metni (Unknown Session Request Error) vardı.
+            case .rejected(let code?):
+                return String(format: String(localized: "The PS5 rejected the connection (code %@). Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again."), String(format: "0x%08x", code))
+            case .rejected(nil): return String(localized: "The PS5 didn't start the session. Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again.")
             case .other(let detail) where isXbox: return detail
             case .other, .stopped: return String(localized: "Reconnecting…")
             }
