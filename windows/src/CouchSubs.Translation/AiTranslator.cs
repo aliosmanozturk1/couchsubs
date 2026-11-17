@@ -498,10 +498,20 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
             _pausedUntil = DateTimeOffset.UtcNow + RetryAfter;
             return Remember(await FallbackAsync(text, cancellationToken).ConfigureAwait(false), text);
         }
+        var local = false;
         for (var i = 0; i < missing.Count; i++)
         {
+            var piece = pieces[missing[i]].Text;
+            if (IsEcho(piece, translated[i]) && await RetryEchoAsync(piece, cancellationToken).ConfigureAwait(false) is { } retried
+                && !IsEcho(piece, retried))
+            {
+                // Yerel çeviri bu motorun önbelleğine yazılmaz.
+                translations[missing[i]] = retried;
+                local = true;
+                continue;
+            }
             translations[missing[i]] = translated[i];
-            _cache.Store(CacheKey(pieces[missing[i]].Text, game), translated[i]);
+            _cache.Store(CacheKey(piece, game), translated[i]);
         }
 
         var builder = new StringBuilder();
@@ -509,8 +519,27 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
         if (_speech.Count >= 512) _speech.Clear();
         _speech[CacheKey(text, game)] = SpeechScript.Lines(pieces, translations);
         var result = builder.ToString();
-        _cache.Store(CacheKey(text, game), result);
+        if (!local) _cache.Store(CacheKey(text, game), result);
         return Remember(result, text);
+    }
+
+    /// <summary>
+    /// Model cümleyi çevirmeden geri verdi mi (hattın "zaten hedef dilde" eşiğiyle aynı). Küçük yerel modeller İngilizce
+    /// cümleyi sık sık olduğu gibi döndürüyor ("You think I'm on the run?"); hat bunu Türkçe sanıp hiç göstermiyor,
+    /// önbellek de öyle saklıyordu (#245).
+    /// </summary>
+    internal static bool IsEcho(string source, string translation) =>
+        TextMatch.IsSimilar(TextMatch.Normalize(source), TextMatch.Normalize(translation), 0.90);
+
+    /// <summary>
+    /// Geri verilen cümle cihaz üstü çeviriyle bir kez daha denenir; o da aynı kalırsa (ad, konsolun Türkçe menüsü)
+    /// çevrilecek bir şey yoktur ve modelin yanıtı önbelleğe yazılır. Yerel çeviri yoksa ya da hata verirse null.
+    /// </summary>
+    private async Task<string?> RetryEchoAsync(string text, CancellationToken cancellationToken)
+    {
+        if (_fallback is null) return null;
+        try { return await _fallback.TranslateAsync(text, cancellationToken).ConfigureAwait(false); }
+        catch (Exception error) when (error is not OperationCanceledException) { return null; }
     }
 
     public bool TranslatesTogether => true;

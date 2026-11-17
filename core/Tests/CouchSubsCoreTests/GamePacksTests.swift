@@ -307,6 +307,12 @@ final class PackLookupTests: XCTestCase {
         XCTAssertFalse(PackLookup.isOverlay("Hey, Franklin!"))
     }
 
+    /// Uzun satırdaki "•" OCR lekesidir: satır köşe yazısı sayılıp atlanmaz, yalnız ikinci satırın Türkçesi gelmez (#245).
+    func testLongLineWithStrayBulletIsNotAnOverlay() {
+        XCTAssertFalse(PackLookup.isOverlay("I have a business meeting there with a colleague• Not that it's anything to do"))
+        XCTAssertNil(match("I have a business meeting there with a colleague• Not that it's anything to do\nWho is that?"))
+    }
+
     func testEachSentenceIsLookedUpWhenTheLineIsMissing() {
         let found = match("ENZO: Get down! Who is that?")
         XCTAssertEqual(found?.text, "ENZO: Yere yat! O da kim?")

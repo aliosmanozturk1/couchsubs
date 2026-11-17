@@ -307,6 +307,32 @@ final class AITranslationTests: XCTestCase {
         XCTAssertFalse(user(0).contains("KRATOS"))
     }
 
+    /// Model cümleyi çevirmeden geri verirse cümle yerel çeviriyle yeniden denenir ve yanıt önbelleğe yazılmaz (#245:
+    /// qwen2.5:3b "You think I'm on the run?" cümlesini olduğu gibi döndürdü, hat onu Türkçe sanıp göstermedi). Yerel
+    /// çeviri de aynı kalırsa (ad) modelin yanıtı kalır ve önbelleğe yazılır.
+    func testEchoedSentenceIsRetriedLocallyAndNotCached() async throws {
+        FakeAI.replyText = #"["You think I'm on the run?"]"#
+        let core = make(.openAI)
+        var asked: [String] = []
+        let local: (String) async throws -> String = { text in
+            asked.append(text)
+            return "yerel: " + text
+        }
+        let first = try await core.translate("Tommy: You think I'm on the run?", fallback: local)
+        XCTAssertEqual(first, "Tommy: yerel: You think I'm on the run?")
+        XCTAssertEqual(asked, ["You think I'm on the run?"])
+        _ = try await core.translate("Tommy: You think I'm on the run?", fallback: local)
+        XCTAssertEqual(FakeAI.requests.count, 2)
+
+        FakeAI.replyText = #"["Thomas Angelo."]"#
+        let names = make(.openAI)
+        let same: (String) async throws -> String = { $0 }
+        let name = try await names.translate("Thomas Angelo.", fallback: same)
+        XCTAssertEqual(name, "Thomas Angelo.")
+        _ = try await names.translate("Thomas Angelo.", fallback: same)
+        XCTAssertEqual(FakeAI.requests.count, 3)
+    }
+
     func testOpenAIRequest() async throws {
         _ = try await make(.openAI).translate("Run!", fallback: local)
         let (request, body) = FakeAI.requests[0]

@@ -76,6 +76,31 @@ class RateLimitTest {
         assertEquals(2, http.count)
     }
 
+    /**
+     * Model cümleyi çevirmeden geri verirse cümle yerel çeviriyle yeniden denenir ve yanıt önbelleğe yazılmaz (#245:
+     * qwen2.5:3b "You think I'm on the run?" cümlesini olduğu gibi döndürdü, hat onu Türkçe sanıp göstermedi). Yerel
+     * çeviri de aynı kalırsa (ad) modelin yanıtı kalır ve önbelleğe yazılır.
+     */
+    @Test
+    fun echoedSentenceIsRetriedLocallyAndNotCached() {
+        val echo = 200 to """{"candidates":[{"content":{"parts":[{"text":"[\"You think I'm on the run?\"]"}]}}]}"""
+        val http = ScriptedHttp(echo)
+        val asked = mutableListOf<String>()
+        val translator = AiTranslator(AiProvider.GEMINI, "key", model, { asked.add(it); "yerel: $it" }, http,
+            budget = RequestBudget(1000))
+        assertEquals("Tommy: yerel: You think I'm on the run?", translator.translate("Tommy: You think I'm on the run?"))
+        assertEquals(listOf("You think I'm on the run?"), asked)
+        translator.translate("Tommy: You think I'm on the run?")
+        assertEquals(2, http.count)
+
+        val name = 200 to """{"candidates":[{"content":{"parts":[{"text":"[\"Thomas Angelo.\"]"}]}}]}"""
+        val names = ScriptedHttp(name)
+        val same = AiTranslator(AiProvider.GEMINI, "key", model, { it }, names, budget = RequestBudget(1000))
+        assertEquals("Thomas Angelo.", same.translate("Thomas Angelo."))
+        same.translate("Thomas Angelo.")
+        assertEquals(1, names.count)
+    }
+
     @Test
     fun perMinutePauseIsAtMostTwentySeconds() {
         val clock = Clock()

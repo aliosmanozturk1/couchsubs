@@ -2,6 +2,7 @@
 package com.couchsubs.mobile.translation
 
 import com.couchsubs.mobile.core.SubtitleSegmenter
+import com.couchsubs.mobile.core.TextMatch
 import com.couchsubs.mobile.core.TextTranslator
 import org.json.JSONArray
 import org.json.JSONException
@@ -227,15 +228,53 @@ abstract class SentenceTranslator<C>(
             pausedUntil = clock() + RETRY_AFTER_MS
             return fallback(text)
         }
+        var local = false
         for ((i, index) in missing.withIndex()) {
+            val piece = pieces[index].text
+            if (retriesEcho && isEcho(piece, translated[i])) {
+                val retried = retryEcho(piece)
+                if (retried != null && !isEcho(piece, retried)) {
+                    // Yerel çeviri bu motorun önbelleğine yazılmaz.
+                    translations[index] = retried
+                    local = true
+                    continue
+                }
+            }
             translations[index] = translated[i]
-            cache.store(cacheKey(pieces[index].text, game), translated[i])
+            cache.store(cacheKey(piece, game), translated[i])
         }
         val result = pieces.indices.joinToString("") { translations[it] ?: pieces[it].text }
-        cache.store(cacheKey(text, game), result)
+        if (!local) cache.store(cacheKey(text, game), result)
         remember(text, result)
         return result
     }
+
+    /**
+     * Çevirmeden geri verilen cümle yerel motorla yeniden denensin mi (yalnız yapay zekâ; Windows ve iPhone'da da
+     * yalnız AiTranslator/AITranslationCore yapar).
+     */
+    protected open val retriesEcho: Boolean get() = false
+
+    /**
+     * Model cümleyi çevirmeden geri verdi mi (hattın "zaten hedef dilde" eşiğiyle aynı). Küçük yerel modeller İngilizce
+     * cümleyi sık sık olduğu gibi döndürüyor ("You think I'm on the run?"); hat bunu Türkçe sanıp hiç göstermiyor,
+     * önbellek de öyle saklıyordu (#245).
+     */
+    private fun isEcho(source: String, translation: String) =
+        TextMatch.isSimilar(TextMatch.normalize(source), TextMatch.normalize(translation), 0.90)
+
+    /**
+     * Geri verilen cümle cihaz üstü çeviriyle bir kez daha denenir; o da aynı kalırsa (ad, konsolun Türkçe menüsü)
+     * çevrilecek bir şey yoktur ve modelin yanıtı önbelleğe yazılır. Yerel çeviri yoksa ya da hata verirse null.
+     */
+    private fun retryEcho(text: String): String? =
+        try {
+            local?.translate(text)
+        } catch (error: InterruptedException) {
+            throw error
+        } catch (error: Exception) {
+            null
+        }
 
     private fun fallback(text: String): String =
         (local ?: throw IOException("no local translator")).translate(text).also { remember(text, it) }
@@ -604,6 +643,8 @@ class AiTranslator(
     }
 
     override val translatesTogether: Boolean get() = true
+
+    override val retriesEcho: Boolean get() = true
 
     /**
      * "Ekranı çevir": birbirinden bağımsız parçalar (menü satırı, görev yazısı...) tek istekte, aynı sırada çevrilir

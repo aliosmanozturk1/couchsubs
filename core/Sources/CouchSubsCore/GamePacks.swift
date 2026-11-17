@@ -516,12 +516,14 @@ public enum PackLookup {
         return (result(pieces, [nil, turkish]), pieces, [nil, turkish])
     }
 
-    /// Altyazı olmayan köşe yazısı satırı: "•" içerir ya da en çok dört sözcük, noktalama yok ve her sözcük büyük
-    /// harfle başlar ("San Andreas", "Mirror Park", "LOSNN"). Yalnız başka satırlar pakette bulunduysa atlanır.
+    /// Altyazı olmayan köşe yazısı satırı: en çok dört sözcük; "•" içerir ("First Person • zoom") ya da noktalama yok
+    /// ve her sözcük büyük harfle başlar ("San Andreas", "Mirror Park", "LOSNN"). Yalnız başka satırlar pakette
+    /// bulunduysa atlanır. Uzun satırdaki "•" OCR lekesidir ("…with a colieague• Not that…"): o satır altyazıdır;
+    /// atlanınca iki satırlık altyazının yalnız ikinci satırının Türkçesi ("Seninle.") gösteriliyordu (#245).
     static func isOverlay(_ line: String) -> Bool {
-        if line.contains("•") { return true }
         let words = line.split(whereSeparator: \.isWhitespace)
         guard !words.isEmpty, words.count <= 4 else { return false }
+        if line.contains("•") { return true }
         return words.allSatisfy { word in
             guard let first = word.unicodeScalars.first, first.properties.isUppercase else { return false }
             return word.unicodeScalars.allSatisfy { PackFuzzy.isLetter($0) || PackFuzzy.isDigit($0) }

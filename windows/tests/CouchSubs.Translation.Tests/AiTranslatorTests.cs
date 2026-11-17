@@ -693,6 +693,33 @@ public class AiTranslatorTests
         Assert.StartsWith("Game: Grand Theft Auto V\n\n", User(fake, 1));
     }
 
+    /// <summary>
+    /// Model cümleyi çevirmeden geri verirse cümle yerel çeviriyle yeniden denenir ve yanıt önbelleğe yazılmaz (#245:
+    /// qwen2.5:3b "You think I'm on the run?" cümlesini olduğu gibi döndürdü, hat onu Türkçe sanıp göstermedi). Yerel
+    /// çeviri de aynı kalırsa (ad) modelin yanıtı kalır ve önbelleğe yazılır.
+    /// </summary>
+    [Fact]
+    public async Task EchoedSentenceIsRetriedLocallyAndNotCached()
+    {
+        var fake = new FakeAi((request, body) => Wrap(request, UserText(request, body).Split('\n')[^1]));
+        var local = new FakeLocal();
+        var translator = MakeLocal(fake, local: local);
+        Assert.Equal("Tommy: yerel: You think I'm on the run?", await translator.TranslateAsync("Tommy: You think I'm on the run?"));
+        Assert.Equal(["You think I'm on the run?"], local.Calls);
+        await translator.TranslateAsync("Tommy: You think I'm on the run?");
+        Assert.Equal(2, fake.Requests.Count);
+
+        var names = MakeLocal(fake, local: new EchoLocal());
+        Assert.Equal("Thomas Angelo.", await names.TranslateAsync("Thomas Angelo."));
+        await names.TranslateAsync("Thomas Angelo.");
+        Assert.Equal(3, fake.Requests.Count);
+    }
+
+    private sealed class EchoLocal : ITextTranslator
+    {
+        public Task<string> TranslateAsync(string text, CancellationToken cancellationToken = default) => Task.FromResult(text);
+    }
+
     [Fact]
     public async Task PlainTextReplyForOneSentence()
     {
