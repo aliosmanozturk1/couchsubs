@@ -1784,7 +1784,11 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (reader is null) return;
         var scheduler = new ReadScheduler(maxReuse: settings.FastSubtitleDetection
             ? ReadScheduler.FastMaxReuse : ReadScheduler.DefaultMaxReuse);
-        var built = new SubtitlePipeline(reader, MakeTranslator(), server, scheduler) { ShowSpeakerNames = settings.ShowSpeakerNames };
+        var built = new SubtitlePipeline(reader, MakeTranslator(), server, scheduler)
+        {
+            ShowSpeakerNames = settings.ShowSpeakerNames,
+            SkipsTurkish = settings.TargetLanguage == "tr",
+        };
         built.MetricsReady += metrics => post(() => MetricsText = metrics.Summary(text));
         built.PairShown += (source, translation) =>
         {
@@ -1841,6 +1845,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             regionWatcher = new RegionWatcher(reader, MakeTranslator(), server) { Log = SubtitleLog.Write };
         }
         regionWatcher.PackLookup = PacksActive ? services.FindInPacks : null;
+        regionWatcher.SkipsTurkish = settings.TargetLanguage == "tr";
     }
 
     // --- Geçmiş ---

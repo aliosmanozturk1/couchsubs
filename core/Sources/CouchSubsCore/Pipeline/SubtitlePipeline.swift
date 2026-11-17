@@ -137,6 +137,9 @@ public final class SubtitlePipeline {
     public var packLookup: ((String) -> PackMatch?)?
     /// Konuşan adı ("ARTHUR: …") TV'ye giden çeviride gösterilir; kapalıysa yalnız cümle gider.
     public var showSpeakerNames = true
+    /// Hedef dil Türkçe: yüksek güvenle Türkçe olan satır (`TurkishText.isSure`) çevirmene gönderilmez (#289). Uygulama
+    /// hedef dil Türkçe değilse kapatır.
+    public var skipsTurkish = true
     /// Hiçbir pakette bulunmayan kararlı satır (ortak havuz için).
     public var onPackMiss: ((String) -> Void)?
     /// Son gösterilen çevirinin nereden geldiği: "paket" ya da "motor" (günlük ve sayım için).
@@ -405,6 +408,11 @@ public final class SubtitlePipeline {
         lastSent = (source, Rereads.score(source), now())
         if let packed = packMatch(request) {
             showPacked(request, packed)
+            return
+        }
+        if skipsTurkish, TurkishText.isSure(source) {
+            remember(request.number, source, nil)
+            log(request, "\(SubtitleLog.excerpt(source)) → zaten Türkçe, çevrilmedi")
             return
         }
         onPackMiss?(source)
