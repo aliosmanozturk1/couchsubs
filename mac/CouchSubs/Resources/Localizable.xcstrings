@@ -5710,6 +5710,22 @@
         }
       }
     },
+    "The Xbox connection was lost: %@. Restart the Xbox to reconnect.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Xbox connection was lost: %@. Restart the Xbox to reconnect."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox bağlantısı kesildi: %@. Yeniden bağlanmak için Xbox'ı yeniden başlatın."
+          }
+        }
+      }
+    },
     "Retrying the Xbox connection: %@": {
       "localizations": {
         "en": {

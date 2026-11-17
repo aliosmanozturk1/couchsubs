@@ -286,6 +286,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         SessionPhase.Streaming => text["Connected"],
         SessionPhase.Connecting => text["Connecting…"],
         _ when !isRunning => xboxConsole is null ? text["Not connected"] : text.Format("%@ is ready. It connects when you start translating.", xboxConsole.Name),
+        // Denemeler bitti ya da konsol yayını reddetti: oturum durdu, yeniden denenmiyor.
+        _ when sessionState.Reason is { Kind: DisconnectKind.Refused, Detail.Length: > 0 } stopped => stopped.Detail,
         _ when !string.IsNullOrWhiteSpace(sessionState.Reason?.Detail) => text.Format("Retrying the Xbox connection: %@", sessionState.Reason.Detail),
         _ => text["Retrying the Xbox connection…"],
     };
