@@ -129,13 +129,7 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
             {
                 case "frame":
                     if (Interlocked.Exchange(ref frameBusy, 1) != 0) return;
-                    try
-                    {
-                        var data = message.GetProperty("image").GetString()!;
-                        var comma = data.IndexOf(',');
-                        if (comma >= 0) FrameReceived?.Invoke(DecodeJpeg(Convert.FromBase64String(data[(comma + 1)..])));
-                    }
-                    finally { Volatile.Write(ref frameBusy, 0); }
+                    OfferFrame(message.GetProperty("image").GetString()!);
                     break;
                 case "state":
                     var state = message.GetProperty("state").GetString();
@@ -173,6 +167,38 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
             StateChanged?.Invoke(SessionState.Disconnected(DisconnectKind.Other, error.Message));
             browserEnded?.TrySetResult(true);
         }
+    }
+
+    /// <summary>
+    /// Kare arayüz iş parçacığında değil, PS5'teki gibi kare iş parçacığında çözülür ve okuma hattına verilir. Önceden
+    /// çözme ve okuma hattına giriş arayüz iş parçacığındaydı: <c>frameBusy</c> hiç dolu görünmüyordu, arayüz
+    /// yavaşlayınca kareler WebView2 ileti kuyruğunda birikiyor, saniyeler önceki kare okunuyordu. Bitince oynatıcıya
+    /// haber verilir; oynatıcı ancak o zaman yeni kare gönderir.
+    /// </summary>
+    private void OfferFrame(string data)
+    {
+        var view = browser;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var comma = data.IndexOf(',');
+                if (comma >= 0) FrameReceived?.Invoke(DecodeJpeg(Convert.FromBase64String(data[(comma + 1)..])));
+            }
+            catch
+            {
+                // Tek bir karenin çözülememesi akışı durdurmaz; sonraki kare okunur.
+            }
+            finally
+            {
+                Volatile.Write(ref frameBusy, 0);
+                view?.Dispatcher.InvokeAsync(() =>
+                {
+                    try { if (browser == view) view.CoreWebView2?.PostWebMessageAsJson("{\"kind\":\"frameDone\"}"); }
+                    catch { /* Oynatıcı bu arada kapandı. */ }
+                });
+            }
+        });
     }
 
     private static Frame DecodeJpeg(byte[] bytes)
