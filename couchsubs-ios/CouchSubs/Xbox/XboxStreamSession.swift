@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Xbox ev yayını (Beta): Windows'taki XboxStreamSession + player.html'in iPhone karşılığı (Android: XboxStreamSession.kt).
 // Görüntü yerel WebRTC'yle (stasel/WebRTC) alınır; VideoToolbox'ın verdiği kare CGImage olarak okuma hattına gider.
-// Ses açılmaz (WebRTC ses birimi hiç başlatılmaz, mikrofon izni istenmez), kumanda girdisi gönderilmez.
+// Oyun sesi ayar açıksa ("Play Xbox sound on this device", varsayılan açık) telefonda çalınır: Xbox uzaktan oynatma
+// sürerken sesi istemciye verip TV'yi susturabilir. Yerel ses parçası eklenmez, Xbox'a ses gönderilmez. Ayar kapalıyken
+// eski davranış: WebRTC ses birimi hiç başlatılmaz. Kumanda girdisi gönderilmez.
 
+import AVFoundation
 import CoreGraphics
 import Foundation
 import RemotePlay
@@ -50,21 +53,40 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
     private var clockStart: TimeInterval = 0
     private var firstFrameAt: TimeInterval = 0
 
-    init(auth: XboxAuth, console: XboxConsole, describe: @escaping (XboxErrorKind) -> String) {
+    /// Oyun sesi bu telefonda çalınır (Android'deki `playAudio` ile aynı).
+    private let playAudio: Bool
+
+    init(auth: XboxAuth, console: XboxConsole, playAudio: Bool = true, describe: @escaping (XboxErrorKind) -> String) {
         self.auth = auth
         self.console = console
         self.home = XboxHome(auth: auth)
+        self.playAudio = playAudio
         self.describe = describe
     }
 
     private static let factory: RTCPeerConnectionFactory = {
         RTCInitializeSSL()
-        // Ses birimi hiç açılmasın: yalnız görüntü okunur (mikrofon izni de istenmez).
+        // Ses birimi elle açılır: ayar kapalıyken hiç başlatılmaz (bkz. `setAudio`).
         let audio = RTCAudioSession.sharedInstance()
         audio.useManualAudio = true
         audio.isAudioEnabled = false
         return RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
     }()
+
+    /// Oyun sesini açar ya da kapatır. Ses hoparlörden (ya da bağlı kulaklıktan) medya sesi gibi çalınır; WebRTC'nin
+    /// varsayılan görüşme ayarı (voiceChat) sesi kulaklık hoparlörüne verirdi. Yerel ses parçası olmadığından
+    /// mikrofondan Xbox'a hiçbir şey gönderilmez.
+    private static func setAudio(_ enabled: Bool) {
+        let session = RTCAudioSession.sharedInstance()
+        if enabled {
+            let config = RTCAudioSessionConfiguration.webRTC()
+            config.category = AVAudioSession.Category.playAndRecord.rawValue
+            config.categoryOptions = [.defaultToSpeaker, .allowBluetoothA2DP]
+            config.mode = AVAudioSession.Mode.default.rawValue
+            RTCAudioSessionConfiguration.setWebRTC(config)
+        }
+        session.isAudioEnabled = enabled
+    }
 
     private func locked<T>(_ body: () -> T) -> T {
         lock.lock()
@@ -176,6 +198,7 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
         }
         channels.forEach { $0.delegate = nil; $0.close() }
         peer?.close()
+        Self.setAudio(false)
         if let id { try? await home.stop(id) }
     }
 
@@ -224,7 +247,9 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
         videoInit.direction = .recvOnly
         let audio = connection.addTransceiver(of: .audio, init: audioInit)
         let video = connection.addTransceiver(of: .video, init: videoInit)
-        audio?.receiver.track?.isEnabled = false
+        audio?.receiver.track?.isEnabled = playAudio
+        Self.setAudio(playAudio)
+        log(playAudio ? "oyun sesi bu telefonda çalınır" : "oyun sesi kapalı (ayar)")
         guard let track = video?.receiver.track as? RTCVideoTrack else { throw XboxError(.service, "Görüntü alıcısı kurulamadı") }
         track.add(self)
 

@@ -399,7 +399,8 @@ class TranslationService : Service() {
             library.limitToGame(null)
         }
         val source = replacement?.create(this, onFrame, onState)
-            ?: xboxConsole?.let { XboxStreamSession(this, Services.xboxAuth, it, onFrame, onState, ::describeXbox) }
+            ?: xboxConsole?.let { XboxStreamSession(this, Services.xboxAuth, it, onFrame, onState, ::describeXbox,
+                playAudio = settings.xboxAudioOnDevice) }
             ?: StreamSession(console!!, accountId!!, onFrame, onState, onConsoleMoved = { moved -> settings.console = moved },
                 loginPasscode = settings.loginPasscode)
         synchronized(lifecycle) {

@@ -420,7 +420,8 @@ final class PhoneModel: ObservableObject {
         let consoleName: String
         if let xbox {
             RemotePlayLog.write("Çeviri başladı; Xbox'a bağlanılıyor (Beta): \(xbox.name)")
-            session = XboxStreamSession(auth: xboxAuth, console: xbox, describe: XboxText.session)
+            session = XboxStreamSession(auth: xboxAuth, console: xbox, playAudio: settings.xboxAudioOnDevice,
+                                        describe: XboxText.session)
             consoleName = xbox.name.isEmpty ? "Xbox" : xbox.name
         } else if let console, let accountId {
             RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)")

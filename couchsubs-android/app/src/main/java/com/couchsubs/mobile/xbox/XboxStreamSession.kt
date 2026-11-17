@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Xbox ev yayını (Beta): Windows'taki XboxStreamSession + player.html'in telefondaki karşılığı. Görüntü yerel
 // libwebrtc'yle alınır; kareler OCR hattına doğrudan parlaklık (Y) düzlemi olarak gider (bkz. docs/superpowers/specs/
-// 2026-11-16-telefon-xbox-design.md). Ses çalınmaz, kumanda girdisi gönderilmez.
+// 2026-11-16-telefon-xbox-design.md). Oyun sesi ayar açıksa telefonda çalınır (bkz. playAudio); mikrofon açılmaz,
+// kumanda girdisi gönderilmez.
 package com.couchsubs.mobile.xbox
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.SystemClock
 import android.util.Log
 import com.couchsubs.mobile.account.Backend
@@ -41,6 +43,12 @@ class XboxStreamSession(
     private val onState: (SessionState) -> Unit,
     /** Hatayı kullanıcının dilinde anlatır (Türkçe/İngilizce metinler hizmette). */
     private val describe: (XboxError) -> String,
+    /**
+     * Oyunun sesi bu telefonda çalınır (Ayarlar > "Xbox sesini bu cihazda çal", varsayılan açık). Xbox uzaktan oynatma
+     * sürerken sesi istemciye verip TV'yi susturabilir; kapalıyken ses hiçbir yerden gelmeyebilir. Mikrofon her durumda
+     * kapalıdır, yerel ses parçası eklenmez: Xbox'a ses gönderilmez.
+     */
+    private val playAudio: Boolean = true,
 ) : FrameSource {
     private companion object {
         const val TAG = "CouchSubsXbox"
@@ -203,11 +211,18 @@ class XboxStreamSession(
 
     private fun createFactory(): PeerConnectionFactory {
         WebRtc.initialize(appContext)
-        // Ses çalınmaz ve mikrofon açılmaz: yalnız görüntü okunur.
-        val audio = JavaAudioDeviceModule.builder(appContext).createAudioDeviceModule().apply {
-            setSpeakerMute(true)
-            setMicrophoneMute(true)
-        }
+        // Mikrofon hiç açılmaz. Oyun sesi ayar açıksa medya sesi olarak çalınır (telefonun medya ses düzeyiyle,
+        // görüşme sesi gibi kulaklığa değil); kapalıysa eski davranış: ses susturulur.
+        val audio = JavaAudioDeviceModule.builder(appContext)
+            .setAudioAttributes(AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_GAME)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                .build())
+            .setUseStereoOutput(true)
+            .createAudioDeviceModule().apply {
+                setSpeakerMute(!playAudio)
+                setMicrophoneMute(true)
+            }
         return PeerConnectionFactory.builder()
             .setAudioDeviceModule(audio)
             // EGL bağlamı yok: donanım çözücüsü kareyi bellekte verir, Y düzlemi doğrudan okunur.
@@ -298,7 +313,8 @@ class XboxStreamSession(
             RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_RECV))
         val video = connection.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
             RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY))
-        audio?.receiver?.track()?.setEnabled(false)
+        audio?.receiver?.track()?.setEnabled(playAudio)
+        log(if (playAudio) "oyun sesi bu telefonda çalınır" else "oyun sesi kapalı (ayar)")
         (video?.receiver?.track() as? VideoTrack)?.addSink(sink)
             ?: throw XboxException(XboxError.SERVICE, "Görüntü alıcısı kurulamadı")
 

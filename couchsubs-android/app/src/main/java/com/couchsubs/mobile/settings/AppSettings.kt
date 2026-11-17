@@ -136,6 +136,14 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean("showSpeakerNames", true)
         set(value) = prefs.edit().putBoolean("showSpeakerNames", value).apply()
 
+    /**
+     * Xbox ev yayınında oyunun sesi bu telefonda çalınır. Xbox uzaktan oynatma sürerken sesi istemciye verip TV'yi
+     * susturabilir; kapalıyken ses hiçbir yerden gelmeyebilir, bu yüzden varsayılan açık. PS5'i etkilemez.
+     */
+    var xboxAudioOnDevice: Boolean
+        get() = prefs.getBoolean("xboxAudioOnDevice", true)
+        set(value) = prefs.edit().putBoolean("xboxAudioOnDevice", value).apply()
+
     /** Değişmeyen altyazı bölgesi 20 yerine en fazla 2 kare yeniden kullanılır (Mac/Windows ile aynı); varsayılan kapalı. */
     var fastSubtitleDetection: Boolean
         get() = prefs.getBoolean("fastSubtitleDetection", false)

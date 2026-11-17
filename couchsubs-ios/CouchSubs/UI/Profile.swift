@@ -78,6 +78,13 @@ struct ProfileScreen: View {
                           "When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.",
                           isOn: $model.settings.fastSubtitleDetection)
                 RowDivider()
+                // Yalnız Xbox: uzaktan oynatmada Xbox sesi istemciye verip TV'yi susturabilir (PS5'te ses TV'de kalır).
+                if model.isXbox {
+                    toggleRow("Play Xbox sound on this device",
+                              "Xbox remote play sends the sound to this device; if you turn this off, the game may stay silent.",
+                              isOn: $model.settings.xboxAudioOnDevice)
+                    RowDivider()
+                }
                 toggleRow("Usage data", "Error and usage statistics", isOn: $usageData)
             }
             Tile(spacing: 0) {

@@ -314,7 +314,8 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
                 keyboard = KeyboardOptions(keyboardType = KeyboardType.NumberPassword))
             Text(stringResource(R.string.settings_passcode_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
         }
-        RowList(listOf(
+        var xboxAudio by remember { mutableStateOf(settings.xboxAudioOnDevice) }
+        RowList(listOfNotNull<@Composable () -> Unit>(
             { RowItem(stringResource(R.string.settings_packs), onClick = onPacks) { Pill(stringResource(if (settings.packsEnabled) R.string.main_packs_on else R.string.main_packs_off)) } },
             { RowItem(stringResource(R.string.settings_target), if (settings.target == SubtitleTarget.TV) settings.tvName ?: stringResource(R.string.main_target_tv)
                 else stringResource(R.string.main_target_phone), onClick = onTarget) },
@@ -322,6 +323,10 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
                 if (settings.xbox) Pill(stringResource(R.string.beta)) } },
             if (settings.xbox) ({ RowItem("Xbox", settings.xboxConsole?.name ?: stringResource(R.string.profile_not_paired), onClick = onPairing) })
             else ({ RowItem(stringResource(R.string.settings_ps5), settings.console?.name ?: stringResource(R.string.profile_not_paired), onClick = onPairing) }),
+            // Yalnız Xbox: uzaktan oynatmada Xbox sesi istemciye verip TV'yi susturabilir (PS5'te ses TV'de kalır).
+            if (settings.xbox) ({ RowItem(stringResource(R.string.settings_xbox_audio), stringResource(R.string.settings_xbox_audio_short)) {
+                Switch(xboxAudio, { xboxAudio = it; settings.xboxAudioOnDevice = it })
+            } }) else null,
             { RowItem(stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, onClick = { open(context, context.getString(R.string.url_source)) }) },
         ))
         XboxSignOutRow()
