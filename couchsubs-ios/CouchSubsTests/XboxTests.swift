@@ -15,7 +15,10 @@ private final class FakeHTTP: XboxHTTP, @unchecked Sendable {
 
     func request(_ method: String, _ url: String, headers: [String: String], body: String?) async throws -> XboxHTTPResponse {
         lock.lock(); calls.append(Call(method: method, url: url, headers: headers, body: body)); lock.unlock()
-        return answer(method, url, body)
+        let response = answer(method, url, body)
+        // Durum -1: ağ hatası (istek kesildi).
+        if response.status == -1 { throw XboxError(.network, "offline") }
+        return response
     }
 }
 
@@ -98,6 +101,22 @@ final class XboxAuthTests: XCTestCase {
         XCTAssertEqual(saved.value, "A")
         let signedIn = await auth.signedIn
         XCTAssertTrue(signedIn)
+    }
+
+    func testDeviceCodePollSurvivesNetworkDrops() async throws {
+        // Kullanıcı Safari'deyken arka plandaki istek kesilir; giriş bitmemeli, onay gelince tamamlanmalı.
+        let polls = Counter()
+        let http = FakeHTTP { _, _, _ in
+            switch polls.next() {
+            case 1: return status(400, #"{"error":"authorization_pending"}"#)
+            case 2, 3: return status(-1)
+            default: return ok(#"{"access_token":"A","refresh_token":"R","expires_in":3600}"#)
+            }
+        }
+        let auth = XboxAuth(http: http, clock: { now }, sleep: { _ in })
+        let token = try await auth.pollDeviceCode(XboxDeviceCode(userCode: "U", deviceCode: "D", verificationURI: "u", expiresIn: 900, interval: 5))
+        XCTAssertEqual(token.accessToken, "A")
+        XCTAssertEqual(http.calls.count, 4)
     }
 
     func testChainRefreshesAndCaches() async throws {

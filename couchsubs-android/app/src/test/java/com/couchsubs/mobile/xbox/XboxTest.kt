@@ -133,6 +133,32 @@ class XboxAuthTest {
         assertTrue(http.bodies[1]!!.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code"))
     }
 
+    @Test fun deviceCodePollSurvivesNetworkDrops() {
+        // Kullanıcı tarayıcıdayken arka plandaki istek kesilir; giriş bitmemeli, onay gelince tamamlanmalı.
+        var polls = 0
+        val http = FakeHttp { _, _, _ ->
+            when (++polls) {
+                1 -> XboxHttpResponse(400, """{"error":"authorization_pending"}""")
+                2, 3 -> throw XboxException(XboxError.NETWORK, "Software caused connection abort")
+                else -> ok("""{"access_token":"A","refresh_token":"R","expires_in":3600}""")
+            }
+        }
+        val auth = XboxAuth(http, { clock }, { clock += it })
+        assertEquals("A", auth.pollDeviceCode(XboxDeviceCode("U", "D", "u", 900, 5)).accessToken)
+        assertEquals(4, polls)
+    }
+
+    @Test fun deviceCodePollGivesUpOnNetworkAfterExpiry() {
+        val http = FakeHttp { _, _, _ -> throw XboxException(XboxError.NETWORK, "offline") }
+        val auth = XboxAuth(http, { clock }, { clock += it })
+        try {
+            auth.pollDeviceCode(XboxDeviceCode("U", "D", "u", 60, 5))
+            fail()
+        } catch (error: XboxException) {
+            assertEquals(XboxError.NETWORK, error.kind)
+        }
+    }
+
     @Test fun deviceCodeExpires() {
         val http = FakeHttp { _, _, _ -> XboxHttpResponse(400, """{"error":"expired_token"}""") }
         val auth = XboxAuth(http, { clock }, { clock += it })

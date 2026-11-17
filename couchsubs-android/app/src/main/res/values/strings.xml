@@ -458,7 +458,11 @@
     <string name="xbox_login_title">Microsoft hesabıyla giriş</string>
     <string name="xbox_login_body">Xbox\'ta kullandığınız Microsoft hesabıyla giriş yapın. Telefon Xbox\'ın ev yayınını izler; oyununuz kesilmez.</string>
     <string name="xbox_login_button">Microsoft ile giriş yap</string>
-    <string name="xbox_login_code">Açılan Microsoft sayfasına bu kodu yazın:</string>
+    <string name="xbox_login_code">Kodunuz (dokunursanız kopyalanır):</string>
+    <string name="xbox_login_how">Düğmeye basınca bir kod alırsınız. Microsoft giriş sayfası uygulamada açılmaz: kodu tarayıcıda microsoft.com/link sayfasına yazarsınız.</string>
+    <string name="xbox_login_steps">1. Kod kopyalandı ve tarayıcıda microsoft.com/link açıldı. Açılmadıysa yukarıdaki bağlantıya dokunun.\n2. Kodu yapıştırıp Xbox\'ta kullandığınız Microsoft hesabıyla giriş yapın, izin verin.\n3. CouchSubs\'a dönün; giriş kendiliğinden tamamlanır.</string>
+    <string name="xbox_login_copy">Kodu kopyala</string>
+    <string name="xbox_login_no_browser">Tarayıcı açılamadı. %1$s adresini başka bir cihazda açıp kodu yazabilirsiniz.</string>
     <string name="xbox_login_open">Microsoft sayfasını aç</string>
     <string name="xbox_login_copied">Kod kopyalandı</string>
     <string name="xbox_login_waiting">Girişin tamamlanması bekleniyor…</string>
