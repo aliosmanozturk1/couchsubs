@@ -179,6 +179,8 @@ abstract class SentenceTranslator<C>(
     }
 
     private val names = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** Cümle içinde çeviriden korunan konuşan adları (#287); yapay zekâya istemde adıyla söylenir. */
+    private val speakers = SpeakerNameGuard()
     private var pausedUntil = 0L
     /** Bekleme hizmetin 429 yanıtından mı; öyleyse yerel çeviri olmasa da istek gönderilmez. */
     private var pauseRateLimited = false
@@ -189,7 +191,7 @@ abstract class SentenceTranslator<C>(
 
     /** [sentences] cümlelerini aynı sırada çevirir ([game]: oynanan oyun, yapay zekâya bağlam); hata durumunda
      *  [OnlineException] ya da [IOException]. */
-    protected abstract fun request(sentences: List<String>, context: C, game: String?): List<String>
+    protected abstract fun request(sentences: List<String>, context: C, game: String?, names: List<String>): List<String>
 
     /** Bu satırdan önce gösterilenler (bağlam); satırı da sonrakilerin bağlamına ekler. */
     protected abstract fun context(text: String): C
@@ -205,14 +207,20 @@ abstract class SentenceTranslator<C>(
     /** Büyük harfle kalacak ek sözcükler (sözlükteki adlar). */
     protected open val extraNames: Set<String> get() = emptySet()
 
+    /** Konuşan adını öğrenir ("OLD MAN" → "old", "man"); korunacak adlar ayrıca. */
+    override fun noteSpeaker(name: String) {
+        name.split(' ').filter { it.length >= 2 }.forEach { names.add(it.lowercase(Locale.ROOT)) }
+        speakers.learn(name)
+        local?.noteSpeaker(name)
+    }
+
     override fun translate(text: String): String {
         // Arama, istek ve kayıt aynı oyunla yapılır; oyun işlem sırasında değişse de sonuç başka oyuna yazılmaz.
         val game = game()
         val context = context(text)
         cache.get(cacheKey(text, game))?.let { return it.also { remember(text, it) } }
         val pieces = SubtitleSegmenter.split(text)
-        for (name in pieces.mapNotNull(SubtitleSegmenter::labelName))
-            name.split(' ').filter { it.length >= 2 }.forEach { names.add(it.lowercase(Locale.ROOT)) }
+        for (name in pieces.mapNotNull(SubtitleSegmenter::labelName)) noteSpeaker(name)
         val known = names.toSet() + extraNames
         val translations = pieces.map { if (it.translate) cache.get(cacheKey(it.text, game)) else null }.toMutableList()
         val missing = pieces.indices.filter { pieces[it].translate && translations[it] == null }
@@ -227,7 +235,9 @@ abstract class SentenceTranslator<C>(
         // tahminidir; yerel çeviri yoksa satır denenmeden düşmesin, istek yine gönderilir.
         if (sources.isNotEmpty() && budget?.take() == false) tryLocal(text)?.let { remember(text, it); return it }
         val translated = try {
-            if (sources.isEmpty()) emptyList() else request(sources, context, game).also { report(null) }
+            if (sources.isEmpty()) emptyList()
+            else request(sources, context, game, SpeakerNameGuard.occurring(speakers.protected, sources.joinToString("\n"), exact = true))
+                .also { report(null) }
         } catch (error: AiRateLimitedException) {
             rateLimited(error.limit)
             return fallback(text)
@@ -388,7 +398,7 @@ class DeepLTranslator(
         context
     }
 
-    override fun request(sentences: List<String>, context: String, game: String?): List<String> {
+    override fun request(sentences: List<String>, context: String, game: String?, names: List<String>): List<String> {
         // Sözlükteki adlar etiketle korunur; etiket varsa istek XML olarak gider, diğer cümleler de kaçırılır.
         val wrapped = sentences.map { DeepLMarkup.wrap(it, glossary) }
         val tagged = wrapped.any { it != null }
@@ -423,9 +433,14 @@ object AiRequest {
     /** Bağlam satırı: daha önce gösterilmiş İngilizce ve (biliniyorsa) Türkçesi. */
     data class ContextLine(val source: String, val translation: String? = null)
 
-    fun userMessage(sentences: List<String>, context: List<ContextLine>, game: String? = null): String {
+    /**
+     * Kullanıcı iletisi: önceki satırlar (yalnız bağlam) ve çevrilecek cümleler. [names]: konuşan etiketlerinden öğrenilip
+     * cümlelerde geçen adlar; model "Price"ı "Fiyat" diye çevirmesin diye adıyla söylenir (#287).
+     */
+    fun userMessage(sentences: List<String>, context: List<ContextLine>, game: String? = null, names: List<String> = emptyList()): String {
         val parts = mutableListOf<String>()
         if (!game.isNullOrEmpty()) parts.add("Game: $game")
+        if (names.isNotEmpty()) parts.add("Character names (keep them exactly as written, do not translate them): ${names.joinToString(", ")}")
         if (context.isNotEmpty()) {
             val lines = mutableListOf("Previous subtitles, for context only (do not translate them again):")
             for (line in context) {
@@ -442,10 +457,10 @@ object AiRequest {
 
     fun build(
         provider: AiProvider, key: String, model: AiModel, sentences: List<String>, context: List<ContextLine>,
-        maxOutputTokens: Int = MAX_OUTPUT_TOKENS, game: String? = null,
+        maxOutputTokens: Int = MAX_OUTPUT_TOKENS, game: String? = null, names: List<String> = emptyList(),
     ): AiHttpRequest {
         val trimmed = key.trim()
-        val user = userMessage(sentences, context, game)
+        val user = userMessage(sentences, context, game, names)
         return when (provider) {
             AiProvider.GEMINI -> {
                 val config = JSONObject().put("maxOutputTokens", maxOutputTokens)
@@ -724,8 +739,8 @@ class AiTranslator(
     /** Oyun bilinmiyorsa eski kayıtlar geçerlidir; biliniyorsa yalnız o oyunun sonucu kullanılır (Windows ve Mac ile aynı). */
     override fun cacheKey(text: String, game: String?): String = if (game.isNullOrEmpty()) text else "$game\u001f$text"
 
-    override fun request(sentences: List<String>, context: List<AiRequest.ContextLine>, game: String?): List<String> {
-        val request = AiRequest.build(provider, key, model, sentences, context, game = game)
+    override fun request(sentences: List<String>, context: List<AiRequest.ContextLine>, game: String?, names: List<String>): List<String> {
+        val request = AiRequest.build(provider, key, model, sentences, context, game = game, names = names)
         val (status, body) = http.send("POST", request.url, request.headers, request.body, 5000)
         if (status !in 200..299) throw AiRequest.error(status, body)
         return AiRequest.translations(AiRequest.text(provider, body), sentences.size)

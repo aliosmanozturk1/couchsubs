@@ -263,7 +263,9 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 && !(SkipsTurkish && TurkishText.IsSure(early)))
             {
                 lastPrefetched = early;
-                translator.Prefetch(SpeakerPrefix.Parse(early)?.Body ?? early);
+                var earlyPrefix = SpeakerPrefix.Parse(early);
+                if (earlyPrefix is not null) translator.NoteSpeaker(earlyPrefix.Name);
+                translator.Prefetch(earlyPrefix?.Body ?? early);
             }
             if (held is { } waiting)
             {
@@ -803,6 +805,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     {
         var source = request.Source;
         var input = request.Prefix?.Body ?? source;
+        // Ayrılan ad çevirmene gitmez; cümle içinde geçtiğinde korunsun diye ayrıca bildirilir (#287).
+        if (request.Prefix is { } prefix) translator.NoteSpeaker(prefix.Name);
         var started = now();
         // Önbellekten mi geldi, hangi motor çevirdi: yalnız günlük için (bu yöntemin beklediği çağrılar görür).
         var probe = new TranslationProbe();

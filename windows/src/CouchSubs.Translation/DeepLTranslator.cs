@@ -71,6 +71,14 @@ public sealed class DeepLTranslator : ITextTranslator, IOnlineTranslator
     internal static Uri BaseUri(string key) =>
         new(key.Trim().EndsWith(":fx", StringComparison.Ordinal) ? "https://api-free.deepl.com/v2/" : "https://api.deepl.com/v2/");
 
+    /// <summary>Konuşan adını öğrenir ("OLD MAN" → "old", "man"); yerel yedek de öğrenir, orada cümle içinde korunur (#287).</summary>
+    public void NoteSpeaker(string name)
+    {
+        foreach (var word in name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 2))
+            _names[word.ToLowerInvariant()] = 0;
+        _fallback?.NoteSpeaker(name);
+    }
+
     public async Task<string> TranslateAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -87,9 +95,7 @@ public sealed class DeepLTranslator : ITextTranslator, IOnlineTranslator
         }
 
         var pieces = SubtitleSegmenter.Split(text);
-        foreach (var name in pieces.Select(SubtitleSegmenter.LabelName).OfType<string>())
-            foreach (var word in name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 2))
-                _names[word.ToLowerInvariant()] = 0;
+        foreach (var name in pieces.Select(SubtitleSegmenter.LabelName).OfType<string>()) NoteSpeaker(name);
         var names = _names.Keys.ToHashSet(StringComparer.Ordinal);
         names.UnionWith(glossary.CapitalWords);
         // Önbellekte duran cümleler yeniden gönderilmez; kota yalnız yeni cümlelere gider.

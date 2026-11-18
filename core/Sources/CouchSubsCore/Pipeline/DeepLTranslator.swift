@@ -128,6 +128,11 @@ public final class DeepLTranslator: TextTranslator, OnlineTranslating {
         return result
     }
 
+    public func noteSpeaker(_ name: String) {
+        names.learn(name: name)
+        fallback.noteSpeaker(name)
+    }
+
     /// Yalnız yerel yedeği hazırlar; DeepL isteği veya satır bağlamı oluşturmaz.
     public func warmUp() async {
         await fallback.warmUp()

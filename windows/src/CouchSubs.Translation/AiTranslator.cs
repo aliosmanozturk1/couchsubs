@@ -40,11 +40,17 @@ public static class AiRequest
 
     private static readonly JsonSerializerOptions Compact = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    /// <summary>Kullanıcı iletisi: önceki satırlar (yalnız bağlam) ve çevrilecek cümleler.</summary>
-    public static string UserMessage(IReadOnlyList<string> sentences, IReadOnlyList<AiContextLine> context, string? game = null)
+    /// <summary>
+    /// Kullanıcı iletisi: önceki satırlar (yalnız bağlam) ve çevrilecek cümleler. <paramref name="names"/>: konuşan
+    /// etiketlerinden öğrenilip cümlelerde geçen adlar; model "Price"ı "Fiyat" diye çevirmesin diye adıyla söylenir (#287).
+    /// </summary>
+    public static string UserMessage(IReadOnlyList<string> sentences, IReadOnlyList<AiContextLine> context, string? game = null,
+                                     IReadOnlyList<string>? names = null)
     {
         var parts = new List<string>();
         if (!string.IsNullOrEmpty(game)) parts.Add($"Game: {game}");
+        if (names is { Count: > 0 })
+            parts.Add($"Character names (keep them exactly as written, do not translate them): {string.Join(", ", names)}");
         if (context.Count > 0)
         {
             var lines = new List<string> { "Previous subtitles, for context only (do not translate them again):" };
@@ -70,10 +76,11 @@ public static class AiRequest
     /// </summary>
     public static HttpRequestMessage Build(AiProvider provider, string key, AiModel model, IReadOnlyList<string> sentences,
                                            IReadOnlyList<AiContextLine> context, string? game = null, LocalAiServer? server = null,
-                                           int maxOutputTokens = MaxOutputTokens, bool thinkingOff = true)
+                                           int maxOutputTokens = MaxOutputTokens, bool thinkingOff = true,
+                                           IReadOnlyList<string>? names = null)
     {
         key = key.Trim();
-        var user = UserMessage(sentences, context, game);
+        var user = UserMessage(sentences, context, game, names);
         HttpRequestMessage request;
         JsonObject body;
         switch (provider)
@@ -413,6 +420,7 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
     private readonly RequestBudget? _budget;
     private readonly ConcurrentDictionary<string, IReadOnlyList<SpokenLine>> _speech = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, byte> _names = new(StringComparer.Ordinal);
+    private readonly SpeakerNameGuard _speakers = new();
     private readonly List<AiContextLine> _recent = [];
     private readonly Func<string?>? _game;
     private DateTimeOffset _pausedUntil = DateTimeOffset.MinValue;
@@ -464,6 +472,15 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
     private static string CacheKey(string text, string? game) =>
         string.IsNullOrEmpty(game) ? text : game + "\u001f" + text;
 
+    /// <summary>Konuşan adını öğrenir ("OLD MAN" → "old", "man"); korunacak adlar ayrıca (#287).</summary>
+    public void NoteSpeaker(string name)
+    {
+        foreach (var word in name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 2))
+            _names[word.ToLowerInvariant()] = 0;
+        _speakers.Learn(name);
+        _fallback?.NoteSpeaker(name);
+    }
+
     public async Task<string> TranslateAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -475,9 +492,7 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
         if (_cache.TryGet(CacheKey(text, game), out var cached)) return Remember(cached, text);
 
         var pieces = SubtitleSegmenter.Split(text);
-        foreach (var name in pieces.Select(SubtitleSegmenter.LabelName).OfType<string>())
-            foreach (var word in name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 2))
-                _names[word.ToLowerInvariant()] = 0;
+        foreach (var name in pieces.Select(SubtitleSegmenter.LabelName).OfType<string>()) NoteSpeaker(name);
         var names = _names.Keys.ToHashSet(StringComparer.Ordinal);
         // Önbellekte duran cümleler yeniden gönderilmez.
         var translations = pieces.Select(p => p.Translate && _cache.TryGet(CacheKey(p.Text, game), out var known) ? known : null).ToList();
@@ -502,7 +517,8 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
         string[] translated;
         try
         {
-            translated = sources.Count == 0 ? [] : await RequestAsync(sources, context, game, cancellationToken).ConfigureAwait(false);
+            var present = SpeakerNameGuard.Occurring(_speakers.Protected, string.Join("\n", sources), exact: true);
+            translated = sources.Count == 0 ? [] : await RequestAsync(sources, context, game, present, cancellationToken).ConfigureAwait(false);
             if (sources.Count > 0) Report(null);
         }
         catch (AiRateLimitedException limited) when (!cancellationToken.IsCancellationRequested)
@@ -677,8 +693,9 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
         _fallback is null ? throw new TranslatorException(TranslatorStatus.NeedsDownload)
             : await _fallback.TranslateAsync(text, cancellationToken).ConfigureAwait(false);
 
-    private Task<string[]> RequestAsync(List<string> sentences, List<AiContextLine> context, string? game, CancellationToken cancellationToken) =>
-        PerformAsync(thinkingOff => AiRequest.Build(Provider, _key, Model, sentences, context, game, Server, thinkingOff: thinkingOff),
+    private Task<string[]> RequestAsync(List<string> sentences, List<AiContextLine> context, string? game,
+                                        IReadOnlyList<string> names, CancellationToken cancellationToken) =>
+        PerformAsync(thinkingOff => AiRequest.Build(Provider, _key, Model, sentences, context, game, Server, thinkingOff: thinkingOff, names: names),
                      _http, sentences.Count, cancellationToken);
 
     /// <summary>Düşünmeyi kapatan alanları reddeden Ollama sunucuları; uygulama açık kaldıkça hatırlanır.</summary>

@@ -567,6 +567,8 @@ public final class SubtitlePipeline {
         do {
             let translator = self.translator
             let input = request.prefix?.body ?? source
+            // Ayrılan ad çevirmene gitmez; cümle içinde geçtiğinde korunsun diye ayrıca bildirilir (#287).
+            if let name = request.prefix?.name { translator.noteSpeaker(name) }
             let work = Task { try await TranslationProbe.$current.withValue(probe) { try await translator.translate(input) } }
             self.work = work
             defer { self.work = nil }

@@ -32,6 +32,11 @@ public final class AITranslator: TextTranslator, OnlineTranslating {
         try await core.translate(text) { [fallback] line in try await fallback.translate(line) }
     }
 
+    public func noteSpeaker(_ name: String) {
+        core.noteSpeaker(name)
+        fallback.noteSpeaker(name)
+    }
+
     /// Yalnız yerel yedeği hazırlar; AI isteği, dakika kotası veya konuşma bağlamı oluşturmaz.
     public func warmUp() async {
         await fallback.warmUp()

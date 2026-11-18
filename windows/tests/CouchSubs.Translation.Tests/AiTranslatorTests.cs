@@ -316,6 +316,24 @@ public class AiTranslatorTests
 
     // --- İstek ---
 
+    /// <summary>
+    /// #287: konuşan etiketinden öğrenilen ad, sonraki cümlede geçince istemde "çevirme" diye adıyla söylenir; görev
+    /// sözcükleri ("Soldier") ve küçük harfle geçen sözcük ("ghostly", "price") söylenmez.
+    /// </summary>
+    [Fact]
+    public async Task LearnedSpeakerNamesAreNamedInThePrompt()
+    {
+        var fake = new FakeAi();
+        var translator = Make(AiProvider.Gemini, fake);
+        await translator.TranslateAsync("PRICE: Move.");
+        Assert.DoesNotContain("Character names", User(fake, 0));
+        await translator.TranslateAsync("SOLDIER: Price, get down!");
+        Assert.Contains("Character names (keep them exactly as written, do not translate them): Price\n", User(fake, 1));
+        Assert.DoesNotContain("Soldier", User(fake, 1));
+        await translator.TranslateAsync("It looks ghostly, price is high.");
+        Assert.DoesNotContain("Character names", User(fake, 2));
+    }
+
     [Fact]
     public async Task GeminiRequest()
     {

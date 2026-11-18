@@ -266,10 +266,15 @@ public enum AIRequest {
         Reply with only the translation, no explanations, notes or quotes.
         """
 
-    /// Kullanıcı iletisi: önceki satırlar (yalnız bağlam) ve çevrilecek cümleler.
-    public static func userMessage(sentences: [String], context: [AIContextLine], game: String? = nil) -> String {
+    /// Kullanıcı iletisi: önceki satırlar (yalnız bağlam) ve çevrilecek cümleler. `names`: konuşan etiketlerinden
+    /// öğrenilip cümlelerde geçen adlar; model "Price"ı "Fiyat" diye çevirmesin diye adıyla söylenir (#287).
+    public static func userMessage(sentences: [String], context: [AIContextLine], game: String? = nil,
+                                   names: [String] = []) -> String {
         var parts: [String] = []
         if let game, !game.isEmpty { parts.append("Game: \(game)") }
+        if !names.isEmpty {
+            parts.append("Character names (keep them exactly as written, do not translate them): \(names.joined(separator: ", "))")
+        }
         if !context.isEmpty {
             var lines = ["Previous subtitles, for context only (do not translate them again):"]
             for line in context {
@@ -292,9 +297,10 @@ public enum AIRequest {
     /// `thinkingOff`: Ollama'da düşünmeyi kapatan alanlar gitsin mi (bu alanları reddeden eski sürümde false).
     public static func make(provider: AIProvider, key: String, model: AIModel, sentences: [String],
                             context: [AIContextLine], game: String? = nil, server: LocalAIServer? = nil,
-                            maxOutputTokens: Int = AIRequest.maxOutputTokens, thinkingOff: Bool = true) -> URLRequest {
+                            maxOutputTokens: Int = AIRequest.maxOutputTokens, thinkingOff: Bool = true,
+                            names: [String] = []) -> URLRequest {
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        let user = userMessage(sentences: sentences, context: context, game: game)
+        let user = userMessage(sentences: sentences, context: context, game: game, names: names)
         var request: URLRequest
         var body: [String: Any]
         switch provider {
@@ -597,6 +603,9 @@ public final class AITranslationCore: @unchecked Sendable {
         makeSession(timeout: provider.isLocal ? localTimeout : timeout)
     }
 
+    /// Hattın ayırdığı konuşan adı; istemde adıyla söylenir.
+    public func noteSpeaker(_ name: String) { names.learn(name: name) }
+
     public func translate(_ text: String, fallback: (String) async throws -> String) async throws -> String {
         // Arama, HTTP isteği ve kayıt aynı oyunla yapılmalı; callback işlem sırasında değişebilir.
         let game = self.game?()?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -627,7 +636,8 @@ public final class AITranslationCore: @unchecked Sendable {
         }
         let translated: [String]
         do {
-            translated = sources.isEmpty ? [] : try await request(sources, context: context, game: game)
+            let present = SpeakerNames.occurring(names.protected, in: sources.joined(separator: "\n"), exact: true)
+            translated = sources.isEmpty ? [] : try await request(sources, context: context, game: game, names: present)
             if !sources.isEmpty { setFailure(nil) }
         } catch is CancellationError {
             throw CancellationError()
@@ -786,10 +796,10 @@ public final class AITranslationCore: @unchecked Sendable {
         if changed { onFailureChanged?(value) }
     }
 
-    private func request(_ sentences: [String], context: [AIContextLine], game: String?) async throws -> [String] {
+    private func request(_ sentences: [String], context: [AIContextLine], game: String?, names: [String]) async throws -> [String] {
         try await perform(count: sentences.count, session: session) { thinkingOff in
             AIRequest.make(provider: provider, key: key, model: model, sentences: sentences, context: context, game: game,
-                           server: server, thinkingOff: thinkingOff)
+                           server: server, thinkingOff: thinkingOff, names: names)
         }
     }
 

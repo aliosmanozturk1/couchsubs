@@ -13,6 +13,12 @@ fun interface TextTranslator {
 
     /** [translateAll] hepsini tek istekte çevirir (yapay zekâ); öyleyse ekran çevirisi parça parça istek göndermez. */
     val translatesTogether: Boolean get() = false
+
+    /**
+     * Hat satır başındaki konuşan adını ("PRICE: …") ayırıp çevirmene yalnız cümleyi verir; ad buradan öğrenilir ve
+     * sonraki cümlelerin içinde geçince çeviriden korunur (#287).
+     */
+    fun noteSpeaker(name: String) {}
 }
 
 /**
@@ -447,6 +453,8 @@ class SubtitlePipeline(
     private fun translate(request: Request) {
         val source = request.source
         val input = request.prefix?.body ?: source
+        // Ayrılan ad çevirmene gitmez; cümle içinde geçtiğinde korunsun diye ayrıca bildirilir (#287).
+        request.prefix?.let { translator.noteSpeaker(it.name) }
         val started = now()
         val sentence = try {
             translator.translate(input)

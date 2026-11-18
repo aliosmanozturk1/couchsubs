@@ -314,6 +314,19 @@ final class AITranslationTests: XCTestCase {
         XCTAssertFalse(user(0).contains("KRATOS"))
     }
 
+    /// #287: konuşan etiketinden öğrenilen ad, sonraki cümlede geçince istemde "çevirme" diye adıyla söylenir; görev
+    /// sözcükleri ("Soldier") ve küçük harfle geçen sözcük ("ghostly") söylenmez.
+    func testLearnedSpeakerNamesAreNamedInThePrompt() async throws {
+        let translator = make(.gemini)
+        _ = try await translator.translate("PRICE: Move.", fallback: local)
+        XCTAssertFalse(user(0).contains("Character names"))
+        _ = try await translator.translate("SOLDIER: Price, get down!", fallback: local)
+        XCTAssertTrue(user(1).contains("Character names (keep them exactly as written, do not translate them): Price\n"))
+        XCTAssertFalse(user(1).contains("Soldier"))
+        _ = try await translator.translate("It looks ghostly, price is high.", fallback: local)
+        XCTAssertFalse(user(2).contains("Character names"))
+    }
+
     /// Model cümleyi çevirmeden geri verirse cümle yerel çeviriyle yeniden denenir ve yanıt önbelleğe yazılmaz (#245:
     /// qwen2.5:3b "You think I'm on the run?" cümlesini olduğu gibi döndürdü, hat onu Türkçe sanıp göstermedi). Yerel
     /// çeviri de aynı kalırsa (ad) modelin yanıtı kalır ve önbelleğe yazılır.
