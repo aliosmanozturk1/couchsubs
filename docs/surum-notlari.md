@@ -20,7 +20,7 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 - **Kol ipucu (#288):** Kurulumda ve çeviri başlarken "Kolu açınca PS5'te ANA hesabınızı seçin" uyarısı; ikinci hesapla açılınca kol oyunda çalışmıyordu.
 - **OBS:** Uzun altyazı ekranın kenarında kesilmiyor, sığmazsa öteki tarafa geçiyor (#284).
 - **Ortak havuz ve paketler:** Sunucudaki gece paketleme ve havuz dışa aktarımı daha sağlam; yayımlanmış paketi olmayan oyunların satırları genel pakette kalıyor (#277–#282, #310–#313, #315, #316, #319–#321, #326–#328).
-- **TV uygulaması 0.9.23 (Android TV):** TV HDMI girişlerini uygulamalara vermiyorsa ne yapılacağı ve "Katman'a geç" gösteriliyor (#297); Katman'a geçişte uygulama sessizce kapanmıyor (#299). Telefondaki kablosuz hata ayıklama durumu daha açık yazıyor (#322).
+- **TV uygulaması 0.9.23 (Android TV):** TV HDMI girişlerini uygulamalara vermiyorsa ne yapılacağı ve "Katman'a geç" gösteriliyor (#297); Katman'a geçişte uygulama sessizce kapanmıyor (#299); çeviri hata verince eski altyazı TV'de kalmıyor, silinir (#324). Telefondaki kablosuz hata ayıklama durumu daha açık yazıyor (#322).
 - **Android telefon:** [Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile) üzerinden güncelleniyor (0.1.0-beta.55).
 
 Katkıda bulunanlar: [erayslyrt00](https://github.com/erayslyrt00) (#258, #259, #263–#267, #323, #325), [erenbati](https://github.com/erenbati) (#185, #277–#284, #310–#328), [Berkovant](https://github.com/Berkovant) (#272) ve [enesbayar](https://github.com/enesbayar) (#286); teşekkürler.
