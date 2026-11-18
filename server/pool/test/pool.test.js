@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { accepts } from "../src/filter.js";
-import worker, { gameName, titleId, unavailableFor, QUOTA_BLOCK, SATURATED } from "../src/index.js";
+import worker, { gameName, titleId, unavailableFor, ownApp, QUOTA_BLOCK, SATURATED } from "../src/index.js";
 import { GENERAL, jobPackId, nameJobs, runAutopack } from "../src/autopack.js";
 import { gameKey, gameSlug } from "../src/games.js";
 
@@ -118,7 +118,7 @@ function fakeDB() {
 const install = (n) => `00000000-0000-4000-8000-00000000000${n}`;
 const post = (env, who, texts) => worker.fetch(new Request("https://pool.test/v1/lines", {
   method: "POST",
-  body: JSON.stringify({ install: who, lines: texts.map((text) => ({ text })) }),
+  body: JSON.stringify({ install: who, app: "0.1.0-beta.46", lines: texts.map((text) => ({ text })) }),
 }), env);
 
 test("gönderim süzer; tek kurulumun satırı havuza yazılmaz, ikinci kurulumda girer", async () => {
@@ -147,7 +147,7 @@ test("gönderim süzer; tek kurulumun satırı havuza yazılmaz, ikinci kurulumd
 
 const postLines = (env, who, lines) => worker.fetch(new Request("https://pool.test/v1/lines", {
   method: "POST",
-  body: JSON.stringify({ install: who, lines }),
+  body: JSON.stringify({ install: who, app: "CouchSubs Android 0.9.23", lines }),
 }), env);
 
 test("yeterince kurulumun doğruladığı ya da çeviriye alınmış satırın yeni görülmesi D1'e yazılmaz", async () => {
@@ -578,4 +578,74 @@ test("admin export rejects explicitly invalid game filters instead of exporting 
   }), env);
   assert.equal(normal.status, 200);
   assert.match(DB.last.sql, /title_id=\?/);
+});
+
+const APP_KEY = "gt-0123456789abcdef";
+const postApp = (env, who, lines, { app = "GameTranslator 1.6.6", key } = {}) =>
+  worker.fetch(new Request("https://pool.test/v1/lines", {
+    method: "POST",
+    headers: key ? { "X-CouchSubs-App-Key": key } : {},
+    body: JSON.stringify({ install: who, app, lines }),
+  }), env);
+
+test("kendi istemcilerimizin app alanı tanınır, başkası tanınmaz", () => {
+  for (const app of ["0.1.0", "0.1.0-beta.46", "1.2.3", "CouchSubs Android 0.9.23", "CouchSubs Android 1.0.0-beta.42"]) {
+    assert.equal(ownApp(app), true, app);
+  }
+  for (const app of ["GameTranslator 1.6.6", "", "couchsubs", "CouchSubsX 1.0", undefined, 7]) {
+    assert.equal(ownApp(app), false, String(app));
+  }
+});
+
+test("anahtarsız üçüncü taraf uygulama 403 alır ve hiçbir şey yazılmaz", async () => {
+  const DB = fakeDB();
+  for (const env of [{ DB }, { DB, APP_KEYS: "bozuk json" }]) {
+    const reply = await postApp(env, install(1), [{ text: "Get down!" }]);
+    assert.equal(reply.status, 403);
+    assert.deepEqual(await reply.json(), { error: "app_key_required" });
+  }
+  const wrong = await postApp({ DB, APP_KEYS: JSON.stringify({ [APP_KEY]: { name: "gametranslator" } }) },
+    install(1), [{ text: "Get down!" }], { key: "yanlis-anahtar-0000" });
+  assert.equal(wrong.status, 403);
+  assert.deepEqual(await wrong.json(), { error: "app_key_invalid" });
+  assert.equal(DB.writes, 0);
+  assert.equal(DB.batchCalls, 0);
+});
+
+test("anahtarlı uygulama aynı süzgeç ve eşikle kabul edilir, uygulama adıyla günlüğe yazılır", async () => {
+  const DB = fakeDB();
+  const env = { DB, APP_KEYS: JSON.stringify({ [APP_KEY]: { name: "gametranslator", daily: 1000 } }) };
+  const logged = [];
+  const original = console.log;
+  console.log = (line) => logged.push(String(line));
+  try {
+    const first = await postApp(env, install(1), [{ text: "Oturum Açtı" }, { text: "Get down!" }], { key: APP_KEY });
+    assert.equal(first.status, 200);
+    assert.deepEqual(await first.json(), { accepted: 1, recorded: 1 });
+    assert.equal(DB.lines.size, 0, "tek kurulum havuza girmez");
+    await postApp(env, install(2), [{ text: "Get down!" }], { key: APP_KEY });
+    assert.deepEqual([...DB.lines.values()].map((l) => l.installs), [2]);
+  } finally {
+    console.log = original;
+  }
+  assert.ok(logged.some((l) => JSON.parse(l).client === "gametranslator" && JSON.parse(l).app === "GameTranslator 1.6.6"));
+});
+
+test("uygulamanın günlük toplam sınırı kurulum sınırına ek olarak uygulanır", async () => {
+  const DB = fakeDB();
+  const env = { DB, APP_KEYS: JSON.stringify({ [APP_KEY]: { name: "gametranslator", daily: 15 } }) };
+  const day = new Date().toISOString().slice(0, 10);
+  const lines = (n, tag) => Array.from({ length: n }, (_, j) => ({ text: `Hold the line ${tag} ${j} please.` }));
+  const a = await postApp(env, install(1), lines(10, "a"), { key: APP_KEY });
+  assert.deepEqual(await a.json(), { accepted: 10, recorded: 10 });
+  const b = await postApp(env, install(2), lines(10, "b"), { key: APP_KEY });
+  assert.deepEqual(await b.json(), { accepted: 5, recorded: 5 });
+  const c = await postApp(env, install(3), lines(10, "c"), { key: APP_KEY });
+  assert.equal(c.status, 429);
+  assert.deepEqual(await c.json(), { error: "app_quota" });
+  assert.ok(Number(c.headers.get("retry-after")) >= 60);
+  assert.equal(DB.quotas.get(`app:gametranslator\u001f${day}`), 15);
+  assert.equal(DB.quotaWrites, 3, "uygulama sayacı bir kez, iki kurulum birer kez");
+  // Kendi istemcilerimiz uygulama sınırından etkilenmez.
+  assert.equal((await postLines(env, install(4), lines(10, "d"))).status, 200);
 });

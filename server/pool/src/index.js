@@ -4,6 +4,7 @@
 //                    PS5'te o an çalışan oyunun kimliği (titleId, ör. "PPSA01234") ve adı (game) gelir. Kimlik
 //                    yoksa ad uygulamanın paketten tanıdığı ya da kullanıcının seçtiği oyundur; kurulum başına bir
 //                    "oy" (game_votes) yazılır, gece paketi en az iki kurulumun bildirdiği adla açılır.
+//                    Üçüncü taraf uygulamalar X-CouchSubs-App-Key başlığıyla gönderir (APP_KEYS, aşağıda).
 // GET  /v1/export  : (yönetici) en az N kurulumun gördüğü, henüz çevrilmemiş satırlar; `title=` ya da `game=` ile
 //                    yalnız bir oyunun satırları.
 // POST /v1/exported: (yönetici) çeviriye alınan anahtarları işaretler.
@@ -91,8 +92,9 @@ function quotaMap(env) {
   return map;
 }
 
-/** İstek için yer ayırır: { room } ya da { status: 429 | 503 }. */
-async function reserveQuota(env, install, day, wanted) {
+/** İstek için yer ayırır: { room } ya da { status: 429 | 503 }. `install` kurulum kimliği ya da uygulamanın
+ *  toplam sayacı ("app:<ad>"); quota tablosu ikisini de tutar (şema değişmez). */
+async function reserveQuota(env, install, day, wanted, limit = DAILY_LIMIT) {
   const map = quotaMap(env);
   const id = `${install}|${day}`;
   const local = map.get(id) ?? 0;
@@ -104,7 +106,7 @@ async function reserveQuota(env, install, day, wanted) {
   for (let attempt = 0; attempt < QUOTA_CAS_ATTEMPTS; attempt++) {
     const q = await env.DB.prepare("SELECT count FROM quota WHERE install=? AND day=?").bind(install, day).first();
     const used = q?.count || 0;
-    const left = DAILY_LIMIT - used;
+    const left = limit - used;
     if (left <= 0) {
       // D1 doldu; bu dağıtımda kalan pay varsa onu ver.
       if (local > 0 || (map.get(id) ?? 0) > 0) return { room: take(map, id, wanted) };
@@ -122,6 +124,14 @@ async function reserveQuota(env, install, day, wanted) {
     }
   }
   return { status: 503 };
+}
+
+/** Ayrılmış ama kullanılmayan yer bu dağıtımın payına geri döner (D1'e yazılmaz). */
+function giveBack(env, install, day, n) {
+  if (n <= 0) return;
+  const map = quotaMap(env);
+  const id = `${install}|${day}`;
+  map.set(id, (map.get(id) ?? 0) + n);
 }
 
 function take(map, id, wanted) {
@@ -162,18 +172,87 @@ async function settledKeys(env, keys) {
   return settled;
 }
 
+// Üçüncü taraf uygulamalar havuza `X-CouchSubs-App-Key` başlığıyla katılır. Anahtarlar Worker secret'ında:
+//   APP_KEYS = {"<anahtar>": {"name": "gametranslator", "daily": 20000}}
+// Secret yoksa ya da bozuksa hiçbir anahtar geçerli değildir. Kendi istemcilerimiz anahtar göndermez; gövdedeki `app`
+// alanı onları tanıtır: Mac/iOS/Windows sürüm numarası ("0.1.0", "0.1.0-beta.46"), Android "CouchSubs Android 1.2.3".
+// `app` sahte gönderilebilir: bu bir düzen kuralıdır, kötüye kullanıma karşı asıl sınır kurulum ve uygulama kotalarıdır.
+export const APP_HEADER = "x-couchsubs-app-key";
+export const APP_DAILY_DEFAULT = 20000;
+const OWN_APP = /^(?:CouchSubs(?: [\p{L}\p{N} ._+-]{0,60})?|\d{1,4}(?:\.\d{1,4}){0,3}(?:[-+][0-9A-Za-z.+-]{1,40})?)$/u;
+const APP_NAME = /^[a-z0-9][a-z0-9._-]{0,39}$/;
+
+/** Gövdedeki `app` bizim istemcilerimizden biri mi. */
+export function ownApp(value) {
+  return typeof value === "string" && OWN_APP.test(value.trim());
+}
+
+let appKeysCache = { raw: undefined, keys: new Map() };
+
+/** APP_KEYS secret'ı: anahtar -> { name, daily }. Geçersiz kayıtlar atlanır. */
+export function appKeys(env) {
+  const raw = env.APP_KEYS;
+  if (raw === appKeysCache.raw) return appKeysCache.keys;
+  const keys = new Map();
+  try {
+    const parsed = typeof raw === "string" && raw ? JSON.parse(raw) : raw && typeof raw === "object" ? raw : {};
+    for (const [k, v] of Object.entries(parsed ?? {})) {
+      const name = String(v?.name ?? "").trim().toLowerCase();
+      const daily = Number(v?.daily ?? APP_DAILY_DEFAULT);
+      if (k.length < 16 || !APP_NAME.test(name) || !Number.isSafeInteger(daily) || daily < 1) continue;
+      keys.set(k, { name, daily });
+    }
+  } catch {
+    console.error(JSON.stringify({ error: "app_keys_invalid" }));
+  }
+  appKeysCache = { raw, keys };
+  return keys;
+}
+
+/** İsteği gönderen uygulama: { name, daily } (üçüncü taraf), { own: true } ya da { status, error }. */
+export function clientOf(req, body, env) {
+  const key = req.headers.get(APP_HEADER);
+  if (key != null && key !== "") {
+    const app = appKeys(env).get(key.trim());
+    return app ?? { status: 403, error: "app_key_invalid" };
+  }
+  if (ownApp(body?.app)) return { own: true };
+  return { status: 403, error: "app_key_required" };
+}
+
+function untilMidnight() {
+  const now = new Date();
+  const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return Math.max(60, Math.ceil((midnight - now.getTime()) / 1000));
+}
+
 async function submit(req, env) {
   let body;
   try { body = await req.json(); } catch { return json({ error: "json" }, 400); }
   const install = String(body?.install || "");
   if (!UUID.test(install) || !Array.isArray(body?.lines)) return json({ error: "bad_request" }, 400);
+  const client = clientOf(req, body, env);
+  if (client.status) return json({ error: client.error }, client.status);
   const lines = body.lines.slice(0, MAX_LINES);
   const day = new Date().toISOString().slice(0, 10);
 
-  const quota = await reserveQuota(env, install, day, lines.length);
-  if (quota.status) return json({ error: quota.status === 429 ? "quota" : "busy" }, quota.status,
-    { "retry-after": quota.status === 429 ? "3600" : "1" });
+  // Üçüncü taraf uygulamanın günlük toplamı (kurulum sınırına ek); aynı pay düzeniyle az yazımla sayılır.
+  const appId = client.name ? `app:${client.name}` : null;
+  let appRoom = lines.length;
+  if (appId) {
+    const app = await reserveQuota(env, appId, day, lines.length, client.daily);
+    if (app.status === 429) return json({ error: "app_quota" }, 429, { "retry-after": String(untilMidnight()) });
+    if (app.status) return json({ error: "busy" }, app.status, { "retry-after": "1" });
+    appRoom = app.room;
+  }
+  const quota = await reserveQuota(env, install, day, appRoom);
+  if (quota.status) {
+    if (appId) giveBack(env, appId, day, appRoom);
+    return json({ error: quota.status === 429 ? "quota" : "busy" }, quota.status,
+      { "retry-after": quota.status === 429 ? "3600" : "1" });
+  }
   const room = quota.room;
+  if (appId) giveBack(env, appId, day, appRoom - room);
 
   const fresh = new Map();
   let entries = [];
@@ -191,7 +270,7 @@ async function submit(req, env) {
       if (!fresh.has(k)) fresh.set(k, { text, title: titleId(l?.titleId), game: gameName(l?.game) });
     }
     // Günlükte (wrangler tail) yalnız sayılar ve oyun kimliğinin biçimi: oyun bilgisinin gelip gelmediği görülsün.
-    console.log(JSON.stringify(submitSummary(body, lines)));
+    console.log(JSON.stringify({ ...submitSummary(body, lines), client: client.name ?? "couchsubs" }));
 
     // Günlük D1 yazma kotası için: kurulumun görülme kaydı (sightings) ile en az iki kurulumun gördüğü
     // satırın havuza eklenmesi (lines) aynı transaction içinde gerçekleşir. Tek kurulumda upsert etkisizdir;
@@ -220,6 +299,7 @@ async function submit(req, env) {
     // Undo the reservation if filtering, hashing, or the atomic write batch fails. A failed compensation
     // leaves quota conservative rather than risking an over-limit counter.
     await releaseQuota(env, install, day, room);
+    if (appId) await releaseQuota(env, appId, day, room);
     throw error;
   }
   await vote(env, install, entries);
@@ -325,11 +405,7 @@ const D1_TRANSIENT = /SQLITE_BUSY|overloaded|unavailable|timed? ?out|reset|netwo
 /** D1 hatası geçiciyse Retry-After saniyesi, değilse 0. */
 export function unavailableFor(error) {
   const message = String(error?.message || error);
-  if (D1_LIMIT.test(message)) {
-    const now = new Date();
-    const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-    return Math.max(60, Math.min(3600, Math.ceil((midnight - now.getTime()) / 1000)));
-  }
+  if (D1_LIMIT.test(message)) return Math.min(3600, untilMidnight());
   return D1_TRANSIENT.test(message) ? 60 : 0;
 }
 
