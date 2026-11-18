@@ -115,8 +115,9 @@ public class MarianTranslatorTests
         var (translator, engine) = Create();
 
         await translator.TranslateAsync("ATREUS: Father, look!");
-        await translator.TranslateAsync("THE GATE WILL NOT HOLD, ATREUS.");
-        Assert.Equal("The gate will not hold, Atreus.", engine.Calls[^1]);
+        // Ad cümle düzeninde büyük harfle kalır ve çeviriden korunur: modele yer tutucuyla gider, çeviride geri konur (#287).
+        Assert.EndsWith("Atreus.", await translator.TranslateAsync("THE GATE WILL NOT HOLD, ATREUS."));
+        Assert.Equal("The gate will not hold, Zarmon.", engine.Calls[^1]);
     }
 
     /// <summary>Önceki oturumda çevrilen satır model çalışmadan döner; seslendirme cümleleri de konuşmacısıyla kurulur.</summary>
