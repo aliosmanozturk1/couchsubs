@@ -5,29 +5,6 @@
   'use strict';
 
   var KEYS = ['0', '1', '2', '3', '4', 'ColorF0Red', 'ColorF1Green', 'ColorF3Blue'];
-  // HDMI görüntüsü her zaman uygulama yüzeyinin tamamını kaplar (yüzde, ekran kökenli; Samsung TVWindow API).
-  var FULL_SCREEN = ['0', '0', '100%', '100%'];
-  // 16:9'dan belirgin geniş yüzey (21:9 = 2,33; 32:9 = 3,56). 16:9 TV'ler (1,78) ve yuvarlama payı bunun altında kalır.
-  var WIDE_RATIO = 1.9;
-
-  // 21:9 ultrawide ekranlar (Samsung Odyssey G8 gibi, #304): config.xml'deki base_screen_resolution=extensive ile
-  // uygulama yüzeyi ekranın tamamı olur (ör. 2560x1080). Ortak index.html'in sabit 1920 piksellik görünümü bu yüzeyde
-  // sayfayı 1920x810'a sıkıştırırdı; geniş yüzeyde sayfa cihaz genişliğiyle düzenlenir (Samsung'un önerdiği
-  // width=device-width). app.js yerleşimi innerWidth/innerHeight'tan hesapladığı için geniş ekrana kendiliğinden uyar.
-  // 16:9 yüzeyde (bütün TV'ler ve bu ayarı tanımayan modeller) null döner: hiçbir şey değişmez.
-  function viewportFor(width, height) {
-    if (!(width > 0) || !(height > 0)) return null;
-    return width / height >= WIDE_RATIO ? 'width=device-width' : null;
-  }
-
-  function fitWideScreen() {
-    try {
-      var content = viewportFor(window.innerWidth, window.innerHeight);
-      if (!content) return;
-      var meta = document.querySelector('meta[name="viewport"]');
-      if (meta) meta.setAttribute('content', content);
-    } catch (e) {}
-  }
 
   function hdmiSources(callback) {
     try {
@@ -63,9 +40,6 @@
     }
   }
 
-  // app.js yerleşimi ölçmeden önce: platform.js ondan önce yüklenir.
-  fitWideScreen();
-
   window.COUCHSUBS_PLATFORM = {
     backKey: 10009,
 
@@ -74,9 +48,6 @@
     sourceSwitchTip: true,
     // HDMI girişi açılamazsa app.js nedenini ve giriş seçimini gösterir.
     noPictureHelp: true,
-
-    // Birim testi için (scripts/tv-tizen.test.js).
-    viewportFor: viewportFor,
 
     init: function () {
       // Renk ve sayı tuşları istenmezse TV kendisi kullanır.
@@ -115,7 +86,7 @@
         try {
           tizen.tvwindow.setSource(source, function () {
             tizen.tvwindow.show(function () { onStatus('playing'); }, failed,
-              FULL_SCREEN, 'MAIN', 'BEHIND');
+              ['0', '0', '100%', '100%'], 'MAIN', 'BEHIND');
           }, failed);
         } catch (e) {
           failed();
