@@ -495,6 +495,22 @@ public class AppControllerTests
         Assert.Equal("Oturma Odası Xbox", store.Load<XboxConsole>(StoreKeys.XboxConsole)?.Name);
     }
 
+    /// beta.45 öncesi ANSI (1254) okunup bozuk kaydedilen ad (#268) açılışta, liste sorulmadan düzelir; doğru ad değişmez.
+    [Theory]
+    [InlineData("Oturma OdasÄ± Xbox", "Oturma Odası Xbox")]
+    [InlineData("Oturma Odası Xbox", "Oturma Odası Xbox")]
+    [InlineData("Salon Xbox", "Salon Xbox")]
+    [InlineData("Çalışma Odası", "Çalışma Odası")]
+    public void SavedXboxNameMisreadAsAnsiIsRepairedOnLaunch(string saved, string expected)
+    {
+        var store = new MemoryStore();
+        store.Save(StoreKeys.XboxToken, "{}");
+        store.Save(StoreKeys.XboxConsole, new XboxConsole("F4", saved, "XboxSeriesX", true));
+        var controller = new AppController(new FakeServices(), store, new MemorySettings(), new FakeSleep(), Localizer.ForLanguage("tr"), action => action());
+        Assert.Equal(expected, controller.SelectedXboxConsole?.Name);
+        Assert.Equal(expected, store.Load<XboxConsole>(StoreKeys.XboxConsole)?.Name);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

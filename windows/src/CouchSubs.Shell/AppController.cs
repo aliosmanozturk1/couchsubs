@@ -124,7 +124,12 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         consoleKindLocked = store.Load<bool?>(StoreKeys.ConsoleKindLocked) ?? false;
         xboxToken = store.Load<string>(StoreKeys.XboxToken);
         xboxConsole = store.Load<XboxConsole>(StoreKeys.XboxConsole);
-        tv = store.Load<LgTv>(StoreKeys.Tv);
+        if (xboxConsole is { } savedXbox && RepairMisreadName(savedXbox.Name) is { } repairedName)
+        {
+            xboxConsole = savedXbox with { Name = repairedName };
+            store.Save(StoreKeys.XboxConsole, xboxConsole);
+        }
+        tv =store.Load<LgTv>(StoreKeys.Tv);
         var loaded = settingsStore.Load();
         settings = loaded.WithCuratedModels() with
         {
@@ -251,6 +256,31 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         xboxConsole = saved with { Name = current.Name };
         store.Save(StoreKeys.XboxConsole, xboxConsole);
         Changed(nameof(SelectedXboxConsole), nameof(Ps5StatusText));
+    }
+
+    /// <summary>
+    /// beta.45'ten önceki sürümler köprünün UTF-8 çıktısını Windows'un ANSI kod sayfasıyla (Türkçe Windows'ta 1254) okudu,
+    /// "Oturma Odası" "Oturma OdasÄ±" diye kaydedildi (#223, #268). Ad listeden tazelenene kadar ana ekranda bozuk kalıyordu.
+    /// Ad o kod sayfasına geri çevrilip geçerli UTF-8 olarak çözülüyorsa düzeltilmiş adı döner. Doğru adlar ("ı" tek başına
+    /// geçerli UTF-8 değildir) ve ASCII adlar dokunulmadan kalır (null).
+    /// </summary>
+    private static string? RepairMisreadName(string name)
+    {
+        if (name.All(char.IsAscii)) return null;
+        var strictUtf8 = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+        foreach (var codePage in new[] { 1254, 1252 })
+        {
+            try
+            {
+                var ansi = System.Text.CodePagesEncodingProvider.Instance.GetEncoding(codePage,
+                    System.Text.EncoderFallback.ExceptionFallback, System.Text.DecoderFallback.ExceptionFallback);
+                if (ansi is null) continue;
+                var repaired = strictUtf8.GetString(ansi.GetBytes(name));
+                if (repaired != name) return repaired;
+            }
+            catch (ArgumentException) { /* Ad bu kod sayfasıyla bozulmamış. */ }
+        }
+        return null;
     }
 
     /// <summary>
