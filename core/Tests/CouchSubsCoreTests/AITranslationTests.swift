@@ -404,6 +404,23 @@ final class AITranslationTests: XCTestCase {
         XCTAssertEqual(AIProvider.openAI.engineID(model: AIProvider.openAI.defaultModel.id), "openai:gpt-6-luna")
     }
 
+    /// Ayarlar'da (Mac, iPhone) seçilen Gemini modeli isteğe gider; dakikalık hak modelin sınırıdır (flash-lite 15,
+    /// 3.6 flash 10). Kayıt yoksa ilk model kullanılır.
+    func testSelectedGeminiModelGoesToTheRequest() async throws {
+        var settings = UserSettings()
+        XCTAssertEqual(settings.model(for: .gemini), "gemini-3.5-flash-lite")
+        XCTAssertEqual(RequestBudget.shared(provider: .gemini, model: AIProvider.gemini.model(settings.geminiModel))?.perMinute, 15)
+        settings.geminiModel = "gemini-3.6-flash"
+        let chosen = AIProvider.gemini.model(settings.model(for: .gemini))
+        XCTAssertEqual(RequestBudget.shared(provider: .gemini, model: chosen)?.perMinute, 10)
+        let saved = try JSONDecoder().decode(UserSettings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(saved.geminiModel, "gemini-3.6-flash")
+
+        _ = try await make(.gemini, model: saved.model(for: .gemini)).translate("Run!", fallback: local)
+        XCTAssertEqual(FakeAI.requests[0].request.url?.absoluteString,
+                       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent")
+    }
+
     /// Liste Windows ile ortak dosyadan okunur; her hizmette önerilen hızlı model ilk sıradadır.
     func testCatalogIsTheSharedFile() throws {
         for provider in AIProvider.cloud {

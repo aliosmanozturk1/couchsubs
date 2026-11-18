@@ -51,6 +51,9 @@ data class AiModel(
     val requestsPerMinute: Int? = null,
 ) {
     companion object {
+        /** Kayıtlı kimlikteki model; kayıt yoksa ya da listede yoksa listenin ilki (varsayılan; Mac ve iPhone ile aynı). */
+        fun selected(models: List<AiModel>, id: String?): AiModel? = models.firstOrNull { it.id == id } ?: models.firstOrNull()
+
         /** Uygulamayla gelen ai-models.json; okunamazsa boş. */
         fun load(context: android.content.Context): Map<String, List<AiModel>> = try {
             parse(context.assets.open("ai-models.json").use { String(it.readBytes(), Charsets.UTF_8) })

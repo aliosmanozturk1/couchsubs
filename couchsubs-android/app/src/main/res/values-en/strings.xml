@@ -248,6 +248,9 @@
     <string name="profile_usage">Usage data</string>
     <string name="profile_usage_note">Error and usage statistics</string>
     <string name="settings_pool_short">English lines read, anonymous</string>
+    <string name="settings_model">Model</string>
+    <string name="settings_model_fast">Fast (recommended)</string>
+    <string name="settings_model_quality">Better quality, slower</string>
     <string name="settings_key_for">%1$s key</string>
     <string name="settings_key_saved">saved</string>
     <string name="settings_engine_note">In games with a ready pack, this engine only translates missing lines.</string>

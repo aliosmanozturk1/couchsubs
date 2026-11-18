@@ -254,6 +254,9 @@
     <string name="profile_usage">Kullanım verisi</string>
     <string name="profile_usage_note">Hata ve kullanım istatistikleri</string>
     <string name="settings_pool_short">Okunan İngilizce satırlar, anonim</string>
+    <string name="settings_model">Model</string>
+    <string name="settings_model_fast">Hızlı (önerilen)</string>
+    <string name="settings_model_quality">Daha kaliteli, daha yavaş</string>
     <string name="settings_key_for">%1$s anahtarı</string>
     <string name="settings_key_saved">kayıtlı</string>
     <string name="settings_engine_note">Hazır paketi olan oyunlarda bu motor yalnız eksik satırlar için çalışır.</string>
