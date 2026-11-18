@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { accepts } from "../src/filter.js";
-import worker, { gameName, titleId } from "../src/index.js";
+import worker, { gameName, titleId, unavailableFor, QUOTA_BLOCK, SATURATED } from "../src/index.js";
 import { GENERAL, jobPackId, nameJobs, runAutopack } from "../src/autopack.js";
 import { gameKey, gameSlug } from "../src/games.js";
 
@@ -39,6 +39,14 @@ function fakeDB() {
   const quotaKey = (install, day) => `${install}\u001f${day}`;
   const run = (sql, args) => {
     if (sql.startsWith("SELECT count FROM quota")) return { count: db.quotas.get(quotaKey(args[0], args[1])) ?? 0 };
+    if (sql.startsWith("SELECT key FROM lines WHERE key IN")) {
+      db.reads = (db.reads ?? 0) + 1;
+      const min = args[args.length - 1];
+      return { results: args.slice(0, -1).filter((k) => {
+        const row = lines.get(k);
+        return row && (row.installs >= min || row.exported === 1);
+      }).map((key) => ({ key })) };
+    }
     if (sql.startsWith("SELECT")) {
       db.last = { sql, args };
       return { results: [] };
@@ -65,6 +73,7 @@ function fakeDB() {
       return { meta: { changes: 1 } };
     }
     if (sql.startsWith("INSERT INTO quota")) {
+      db.quotaWrites = (db.quotaWrites ?? 0) + 1;
       const key = quotaKey(args[0], args[1]);
       const delta = args[2];
       const expected = args[3];
@@ -123,7 +132,8 @@ test("gönderim süzer; tek kurulumun satırı havuza yazılmaz, ikinci kurulumd
   // Aynı kurulum aynı satırları yeniden gönderirse yalnız görülme denemesi ve kota yazılır.
   DB.writes = 0;
   await post(env, install(1), ["Get down!", "Who is that over there?"]);
-  assert.equal(DB.writes, 5); // 2 idempotent sightings + 2 idempotent conditional UPSERT + 1 quota
+  // 2 idempotent sightings + 2 idempotent conditional UPSERT; kota bu dağıtımın ayırdığı paydan düşer (D1'e yazılmaz).
+  assert.equal(DB.writes, 4);
   assert.equal(DB.lines.size, 0);
 
   // İkinci kurulum: satır havuza installs=2 ile girer; yalnız onun okuduğu satır.
@@ -139,6 +149,76 @@ const postLines = (env, who, lines) => worker.fetch(new Request("https://pool.te
   method: "POST",
   body: JSON.stringify({ install: who, lines }),
 }), env);
+
+test("yeterince kurulumun doğruladığı ya da çeviriye alınmış satırın yeni görülmesi D1'e yazılmaz", async () => {
+  const DB = fakeDB();
+  const env = { DB };
+  for (let n = 1; n <= SATURATED; n++) await post(env, install(n), ["Get down!"]);
+  assert.deepEqual([...DB.lines.values()].map((l) => l.installs), [SATURATED]);
+
+  DB.writes = 0;
+  const reply = await post(env, install(SATURATED + 1), ["Get down!"]);
+  assert.deepEqual(await reply.json(), { accepted: 1, recorded: 0 });
+  assert.equal(DB.writes, 1, "yalnız yeni kurulumun günlük kota payı yazılır");
+  assert.deepEqual([...DB.lines.values()].map((l) => l.installs), [SATURATED]);
+
+  // Çeviriye alınmış (exported) satır da installs eşiğinin altındayken atlanır; doğrulanmamış satır yazılır.
+  DB.lines.set("x", { text: "x", installs: 2, exported: 1 });
+  const before = DB.writes;
+  await post(env, install(SATURATED + 1), ["Who is that over there?"]);
+  assert.equal(DB.writes - before, 2, "doğrulanmamış satır: görülme + koşullu UPSERT");
+});
+
+test("kota her istekte değil, pay bitince yazılır; günlük sınır yine aşılmaz", async () => {
+  const DB = fakeDB();
+  const env = { DB };
+  const who = install(5);
+  const day = new Date().toISOString().slice(0, 10);
+  const batch = (i) => Array.from({ length: 10 }, (_, j) => ({ text: `Keep moving ${i} ${j} now.` }));
+  for (let i = 0; i < 20; i++) assert.equal((await postLines(env, who, batch(i))).status, 200);
+  // 20 istek × 10 satır = 200 satır: tek pay, tek kota yazımı.
+  assert.equal(DB.quotaWrites, 1);
+  assert.equal(DB.quotas.get(`${who}\u001f${day}`), QUOTA_BLOCK);
+
+  // Sınıra yakın: kalan yer kadar kabul edilir, sonra 429.
+  DB.quotas.set(`${who}\u001f${day}`, 4995);
+  const many = Array.from({ length: 200 }, (_, j) => ({ text: `Hold the line ${j} please.` }));
+  const near = await postLines(env, who, many);
+  assert.equal(near.status, 200);
+  assert.equal(DB.quotas.get(`${who}\u001f${day}`), 5000);
+  let accepted = (await near.json()).accepted;
+  for (let i = 0; i < 5; i++) {
+    const r = await postLines(env, who, many);
+    if (r.status === 200) accepted += (await r.json()).accepted;
+    else assert.equal(r.status, 429);
+  }
+  assert.equal(DB.quotas.get(`${who}\u001f${day}`), 5000);
+  assert.ok(accepted <= 5, `en çok 5 yer kalmıştı, ${accepted} kabul edildi`);
+});
+
+test("D1 günlük yazım sınırı ya da geçici hatası 500 değil 503 + Retry-After döner ve günlüğe yazılır", async () => {
+  const DB = fakeDB();
+  DB.prepare = () => ({ bind: () => ({
+    first: async () => { throw new Error("D1_ERROR: Exceeded maximum daily rows written limit"); },
+    run: async () => { throw new Error("x"); },
+  }) });
+  const logged = [];
+  const original = console.error;
+  console.error = (...args) => logged.push(args.join(" "));
+  try {
+    const reply = await postLines({ DB }, install(1), [{ text: "Get down!" }]);
+    assert.equal(reply.status, 503);
+    const wait = Number(reply.headers.get("retry-after"));
+    assert.ok(wait >= 60 && wait <= 3600, String(wait));
+    assert.equal(logged.length, 1);
+    assert.match(logged[0], /Exceeded maximum daily rows written/);
+  } finally {
+    console.error = original;
+  }
+  assert.equal(unavailableFor(new Error("D1 DB is overloaded. Requests queued for too long.")), 60);
+  assert.equal(unavailableFor(new Error("Network connection lost.")), 60);
+  assert.equal(unavailableFor(new Error("injected batch failure")), 0);
+});
 
 test("eşzamanlı gönderimler günlük kota sınırını aşamaz", async () => {
   const DB = fakeDB();

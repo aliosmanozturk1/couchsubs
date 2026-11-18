@@ -76,6 +76,92 @@ export function submitSummary(body, lines) {
   };
 }
 
+// Kota (kurulum başına günde DAILY_LIMIT satır) D1'de tutulur, ama her istekte yazılmaz: dağıtım (isolate) D1'den
+// QUOTA_BLOCK satırlık bir pay ayırır ve sonraki istekleri bellekten karşılar. D1 sayacı yine DAILY_LIMIT'i aşamaz
+// (aynı CAS); bir dağıtımın kullanılmadan kalan payı en çok QUOTA_BLOCK olduğundan sınır biraz erken dolabilir,
+// hiçbir zaman geç değil. Kurulumlar günde ortalama ~35 satır gönderdiği için çoğu kurulum günde bir kota yazımı yapar.
+export const QUOTA_BLOCK = 200;
+const MAX_QUOTA_ENTRIES = 20000;
+// D1 nesnesine bağlı: her veritabanının (testlerde her sahte DB'nin) kendi payı olur.
+const quotaCache = new WeakMap();
+
+function quotaMap(env) {
+  let map = quotaCache.get(env.DB);
+  if (!map) quotaCache.set(env.DB, (map = new Map()));
+  return map;
+}
+
+/** İstek için yer ayırır: { room } ya da { status: 429 | 503 }. */
+async function reserveQuota(env, install, day, wanted) {
+  const map = quotaMap(env);
+  const id = `${install}|${day}`;
+  const local = map.get(id) ?? 0;
+  if (local >= wanted) {
+    map.set(id, local - wanted);
+    return { room: wanted };
+  }
+  const need = wanted - local;
+  for (let attempt = 0; attempt < QUOTA_CAS_ATTEMPTS; attempt++) {
+    const q = await env.DB.prepare("SELECT count FROM quota WHERE install=? AND day=?").bind(install, day).first();
+    const used = q?.count || 0;
+    const left = DAILY_LIMIT - used;
+    if (left <= 0) {
+      // D1 doldu; bu dağıtımda kalan pay varsa onu ver.
+      if (local > 0 || (map.get(id) ?? 0) > 0) return { room: take(map, id, wanted) };
+      return { status: 429 };
+    }
+    const grab = Math.min(left, Math.max(need, QUOTA_BLOCK));
+    const result = await env.DB.prepare(
+      "INSERT INTO quota(install,day,count) VALUES(?,?,?) " +
+      "ON CONFLICT(install,day) DO UPDATE SET count=count+excluded.count WHERE quota.count=?"
+    ).bind(install, day, grab, used).run();
+    if (result.meta?.changes > 0) {
+      if (map.size >= MAX_QUOTA_ENTRIES) map.clear();
+      map.set(id, (map.get(id) ?? 0) + grab);
+      return { room: take(map, id, wanted) };
+    }
+  }
+  return { status: 503 };
+}
+
+function take(map, id, wanted) {
+  const have = map.get(id) ?? 0;
+  const room = Math.min(have, wanted);
+  map.set(id, have - room);
+  return room;
+}
+
+/** Yazım başarısız olunca: bu dağıtımın payı ve isteğin yeri D1'e geri verilir (nadir yol). Geri verme de başarısız
+ *  olursa kota tutucu kalır. */
+async function releaseQuota(env, install, day, room) {
+  const map = quotaMap(env);
+  const id = `${install}|${day}`;
+  const back = room + (map.get(id) ?? 0);
+  map.delete(id);
+  if (back > 0) {
+    await env.DB.prepare("UPDATE quota SET count=count-? WHERE install=? AND day=? AND count>=?")
+      .bind(back, install, day, back).run().catch(() => {});
+  }
+}
+
+// Bu kadar kurulumun gördüğü satır doğrulanmış sayılır (paket eşiği autopack MIN_INSTALLS = 2); yeni görülmesi yazılmaz.
+export const SATURATED = 3;
+// D1 bir sorguda en çok 100 bağlı değişken kabul eder.
+const IN_CHUNK = 90;
+
+/** Havuzda installs>=SATURATED olan ya da çeviriye alınmış anahtarlar (yalnız okuma). */
+async function settledKeys(env, keys) {
+  const settled = new Set();
+  for (let i = 0; i < keys.length; i += IN_CHUNK) {
+    const part = keys.slice(i, i + IN_CHUNK);
+    const { results } = await env.DB.prepare(
+      `SELECT key FROM lines WHERE key IN (${part.map(() => "?").join(",")}) AND (installs>=? OR exported=1)`
+    ).bind(...part, SATURATED).all();
+    for (const r of results ?? []) settled.add(r.key);
+  }
+  return settled;
+}
+
 async function submit(req, env) {
   let body;
   try { body = await req.json(); } catch { return json({ error: "json" }, 400); }
@@ -84,29 +170,10 @@ async function submit(req, env) {
   const lines = body.lines.slice(0, MAX_LINES);
   const day = new Date().toISOString().slice(0, 10);
 
-  // Reserve capacity with compare-and-swap. The previous read-then-batch increment let concurrent
-  // requests both spend the same remaining quota. Retry if another request changed the count first.
-  let room;
-  let reserved = false;
-  for (let attempt = 0; attempt < QUOTA_CAS_ATTEMPTS; attempt++) {
-    const q = await env.DB.prepare("SELECT count FROM quota WHERE install=? AND day=?").bind(install, day).first();
-    const used = q?.count || 0;
-    if (used >= DAILY_LIMIT) return json({ error: "quota" }, 429, { "retry-after": "3600" });
-    room = Math.min(lines.length, DAILY_LIMIT - used);
-    if (room === 0) {
-      reserved = true;
-      break;
-    }
-    const result = await env.DB.prepare(
-      "INSERT INTO quota(install,day,count) VALUES(?,?,?) " +
-      "ON CONFLICT(install,day) DO UPDATE SET count=count+excluded.count WHERE quota.count=?"
-    ).bind(install, day, room, used).run();
-    if (result.meta?.changes > 0) {
-      reserved = true;
-      break;
-    }
-  }
-  if (!reserved) return json({ error: "busy" }, 503, { "retry-after": "1" });
+  const quota = await reserveQuota(env, install, day, lines.length);
+  if (quota.status) return json({ error: quota.status === 429 ? "quota" : "busy" }, quota.status,
+    { "retry-after": quota.status === 429 ? "3600" : "1" });
+  const room = quota.room;
 
   const fresh = new Map();
   let entries = [];
@@ -131,24 +198,28 @@ async function submit(req, env) {
     // aynı kurulum tekrar gönderince de idempotent upsert hiçbir satırı değiştirmez.
     const now = new Date().toISOString();
     entries = [...fresh];
+    // Havuzda zaten SATURATED kurulumla doğrulanmış ya da çeviriye alınmış satırın yeni görülmesi hiçbir şeyi
+    // değiştirmez (paket eşiği 2); görülme (2 satır yazımı) ve installs güncellemesi (3 satır yazımı) atlanır.
+    // Toplu okuma ucuzdur ve yazım kotasına girmez.
+    const settled = await settledKeys(env, entries.map(([k]) => k));
+    const pending = entries.filter(([k]) => !settled.has(k));
     // Görülme ve satır güncellemesini tek D1 batch transaction'ında yap: ikinci adım hata
     // verirse yalnız sightings yazılı kalmamalı (yoksa tekrar göndermek satırı kalıcı olarak kaybettirir).
     // UPSERT, distinct sightings sayısına göre idempotenttir; aynı kurulum tekrar gönderince sayıyı artırmaz.
+    // Değişiklik yapmayan INSERT OR IGNORE ve koşulu tutmayan UPSERT D1'de rows_written'a girmez (yerel D1'de
+    // ölçüldü), bu yüzden aynı kurulumun yinelenen gönderimi zaten yazım harcamaz.
     const writes = [
-      ...entries.map(([k]) =>
+      ...pending.map(([k]) =>
         env.DB.prepare("INSERT OR IGNORE INTO sightings(key,install) VALUES(?,?)").bind(k, install)),
-      ...entries.map(([k, line]) =>
+      ...pending.map(([k, line]) =>
         env.DB.prepare(UPSERT).bind(k, line.text, now, now, line.title, line.game, k)),
     ];
     const results = writes.length ? await env.DB.batch(writes) : [];
-    recorded = results.slice(0, entries.length).filter((r) => r?.meta?.changes > 0).length;
+    recorded = results.slice(0, pending.length).filter((r) => r?.meta?.changes > 0).length;
   } catch (error) {
     // Undo the reservation if filtering, hashing, or the atomic write batch fails. A failed compensation
     // leaves quota conservative rather than risking an over-limit counter.
-    if (room > 0) {
-      await env.DB.prepare("UPDATE quota SET count=count-? WHERE install=? AND day=? AND count>=?")
-        .bind(room, install, day, room).run().catch(() => {});
-    }
+    await releaseQuota(env, install, day, room);
     throw error;
   }
   await vote(env, install, entries);
@@ -246,6 +317,22 @@ async function stats(env) {
   return json(statsCache.body);
 }
 
+// D1'in geçici hataları ve günlük sınırları: istemci sonra yeniden göndersin (503 + Retry-After). Günlük satır
+// yazma/okuma sınırı UTC gece yarısı sıfırlanır; ötekiler kısa sürer.
+const D1_LIMIT = /exceed|limit|quota/i;
+const D1_TRANSIENT = /SQLITE_BUSY|overloaded|unavailable|timed? ?out|reset|network connection lost|internal error/i;
+
+/** D1 hatası geçiciyse Retry-After saniyesi, değilse 0. */
+export function unavailableFor(error) {
+  const message = String(error?.message || error);
+  if (D1_LIMIT.test(message)) {
+    const now = new Date();
+    const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+    return Math.max(60, Math.min(3600, Math.ceil((midnight - now.getTime()) / 1000)));
+  }
+  return D1_TRANSIENT.test(message) ? 60 : 0;
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -262,6 +349,10 @@ export default {
       if (url.pathname === "/") return new Response("CouchSubs subtitle pool\n");
       return json({ error: "not_found" }, 404);
     } catch (e) {
+      const message = String(e?.message || e);
+      console.error(JSON.stringify({ error: "server_error", path: url.pathname, message: message.slice(0, 500) }));
+      const wait = unavailableFor(e);
+      if (wait) return json({ error: "unavailable" }, 503, { "retry-after": String(wait) });
       return json({ error: "server_error" }, 500);
     }
   },
