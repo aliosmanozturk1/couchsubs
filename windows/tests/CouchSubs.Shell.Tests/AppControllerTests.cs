@@ -1238,7 +1238,7 @@ public class AppControllerRunTests
         using var http = new HttpClient();
         using var response = await http.GetAsync($"http://127.0.0.1:{controller.ServerPort}/events", HttpCompletionOption.ResponseHeadersRead);
         using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
-        var (lines, _) = CollectEvents(reader);
+        var (lines, reading) = CollectEvents(reader);
         for (var i = 0; i < 200 && controller.TvClients == 0; i++) await Task.Delay(10);
 
         controller.Settings = controller.Settings with { FrameSource = FrameSource.RemotePlayWindow };
@@ -1251,6 +1251,8 @@ public class AppControllerRunTests
         for (var i = 0; i < 300 && Count(lines, "event: exit") == 0; i++) await Task.Delay(10);
         Assert.Equal(1, Count(lines, "event: exit"));
         controller.Dispose();
+        // Okuyucu, arka planda okuma sürerken kapatılırsa HttpContentReadStream.Dispose NullReferenceException atar.
+        await reading.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     /// #268: uygulama kapanırken çıkış mesajı sunucu kapanmadan TV'ye yazılır.
@@ -1279,7 +1281,7 @@ public class AppControllerRunTests
         using var http = new HttpClient();
         using var response = await http.GetAsync($"http://127.0.0.1:{controller.ServerPort}/events", HttpCompletionOption.ResponseHeadersRead);
         using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
-        var (lines, _) = CollectEvents(reader);
+        var (lines, reading) = CollectEvents(reader);
         for (var i = 0; i < 200 && controller.TvClients == 0; i++) await Task.Delay(10);
 
         controller.Settings = controller.Settings with { Output = SubtitleOutput.Computer };
@@ -1287,6 +1289,7 @@ public class AppControllerRunTests
         Assert.Equal(1, Count(lines, "event: exit"));
         Assert.True(controller.IsRunning);
         controller.Dispose();
+        await reading.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]
