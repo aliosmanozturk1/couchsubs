@@ -11,6 +11,10 @@
     <tizen:application id="CouchSubsT.CouchSubs" package="CouchSubsT" required_version="2.4"/>
     <content src="index.html"/>
     <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+    <!-- 21:9 ultrawide ekranlarda (Samsung Odyssey G8, #304) uygulama yüzeyi ekranın tamamı olur; yoksa HDMI görüntüsü
+         16:9 yüzeye sıkışıp iki yanda siyah çubukla küçülüyordu. 16:9 TV'lerde ve ayarı tanımayan modellerde etkisizdir.
+         Geniş yüzeyde sayfa görünümünü platform.js ayarlar. -->
+    <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="extensive"/>
     <icon src="icon.png"/>
     <name>CouchSubs</name>
     <author>Enmera</author>
