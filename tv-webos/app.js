@@ -280,6 +280,27 @@
     if (!server && !demoRunning()) $('waiting').className = '';
   }
 
+  // Açılışta girişi açar. Platform girişi kendisi seçebiliyorsa (Android TV: CEC'teki konsol adı, kayıtlı seçim, son
+  // görüntü gelen giriş, tek bağlı giriş) o kullanılır; bulunamazsa HDMI 1 açılmaz, kullanıcıya giriş seçici gösterilir
+  // (#367: PS5 HDMI 3'teyken TV HDMI 1'e geçiyordu). Diğer TV'lerde kayıtlı giriş ya da HDMI 1 açılır, PS5 aranır.
+  function startHdmi() {
+    if (!platform.pickPort) {
+      showHdmi(hdmiPort);
+      if (!savedPort) autoSelectConsole();
+      return;
+    }
+    platform.pickPort(savedPort, function (port, auto) {
+      if (!port) {
+        setStatus('st-hdmi', t('consoleNotFound'), 'bad');
+        platform.chooseInput();
+        return;
+      }
+      hdmiPort = port;
+      showHdmi(port);
+      if (auto) setStatus('st-hdmi', port + ' (' + t('auto') + ')');
+    });
+  }
+
   function autoSelectConsole(onNotFound) {
     platform.findConsolePort(function (port, label) {
       if (!port) return onNotFound && onNotFound();
@@ -1484,8 +1505,7 @@
   formatKeys();
   var savedBottom = load('bottom') || load('appBottom');
   if (savedBottom) setBottom(Number(savedBottom));
-  showHdmi(hdmiPort);
-  if (!savedPort) autoSelectConsole();
+  startHdmi();
 
   $('app-version').textContent = APP_VERSION;
   renderDiag();
