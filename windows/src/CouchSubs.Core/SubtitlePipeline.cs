@@ -308,6 +308,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                     else if (LooksMisread(source) && now() - waiting.Since < waiting.Wait)
                     {
                         // Araya giren bozuk ve ilgisiz okuma ("Go to" beklerken "Bluffe") bekleyeni bozmaz; yok sayılır.
+                        // Kararlayıcı onu gönderilmiş saymasın: gerçek yeni satırsa bekleme bitince çevrilir.
+                        stabilizer.WithdrawSent();
                         action = StabilizerAction.None;
                     }
                     else

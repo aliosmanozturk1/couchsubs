@@ -1048,26 +1048,16 @@ public class AiTranslatorTests
 
     /// <summary>
     /// Bildirilen hata (Gemini seçiliyken "Ekranı çevir" hiçbir şey göstermiyordu): parça başına istek gidince 20 satırlık
-    /// ekran dakikada 15 isteklik hakkı bitirir; kalan parçalar yerel çeviriye düşer, o kurulu değilse bütün ekran hata
-    /// verir. Canlı altyazı hakkı zaten bitirdiyse ilk parçada düşer, TV'ye tek çeviri gitmez.
+    /// ekran dakikada 15 isteklik hakkı bitiriyor, yerel çeviri kurulu değilse bütün ekran hata veriyordu. Yerel çeviri
+    /// yokken hak artık satırı düşürmez; istek yine gönderilir (429 gelirse hizmetin beklemesi uygulanır).
     /// </summary>
     [Fact]
-    public async Task ScreenOneRequestPerParagraphRunsOutOfTheGeminiBudget()
+    public async Task ScreenOneRequestPerParagraphWithoutLocalStillSendsEveryParagraph()
     {
         var fake = new FakeAi();
         var translator = MakeWithoutFallback(AiProvider.Gemini, fake, new RequestBudget(15));
-        var shown = 0;
-        var error = await Assert.ThrowsAsync<TranslatorException>(async () =>
-        {
-            foreach (var text in ScreenTexts)
-            {
-                await translator.TranslateAsync(text);
-                shown++;
-            }
-        });
-        Assert.Equal(TranslatorStatus.NeedsDownload, error.Status);
-        Assert.Equal(15, fake.Requests.Count);
-        Assert.Equal(15, shown);
+        foreach (var text in ScreenTexts) Assert.Equal("[tr] " + text, await translator.TranslateAsync(text));
+        Assert.Equal(ScreenTexts.Length, fake.Requests.Count);
     }
 
     /// <summary>Düzeltme: ekranın bütün parçaları tek istekte gider ve hepsi çevrilir; canlı altyazı dakikalık hakkı bitirmiş olsa da.</summary>
@@ -1124,5 +1114,65 @@ public class AiTranslatorTests
     {
         var fake = new FakeAi((request, _) => Wrap(request, """["[tr] bir"]"""));
         Assert.Equal(new[] { "yerel: One thing", "yerel: Another thing" }, await Make(AiProvider.OpenAi, fake).TranslateAllAsync(["One thing", "Another thing"]));
+    }
+
+    // --- Yerel çeviri yokken ---
+
+    private static AiTranslator WithoutLocal(FakeAi fake, RequestBudget budget) =>
+        new(AiProvider.Gemini, Secret, null, null, new HttpClient(fake), budget: budget);
+
+    /// <summary>
+    /// Dakikalık hak uygulamanın temkinli tahminidir. Yerel çeviri yokken (inmemiş) hak bitince satır denenmeden düşüyordu;
+    /// ara sahnede satırların yarısı hiç çevrilmiyordu. İstek yine gönderilmeli.
+    /// </summary>
+    [Fact]
+    public async Task OverBudgetWithoutLocalStillSendsRequest()
+    {
+        var fake = new FakeAi();
+        var translator = WithoutLocal(fake, new RequestBudget(1));
+        Assert.Equal("[tr] Run!", await translator.TranslateAsync("Run!"));
+        Assert.Equal("[tr] Hide!", await translator.TranslateAsync("Hide!"));
+        Assert.Equal(2, fake.Requests.Count);
+        Assert.False(translator.LastLineWasRateLimited);
+    }
+
+    /// <summary>Yerel çeviri hata verirse de (motor açılamadı) hak bitince istek gönderilir.</summary>
+    [Fact]
+    public async Task OverBudgetWithFailingLocalStillSendsRequest()
+    {
+        var fake = new FakeAi();
+        var translator = new AiTranslator(AiProvider.Gemini, Secret, null, new FailingLocal(), new HttpClient(fake), budget: new RequestBudget(1));
+        Assert.Equal("[tr] Run!", await translator.TranslateAsync("Run!"));
+        Assert.Equal("[tr] Hide!", await translator.TranslateAsync("Hide!"));
+        Assert.Equal(2, fake.Requests.Count);
+    }
+
+    /// <summary>Hata sonrası bir dakikalık beklemede yerel çeviri yoksa hizmet yine denenir; satır düşmez.</summary>
+    [Fact]
+    public async Task ErrorPauseWithoutLocalStillTriesService()
+    {
+        var calls = 0;
+        var fake = new FakeAi((request, body) => ++calls == 1 ? throw new HttpRequestException("down") : Echo(request, body));
+        var translator = WithoutLocal(fake, new RequestBudget(1000));
+        await Assert.ThrowsAsync<TranslatorException>(() => translator.TranslateAsync("Run!"));
+        Assert.Equal("[tr] Hide!", await translator.TranslateAsync("Hide!"));
+        Assert.Equal(2, fake.Requests.Count);
+    }
+
+    /// <summary>Hizmetin dakikalık 429'undan sonraki kısa bekleme yerel çeviri olmasa da korunur.</summary>
+    [Fact]
+    public async Task PerMinuteRateLimitPauseHoldsWithoutLocal()
+    {
+        var fake = new FakeAi((_, _) => Json(RateLimitBody(PerMinute), HttpStatusCode.TooManyRequests));
+        var translator = WithoutLocal(fake, new RequestBudget(1000));
+        await Assert.ThrowsAsync<TranslatorException>(() => translator.TranslateAsync("Run!"));
+        await Assert.ThrowsAsync<TranslatorException>(() => translator.TranslateAsync("Hide!"));
+        Assert.Single(fake.Requests);
+    }
+
+    private sealed class FailingLocal : ITextTranslator
+    {
+        public Task<string> TranslateAsync(string text, CancellationToken cancellationToken = default) =>
+            throw new TranslatorException(TranslatorStatus.EngineFailed);
     }
 }

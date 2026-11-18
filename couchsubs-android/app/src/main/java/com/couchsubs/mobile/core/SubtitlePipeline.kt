@@ -187,6 +187,8 @@ class SubtitlePipeline(
                         held = null
                     } else if (Rereads.looksMisread(source) && time - waiting.since < waiting.wait) {
                         // Araya giren bozuk ve ilgisiz okuma bekleyeni bozmaz; yok sayılır.
+                        // Kararlayıcı onu gönderilmiş saymasın: gerçek yeni satırsa bekleme bitince çevrilir.
+                        stabilizer.withdrawSent()
                         action = StabilizerAction.None
                     } else {
                         // Bekleyen temiz bir satırdı, yerine başka satır geldi: önce o çevrilir.

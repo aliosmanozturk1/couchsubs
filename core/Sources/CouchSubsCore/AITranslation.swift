@@ -518,6 +518,8 @@ public final class AITranslationCore: @unchecked Sendable {
     /// Son gösterilen satırlar, eskiden yeniye.
     private var recent: [AIContextLine] = []
     private var pausedUntil = Date.distantPast
+    /// Bekleme hizmetin 429 yanıtından mı (dakikalık sınır); öyleyse yerel çeviri olmasa da istek gönderilmez.
+    private var pauseRateLimited = false
     private var failure: AIFailure?
     private var rateLimited = false
     /// Oynanan oyunun adı (ör. paket eşleşmesinden); biliniyorsa istemde "Game:" olarak gider.
@@ -587,14 +589,21 @@ public final class AITranslationCore: @unchecked Sendable {
         var translations: [String?] = pieces.map { $0.translate ? cache.value(for: Self.cacheKey($0.text, game: game)) : nil }
         let missing = pieces.indices.filter { pieces[$0].translate && translations[$0] == nil }
         let sources = missing.map { SubtitleSegmenter.normalizeCase(pieces[$0].text, names: names.all) }
-        // Hizmetin beklemesi yalnız eksik çeviriler içindir; önbellekteki parçalar yerel motor istemez.
-        if !sources.isEmpty, Date() < lock.withLock({ pausedUntil }) {
-            return remember(try await fallback(text), for: text)
+        // Hizmetin beklemesi yalnız eksik çeviriler içindir; önbellekteki parçalar yerel motor istemez. Hata sonrası
+        // beklemede yerel çeviri yoksa (indirilmemiş, açılamadı) satır düşmesin: hizmet yine denenir. 429 beklemesi kalır.
+        let (paused, pausedForLimit) = lock.withLock { (Date() < pausedUntil, pauseRateLimited) }
+        if !sources.isEmpty, paused {
+            if pausedForLimit { return remember(try await fallback(text), for: text) }
+            if let local = try await Self.tryFallback(text, fallback: fallback) { return remember(local, for: text) }
         }
-        // Dakikalık hak bittiyse istek gönderilmez; satır sessizce yerel çeviriyle çevrilir (hata değildir).
+        // Dakikalık hak bittiyse satır sessizce yerel çeviriyle çevrilir (hata değildir). Hak uygulamanın temkinli
+        // tahminidir; yerel çeviri yoksa satır denenmeden düşmesin, istek yine gönderilir.
         let allowed = sources.isEmpty || budget?.take() != false
         lock.withLock { rateLimited = !allowed }
-        guard allowed else { return remember(try await fallback(text), for: text) }
+        if !allowed {
+            if let local = try await Self.tryFallback(text, fallback: fallback) { return remember(local, for: text) }
+            lock.withLock { rateLimited = false }
+        }
         let translated: [String]
         do {
             translated = sources.isEmpty ? [] : try await request(sources, context: context, game: game)
@@ -610,17 +619,21 @@ public final class AITranslationCore: @unchecked Sendable {
             lock.withLock {
                 rateLimited = true
                 pausedUntil = Date().addingTimeInterval(pause)
+                pauseRateLimited = true
             }
             return remember(try await fallback(text), for: text)
         } catch {
             setFailure(error as? AIFailure ?? .unreachable)
-            lock.withLock { pausedUntil = Date().addingTimeInterval(Self.retryAfter) }
+            lock.withLock {
+                pausedUntil = Date().addingTimeInterval(Self.retryAfter)
+                pauseRateLimited = false
+            }
             return remember(try await fallback(text), for: text)
         }
         var local = false
         for (index, sentence) in zip(missing, translated) {
             let piece = pieces[index].text
-            if Self.isEcho(piece, sentence), let retried = try await Self.retryEcho(piece, fallback: fallback),
+            if Self.isEcho(piece, sentence), let retried = try await Self.tryFallback(piece, fallback: fallback),
                !Self.isEcho(piece, retried) {
                 // Yerel çeviri bu motorun önbelleğine yazılmaz.
                 translations[index] = retried
@@ -646,9 +659,10 @@ public final class AITranslationCore: @unchecked Sendable {
         TextMatch.isSimilar(TextMatch.normalize(source), TextMatch.normalize(translation), threshold: 0.90)
     }
 
-    /// Geri verilen cümle cihaz üstü çeviriyle bir kez daha denenir; o da aynı kalırsa (ad, konsolun Türkçe menüsü)
-    /// çevrilecek bir şey yoktur ve modelin yanıtı önbelleğe yazılır. Yerel çeviri yoksa ya da hata verirse nil.
-    private static func retryEcho(_ text: String, fallback: (String) async throws -> String) async throws -> String? {
+    /// Cümle cihaz üstü çeviriyle denenir; yerel çeviri yoksa ya da hata verirse nil. Geri verilen cümlede o da aynı
+    /// kalırsa (ad, konsolun Türkçe menüsü) çevrilecek bir şey yoktur ve modelin yanıtı önbelleğe yazılır; hizmet
+    /// beklerken nil dönerse istek yine gönderilir.
+    private static func tryFallback(_ text: String, fallback: (String) async throws -> String) async throws -> String? {
         do {
             return try await fallback(text)
         } catch is CancellationError {
@@ -693,11 +707,15 @@ public final class AITranslationCore: @unchecked Sendable {
                 lock.withLock {
                     rateLimited = true
                     pausedUntil = Date().addingTimeInterval(pause)
+                    pauseRateLimited = true
                 }
                 failed = true
             } catch {
                 setFailure(error as? AIFailure ?? .unreachable)
-                lock.withLock { pausedUntil = Date().addingTimeInterval(Self.retryAfter) }
+                lock.withLock {
+                    pausedUntil = Date().addingTimeInterval(Self.retryAfter)
+                    pauseRateLimited = false
+                }
                 failed = true
             }
         }

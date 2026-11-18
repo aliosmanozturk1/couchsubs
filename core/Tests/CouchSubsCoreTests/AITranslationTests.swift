@@ -929,21 +929,17 @@ final class AITranslationTests: XCTestCase {
     }
 
     /// Bildirilen hata (Gemini seçiliyken "Ekranı çevir" hiçbir şey göstermiyordu): parça başına istek gidince 20 satırlık
-    /// ekran dakikada 15 isteklik hakkı bitirir; kalan parçalar yerel çeviriye düşer, o kurulu değilse bütün ekran hata
-    /// verir. Canlı altyazı hakkı zaten bitirdiyse ilk parçada düşer, TV'ye tek çeviri gitmez.
-    func testScreenOneRequestPerParagraphRunsOutOfTheGeminiBudget() async throws {
+    /// ekran dakikada 15 isteklik hakkı bitiriyor, yerel çeviri kurulu değilse bütün ekran hata veriyordu. Yerel çeviri
+    /// yokken hak artık satırı düşürmez; istek yine gönderilir (429 gelirse hizmetin beklemesi uygulanır).
+    func testScreenOneRequestPerParagraphWithoutLocalStillSendsEveryParagraph() async throws {
         let budget = RequestBudget(perMinute: 15)
         let translator = AITranslator(provider: .gemini, key: secret, model: nil, fallback: MissingFree(), session: FakeAI.session(),
                                       budget: budget)
-        var shown = 0
-        do {
-            _ = try await ScreenTranslation.translate(screen(20), using: { try await translator.translate($0) }) { shown = $0.count }
-            XCTFail("hak bitince yerel çeviri olmadan hata beklenir")
-        } catch {
-            XCTAssertEqual(error as? TranslatorError, .needsDownload)
+        for text in Self.screenTexts {
+            let translated = try await translator.translate(text)
+            XCTAssertEqual(translated, "[tr] " + text)
         }
-        XCTAssertEqual(FakeAI.requests.count, 15)
-        XCTAssertEqual(shown, 15)
+        XCTAssertEqual(FakeAI.requests.count, Self.screenTexts.count)
     }
 
     /// Düzeltme: ekranın bütün parçaları tek istekte gider ve hepsi çevrilir; canlı altyazı dakikalık hakkı bitirmiş olsa da.
@@ -1000,6 +996,42 @@ final class AITranslationTests: XCTestCase {
         FakeAI.replyText = #"["[tr] bir"]"#
         let result = try await make(.openAI).translateAll(["One thing", "Another thing"], fallback: local)
         XCTAssertEqual(result, ["yerel: One thing", "yerel: Another thing"])
+    }
+
+    // --- Yerel çeviri yokken ---
+
+    private struct NoLocal: Error {}
+    private func noLocal(_ text: String) async throws -> String { throw NoLocal() }
+
+    /// Dakikalık hak uygulamanın temkinli tahminidir. Yerel çeviri yokken hak bitince satır denenmeden düşüyordu;
+    /// ara sahnede satırların yarısı hiç çevrilmiyordu. İstek yine gönderilmeli (Windows ve Android ile aynı).
+    func testOverBudgetWithoutLocalStillSendsRequest() async throws {
+        let translator = make(.gemini, budget: RequestBudget(perMinute: 1))
+        let first = try await translator.translate("Run!", fallback: noLocal)
+        let second = try await translator.translate("Hide!", fallback: noLocal)
+        XCTAssertEqual([first, second], ["[tr] Run!", "[tr] Hide!"])
+        XCTAssertEqual(FakeAI.requests.count, 2)
+        XCTAssertFalse(translator.lastLineWasRateLimited)
+    }
+
+    /// Hata sonrası bir dakikalık beklemede yerel çeviri yoksa hizmet yine denenir; satır düşmez.
+    func testErrorPauseWithoutLocalStillTriesService() async throws {
+        let translator = make(.gemini)
+        FakeAI.failure = (503, "{}")
+        do { _ = try await translator.translate("Run!", fallback: noLocal); XCTFail("yerel çeviri yokken hata beklenirdi") } catch {}
+        FakeAI.failure = nil
+        let second = try await translator.translate("Hide!", fallback: noLocal)
+        XCTAssertEqual(second, "[tr] Hide!")
+        XCTAssertEqual(FakeAI.requests.count, 2)
+    }
+
+    /// Hizmetin dakikalık 429'undan sonraki kısa bekleme yerel çeviri olmasa da korunur.
+    func testPerMinuteRateLimitPauseHoldsWithoutLocal() async throws {
+        FakeAI.failure = (429, rateLimitBody(quotaId: "GenerateRequestsPerMinutePerProjectPerModel-FreeTier"))
+        let translator = make(.gemini)
+        do { _ = try await translator.translate("Run!", fallback: noLocal); XCTFail("hata beklenirdi") } catch {}
+        do { _ = try await translator.translate("Hide!", fallback: noLocal); XCTFail("hata beklenirdi") } catch {}
+        XCTAssertEqual(FakeAI.requests.count, 1)
     }
 }
 

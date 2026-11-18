@@ -405,6 +405,8 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
     private readonly List<AiContextLine> _recent = [];
     private readonly Func<string?>? _game;
     private DateTimeOffset _pausedUntil = DateTimeOffset.MinValue;
+    /// <summary>Bekleme hizmetin 429 yanıtından mı (dakikalık sınır); öyleyse yerel yedek olmasa da istek gönderilmez.</summary>
+    private bool _pauseRateLimited;
     private OnlineKeyState? _failure;
 
     /// <param name="model">Kayıtlı model kimliği; listede yoksa varsayılan model.</param>
@@ -470,12 +472,21 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
         var translations = pieces.Select(p => p.Translate && _cache.TryGet(CacheKey(p.Text, game), out var known) ? known : null).ToList();
         var missing = Enumerable.Range(0, pieces.Count).Where(i => pieces[i].Translate && translations[i] is null).ToList();
         var sources = missing.Select(i => SubtitleSegmenter.NormalizeCase(pieces[i].Text, names)).ToList();
-        // Hizmetin beklemesi yalnız eksik çeviriler içindir; önbellekteki parçalar yerel motor istemez.
+        // Hizmetin beklemesi yalnız eksik çeviriler içindir; önbellekteki parçalar yerel motor istemez. Hata sonrası
+        // beklemede yerel çeviri yoksa (inmemiş, açılamadı) satır düşmesin: hizmet yine denenir. 429 beklemesi kalır.
         if (sources.Count > 0 && DateTimeOffset.UtcNow < _pausedUntil)
-            return Remember(await FallbackAsync(text, cancellationToken).ConfigureAwait(false), text);
-        // Dakikalık hak bittiyse istek gönderilmez; satır sessizce yerel çeviriyle çevrilir (hata değildir).
+        {
+            if (_pauseRateLimited) return Remember(await FallbackAsync(text, cancellationToken).ConfigureAwait(false), text);
+            if (await TryFallbackAsync(text, cancellationToken).ConfigureAwait(false) is { } offline) return Remember(offline, text);
+        }
+        // Dakikalık hak bittiyse satır sessizce yerel çeviriyle çevrilir (hata değildir). Hak uygulamanın temkinli
+        // tahminidir; yerel çeviri yoksa satır denenmeden düşmesin, istek yine gönderilir.
         LastLineWasRateLimited = sources.Count > 0 && _budget is { } budget && !budget.TryTake();
-        if (LastLineWasRateLimited) return Remember(await FallbackAsync(text, cancellationToken).ConfigureAwait(false), text);
+        if (LastLineWasRateLimited)
+        {
+            if (await TryFallbackAsync(text, cancellationToken).ConfigureAwait(false) is { } offline) return Remember(offline, text);
+            LastLineWasRateLimited = false;
+        }
 
         string[] translated;
         try
@@ -491,6 +502,7 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
             if (pause < TimeSpan.FromSeconds(1)) pause = TimeSpan.FromSeconds(1);
             LastLineWasRateLimited = true;
             _pausedUntil = DateTimeOffset.UtcNow + pause;
+            _pauseRateLimited = true;
             return Remember(await FallbackAsync(text, cancellationToken).ConfigureAwait(false), text);
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or AiException
@@ -498,13 +510,14 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
         {
             Report(error is AiException ai ? ai.State : OnlineKeyState.Unreachable);
             _pausedUntil = DateTimeOffset.UtcNow + RetryAfter;
+            _pauseRateLimited = false;
             return Remember(await FallbackAsync(text, cancellationToken).ConfigureAwait(false), text);
         }
         var local = false;
         for (var i = 0; i < missing.Count; i++)
         {
             var piece = pieces[missing[i]].Text;
-            if (IsEcho(piece, translated[i]) && await RetryEchoAsync(piece, cancellationToken).ConfigureAwait(false) is { } retried
+            if (IsEcho(piece, translated[i]) && await TryFallbackAsync(piece, cancellationToken).ConfigureAwait(false) is { } retried
                 && !IsEcho(piece, retried))
             {
                 // Yerel çeviri bu motorun önbelleğine yazılmaz.
@@ -534,10 +547,11 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
         TextMatch.IsSimilar(TextMatch.Normalize(source), TextMatch.Normalize(translation), 0.90);
 
     /// <summary>
-    /// Geri verilen cümle cihaz üstü çeviriyle bir kez daha denenir; o da aynı kalırsa (ad, konsolun Türkçe menüsü)
-    /// çevrilecek bir şey yoktur ve modelin yanıtı önbelleğe yazılır. Yerel çeviri yoksa ya da hata verirse null.
+    /// Cümle cihaz üstü çeviriyle denenir; yerel çeviri yoksa ya da hata verirse null. Geri verilen cümlede o da aynı
+    /// kalırsa (ad, konsolun Türkçe menüsü) çevrilecek bir şey yoktur ve modelin yanıtı önbelleğe yazılır; hizmet
+    /// beklerken null dönerse istek yine gönderilir.
     /// </summary>
-    private async Task<string?> RetryEchoAsync(string text, CancellationToken cancellationToken)
+    private async Task<string?> TryFallbackAsync(string text, CancellationToken cancellationToken)
     {
         if (_fallback is null) return null;
         try { return await _fallback.TranslateAsync(text, cancellationToken).ConfigureAwait(false); }
@@ -592,6 +606,7 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
                 if (pause < TimeSpan.FromSeconds(1)) pause = TimeSpan.FromSeconds(1);
                 LastLineWasRateLimited = true;
                 _pausedUntil = DateTimeOffset.UtcNow + pause;
+                _pauseRateLimited = true;
                 failed = true;
             }
             catch (Exception error) when (error is HttpRequestException or TaskCanceledException or AiException
@@ -599,6 +614,7 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
             {
                 Report(error is AiException ai ? ai.State : OnlineKeyState.Unreachable);
                 _pausedUntil = DateTimeOffset.UtcNow + RetryAfter;
+                _pauseRateLimited = false;
                 failed = true;
             }
         }
