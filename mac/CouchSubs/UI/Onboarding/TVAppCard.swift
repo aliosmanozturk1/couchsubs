@@ -39,9 +39,10 @@ struct TVAppCard: View {
             case .devModeOff:
                 devModeSteps
                     // Kullanıcı TV'de geliştirici modunu açınca kendiliğinden devam eder.
+                    // Kart kapanınca (ör. "Devam") bekleme iptal olur; iptal edilmiş görevde TV'ye bir daha sorulmaz (#359).
                     .task {
                         while !Task.isCancelled, model.tvApp == .devModeOff {
-                            try? await Task.sleep(for: .seconds(3))
+                            do { try await Task.sleep(for: .seconds(3)) } catch { return }
                             await model.refreshTVApp()
                         }
                     }
@@ -96,7 +97,7 @@ struct TVAppCard: View {
                 // Host PC IP düzeltilip TV yeniden başlayınca kendiliğinden devam eder.
                 .task {
                     while !Task.isCancelled, case .hostPcMismatch = model.tvApp {
-                        try? await Task.sleep(for: .seconds(3))
+                        do { try await Task.sleep(for: .seconds(3)) } catch { return }
                         await model.refreshTVApp()
                     }
                 }

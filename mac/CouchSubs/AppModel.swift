@@ -1014,7 +1014,8 @@ final class AppModel: ObservableObject {
     /// Geliştirici modu açık TV'de uygulamayı eksikse kurar, eskiyse günceller.
     /// Anahtar yoksa ve uygulama çalışıyorsa kullanıcıdan bir şey istenmez.
     func refreshTVApp() async {
-        guard let tv, !refreshingTVApp else { return }
+        // İptal edilmiş görevden (kapanan kartın beklemesi) TV'ye sorulmaz; sorulursa yardımcı boşuna açılır (#359).
+        guard let tv, !refreshingTVApp, !Task.isCancelled else { return }
         refreshingTVApp = true
         defer { refreshingTVApp = false }
         switch tv.brand {
