@@ -239,7 +239,7 @@ public partial class MainView : UserControl
             });
             if (process is not null) await process.WaitForExitAsync();
             if (!controller.IsRunning) return;
-            controller.Stop();
+            controller.StopForRestart();
             await controller.StartAsync();
         }
         catch (System.ComponentModel.Win32Exception) { /* izin verilmedi */ }

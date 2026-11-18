@@ -443,7 +443,8 @@ final class AppModel: ObservableObject {
             let windowAppChanged = settings.frameSource == .remotePlayWindow && settings.remotePlayApp != oldValue.remotePlayApp
             if settings.frameSource != oldValue.frameSource || windowAppChanged, isRunning {
                 // Görüntü kaynağı (ya da okunan Remote Play uygulaması) değişti: çeviri yeni kaynakla yeniden başlar.
-                stop()
+                // TV uygulaması kapatılmaz; kapanıp yeniden açılsa TV girişi gidip gelirdi.
+                stop(closingTVApp: false)
                 Task { await start() }
             }
             if settings.sharePool != oldValue.sharePool {
@@ -759,7 +760,18 @@ final class AppModel: ObservableObject {
             }
         }
         terminateObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
-                                                                   queue: nil) { _ in
+                                                                   queue: nil) { [weak self] _ in
+            // Çeviri sürüyorsa TV uygulaması kapanır; mesaj sunucu kapanmadan yazılsın diye en çok bir saniye beklenir.
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    guard let self, self.keeper != nil else { return }
+                    self.keeper?.stop()
+                    self.keeper = nil
+                    let exited = DispatchSemaphore(value: 0)
+                    self.server.exitTVApp { exited.signal() }
+                    _ = exited.wait(timeout: .now() + 1)
+                }
+            }
             // Kapanış en çok birkaç saniye bekler.
             let done = DispatchSemaphore(value: 0)
             Task.detached {
@@ -1325,9 +1337,11 @@ final class AppModel: ObservableObject {
         keepAwake()
         if settings.output.showsOnTV {
             startKeeper()
-        } else {
-            keeper?.stop()
-            keeper = nil
+        } else if let keeper {
+            // Altyazı artık TV'ye gitmiyor: TV uygulaması kapanır, TV kendi girişine döner (#268).
+            keeper.stop()
+            self.keeper = nil
+            server.exitTVApp()
         }
     }
 
@@ -1643,14 +1657,19 @@ final class AppModel: ObservableObject {
         hasLoginPasscode = false
     }
 
-    func stop() {
+    /// Çeviriyi durdurur. `closingTVApp`: kullanıcı durdurdu, TV uygulaması da kapanır (#268); ayar değişikliği gibi
+    /// iç yeniden başlatmalarda `false` verilir, TV açık kalır ve ardından gelen `start()` aynı bağlantıyı kullanır.
+    func stop(closingTVApp: Bool = true) {
         session?.stop()
         session = nil
         updateGameProbe(connected: false)
         gameChoice.stop()
         gameAreas.stop()
-        keeper?.stop()
-        keeper = nil
+        if let keeper {
+            keeper.stop()
+            self.keeper = nil
+            if closingTVApp { server.exitTVApp() }
+        }
         pipeline?.reset()
         if pipeline != nil { SubtitleLog.write("oturum bitti") }
         pipeline = nil

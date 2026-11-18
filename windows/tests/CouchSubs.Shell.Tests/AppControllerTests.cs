@@ -1207,6 +1207,88 @@ public class AppControllerRunTests
         controller.Dispose();
     }
 
+    /// TV'nin aldığı olay satırlarını arka planda toplar.
+    private static (List<string> Lines, Task Reading) CollectEvents(StreamReader reader)
+    {
+        var lines = new List<string>();
+        var reading = Task.Run(async () =>
+        {
+            try
+            {
+                while (await reader.ReadLineAsync() is { } line)
+                    lock (lines) lines.Add(line);
+            }
+            catch (IOException) { }
+            catch (ObjectDisposedException) { }
+        });
+        return (lines, reading);
+    }
+
+    private static int Count(List<string> lines, string line)
+    {
+        lock (lines) return lines.Count(l => l == line);
+    }
+
+    /// #268: ayar değişikliğiyle yeniden başlatmada TV uygulaması kapanmaz; kullanıcı durdurunca kapanır.
+    [Fact]
+    public async Task TvAppExitsOnlyWhenUserStops()
+    {
+        var (controller, services, _) = Ready();
+        await controller.StartAsync();
+        using var http = new HttpClient();
+        using var response = await http.GetAsync($"http://127.0.0.1:{controller.ServerPort}/events", HttpCompletionOption.ResponseHeadersRead);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+        var (lines, _) = CollectEvents(reader);
+        for (var i = 0; i < 200 && controller.TvClients == 0; i++) await Task.Delay(10);
+
+        controller.Settings = controller.Settings with { FrameSource = FrameSource.RemotePlayWindow };
+        for (var i = 0; i < 200 && services.Streams.Count < 2; i++) await Task.Delay(10);
+        Assert.True(controller.IsRunning);
+        await Task.Delay(300);
+        Assert.Equal(0, Count(lines, "event: exit"));
+
+        controller.Stop();
+        for (var i = 0; i < 300 && Count(lines, "event: exit") == 0; i++) await Task.Delay(10);
+        Assert.Equal(1, Count(lines, "event: exit"));
+        controller.Dispose();
+    }
+
+    /// #268: uygulama kapanırken çıkış mesajı sunucu kapanmadan TV'ye yazılır.
+    [Fact]
+    public async Task DisposeSendsTvExitBeforeServerCloses()
+    {
+        var (controller, _, _) = Ready();
+        await controller.StartAsync();
+        using var http = new HttpClient();
+        using var response = await http.GetAsync($"http://127.0.0.1:{controller.ServerPort}/events", HttpCompletionOption.ResponseHeadersRead);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+        var (lines, reading) = CollectEvents(reader);
+        for (var i = 0; i < 200 && controller.TvClients == 0; i++) await Task.Delay(10);
+
+        controller.Dispose();
+        await reading.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, Count(lines, "event: exit"));
+    }
+
+    /// Çeviri sürerken altyazı TV'den kaldırılınca TV uygulaması kapanır.
+    [Fact]
+    public async Task RemovingTvOutputExitsTvApp()
+    {
+        var (controller, _, _) = Ready();
+        await controller.StartAsync();
+        using var http = new HttpClient();
+        using var response = await http.GetAsync($"http://127.0.0.1:{controller.ServerPort}/events", HttpCompletionOption.ResponseHeadersRead);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+        var (lines, _) = CollectEvents(reader);
+        for (var i = 0; i < 200 && controller.TvClients == 0; i++) await Task.Delay(10);
+
+        controller.Settings = controller.Settings with { Output = SubtitleOutput.Computer };
+        for (var i = 0; i < 300 && Count(lines, "event: exit") == 0; i++) await Task.Delay(10);
+        Assert.Equal(1, Count(lines, "event: exit"));
+        Assert.True(controller.IsRunning);
+        controller.Dispose();
+    }
+
     [Fact]
     public void SettingsArePersistedOutsideTheSecureStore()
     {

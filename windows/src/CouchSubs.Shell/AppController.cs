@@ -413,7 +413,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             if (isRunning && (old.FrameSource != value.FrameSource || windowAppChanged || captureWindowChanged || xboxFrameRateChanged || xboxAudioChanged))
             {
                 // Görüntü kaynağı, Xbox kare aralığı ya da Xbox ses çıkışı değişti: akış yeni seçimle yeniden başlar.
-                Stop();
+                // TV uygulaması kapatılmaz; kapanıp yeniden açılsa TV girişi gidip gelirdi.
+                StopForRestart();
                 _ = StartAsync().ContinueWith(task => RemotePlayLog.Note($"Çeviri yeniden başlatılamadı: {task.Exception?.GetBaseException().Message}"),
                                               TaskContinuationOptions.OnlyOnFaulted);
             }
@@ -1404,10 +1405,11 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (ShowsOnTv) StartKeeper();
         else
         {
+            // Altyazı artık TV'ye gitmiyor: TV uygulaması kapanır, TV kendi girişine döner.
             var stoppedKeeper = keeper;
             keeper = null;
             stoppedKeeper?.Stop();
-            if (stoppedKeeper is not null) server.ExitTvApp();
+            if (stoppedKeeper is not null) _ = server.ExitTvApp();
         }
     }
 
@@ -1472,12 +1474,22 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Bilgisayarın ağ adresiyle OBS sayfası; localhost'u kabul etmeyen yayın programları (TikTok LIVE Studio) için.</summary>
     public string? NetworkObsAddress => LocalAddress(null) is { } address ? $"http://{address}:{ServerPort}/obs" : null;
 
-    public void Stop()
+    /// <summary>Kullanıcı çeviriyi durdurdu: oturum biter, TV uygulaması da kapanır (#268).</summary>
+    public void Stop() => _ = StopSession(closeTvApp: true);
+
+    /// <summary>
+    /// Ayar değişikliği gibi iç yeniden başlatmalarda kullanılır: oturum biter ama TV uygulaması açık kalır; hemen
+    /// ardından gelen <see cref="StartAsync"/> aynı TV bağlantısını kullanır.
+    /// </summary>
+    public void StopForRestart() => _ = StopSession(closeTvApp: false);
+
+    /// <summary>Oturumu bitirir; TV uygulamasına çıkış gönderildiyse mesajın yazılmasını bekleyen görevi döner.</summary>
+    private Task StopSession(bool closeTvApp)
     {
         var stoppedKeeper = keeper;
         keeper = null;
         stoppedKeeper?.Stop();
-        if (stoppedKeeper is not null) server.ExitTvApp();
+        var exiting = closeTvApp && stoppedKeeper is not null ? server.ExitTvApp() : Task.CompletedTask;
         session?.Stop();
         session?.Dispose();
         session = null;
@@ -1507,6 +1519,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         ClearFirewallPrompt();
         OverlayHidden?.Invoke();
         StreamHidden?.Invoke();
+        return exiting;
     }
 
     /// <summary>Bilgisayar uykudan uyanınca bağlantıları hemen yenile.</summary>
@@ -1588,8 +1601,11 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         services.Translation.EngineFailure -= OnEngineFailure;
         services.Translation.GpuFallback -= OnGpuFallback;
         if (services.Xbox is { } xbox) xbox.TokenUpdated -= OnXboxTokenUpdated;
-        Stop();
+        var exiting = StopSession(closeTvApp: true);
         if (services.Xbox is IDisposable disposableXbox) disposableXbox.Dispose();
+        // Sunucu kapanmadan TV'ye çıkış mesajı yazılsın; TV yanıt vermiyorsa kapanış en çok bir saniye bekler.
+        try { exiting.Wait(TimeSpan.FromSeconds(1)); }
+        catch (AggregateException) { }
         server.Dispose();
         poolTimer?.Dispose();
         packTimer?.Dispose();
