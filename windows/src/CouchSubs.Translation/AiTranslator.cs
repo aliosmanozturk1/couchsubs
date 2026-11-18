@@ -64,10 +64,13 @@ public static class AiRequest
     /// <summary>Yerel modelin sıcaklığı: çeviri tutarlı olsun, yine de doğal kalsın.</summary>
     public const double LocalTemperature = 0.2;
 
-    /// <summary>Hizmete giden HTTP isteği. <paramref name="server"/>: yerel modelin sunucusu (verilmezse Ollama'nın varsayılan adresi).</summary>
+    /// <summary>
+    /// Hizmete giden HTTP isteği. <paramref name="server"/>: yerel modelin sunucusu (verilmezse Ollama'nın varsayılan adresi).
+    /// <paramref name="thinkingOff"/>: Ollama'da düşünmeyi kapatan alanlar gitsin mi (bu alanları reddeden eski sürümde false).
+    /// </summary>
     public static HttpRequestMessage Build(AiProvider provider, string key, AiModel model, IReadOnlyList<string> sentences,
                                            IReadOnlyList<AiContextLine> context, string? game = null, LocalAiServer? server = null,
-                                           int maxOutputTokens = MaxOutputTokens)
+                                           int maxOutputTokens = MaxOutputTokens, bool thinkingOff = true)
     {
         key = key.Trim();
         var user = UserMessage(sentences, context, game);
@@ -126,6 +129,14 @@ public static class AiRequest
                     ["max_tokens"] = maxOutputTokens,
                     ["stream"] = false,
                 };
+                // Ollama'da düşünme kapalı (#295): yerel API "think": false okur, OpenAI uyumlu adres ise
+                // reasoning_effort "none" (github.com/ollama/ollama openai/openai.go). Eski sürüm 400 verirse çevirmen
+                // alanlarsız yeniden dener ve bunu oturum boyunca hatırlar.
+                if (thinkingOff && local.DisablesThinking)
+                {
+                    body["think"] = false;
+                    body["reasoning_effort"] = "none";
+                }
                 break;
             default:
                 // https://docs.anthropic.com/en/api/messages (platform.claude.com/docs/en/api/messages): POST /v1/messages,
@@ -569,15 +580,8 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
             try
             {
                 var sentences = chunk.Select(i => texts[i]).ToList();
-                using var request = AiRequest.Build(Provider, _key, Model, sentences, [], game, Server, maxOutputTokens: AiRequest.ScreenOutputTokens);
-                using var response = await _screenHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                if (!response.IsSuccessStatusCode)
-                {
-                    if (AiRequest.RateLimit(response.StatusCode, body) is { } limit) throw new AiRateLimitedException(limit);
-                    throw new AiException(AiRequest.Failure(response.StatusCode, body));
-                }
-                var translated = AiRequest.Translations(AiRequest.Text(Provider, body), sentences.Count);
+                var translated = await PerformAsync(thinkingOff => AiRequest.Build(Provider, _key, Model, sentences, [], game, Server,
+                    maxOutputTokens: AiRequest.ScreenOutputTokens, thinkingOff: thinkingOff), _screenHttp, sentences.Count, cancellationToken).ConfigureAwait(false);
                 Report(null);
                 for (var i = 0; i < chunk.Count; i++)
                 {
@@ -657,17 +661,48 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
         _fallback is null ? throw new TranslatorException(TranslatorStatus.NeedsDownload)
             : await _fallback.TranslateAsync(text, cancellationToken).ConfigureAwait(false);
 
-    private async Task<string[]> RequestAsync(List<string> sentences, List<AiContextLine> context, string? game, CancellationToken cancellationToken)
+    private Task<string[]> RequestAsync(List<string> sentences, List<AiContextLine> context, string? game, CancellationToken cancellationToken) =>
+        PerformAsync(thinkingOff => AiRequest.Build(Provider, _key, Model, sentences, context, game, Server, thinkingOff: thinkingOff),
+                     _http, sentences.Count, cancellationToken);
+
+    /// <summary>Düşünmeyi kapatan alanları reddeden Ollama sunucuları; uygulama açık kaldıkça hatırlanır.</summary>
+    private static readonly ConcurrentDictionary<string, byte> ThinkingRejected = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Testler için: hatırlanan sunucuları unutur.</summary>
+    internal static void ResetThinkingRejected() => ThinkingRejected.Clear();
+
+    /// <summary>
+    /// İsteği gönderir. Ollama düşünmeyi kapatan alanları 400 ile reddederse (eski sürüm) alanlarsız bir kez yeniden
+    /// dener; işe yararsa bu sunucuya oturum boyunca alanlar gönderilmez.
+    /// </summary>
+    private async Task<string[]> PerformAsync(Func<bool, HttpRequestMessage> build, HttpClient http, int count, CancellationToken cancellationToken)
     {
-        using var request = AiRequest.Build(Provider, _key, Model, sentences, context, game, Server);
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var thinkingOff = Server is { DisablesThinking: true } server && !ThinkingRejected.ContainsKey(server.Address);
+        if (thinkingOff)
+        {
+            using var request = build(true);
+            using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode != HttpStatusCode.BadRequest) return Read(response, body, count);
+        }
+        using (var request = build(false))
+        {
+            using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var result = Read(response, body, count);
+            if (thinkingOff) ThinkingRejected[Server!.Address] = 0;
+            return result;
+        }
+    }
+
+    private string[] Read(HttpResponseMessage response, string body, int count)
+    {
         if (!response.IsSuccessStatusCode)
         {
             if (AiRequest.RateLimit(response.StatusCode, body) is { } limit) throw new AiRateLimitedException(limit);
             throw new AiException(AiRequest.Failure(response.StatusCode, body));
         }
-        return AiRequest.Translations(AiRequest.Text(Provider, body), sentences.Count);
+        return AiRequest.Translations(AiRequest.Text(Provider, body), count);
     }
 
     /// <summary>

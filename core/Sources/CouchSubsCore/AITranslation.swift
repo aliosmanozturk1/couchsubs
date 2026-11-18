@@ -124,10 +124,11 @@ public struct AIModel: Codable, Equatable, Sendable {
 }
 
 /// Kullanıcının bilgisayarındaki (ya da ağındaki) OpenAI uyumlu model sunucusu: Ollama, LM Studio (Windows'taki
-/// `LocalAiServer` ile aynı). Adres "http://localhost:11434/v1" gibi `/v1` ile biten temel adrestir.
+/// `LocalAiServer` ile aynı). Adres "http://127.0.0.1:11434/v1" gibi `/v1` ile biten temel adrestir.
 public struct LocalAIServer: Equatable, Sendable {
-    /// Ollama'nın OpenAI uyumlu adresi (docs.ollama.com/api/openai-compatibility).
-    public static let ollamaURL = "http://localhost:11434/v1"
+    /// Ollama'nın OpenAI uyumlu adresi (docs.ollama.com/api/openai-compatibility). "localhost" değil: Windows'ta
+    /// localhost önce IPv6'ya (::1) gider, Ollama yalnız IPv4'te dinlediği için istek başına ~2 sn kaybolur (#295).
+    public static let ollamaURL = "http://127.0.0.1:11434/v1"
     /// LM Studio'nun yerel sunucusu (lmstudio.ai/docs/app/api/endpoints/openai).
     public static let lmStudioURL = "http://localhost:1234/v1"
     /// Türkçeyi iyi bilen, sıradan bir bilgisayarda çalışan model.
@@ -163,8 +164,20 @@ public struct LocalAIServer: Equatable, Sendable {
         return components.url
     }
 
-    /// İsteğin gittiği adres.
-    public var chatURL: URL { baseURL.appendingPathComponent("chat/completions") }
+    /// İsteğin gittiği adres. Kullanıcı "localhost" yazdıysa istek 127.0.0.1'e gider (IPv6 gecikmesi, #295); başka
+    /// adrese dokunulmaz.
+    public var chatURL: URL { Self.preferIPv4(baseURL).appendingPathComponent("chat/completions") }
+
+    /// "localhost" adını 127.0.0.1 yapar; başka adresi olduğu gibi bırakır.
+    public static func preferIPv4(_ url: URL) -> URL {
+        guard url.host?.lowercased() == "localhost",
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        components.host = "127.0.0.1"
+        return components.url ?? url
+    }
+
+    /// Ollama'da düşünme kapatılır: Gemma, Qwen3 gibi düşünen modeller altyazı çevirisinde boşuna yavaşlar (#295).
+    public var disablesThinking: Bool { kind == .ollama }
 
     /// Kullanıcıya gösterilen kısa adres: "http://localhost:11434".
     public var address: String {
@@ -276,9 +289,10 @@ public enum AIRequest {
     public static let localTemperature = 0.2
 
     /// Hizmete giden HTTP isteği. `server`: yerel modelin sunucusu (verilmezse Ollama'nın varsayılan adresi).
+    /// `thinkingOff`: Ollama'da düşünmeyi kapatan alanlar gitsin mi (bu alanları reddeden eski sürümde false).
     public static func make(provider: AIProvider, key: String, model: AIModel, sentences: [String],
                             context: [AIContextLine], game: String? = nil, server: LocalAIServer? = nil,
-                            maxOutputTokens: Int = AIRequest.maxOutputTokens) -> URLRequest {
+                            maxOutputTokens: Int = AIRequest.maxOutputTokens, thinkingOff: Bool = true) -> URLRequest {
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         let user = userMessage(sentences: sentences, context: context, game: game)
         var request: URLRequest
@@ -338,6 +352,13 @@ public enum AIRequest {
                 "max_tokens": maxOutputTokens,
                 "stream": false,
             ]
+            // Ollama'da düşünme kapalı (#295): yerel API "think": false okur, OpenAI uyumlu adres ise
+            // reasoning_effort "none" (github.com/ollama/ollama openai/openai.go). Eski sürüm 400 verirse çevirmen
+            // alanlarsız yeniden dener ve bunu oturum boyunca hatırlar.
+            if thinkingOff, server.disablesThinking {
+                body["think"] = false
+                body["reasoning_effort"] = "none"
+            }
         }
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -675,9 +696,10 @@ public final class AITranslationCore: @unchecked Sendable {
             lock.withLock { rateLimited = false }
             do {
                 let sentences = chunk.map { texts[$0] }
-                let request = AIRequest.make(provider: provider, key: key, model: model, sentences: sentences, context: [],
-                                             game: game, server: server, maxOutputTokens: AIRequest.screenOutputTokens)
-                let translated = try await Self.send(request, provider: provider, count: sentences.count, session: screenSession)
+                let translated = try await perform(count: sentences.count, session: screenSession) { thinkingOff in
+                    AIRequest.make(provider: provider, key: key, model: model, sentences: sentences, context: [], game: game,
+                                   server: server, maxOutputTokens: AIRequest.screenOutputTokens, thinkingOff: thinkingOff)
+                }
                 setFailure(nil)
                 for (index, translation) in zip(chunk, translated) {
                     results[index] = translation
@@ -747,12 +769,29 @@ public final class AITranslationCore: @unchecked Sendable {
     }
 
     private func request(_ sentences: [String], context: [AIContextLine], game: String?) async throws -> [String] {
-        try await Self.send(AIRequest.make(provider: provider, key: key, model: model, sentences: sentences, context: context,
-                                           game: game, server: server),
-                            provider: provider, count: sentences.count, session: session)
+        try await perform(count: sentences.count, session: session) { thinkingOff in
+            AIRequest.make(provider: provider, key: key, model: model, sentences: sentences, context: context, game: game,
+                           server: server, thinkingOff: thinkingOff)
+        }
     }
 
-    private static func send(_ request: URLRequest, provider: AIProvider, count: Int, session: URLSession) async throws -> [String] {
+    /// İsteği gönderir. Ollama düşünmeyi kapatan alanları 400 ile reddederse (eski sürüm) alanlarsız bir kez yeniden
+    /// dener; işe yararsa bu sunucuya oturum boyunca alanlar gönderilmez.
+    private func perform(count: Int, session: URLSession, _ make: (_ thinkingOff: Bool) -> URLRequest) async throws -> [String] {
+        guard provider.isLocal, let server, server.disablesThinking, !LocalThinking.rejected(server) else {
+            return try await Self.send(make(false), provider: provider, count: count, session: session)
+        }
+        do {
+            return try await Self.send(make(true), provider: provider, count: count, session: session, thinkingOff: true)
+        } catch is ThinkingRejected {
+            let result = try await Self.send(make(false), provider: provider, count: count, session: session)
+            LocalThinking.remember(server)
+            return result
+        }
+    }
+
+    private static func send(_ request: URLRequest, provider: AIProvider, count: Int, session: URLSession,
+                             thinkingOff: Bool = false) async throws -> [String] {
         let data: Data
         let response: URLResponse
         do {
@@ -766,6 +805,7 @@ public final class AITranslationCore: @unchecked Sendable {
             throw AIFailure.unreachable
         }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            if thinkingOff, http.statusCode == 400 { throw ThinkingRejected() }
             if let limit = AIRequest.rateLimit(status: http.statusCode, body: data) { throw AIRateLimited(limit: limit) }
             throw AIRequest.failure(status: http.statusCode, body: data)
         }
@@ -795,4 +835,17 @@ public final class AITranslationCore: @unchecked Sendable {
 
     /// Denemede çevrilen örnek satır.
     public static let sample = "KRATOS: We go now. Stay close, boy."
+}
+
+/// Ollama düşünmeyi kapatan alanları reddetti (eski sürüm); istek alanlarsız yeniden gönderilir.
+struct ThinkingRejected: Error {}
+
+/// Düşünmeyi kapatan alanları reddeden Ollama sunucuları; uygulama açık kaldıkça hatırlanır.
+enum LocalThinking {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var servers = Set<String>()
+
+    static func rejected(_ server: LocalAIServer) -> Bool { lock.withLock { servers.contains(server.address) } }
+    static func remember(_ server: LocalAIServer) { lock.withLock { _ = servers.insert(server.address) } }
+    static func reset() { lock.withLock { servers.removeAll() } }
 }

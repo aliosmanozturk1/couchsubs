@@ -15,6 +15,8 @@ private final class FakeAI: URLProtocol {
     nonisolated(unsafe) static var replyText: String?
     /// İstek uçuşta iken oyun değişimini taklit eder; yanıt verilmeden çağrılır.
     nonisolated(unsafe) static var onRequest: (() -> Void)?
+    /// Verilirse eski Ollama gibi düşünmeyi kapatan alanı 400 ile reddeder.
+    nonisolated(unsafe) static var rejectThinking = false
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -38,9 +40,12 @@ private final class FakeAI: URLProtocol {
             client?.urlProtocol(self, didFailWithError: URLError(.timedOut))
             return
         }
-        let status = Self.failure?.status ?? 200
+        let rejected = Self.rejectThinking && body["reasoning_effort"] != nil
+        let status = rejected ? 400 : Self.failure?.status ?? 200
         let reply: Data
-        if let failure = Self.failure {
+        if rejected {
+            reply = Data(#"{"error":{"message":"invalid reasoning value: \"none\" (must be \"high\", \"medium\", or \"low\")"}}"#.utf8)
+        } else if let failure = Self.failure {
             reply = Data(failure.body.utf8)
         } else {
             let text = Self.replyText ?? Self.echo(Self.userText(body, url: request.url!))
@@ -108,6 +113,8 @@ final class AITranslationTests: XCTestCase {
         FakeAI.timeout = false
         FakeAI.replyText = nil
         FakeAI.onRequest = nil
+        FakeAI.rejectThinking = false
+        LocalThinking.reset()
     }
 
     /// Her çevirmen kendi dakikalık hakkıyla kurulur; testler uygulamanın ortak hakkını tüketmesin.
@@ -438,7 +445,7 @@ final class AITranslationTests: XCTestCase {
         let result = try await makeLocal().translate("KRATOS: We go now.", fallback: local)
         XCTAssertEqual(result, "KRATOS: [tr] We go now.")
         let (request, body) = FakeAI.requests[0]
-        XCTAssertEqual(request.url?.absoluteString, "http://localhost:11434/v1/chat/completions")
+        XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:11434/v1/chat/completions")
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
         // Anahtar boşsa Authorization başlığı hiç gitmez.
@@ -447,7 +454,10 @@ final class AITranslationTests: XCTestCase {
         XCTAssertEqual(body["temperature"] as? Double, AIRequest.localTemperature)
         XCTAssertEqual(body["max_tokens"] as? Int, AIRequest.maxOutputTokens)
         XCTAssertEqual(body["stream"] as? Bool, false)
-        XCTAssertEqual(Set(body.keys), ["model", "messages", "temperature", "max_tokens", "stream"])
+        // Ollama'da düşünme kapalı (#295).
+        XCTAssertEqual(body["think"] as? Bool, false)
+        XCTAssertEqual(body["reasoning_effort"] as? String, "none")
+        XCTAssertEqual(Set(body.keys), ["model", "messages", "temperature", "max_tokens", "stream", "think", "reasoning_effort"])
         let messages = body["messages"] as? [[String: Any]] ?? []
         XCTAssertEqual(messages.map { $0["role"] as? String }, ["system", "user"])
         XCTAssertEqual(messages[0]["content"] as? String, AIRequest.systemPrompt)
@@ -458,9 +468,48 @@ final class AITranslationTests: XCTestCase {
     func testLocalRequestWithKeyAndLMStudio() async throws {
         _ = try await makeLocal(LocalAIServer.lmStudioURL, model: "qwen2.5-7b-instruct", key: " lm-key ").translate("Run!", fallback: local)
         let (request, body) = FakeAI.requests[0]
-        XCTAssertEqual(request.url?.absoluteString, "http://localhost:1234/v1/chat/completions")
+        XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:1234/v1/chat/completions")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer lm-key")
         XCTAssertEqual(body["model"] as? String, "qwen2.5-7b-instruct")
+        // Düşünme alanları yalnız Ollama'ya gider.
+        XCTAssertNil(body["think"])
+        XCTAssertNil(body["reasoning_effort"])
+    }
+
+    /// Ayarlarda elle yazılmış "localhost" istekte 127.0.0.1 olur (Windows'ta IPv6 gecikmesi, #295); başka adrese dokunulmaz.
+    func testLocalhostIsSentAsIPv4() {
+        XCTAssertEqual(LocalAIServer.ollamaURL, "http://127.0.0.1:11434/v1")
+        let cases: [(String, String)] = [
+            ("http://localhost:11434/v1", "http://127.0.0.1:11434/v1/chat/completions"),
+            ("LOCALHOST:11434", "http://127.0.0.1:11434/v1/chat/completions"),
+            ("https://localhost:8443/api/v1", "https://127.0.0.1:8443/api/v1/chat/completions"),
+            ("http://127.0.0.1:11434/v1", "http://127.0.0.1:11434/v1/chat/completions"),
+            ("http://192.168.1.20:11434/v1", "http://192.168.1.20:11434/v1/chat/completions"),
+            ("http://localhost.example.com:11434/v1", "http://localhost.example.com:11434/v1/chat/completions"),
+            ("http://[::1]:11434/v1", "http://[::1]:11434/v1/chat/completions"),
+        ]
+        for (text, expected) in cases {
+            XCTAssertEqual(LocalAIServer(baseURL: text, model: "m")?.chatURL.absoluteString, expected, text)
+        }
+        // Kullanıcıya gösterilen adres yazdığı gibi kalır.
+        XCTAssertEqual(LocalAIServer(baseURL: "localhost:11434", model: "m")?.address, "http://localhost:11434")
+    }
+
+    /// Eski Ollama düşünmeyi kapatan alanı 400 ile reddederse alansız yeniden denenir; sonraki isteklerde hiç gönderilmez.
+    func testOldOllamaRejectingThinkFieldFallsBack() async throws {
+        FakeAI.rejectThinking = true
+        let core = makeLocal()
+        let first = try await core.translate("Run!", fallback: local)
+        XCTAssertEqual(first, "[tr] Run!")
+        XCTAssertNil(core.lastFailure)
+        XCTAssertEqual(FakeAI.requests.count, 2)
+        XCTAssertEqual(FakeAI.requests[0].body["think"] as? Bool, false)
+        XCTAssertNil(FakeAI.requests[1].body["think"])
+        XCTAssertNil(FakeAI.requests[1].body["reasoning_effort"])
+        // Oturum boyunca hatırlanır: yeni çevirmen de alanı göndermez, tek istek gider.
+        _ = try await makeLocal().translate("Hide!", fallback: local)
+        XCTAssertEqual(FakeAI.requests.count, 3)
+        XCTAssertNil(FakeAI.requests[2].body["think"])
     }
 
     /// Kullanıcının yazdığı adres düzeltilir: şema, "/v1", sondaki "/" ve yapıştırılmış "/chat/completions".
@@ -493,8 +542,10 @@ final class AITranslationTests: XCTestCase {
     /// Önbellekteki motor adında sunucu ve model vardır; farklı yerel modellerin çevirileri karışmaz.
     func testLocalEngineIDIncludesServerAndModel() {
         let ollama = LocalAIServer(baseURL: LocalAIServer.ollamaURL, model: "qwen2.5:7b")!
-        XCTAssertEqual(ollama.engineID, "local:localhost:11434/qwen2.5:7b")
-        XCTAssertEqual(LocalAIServer(baseURL: "http://LOCALHOST:11434/v1/", model: "qwen2.5:7b")!.engineID, ollama.engineID)
+        XCTAssertEqual(ollama.engineID, "local:127.0.0.1:11434/qwen2.5:7b")
+        let named = LocalAIServer(baseURL: "http://localhost:11434/v1", model: "qwen2.5:7b")!
+        XCTAssertEqual(named.engineID, "local:localhost:11434/qwen2.5:7b")
+        XCTAssertEqual(LocalAIServer(baseURL: "http://LOCALHOST:11434/v1/", model: "qwen2.5:7b")!.engineID, named.engineID)
         XCTAssertNotEqual(LocalAIServer(baseURL: LocalAIServer.ollamaURL, model: "qwen2.5:14b")!.engineID, ollama.engineID)
         XCTAssertNotEqual(LocalAIServer(baseURL: LocalAIServer.lmStudioURL, model: "qwen2.5:7b")!.engineID, ollama.engineID)
         XCTAssertNotEqual(LocalAIServer(baseURL: "http://192.168.1.20:11434/v1", model: "qwen2.5:7b")!.engineID, ollama.engineID)
