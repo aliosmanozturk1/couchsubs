@@ -6,7 +6,7 @@
         xmlns:s="clr-namespace:CouchSubs.App.Views.Steps"
         xmlns:t="clr-namespace:CouchSubs.App.Theme"
         xmlns:local="clr-namespace:CouchSubs.App.Views"
-        Title="{t:T 'Settings'}" Width="1000" Height="720" MinWidth="860" MinHeight="560" ResizeMode="CanResize" ShowInTaskbar="False"
+        Title="{t:T 'Settings'}" Width="1000" Height="720" MinWidth="860" MinHeight="560" ResizeMode="CanResize" ShowInTaskbar="True"
         WindowStartupLocation="CenterOwner" Background="{DynamicResource windowBackgroundBrush}" Foreground="{DynamicResource textPrimaryBrush}">
     <!-- Kenar çubuğunda bölümler, sağda seçili bölüm (Mac'teki Ayarlar ile aynı düzen). -->
     <Grid Margin="{DynamicResource pad.screen}">

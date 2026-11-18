@@ -5,7 +5,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="clr-namespace:CouchSubs.App.Controls"
         xmlns:t="clr-namespace:CouchSubs.App.Theme"
-        Title="{t:T 'History'}" Width="640" Height="640" MinWidth="480" MinHeight="400" ResizeMode="CanResize" ShowInTaskbar="False"
+        Title="{t:T 'History'}" Width="640" Height="640" MinWidth="480" MinHeight="400" ResizeMode="CanResize" ShowInTaskbar="True"
         WindowStartupLocation="CenterOwner" Background="{DynamicResource windowBackgroundBrush}" Foreground="{DynamicResource textPrimaryBrush}">
     <Grid Margin="{DynamicResource pad.screen}">
         <Grid.RowDefinitions>
