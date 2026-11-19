@@ -12,9 +12,9 @@ const vm = require('node:vm');
 const tizenDir = path.join(__dirname, '..', 'tv-tizen');
 const code = fs.readFileSync(path.join(tizenDir, 'platform.js'), 'utf8');
 
-// innerWidth/innerHeight: uygulama yüzeyinin 1920 piksellik görünümdeki ölçüsü.
+// innerWidth/innerHeight: uygulama yüzeyinin paketteki "width=device-width" görünümündeki ölçüsü.
 function load(innerWidth, innerHeight) {
-  const meta = { content: 'width=1920', setAttribute(name, value) { if (name === 'content') this.content = value; } };
+  const meta = { content: 'width=device-width', setAttribute(name, value) { if (name === 'content') this.content = value; } };
   const shown = [];
   const window = { innerWidth, innerHeight, addEventListener() {} };
   const tizen = {
@@ -40,7 +40,8 @@ test('16:9 TV (1080p ve 4K): görünüm 1920 piksel kalır', () => {
 });
 
 test('21:9 ultrawide yüzey (Odyssey G8 3440x1440): sayfa 1080 piksel yükseklikte, ekran genişliğinde', () => {
-  // 3440x1440 yüzey, 1920 piksellik görünümde 1920x804 ölçülür.
+  assert.equal(load(3440, 1440).meta.content, 'width=2580');
+  // Eski görünümle ölçülen 1920x804 yüzey de aynı orana gelir.
   assert.equal(load(1920, 804).meta.content, 'width=2579');
   // 2560x1080 yüzey.
   assert.equal(load(1920, 810).meta.content, 'width=2560');

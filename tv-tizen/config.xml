@@ -15,7 +15,8 @@
          Tizen yüzeyi 16:9 kutuda tutar ve HDMI görüntüsü dört yanda siyah boşlukla küçük çıkar. Değer "fullscreen":
          Samsung'un belgelediği "extensive" gerçek ultrawide ekranda etkisiz kaldı, "fullscreen" 32:9 Samsung ekranda (SH37C)
          denendi (jellyfin-tizen #231/#315). 16:9 TV'de yüzey zaten tam ekran olduğundan bir şey değişmez,
-         ayarı tanımayan eski modeller yok sayar. Geniş yüzeyde sayfa görünümünü platform.js ayarlar. -->
+         ayarı tanımayan eski modeller yok sayar. Samsung yüzeyi ancak sayfanın görünümü "width=device-width" ise genişletir;
+         paket bu yüzden öyle üretilir (package-tizen.sh), asıl görünümü platform.js ayarlar. -->
     <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="fullscreen"/>
     <icon src="icon.png"/>
     <name>CouchSubs</name>
