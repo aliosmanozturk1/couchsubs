@@ -32,7 +32,10 @@ object ScreenTranslation {
         val paragraphs: Boolean get() = translation.contains('\n')
     }
 
-    /** Kalabalık ekranda ekranı kutuyla doldurmamak ve çeviriyi uzatmamak için en çok bu kadar grup çevrilir. */
+    /**
+     * Kalabalık ekranda ekranı kutuyla doldurmamak ve çeviriyi uzatmamak için en çok bu kadar grup çevrilir; fazlası
+     * olunca en az yazısı olanlar (tek sözcüklük etiketler) bırakılır.
+     */
     const val MAX_GROUPS = 30
 
     /**
@@ -119,7 +122,8 @@ object ScreenTranslation {
     /**
      * Satırları gruplara toplar. Kumanda ipuçları ve yazı tanıma çöpleri atılır; harfi olmayan ya da tek harfli satırlar
      * ("23m", "9", "+") göstergedir, çevrilmez. Bir satır, üstündeki satırın hemen altındaysa, yatayda onunla üst üste
-     * biniyorsa ve yazı boyu benziyorsa o gruba katılır. Gruplar yukarıdan aşağı, en çok [MAX_GROUPS].
+     * biniyorsa ve yazı boyu benziyorsa o gruba katılır; küçük harfle başlayan satır üstteki bitmemiş cümleye katılır
+     * ([continues]). Gruplar yukarıdan aşağı; en çok [MAX_GROUPS], en çok yazısı olanlar.
      */
     fun groups(reading: Reading): List<Group> {
         val lines = reading.withButtonIcons().withoutButtonPrompts().withoutOcrNoise().lines
@@ -130,14 +134,47 @@ object ScreenTranslation {
             var index = groups.indexOfLast { belongs(line.box!!, it.last().box!!) }
             if (index >= 0 && (bridgesColumns(groups[index].last().box!!, line.box!!, lines)
                 || bridgesColumns(line.box!!, groups[index].last().box!!, lines))) index = -1
+            // Küçük harfle başlayan satır, üstündeki bitmemiş cümlenin devamıdır: satır aralığı biraz geniş ya da yanında
+            // başka bir yazı olsa da o gruba katılır. Ayrı grup olunca yarım cümle tek başına çevriliyor ya da grup
+            // sınırına takılıp hiç çevrilmiyordu; bilgi kutusunun son satırı İngilizce kalıyordu.
+            if (index < 0) index = groups.indexOfLast { continues(line, it.last()) }
             if (index >= 0) groups[index].add(line) else groups.add(mutableListOf(line))
         }
-        return groups.take(MAX_GROUPS).map { group ->
+        return busiest(groups).map { group ->
             val heights = group.map { it.box!!.bottom - it.box!!.top }.sorted()
             val box = group.drop(1).fold(group[0].box!!) { total, line -> total.union(line.box!!) }
             val icons = ScreenText.paragraphIcons(group)
             Group(ScreenText.paragraphs(group), box, heights[heights.size / 2], if (icons.any { it.isNotEmpty() }) icons else null)
         }
+    }
+
+    /**
+     * Kalabalık ekranda en çok yazısı olan [MAX_GROUPS] grup, yukarıdan aşağı sırasıyla. Önceden en üstteki gruplar
+     * alınıyordu: menü ve gösterge etiketleri sınırı doldurunca ekranın alt yarısındaki bilgi kutusu hiç çevrilmiyordu.
+     */
+    private fun busiest(groups: List<List<TextLine>>): List<List<TextLine>> {
+        if (groups.size <= MAX_GROUPS) return groups
+        val letters = groups.map { group -> group.sumOf { line -> line.text.count { it.isLetter() } } }
+        return groups.indices.sortedWith(compareByDescending<Int> { letters[it] }.thenBy { it })
+            .take(MAX_GROUPS).sorted().map { groups[it] }
+    }
+
+    /**
+     * Alt satır, üstteki satırın bitmemiş cümlesini sürdürüyor: küçük harfle başlıyor, üstteki cümle sonu işaretiyle
+     * bitmiyor, yazı boyu benzer, yatayda üst üste ve arada satır yüksekliğinin bir buçuk katından az boşluk var.
+     */
+    private fun continues(lower: TextLine, upper: TextLine): Boolean {
+        val first = lower.text.firstOrNull { it.isLetter() } ?: return false
+        if (!first.isLowerCase() || SubtitleStabilizer.endsSentence(upper.text)) return false
+        val below = lower.box ?: return false
+        val above = upper.box ?: return false
+        val a = above.bottom - above.top
+        val b = below.bottom - below.top
+        if (maxOf(a, b) > minOf(a, b) * 1.6) return false
+        if (below.top - above.bottom >= maxOf(a, b) * 1.5 || below.top < above.top) return false
+        val overlap = minOf(below.right, above.right) - maxOf(below.left, above.left)
+        val narrower = minOf(below.right - below.left, above.right - above.left)
+        return overlap > 0 && overlap >= narrower * 0.5
     }
 
     // Geniş başlık/alt satır iki bağımsız sütundan birine katılmasın. Filtrelenmiş OCR satırlarına bakılır.

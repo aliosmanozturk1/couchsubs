@@ -40,7 +40,8 @@ public enum ScreenTranslation {
         public var paragraphs: Bool { translation.contains("\n") }
     }
 
-    /// Kalabalık ekranda TV'yi kutuyla doldurmamak ve çeviriyi uzatmamak için en çok bu kadar grup çevrilir.
+    /// Kalabalık ekranda TV'yi kutuyla doldurmamak ve çeviriyi uzatmamak için en çok bu kadar grup çevrilir; fazlası
+    /// olunca en az yazısı olanlar (tek sözcüklük etiketler) bırakılır.
     public static let maxGroups = 30
 
     /// Grupları sırayla çevirir; her grup çevrilince o ana kadarki sonuçlarla `progress` çağrılır. Çevirisi aslıyla
@@ -121,7 +122,8 @@ public enum ScreenTranslation {
     /// Satırları gruplara toplar. Yazının içindeki kumanda simgeleri işaretlenir (`ButtonIcons`); kumanda ipuçları ve
     /// yazı tanıma çöpleri atılır; harfi olmayan ya da tek harfli satırlar ("23m", "9", "+") göstergedir, çevrilmez. Bir
     /// satır, üstündeki satırın hemen altındaysa, yatayda onunla üst üste biniyorsa ve yazı boyu benziyorsa o gruba
-    /// katılır. Gruplar yukarıdan aşağı, en çok `maxGroups`.
+    /// katılır; küçük harfle başlayan satır üstteki bitmemiş cümleye katılır (`continues`). Gruplar yukarıdan aşağı; en çok
+    /// `maxGroups`, en çok yazısı olanlar.
     public static func groups(_ reading: Reading) -> [Group] {
         let lines = reading.withButtonIcons().withoutButtonPrompts().withoutOcrNoise().lines
             .filter { $0.box != nil && isWords($0.text) }
@@ -132,17 +134,45 @@ public enum ScreenTranslation {
                !bridgesColumns(groups[index].last!.box!, line.box!, lines),
                !bridgesColumns(line.box!, groups[index].last!.box!, lines) {
                 groups[index].append(line)
+            } else if let index = groups.lastIndex(where: { continues(line, above: $0.last!) }) {
+                // Küçük harfle başlayan satır, üstündeki bitmemiş cümlenin devamıdır: satır aralığı biraz geniş ya da
+                // yanında başka bir yazı olsa da o gruba katılır. Ayrı grup olunca yarım cümle tek başına çevriliyor ya da
+                // grup sınırına takılıp hiç çevrilmiyordu; bilgi kutusunun son satırı İngilizce kalıyordu.
+                groups[index].append(line)
             } else {
                 groups.append([line])
             }
         }
-        return groups.prefix(maxGroups).map { group in
+        return busiest(groups).map { group in
             let heights = group.map { $0.box!.bottom - $0.box!.top }.sorted()
             let box = group.dropFirst().reduce(group[0].box!) { $0.union($1.box!) }
             let icons = paragraphIcons(group)
             return Group(paragraphs: paragraphs(group), box: box, lineHeight: heights[heights.count / 2],
                          icons: icons.contains(where: { !$0.isEmpty }) ? icons : nil)
         }
+    }
+
+    /// Kalabalık ekranda en çok yazısı olan `maxGroups` grup, yukarıdan aşağı sırasıyla. Önceden en üstteki gruplar
+    /// alınıyordu: menü ve gösterge etiketleri sınırı doldurunca ekranın alt yarısındaki bilgi kutusu hiç çevrilmiyordu.
+    private static func busiest(_ groups: [[TextLine]]) -> [[TextLine]] {
+        guard groups.count > maxGroups else { return groups }
+        let letters = groups.map { group in group.reduce(0) { $0 + $1.text.filter(\.isLetter).count } }
+        let kept = groups.indices.sorted { letters[$0] != letters[$1] ? letters[$0] > letters[$1] : $0 < $1 }.prefix(maxGroups)
+        return kept.sorted().map { groups[$0] }
+    }
+
+    /// Alt satır, üstteki satırın bitmemiş cümlesini sürdürüyor: küçük harfle başlıyor, üstteki cümle sonu işaretiyle
+    /// bitmiyor, yazı boyu benzer, yatayda üst üste ve arada satır yüksekliğinin bir buçuk katından az boşluk var.
+    private static func continues(_ lower: TextLine, above upper: TextLine) -> Bool {
+        guard let first = lower.text.first(where: \.isLetter), first.isLowercase,
+              !SubtitleStabilizer.endsSentence(upper.text.trimmingCharacters(in: .whitespaces)),
+              let below = lower.box, let above = upper.box else { return false }
+        let a = above.bottom - above.top, b = below.bottom - below.top
+        guard max(a, b) <= min(a, b) * 1.6 else { return false }
+        guard below.top - above.bottom < max(a, b) * 1.5, below.top >= above.top else { return false }
+        let overlap = min(below.right, above.right) - max(below.left, above.left)
+        let narrower = min(below.right - below.left, above.right - above.left)
+        return overlap > 0 && overlap >= narrower * 0.5
     }
 
     // Geniş başlık/alt satır iki bağımsız sütundan birine katılmasın. Filtrelenmiş OCR satırlarına bakılır.
