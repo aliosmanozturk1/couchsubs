@@ -74,9 +74,18 @@ class SubtitleServer(
     private val port: Int = DEFAULT_PORT,
     private val pingIntervalMs: Long = 15_000,
     private val clock: () -> Long = System::currentTimeMillis,
+    /**
+     * Bu kurulumun kalıcı kimliği (`/hello` yanıtında). Aynı ağda iki CouchSubs varken TV uygulaması kendi telefonunu ya da
+     * bilgisayarını adres değişse de bununla tanır; eskiden ağda ilk bulduğuna bağlanıyordu (GitHub #425).
+     */
+    val instanceId: String = "",
 ) : SubtitleSender, RegionSender {
     companion object {
         const val DEFAULT_PORT = 8787
+
+        /** `/hello` yanıtı: uygulama, kurulum kimliği ve bağlı TV sayısı (Mac ve Windows ile aynı biçim). */
+        fun helloBody(id: String, tvs: Int): String =
+            "{\"app\":\"couchsubs\",\"id\":\"${id.filter { it.isLetterOrDigit() && it.code < 128 || it == '-' }}\",\"tvs\":${maxOf(0, tvs)}}"
 
         /** Bağlantı canlı tutma: yorum satırını EventSource görmez; adlı "ping" olayını TV görür. */
         const val PING_FRAME = ": ping\n\nevent: ping\ndata: {}\n\n"
@@ -248,7 +257,7 @@ class SubtitleServer(
                 method == "OPTIONS" -> respondAndClose(socket, "204 No Content")
                 method == "GET" && path == "/events" -> openStream(socket, target.contains("viewer=obs"))
                 // TV uygulaması ağdaki CouchSubs'ı bu yanıtla tanır.
-                method == "GET" && path == "/hello" -> respondAndClose(socket, "200 OK", "{\"app\":\"couchsubs\"}")
+                method == "GET" && path == "/hello" -> respondAndClose(socket, "200 OK", helloBody(instanceId, connectedClients))
                 else -> respondAndClose(socket, "404 Not Found")
             }
         } catch (error: IOException) {

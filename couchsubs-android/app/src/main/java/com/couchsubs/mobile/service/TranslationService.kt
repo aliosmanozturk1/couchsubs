@@ -268,7 +268,7 @@ class TranslationService : Service() {
         glossaryInUse = glossary
         val free = MlKitTranslator(cache(MlKitTranslator.ENGINE_ID), glossary).also { freeTranslator = it }
         val translator = engineTranslator(free)
-        val subtitleServer = SubtitleServer().also { server = it }
+        val subtitleServer = SubtitleServer(instanceId = installationId(this)).also { server = it }
         subtitleServer.sendsToTv = settings.target == SubtitleTarget.TV
         subtitleServer.onClientsChanged = { count ->
             val before = LiveState.status.value.connectedTvs
@@ -720,4 +720,16 @@ class TranslationService : Service() {
         LiveState.update { it.copy(running = false, phase = "", streaming = false, current = "", previous = "", regions = emptyList(), screen = emptyList(), screenState = LiveStatus.ScreenState.IDLE) }
         super.onDestroy()
     }
+}
+
+/**
+ * Bu kurulumun kalıcı kimliği (`/hello` yanıtında; Mac ve Windows'taki gibi): ilk istekte rastgele üretilir ve saklanır.
+ * TV uygulaması aynı ağdaki iki CouchSubs'tan kendisininkini bununla seçer (GitHub #425).
+ */
+private fun installationId(context: Context): String {
+    val prefs = context.getSharedPreferences("server", Context.MODE_PRIVATE)
+    prefs.getString("id", null)?.takeIf { it.isNotEmpty() }?.let { return it }
+    val made = java.util.UUID.randomUUID().toString()
+    prefs.edit().putString("id", made).apply()
+    return made
 }
