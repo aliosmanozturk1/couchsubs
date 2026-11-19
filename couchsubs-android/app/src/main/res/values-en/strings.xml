@@ -249,7 +249,7 @@
     <string name="settings_fast_reading">Check unchanged subtitle areas more often</string>
     <string name="settings_fast_reading_short">When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.</string>
     <string name="settings_xbox_audio">Play Xbox sound on this device</string>
-    <string name="settings_xbox_audio_short">Xbox remote play sends the sound to this device; if you turn this off, the game may stay silent.</string>
+    <string name="settings_xbox_audio_short">While remote play is running, the Xbox mutes the TV and sends game sound only to this device (an Xbox limitation). If you turn this off, the game has no sound. To hear it from the TV or speakers, connect this phone to a Bluetooth speaker or headphones.</string>
     <string name="running_now">Now</string>
     <string name="running_ready_translation">ready translation</string>
     <string name="running_ready">ready</string>

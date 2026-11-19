@@ -255,7 +255,7 @@
     <string name="settings_fast_reading">Değişmeyen altyazı alanını daha sık oku</string>
     <string name="settings_fast_reading_short">Altyazı alanı değişmemiş görünüyorsa 20 yerine 2 kare sonra yeniden oku. Daha fazla CPU kullanır.</string>
     <string name="settings_xbox_audio">Xbox sesini bu cihazda çal</string>
-    <string name="settings_xbox_audio_short">Xbox uzaktan oynatmada sesi bu cihaza yönlendirir; kapatırsanız oyun sessiz kalabilir.</string>
+    <string name="settings_xbox_audio_short">Xbox, uzaktan oynatma sürerken TV\'nin sesini kapatır ve oyun sesini yalnız bu cihaza gönderir (Xbox kısıtı). Kapatırsanız oyunun sesi hiç gelmez. TV\'den ya da hoparlörden duymak için telefonu Bluetooth ile hoparlöre ya da kulaklığa bağlayın.</string>
     <string name="running_now">Şimdi</string>
     <string name="running_ready_translation">hazır çeviri</string>
     <string name="running_ready">hazır</string>

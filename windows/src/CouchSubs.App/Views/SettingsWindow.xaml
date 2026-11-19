@@ -602,7 +602,7 @@
                             <CheckBox x:Name="XboxAudioOnComputer" Content="{t:T 'Play Xbox sound on this computer'}"
                                       Checked="OnXboxAudioOnComputer" Unchecked="OnXboxAudioOnComputer" />
                             <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,16"
-                                       Text="{t:T 'Xbox Remote Play can silence the TV while a stream is active. When on, game sound plays on this computer.'}" />
+                                       Text="{t:T 'While Xbox Remote Play is running, the Xbox mutes the TV and sends game sound only to this computer (an Xbox limitation). If you turn this off, the game has no sound. To hear it from the TV or speakers, set the sound output of this computer to them.'}" />
                             <CheckBox x:Name="XboxLegacyFrameRate" Content="{t:T 'Restore the old Xbox frame rate'}"
                                       Checked="OnXboxLegacyFrameRate" Unchecked="OnXboxLegacyFrameRate" />
                             <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"
