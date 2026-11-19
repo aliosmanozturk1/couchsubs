@@ -270,7 +270,14 @@ private struct MainWarnings: View {
             }
         }
 
-        if let free = model.readingFailedFreeGB {
+        if model.readingStuck {
+            Card {
+                Label("macOS can't read the text on the screen.", systemImage: "exclamationmark.triangle")
+                    .font(.csBody.weight(.semibold))
+                    .foregroundStyle(Color.csWarning)
+                HintText(text: "Text reading got stuck. Quit CouchSubs (⌘Q), open it again and start the translation.")
+            }
+        } else if let free = model.readingFailedFreeGB {
             Card {
                 Label("macOS can't read the text on the screen.", systemImage: "exclamationmark.triangle")
                     .font(.csBody.weight(.semibold))

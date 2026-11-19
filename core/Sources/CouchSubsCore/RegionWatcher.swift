@@ -174,7 +174,7 @@ public final class RegionWatcher {
         let started = now()
         let session = self.session
         let reader = self.reader
-        let reading = await Task.detached(priority: .utility) { try? reader.readLines(crop, deep: false) }.value
+        let reading = try? await ReadQueue.shared.run { try reader.readLines(crop, deep: false) }
         guard session == self.session else { return }
         guard let reading else {
             // OCR hatası boş alan değildir. Eski kutuyu koru; aynı kareyi sonraki normal turda yeniden oku.

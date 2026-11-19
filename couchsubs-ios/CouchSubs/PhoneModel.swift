@@ -951,7 +951,7 @@ final class PhoneModel: ObservableObject {
         let server = self.server
         screenTask = Task { [weak self] in
             do {
-                let reading = try await Task.detached(priority: .userInitiated) { try reader.readLines(frame, deep: false) }.value
+                let reading = try await ReadQueue.shared.run { try reader.readLines(frame, deep: false) }
                 let items = try await ScreenTranslation.translate(reading, using: translator) { shown in
                     guard !Task.isCancelled else { return }
                     let milliseconds = ScreenTranslation.displayMilliseconds(shown)

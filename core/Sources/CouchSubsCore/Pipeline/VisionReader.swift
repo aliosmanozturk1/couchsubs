@@ -43,8 +43,13 @@ public struct VisionReader: TextReader {
     }
 
     /// Vision geniş bölgede "Go!" gibi kısa satırları sık sık hiç bulmaz. Bölgede yazı çıkmazsa
-    /// ortadaki şerit (altyazılar ortalıdır) ve bölgenin tamamı büyütülerek aynı anda yeniden okunur;
-    /// ikisi de yazı bulursa şeridinki seçilir. Aynı anda okumak, boş karede yeni satırı geç fark etmeyi önler.
+    /// ortadaki şerit (altyazılar ortalıdır), sonra bölgenin tamamı büyütülerek yeniden okunur;
+    /// yazı bulan ilk okuma kullanılır.
+    ///
+    /// İkisi **sırayla** okunur (#385, #507): Vision'ın metin tanıma kuyruğu (`VNCRImageReaderDetector`) seridir ve
+    /// iki istek `DispatchQueue.concurrentPerform` ile aynı anda verildiğinde biri kuyrukta beklerken diğeri hiç
+    /// dönmeyebiliyordu; okuma takılıyor, altyazı bir daha gelmiyordu. Bütün okumalar ayrıca `ReadQueue` ile tek sıradan
+    /// geçer.
     public static func firstLines(of image: CGImage, using recognize: @escaping @Sendable (CGImage) throws -> Reading) throws -> Reading {
         let reading = try recognize(image)
         guard reading.lines.isEmpty else { return reading }
@@ -52,28 +57,20 @@ public struct VisionReader: TextReader {
         // Şeritte bulunan satırın yeri şeridin değil bölgenin tamamının oranlarıyla verilir.
         let strip = stripRect(of: image, widthFraction: 0.4)
         let stripArea = TextBox(left: strip.minX / Double(image.width), top: 0, right: strip.maxX / Double(image.width), bottom: 1)
-        let fallbacks: [@Sendable () throws -> Reading?] = [
-            { try image.cropping(to: strip).flatMap { scaled($0, by: 2) }.map { try recognize($0).placed(in: stripArea) } },
-            { try scaled(image, by: 2).map(recognize) },
-        ]
-        let results = Results(count: fallbacks.count)
-        DispatchQueue.concurrentPerform(iterations: fallbacks.count) { index in
-            results.set(index, Result { try fallbacks[index]() ?? .empty })
+        if let found = try image.cropping(to: strip).flatMap({ scaled($0, by: 2) }).map({ try recognize($0).placed(in: stripArea) }),
+           !found.lines.isEmpty {
+            return found
         }
-        for result in results.all {
-            if let reading = try result?.get(), !reading.lines.isEmpty { return reading }
+        // Bölgenin tamamı: büyütmenin uzun kenarı `maxFallbackDimension` ile sınırlanır; 4K bir bölgenin iki katı
+        // tek başına saniyeler sürüyordu.
+        if let found = try scaled(image, by: 2, maxDimension: maxFallbackDimension).map(recognize), !found.lines.isEmpty {
+            return found
         }
         return .empty
     }
 
-    /// Aynı anda yapılan okumaların sonuçları.
-    private final class Results: @unchecked Sendable {
-        private let lock = NSLock()
-        private var values: [Result<Reading, Error>?]
-        init(count: Int) { values = Array(repeating: nil, count: count) }
-        func set(_ index: Int, _ value: Result<Reading, Error>) { lock.withLock { values[index] = value } }
-        var all: [Result<Reading, Error>?] { lock.withLock { values } }
-    }
+    /// Yedek okumada büyütülmüş görüntünün uzun kenarı (piksel). Altyazı için fazlasıyla yeterli.
+    static let maxFallbackDimension = 1920
 
     private func recognize(_ image: CGImage) throws -> Reading {
         let request = VNRecognizeTextRequest()
@@ -123,8 +120,13 @@ public struct VisionReader: TextReader {
         return CGRect(x: (Double(image.width) - width) / 2, y: 0, width: width, height: Double(image.height)).integral
     }
 
-    private static func scaled(_ image: CGImage, by factor: Int) -> CGImage? {
-        let width = image.width * factor, height = image.height * factor
+    private static func scaled(_ image: CGImage, by factor: Int, maxDimension: Int? = nil) -> CGImage? {
+        var scale = Double(factor)
+        let longest = max(image.width, image.height)
+        if let maxDimension, longest > 0, Double(longest) * scale > Double(maxDimension) {
+            scale = max(1, Double(maxDimension) / Double(longest))
+        }
+        let width = Int(Double(image.width) * scale), height = Int(Double(image.height) * scale)
         guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         context.interpolationQuality = .high

@@ -585,6 +585,9 @@ final class AppModel: ObservableObject {
     /// Yazı tanıma art arda hata veriyor; değeri diskteki boş yer (GB). macOS, diskte yer kalmayınca okuma modelini
     /// diske yazamaz ve her okumayı hata ile bitirir; altyazı sessizce hiç gelmez.
     @Published var readingFailedFreeGB: Double?
+    /// Yazı tanıma (Vision) art arda takıldı ve takılan okumalar bitmiyor (#507); altyazı gelmez, uygulamayı kapatıp
+    /// açmak gerekir. Çeviriyi durdurup başlatmak artık çalışır, ama Vision'ın kendi kilidi ancak süreç kapanınca çözülür.
+    @Published var readingStuck = false
     private var readFailures = 0
     /// Son PS5 karesi (Ayarlar'daki bölge önizlemesi). Her karede değiştiği için modelin kendi yayınına girmez; yalnız
     /// önizlemeyi gösteren görünüm `framePreview`'u izler, öbür ekranlar her karede yeniden çizilmez.
@@ -1603,7 +1606,7 @@ final class AppModel: ObservableObject {
         let server = self.server
         screenTask = Task { [weak self] in
             do {
-                let reading = try await Task.detached(priority: .userInitiated) { try reader.readLines(frame, deep: false) }.value
+                let reading = try await ReadQueue.shared.run { try reader.readLines(frame, deep: false) }
                 // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AITranslationCore.translateAll). Yazının
                 // içindeki kumanda simgeleri okunan kareden kesilip TV'de çevirinin içine konur (ButtonIcons).
                 let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame) { shown in
@@ -1689,6 +1692,9 @@ final class AppModel: ObservableObject {
         pipeline.onReadResult = { [weak self] error in self?.noteRead(error) }
         pipeline.onSpeech = { [weak self] lines in self?.speak(lines) }
         pipeline.onLog = { SubtitleLog.write($0) }
+        ReadQueue.shared.onRebuild = { stuck in
+            SubtitleLog.write("okuma takıldı; okuyucu yeniden kuruldu (bitmeyen okuma: \(stuck))")
+        }
         onlineIssue = nil
         pipeline.warmUp()
         self.pipeline = pipeline
@@ -1949,6 +1955,11 @@ final class AppModel: ObservableObject {
     }
 
     private func noteRead(_ error: Error?) {
+        if case ReadQueueError.stuck? = error {
+            if !readingStuck { readingStuck = true }
+            return
+        }
+        if readingStuck { readingStuck = false }
         guard error != nil else {
             readFailures = 0
             // Her başarılı okumada yazılmasın: yayınlanan özellik her atamada bütün ekranları yeniden çizdirir.

@@ -89,6 +89,7 @@ public final class SubtitlePipeline {
     }
 
     private let reader: TextReader
+    private let readQueue: ReadQueue
     private let translator: TextTranslator
     private let server: SubtitleSending
     private let now: () -> Int
@@ -162,9 +163,11 @@ public final class SubtitlePipeline {
 
     /// `scheduler`: varsayılanı her kareyi okur; uygulama gereksiz okumaları atlayan planı verir.
     /// `clock`: milisaniye saati; testlerde sahtesi verilir.
+    /// `readQueue`: okumaların sırası (süreç genelinde tek); testlerde kısa süreli bir sıra verilir.
     public init(reader: TextReader, translator: TextTranslator, server: SubtitleSending, scheduler: ReadScheduler = .always,
-         clock: @escaping () -> Int = SubtitleStabilizer.uptimeMs) {
+         clock: @escaping () -> Int = SubtitleStabilizer.uptimeMs, readQueue: ReadQueue = .shared) {
         self.reader = reader
+        self.readQueue = readQueue
         self.translator = translator
         self.server = server
         self.scheduler = scheduler
@@ -205,12 +208,17 @@ public final class SubtitlePipeline {
             break
         case .read(let deep):
             let started = now()
-            let result = await Task.detached(priority: .userInitiated) {
-                Result { () throws -> Reading in
+            // Okuma kendi sırasında (`ReadQueue`) yapılır, Swift havuzunu tutmaz; takılırsa süre dolunca kare atlanır (#507).
+            let result: Result<Reading, Error>
+            do {
+                result = .success(try await readQueue.run {
                     let reading = try reader.readLines(area, deep: deep)
                     return watchSubtitleBackground ? SubtitleBackground.filter(reading, in: area) : reading
-                }
-            }.value
+                })
+            } catch {
+                result = .failure(error)
+                if case ReadQueueError.timedOut(let ms) = error { log("okuma \(ms) ms'de bitmedi; kare atlandı") }
+            }
             guard session == startedSession else {
                 log("eski okuma \(now() - started) ms sonra bitti, hat sıfırlanmıştı; atıldı")
                 return
@@ -650,10 +658,11 @@ public final class SubtitlePipeline {
     /// Okumanın hemen başlaması için modelleri önceden yükler; ilk okuma yoksa saniyelerce sürer.
     public func warmUp() {
         let reader = self.reader
+        let readQueue = self.readQueue
         Task.detached(priority: .utility) {
             let context = CGContext(data: nil, width: 64, height: 32, bitsPerComponent: 8, bytesPerRow: 0,
                                     space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-            if let image = context?.makeImage() { _ = try? reader.read(image) }
+            if let image = context?.makeImage() { _ = try? await readQueue.run { try reader.read(image) } }
         }
         let translator = self.translator
         Task { await translator.warmUp() }

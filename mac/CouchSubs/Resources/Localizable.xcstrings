@@ -6308,6 +6308,7 @@
         }
       }
     },
+    "Text reading got stuck. Quit CouchSubs (⌘Q), open it again and start the translation.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Text reading got stuck. Quit CouchSubs (⌘Q), open it again and start the translation."}},"tr":{"stringUnit":{"state":"translated","value":"Yazı okuma takıldı. CouchSubs'tan çıkıp (⌘Q) yeniden açın ve çeviriyi başlatın."}}}},
     "Restart the Mac and start the translation again.": {
       "localizations": {
         "en": {
