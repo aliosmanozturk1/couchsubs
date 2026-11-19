@@ -14553,7 +14553,9 @@
     "Have OBS or a game window on this PC?": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Have OBS or a game window on this PC?"}},"tr":{"stringUnit":{"state":"translated","value":"Bu bilgisayarda OBS veya oyun penceresi mi kullanıyorsunuz?"}}}},
     "CouchSubs can read only the OBS projector or game window you select in Settings › Picture source. No second PSN account or additional capture app is needed.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"CouchSubs can read only the OBS projector or game window you select in Settings › Picture source. No second PSN account or additional capture app is needed."}},"tr":{"stringUnit":{"state":"translated","value":"CouchSubs, Ayarlar › Görüntü kaynağı bölümünde seçtiğiniz OBS projektörünü veya oyun penceresini okuyabilir. İkinci PSN hesabı ya da ek yakalama uygulaması gerekmez."}}}},
     "Sponsored": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Sponsored"}}, "tr": {"stringUnit": {"state": "translated", "value": "Sponsorlu"}}}},
-    "Open link": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open link"}}, "tr": {"stringUnit": {"state": "translated", "value": "Bağlantıyı aç"}}}}
+    "Open link": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Open link"}}, "tr": {"stringUnit": {"state": "translated", "value": "Bağlantıyı aç"}}}},
+    "TV not in the list? Enter its IP address (on the TV under Settings › Network).": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "TV not in the list? Enter its IP address (on the TV under Settings › Network)."}}, "tr": {"stringUnit": {"state": "translated", "value": "TV listede yok mu? IP adresini yazın (TV'de Ayarlar › Ağ altında)."}}}},
+    "Add": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Add"}}, "tr": {"stringUnit": {"state": "translated", "value": "Ekle"}}}}
   },
   "version": "1.0"
 }

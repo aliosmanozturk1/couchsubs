@@ -237,6 +237,12 @@ public enum SamsungDiscovery {
         return Set(hosts).sorted().map { LGTV(name: "Samsung TV", host: $0, brand: .samsung) }
     }
 
+    /// Elle yazılan adresteki Samsung TV (8001'de kendini tanıtırsa); yoksa nil.
+    public static func tv(at host: String) async -> LGTV? {
+        guard let name = await name(host: host, session: LocalNetwork.probeSession) else { return nil }
+        return LGTV(name: name, host: host, brand: .samsung)
+    }
+
     private static func scan() async -> [LGTV] {
         await LocalNetwork.probeAll { host in await name(host: host, session: LocalNetwork.probeSession) }
             .map { LGTV(name: $0.value, host: $0.host, brand: .samsung) }
