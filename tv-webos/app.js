@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.27';
+  var APP_VERSION = '0.9.28';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -111,9 +111,15 @@
       save('hdmi', hdmiPort);
       showHdmi(hdmiPort);
     }
-    if (params.server && params.server !== server) {
-      save('server', params.server);
-      connect(params.server);
+    if (params.server) {
+      // Adresi bilgisayar ya da telefon kendisi verdi: bağlanınca kimliği "kendi CouchSubs'ı" olarak kaydedilir.
+      adoptAddress = params.server;
+      if (params.server !== server) {
+        save('server', params.server);
+        connect(params.server);
+      } else if (eventSource && eventSource.readyState === 1) {
+        learnServer(server);
+      }
     }
   }
 
@@ -1071,6 +1077,7 @@
       clearTimeout(dropTimer);
       dropTimer = null;
       setStatus('st-conn', t('connected'), 'ok');
+      learnServer(address);
     };
     eventSource.onerror = function () {
       // Bağlantı kısa süre içinde geri gelmezse eski altyazı ekranda asılı kalmasın. Bir anlık kopma yazıyı silmez.
@@ -1425,15 +1432,73 @@
     }
   }
 
+  // --- Kendi CouchSubs'ını tanıma (GitHub #425) ---
+  // Aynı ağda iki bilgisayar/telefon CouchSubs çalıştırınca TV eskiden taramada ilk yanıt verene bağlanıyordu; iki evin
+  // (ya da iki odanın) altyazıları karışıyordu. CouchSubs /hello yanıtında kurulum kimliğini ("id") ve bağlı TV sayısını
+  // ("tvs") verir. TV bağlandığı CouchSubs'ın kimliğini kaydeder; taramada önce onu, yoksa TV'si bağlı olmayanı seçer.
+  var serverId = load('serverId');
+  // Bu adrese bağlanınca kimlik, kayıtlı kimlik olmasa da kaydedilir (adresi bilgisayar başlatma parametresiyle verdi).
+  var adoptAddress = null;
+  // Bağlı olunan CouchSubs kayıtlı kimlik değil (kendisi kapalıyken bulunan): kendi CouchSubs'ı dönünce ona geçilir.
+  var fallback = false;
+  var FALLBACK_SCAN_MS = 60000;
+
+  function helloInfo(text) {
+    try {
+      var info = JSON.parse(text);
+      return info && typeof info === 'object' ? info : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  // Taramada bulunanlar ({ address, id, tvs }) arasından bağlanılacak CouchSubs; emin olunamıyorsa null.
+  // 1) Kayıtlı kimlik. 2) TV'si bağlı olmayan tek CouchSubs (başka TV'ye hizmet eden, başka evin/odanın kurulumudur).
+  // 3) Kayıtlı kimlik varsa başkası seçilmez. 4) İlk kez açılan TV: TV'si bağlı olmayan ilk, o da yoksa ilk bulunan.
+  function pickServer(found, savedId) {
+    var i, idle = [];
+    for (i = 0; i < found.length; i++) if (savedId && found[i].id === savedId) return found[i];
+    for (i = 0; i < found.length; i++) if (!(found[i].tvs > 0)) idle.push(found[i]);
+    if (idle.length === 1) return idle[0];
+    if (savedId) return null;
+    return idle[0] || found[0] || null;
+  }
+  window.__pickServer = pickServer;
+
+  // Bağlantı açılınca CouchSubs'ın kimliği sorulur. Kayıtlı kimlik yoksa ya da adres parametreyle geldiyse kaydedilir;
+  // başka bir kimlikse (kendi CouchSubs'ı kapalı, ya da modem adresleri değiştirmiş) kendi CouchSubs'ı aranmaya devam edilir.
+  function learnServer(address) {
+    var adopt = adoptAddress === address;
+    if (adopt) adoptAddress = null;
+    probe(address, function (ok, info) {
+      if (address !== server) return;
+      var id = ok && info.id ? String(info.id) : null;
+      if (!id) {
+        fallback = false;
+        return;
+      }
+      if (adopt || !serverId) {
+        serverId = id;
+        save('serverId', id);
+      }
+      var wasFallback = fallback;
+      fallback = id !== serverId;
+      if (fallback) scheduleScan(wasFallback ? FALLBACK_SCAN_MS : SCAN_SOON_MS);
+    });
+  }
+
   function probe(address, done) {
     var request = new XMLHttpRequest();
     var finished = false;
-    function finish(ok) {
+    function finish(ok, info) {
       if (finished) return;
       finished = true;
-      done(ok);
+      done(ok, info || {});
     }
-    request.onload = function () { finish(request.status === 200 && request.responseText.indexOf('couchsubs') >= 0); };
+    request.onload = function () {
+      var ok = request.status === 200 && request.responseText.indexOf('couchsubs') >= 0;
+      finish(ok, ok ? helloInfo(request.responseText) : null);
+    };
     request.onerror = function () { finish(false); };
     request.ontimeout = function () { finish(false); };
     try {
@@ -1454,29 +1519,39 @@
       for (var s = 0; s < subnets.length; s++) {
         for (var host = 1; host <= 254; host++) addresses.push('http://' + subnets[s] + '.' + host + ':' + SERVER_PORT);
       }
-      var next = 0, active = 0, found = false;
+      var next = 0, active = 0, done = false, found = [];
       function pump() {
-        while (!found && active < SCAN_PARALLEL && next < addresses.length) {
+        while (!done && active < SCAN_PARALLEL && next < addresses.length) {
           active++;
           tryAddress(addresses[next++]);
         }
-        if (!found && !active && next >= addresses.length) {
-          scanning = false;
-          scheduleScan();
-        }
+        if (!done && !active && next >= addresses.length) finish(pickServer(found, serverId));
       }
+      // Kayıtlı kimlik bulununca tarama hemen biter; yoksa bütün ağ taranıp aralarından seçilir (eskiden ilk bulunan).
       function tryAddress(address) {
-        probe(address, function (ok) {
+        probe(address, function (ok, info) {
           active--;
-          if (found) return;
-          if (!ok) return pump();
-          found = true;
-          scanning = false;
-          // Bulunan adres kaydedilir: TV bir sonraki açılışta eski adrese takılmasın.
-          save('server', address);
-          // Aynı bilgisayarsa EventSource kendisi yeniden bağlanır; kapanıp vazgeçtiyse (CLOSED) yeniden kurulur.
-          if (address !== server || (eventSource && eventSource.readyState === 2)) connect(address);
+          if (done) return;
+          if (ok) {
+            var entry = { address: address, id: info.id ? String(info.id) : null, tvs: typeof info.tvs === 'number' ? info.tvs : null };
+            found.push(entry);
+            if (serverId && entry.id === serverId) return finish(entry);
+          }
+          pump();
         });
+      }
+      function finish(choice) {
+        done = true;
+        scanning = false;
+        if (!choice) {
+          scheduleScan(fallback ? FALLBACK_SCAN_MS : SCAN_PAUSE_MS);
+          return;
+        }
+        // Bulunan adres kaydedilir: TV bir sonraki açılışta eski adrese takılmasın.
+        save('server', choice.address);
+        // Aynı bilgisayarsa EventSource kendisi yeniden bağlanır; kapanıp vazgeçtiyse (CLOSED) yeniden kurulur.
+        if (choice.address !== server || (eventSource && eventSource.readyState === 2)) connect(choice.address);
+        else if (fallback) scheduleScan(FALLBACK_SCAN_MS);
       }
       pump();
     });

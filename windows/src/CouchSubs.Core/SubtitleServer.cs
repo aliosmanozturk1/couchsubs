@@ -116,6 +116,40 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
         public SemaphoreSlim WriteLock { get; } = new(1, 1);
     }
 
+    /// <summary>Bu kurulumun kalıcı kimliği (<c>/hello</c> yanıtında). Aynı ağda iki CouchSubs varken TV uygulaması kendi
+    /// bilgisayarını ya da telefonunu adres değişse de bununla tanır; eskiden ağda ilk bulduğuna bağlanıyordu (GitHub #425).</summary>
+    public string InstanceId { get; init; } = InstallationId.Value;
+
+    private static readonly Lazy<string> InstallationId = new(LoadInstallationId);
+
+    /// <summary>Kimlik ilk istekte rastgele üretilir ve %LOCALAPPDATA%\CouchSubs\server-id dosyasında saklanır (Linux:
+    /// ~/.local/share/CouchSubs). Dosya yazılamazsa kimlik bu çalışmalık kalır.</summary>
+    private static string LoadInstallationId()
+    {
+        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CouchSubs", "server-id");
+        try
+        {
+            if (File.Exists(path) && HelloId(File.ReadAllText(path)) is { Length: > 0 } saved) return saved;
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        var made = Guid.NewGuid().ToString("D");
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, made);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return made;
+    }
+
+    private static string HelloId(string id) => new([.. id.Where(c => char.IsAsciiLetterOrDigit(c) || c == '-')]);
+
+    /// <summary><c>/hello</c> yanıtı: uygulama, kurulum kimliği ve bağlı TV sayısı (Mac ve Android ile aynı biçim). TV ağda
+    /// birden çok CouchSubs bulursa kayıtlı kimliği, yoksa TV'si bağlı olmayanı seçer.</summary>
+    internal static string HelloBody(string id, int tvs) => $"{{\"app\":\"couchsubs\",\"id\":\"{HelloId(id)}\",\"tvs\":{Math.Max(0, tvs)}}}";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         // Türkçe harfler ı gibi kaçışlarla değil olduğu gibi gönderilir.
@@ -377,7 +411,7 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
             else if (method == "GET" && path == "/events") await OpenStream(tcp, target.Contains("viewer=obs", StringComparison.Ordinal));
             else if (method == "GET" && path == "/obs") await RespondAndClose(tcp, ObsOverlay, "text/html; charset=utf-8");
             // TV uygulaması ağdaki bilgisayarı bu yanıtla tanır.
-            else if (method == "GET" && path == "/hello") await RespondAndClose(tcp, "200 OK", "{\"app\":\"couchsubs\"}");
+            else if (method == "GET" && path == "/hello") await RespondAndClose(tcp, "200 OK", HelloBody(InstanceId, ConnectedClients));
             else if (method == "GET" && FindFile(path) is { } file) await RespondAndClose(tcp, file.Data, file.Type);
             else await RespondAndClose(tcp, "404 Not Found");
         }

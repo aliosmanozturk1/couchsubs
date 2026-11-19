@@ -145,9 +145,30 @@ public final class SubtitleServer: @unchecked Sendable {
     static let pingFrame = ": ping\n\nevent: ping\ndata: {}\n\n"
     private let pingInterval: TimeInterval
 
-    public init(port: UInt16 = 8787, pingInterval: TimeInterval = 15) {
+    /// Bu kurulumun kalıcı kimliği (`/hello` yanıtında). Aynı ağda iki CouchSubs varken TV uygulaması kendi bilgisayarını
+    /// ya da telefonunu adres değişse de bununla tanır; eskiden ağda ilk bulduğuna bağlanıyordu (GitHub #425).
+    public let instanceId: String
+
+    public init(port: UInt16 = 8787, pingInterval: TimeInterval = 15, instanceId: String = SubtitleServer.installationId) {
         requestedPort = port
         self.pingInterval = pingInterval
+        self.instanceId = instanceId
+    }
+
+    /// Kurulumun kimliği: ilk istekte rastgele üretilir ve ayarlarda saklanır (Mac ve iPhone).
+    public static var installationId: String {
+        let key = "couchsubs.serverId"
+        if let saved = UserDefaults.standard.string(forKey: key), !saved.isEmpty { return saved }
+        let made = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(made, forKey: key)
+        return made
+    }
+
+    /// `/hello` yanıtı: uygulama, kurulum kimliği ve bağlı TV sayısı (Windows ve Android ile aynı biçim). TV, ağda birden
+    /// çok CouchSubs bulursa kayıtlı kimliği, yoksa TV'si bağlı olmayanı seçer.
+    static func helloBody(id: String, tvs: Int) -> String {
+        let escaped = id.filter { $0.isLetter || $0.isNumber || $0 == "-" }
+        return #"{"app":"couchsubs","id":""# + escaped + #"","tvs":"# + String(max(0, tvs)) + "}"
     }
 
     public var connectedClients: Int {
@@ -375,8 +396,8 @@ public final class SubtitleServer: @unchecked Sendable {
         } else if method == "GET" && path == "/obs" {
             respondAndClose(connection, status: "200 OK", data: Self.obsOverlay, type: "text/html; charset=utf-8")
         } else if method == "GET" && path == "/hello" {
-            // TV uygulaması ağdaki bilgisayarı bu yanıtla tanır.
-            respondAndClose(connection, status: "200 OK", body: #"{"app":"couchsubs"}"#)
+            // TV uygulaması ağdaki bilgisayarı bu yanıtla tanır (bağlantı kuyruğunda: sayaçlar doğrudan okunur).
+            respondAndClose(connection, status: "200 OK", body: Self.helloBody(id: instanceId, tvs: clients.count - viewers.count))
         } else if method == "GET", let file = files[path] {
             respondAndClose(connection, status: "200 OK", data: file.data, type: file.type)
         } else {

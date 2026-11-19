@@ -467,6 +467,8 @@ enum TVAppState: Equatable {
     case pressInstallOnTV
     /// Samsung: TV'deki Host PC IP (`tvIp`) bu Mac'in adresi (`computer`) değil; sdb denenmedi (#343).
     case hostPcMismatch(tvIp: String, computer: String)
+    /// Android TV: ağda hata ayıklaması açık birden çok TV var; kurulumun gideceği TV kullanıcıya sorulur (#425).
+    case chooseAndroidTV([String])
 }
 
 extension AppAppearance {
@@ -512,6 +514,9 @@ final class AppModel: ObservableObject {
     @Published private var refreshingTVApp = false
     /// "TV uygulamasını yeniden kur"a basıldı: Android TV'de uygulama kuruluysa da TV'de açılır.
     private var openTVAppAfterCheck = false
+    /// Birden çok Android TV bulununca kullanıcının seçtiği TV'nin adresi; yalnız bir sonraki denetimde kullanılır.
+    /// Kurulum başarılı olursa TV'nin adresi zaten kaydedilir; olmazsa bir sonraki denemede yeniden sorulur (#425).
+    private var androidTVChoice: String?
     /// Samsung kurulumu ya da sürüm denetimi sürüyor: olaylar (giriş, kurulum adımı) kartı değiştirebilir.
     @Published private var samsungCheckRunning = false
     @Published var settings: UserSettings {
@@ -1172,11 +1177,21 @@ final class AppModel: ObservableObject {
                 tvApp = .upToDate(installedAppVersion ?? bundled.version)
                 return
             }
-            guard let found = await services.scanAndroidTVs().first else {
+            // Birden çok TV varsa ilk bulunana gidilmez: kayıtlı ya da seçilen TV, yoksa kullanıcıya sorulur. Eskiden izin
+            // sorusu başka odadaki TV'de çıkıyor, kurulum "onaylanmadı" diye bitiyordu (#425).
+            let choice = androidTVChoice
+            androidTVChoice = nil
+            switch AndroidTVPick.pick(found: await services.scanAndroidTVs(), preferred: [choice, tv.host].compactMap { $0 }) {
+            case .none:
                 tvApp = .devModeOff
                 return
+            case .ask(let hosts):
+                TVInstallLog.write("Ağda hata ayıklaması açık birden çok Android TV var (\(hosts.joined(separator: ", "))); TV soruluyor.")
+                tvApp = .chooseAndroidTV(hosts)
+                return
+            case .host(let found):
+                host = found
             }
-            host = found
         }
         tvApp = .working
         let open = openTVAppAfterCheck
@@ -1220,6 +1235,13 @@ final class AppModel: ObservableObject {
                 tvApp = .working
             }
         }
+    }
+
+    /// Birden çok Android TV arasından seçilen TV'ye kurulur (#425).
+    func chooseAndroidTV(_ host: String) async {
+        androidTVChoice = host
+        tvApp = .working
+        await refreshTVApp()
     }
 
     /// Samsung ve Android TV'de TV uygulaması bağlı değilken "TV uygulamasını yeniden kur" görünür (ana ekran ve TV kartı).

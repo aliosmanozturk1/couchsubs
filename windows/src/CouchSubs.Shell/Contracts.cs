@@ -686,14 +686,16 @@ public sealed record TvInstallEvent(TvInstallEventKind Kind, Uri? Url = null, st
 /// SignIn: Samsung sertifikası için tarayıcıda Samsung hesabıyla giriş bekleniyor. ApproveOnTv: Android TV ekranında
 /// hata ayıklama izni bekleniyor.
 /// </summary>
-/// <summary><c>PressInstallOnTv</c>: Android TV'de Google Play sayfası açıldı, kullanıcı TV'de Yükle'ye basmalı.</summary>
-public enum TvAppKind { Unknown, Working, UpToDate, DevModeOff, NeedsPassphrase, Failed, SignIn, ApproveOnTv, PressInstallOnTv }
+/// <summary><c>PressInstallOnTv</c>: Android TV'de Google Play sayfası açıldı, kullanıcı TV'de Yükle'ye basmalı.
+/// <c>ChooseAndroidTv</c>: ağda hata ayıklaması açık birden çok Android TV var; kurulumun gideceği TV kullanıcıya sorulur (#425).</summary>
+public enum TvAppKind { Unknown, Working, UpToDate, DevModeOff, NeedsPassphrase, Failed, SignIn, ApproveOnTv, PressInstallOnTv, ChooseAndroidTv }
 
 /// <summary>TV uygulamasının kurulum durumu.</summary>
 /// <param name="HostPcIp">HostPcMismatch'te TV'deki "Host PC IP".</param>
 /// <param name="ComputerAddress">HostPcMismatch'te TV'nin göreceği bu bilgisayar adresi.</param>
+/// <param name="Hosts">ChooseAndroidTv'de bulunan TV'lerin adresleri.</param>
 public sealed record TvAppState(TvAppKind Kind, string? Version = null, DevModeError? Error = null, Uri? Url = null, string? Reason = null,
-    string? HostPcIp = null, string? ComputerAddress = null)
+    string? HostPcIp = null, string? ComputerAddress = null, IReadOnlyList<string>? Hosts = null)
 {
     public static readonly TvAppState Unknown = new(TvAppKind.Unknown);
 }
