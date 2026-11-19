@@ -2364,13 +2364,28 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <paramref name="near"/> adresine (TV) ulaşan bu bilgisayar adresi; TV adresi bilinmiyorsa (null ya da geçersiz)
     /// Wi-Fi/Ethernet adresi. TV adresi biliniyorsa işletim sisteminin TV'ye çıkacağı bağdaştırıcının adresi önce gelir
     /// (birden çok bağdaştırıcıda doğru kaynak adres, #343). VPN ve sanal bağdaştırıcılar ancak başka adres yoksa seçilir
-    /// (<see cref="LocalNetwork.ChooseComputerAddress(IReadOnlyList{LocalNetwork.AdapterAddress}, IPAddress?, IPAddress?)"/>).
+    /// (<see cref="LocalNetwork.ChooseComputerAddress(IReadOnlyList{LocalNetwork.AdapterAddress}, IPAddress?, IPAddress?, IPAddress?)"/>).
+    /// TV adresi bilinmiyorsa internete çıkılan bağdaştırıcının (varsayılan yol) adresi önce gelir.
     /// </summary>
     public static string? LocalAddress(string? near)
     {
         IPAddress? target = IPAddress.TryParse(near, out var parsed) && parsed.AddressFamily == AddressFamily.InterNetwork ? parsed : null;
         var route = target is null ? null : LocalNetwork.RouteSourceAddress(target);
-        return LocalNetwork.ChooseComputerAddress(LocalNetwork.Ipv4Adapters(), target, route);
+        var defaultRoute = target is null ? LocalNetwork.DefaultRouteSourceAddress() : null;
+        return LocalNetwork.ChooseComputerAddress(LocalNetwork.Ipv4Adapters(), target, route, defaultRoute);
+    }
+
+    /// <summary>
+    /// Samsung kurulumunda Host PC IP için gösterilen adresin dışındaki ev ağı adresleri (Wi-Fi ve Ethernet ikisi de
+    /// bağlıysa ya da birden çok ağ varsa). TV gösterilen adresi kabul etmezse bunlar denenir.
+    /// </summary>
+    public string[] OtherComputerAddresses
+    {
+        get
+        {
+            var chosen = ComputerAddress;
+            return [.. LocalNetwork.HomeAddresses(LocalNetwork.Ipv4Adapters()).Where(a => a != chosen)];
+        }
     }
 
     // --- Windows Güvenlik Duvarı ---

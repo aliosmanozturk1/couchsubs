@@ -1212,6 +1212,13 @@ final class AppModel: ObservableObject {
         Self.localAddress(near: tv?.host.isEmpty == false ? tv!.host : nil)
     }
 
+    /// Host PC IP için gösterilenin dışındaki ev ağı adresleri (Wi-Fi ve Ethernet ikisi de bağlıysa ya da birden çok ağ
+    /// varsa). TV gösterilen adresi kabul etmezse bunlar denenir.
+    var otherComputerAddresses: [String] {
+        let chosen = computerAddress
+        return NetworkAddress.homeAddresses().filter { $0 != chosen }
+    }
+
     /// Key Server'dan anahtarı alır (TV ekranındaki parolayla) ve uygulamayı kurar.
     func installTVApp(passphrase: String) async {
         guard let tv, let bundled = services.bundledTVAppVersion else { return }
