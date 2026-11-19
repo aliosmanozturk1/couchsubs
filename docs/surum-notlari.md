@@ -6,14 +6,11 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 **Bu sürümde yeni**
 
-- **GTA 6'da tuş ipuçları artık çevrilmiyor (Mac, Windows, Android, #424):** "Press [RB] to take cover", "Hold △ to open your loadout" gibi ipuçlarında tuş simgesi okunamadığı için çeviride tuş kayboluyor, konuşma yerine ipucu gösteriliyordu. Artık bu ipuçları altyazı sayılmıyor; "Press the button, Jason!" gibi gerçek konuşmalar etkilenmiyor. Bildiren: Atakan Arslan.
-- **PS5 bağlantısı (#430):** Bağlantı sık koparsa görüntü kendiliğinden 720p'ye düşüyor (Wi-Fi'da daha kararlı); açılıp hemen kapanan oturumlarda art arda bağlanılmıyor. 0x80108b26 ("PS5 bu cihazın eşlemesini tanımıyor") ve 0x80108b12 ("Uzaktan Oynama kapalı") hataları artık ne yapılacağıyla birlikte gösteriliyor. PS5 ekranındaki "Uzaktan Oynama bağlandı" yazısını gizleyen PS5 ayarı (Ayarlar › Sistem › Uzaktan Oynama › Uzaktan Oynama Bağlantı Durumu Açılır Penceresini Gizle) kurulum adımlarında anlatılıyor.
-- **Samsung TV (#427, #429, #412):** Host PC IP için doğru bilgisayar adresi seçiliyor (VPN ve sanal bağdaştırıcılar, ör. Cloudflare WARP, artık seçilmiyor; birden çok adres varsa hepsi gösteriliyor). "TV'de test et" önce TV uygulamasını açıp bağlanmasını bekliyor. "Bağlan" TV'deki izin kutusu çıkmayınca (ör. The Frame Sanat Modu) takılmıyor. Arka plana düşen TV uygulaması bilgisayar tarafından yeniden açılıyor (Mac'te de). Katkı: [erayslyrt00](https://github.com/erayslyrt00).
-- **TV uygulaması 0.9.26:** Altyazı kutusu daha sade, kısa çeviriler iki satıra bölünmüyor (#409, katkı: erayslyrt00). İlk açılışlarda "CouchSubs paneli için Tamam'a basın" ipucu; Android TV'de katman açıkken uygulama kumandadan açılınca kapanmıyor (#428). TV'deki uygulama kendiliğinden güncellenir.
-- **Xbox sesi (#428):** Ayar açıklaması artık Xbox'ın uzaktan oynatmada TV sesini kendisinin kapattığını ve sesi TV'den duymanın yolunu (Bluetooth / Windows ses çıkışı) anlatıyor.
-- **Okuma alanı (#415, #410):** Altyazı alanı Tam ekranken ek alanlar okunmuyor; Windows'ta kapalı ek bölge çizilince açılıyor. Katkı: erayslyrt00.
-- **Yerel model ve indirme (#417, #419, #421, #426, #420):** Windows'ta takılan model indirmesi hatayı gösteriyor; Android'de ML Kit modeli ağ hatasında yeniden deneniyor; yerel yapay zekâ önbelleği uç noktayı tam ayırıyor (Mac ve Windows); Android'de paket açıp kapatma çeviri sürerken hemen uygulanıyor. Katkı: [erenbati](https://github.com/erenbati).
-- **Android telefon:** [Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile) üzerinden güncelleniyor (0.1.0-beta.58).
+- **DeepL daha kararlı (Windows, Mac, iPhone, Android, #433, #440, #441):** Çeviri sürerken DeepL bağlantısı açık tutuluyor (ilk satır daha hızlı); bağlantı koparsa satır bir kez daha deneniyor; hata sonrası bekleme 1 dakikadan 15 saniyeye indi. Kota ve anahtar hataları yeniden denenmiyor. Katkı: [DevBoX11](https://github.com/DevBoX11).
+- **TV uygulaması 0.9.27: Samsung ultra geniş monitörler (#304, #436):** Odyssey G8/G9 gibi 21:9 ve 32:9 ekranlarda PS5 görüntüsü artık ekranı dolduruyor (önceden ortada küçük kalıyordu). 16:9 TV'lerde değişiklik yok. TV'deki uygulama kendiliğinden güncellenir.
+- **Android telefon:** [Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile) üzerinden güncelleniyor (0.1.0-beta.59).
+
+**beta.51'de gelenler:** GTA 6'da tuş ipuçlarının çevrilmemesi, PS5 bağlantısında sık kopmada 720p ve hata kodu açıklamaları, Samsung kurulum ve bağlantı düzeltmeleri (Host PC IP, "TV'de test et", arka plana düşen uygulama), TV uygulaması 0.9.26 (sade altyazı kutusu, panel ipucu), Xbox ses açıklaması. Katkı: erayslyrt00, erenbati.
 
 **beta.50'de gelenler:** GTA 6'da kısa etkileşim yazılarının çevrilmemesi, TV'den kaldırılan Android TV uygulamasının yeniden kurulması, TV uygulaması 0.9.25 (Samsung HDMI seçimi ve görüntü bilgisi), Windows'ta model indirme hatasının günlüğe yazılması.
 
