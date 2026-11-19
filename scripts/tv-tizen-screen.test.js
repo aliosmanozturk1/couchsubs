@@ -75,7 +75,13 @@ async function render(page, width, height) {
     proc.kill();
     await new Promise(resolve => proc.exitCode !== null ? resolve() : proc.once('exit', resolve));
     assert.equal(path.dirname(temp), path.resolve(os.tmpdir()));
-    fs.rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    // Chrome'un yardımcı süreçleri ana süreç çıktıktan sonra da profile yazabiliyor (sayfa ağda CouchSubs ararken):
+    // geçici klasör silinemezse test başarısız sayılmaz.
+    try {
+      fs.rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch (e) {
+      if (e.code !== 'ENOTEMPTY' && e.code !== 'EBUSY') throw e;
+    }
   }
 }
 
