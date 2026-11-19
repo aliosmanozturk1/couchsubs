@@ -392,9 +392,16 @@ export async function runAutopack(env, now = new Date()) {
     // scheduled until they have actually published; only then can their rows be excluded.
     titles.push({ titleId: GENERAL, game: null, lines: general?.lines ?? 0 });
     // Ham satır sayısı temizlikten önce: eşiğin altındaki oyun beklemeye kalır (paketi zaten varsa güncellenir).
-    const queue = titles.filter((t) => t.lines >= MIN_LINES || packs.some((p) => p.id === jobPackId(t)));
+    let queue = titles.filter((t) => t.lines >= MIN_LINES || packs.some((p) => p.id === jobPackId(t)));
     // Ortak paket, kendi paketi hazırlanan adların satırlarını almaz.
     const namedGames = named.filter((g) => queue.includes(g)).flatMap((g) => g.games);
+    // Listedeki adı değişecek otomatik paket ("(ek satırlar)" eklenecek ya da kalkacak) çevirisiz, en başta yeniden
+    // yazılır: büyük bir oyunun çevirisi bütün geceyi alıp sıra ona hiç gelmeyebilir.
+    const retitle = queue.filter((t) => {
+      const listed = packs.find((p) => p.id === jobPackId(t));
+      return listed?.auto && listed.title !== packTitle(t, packs);
+    });
+    queue = retitle.map((t) => ({ ...t, retitle: true })).concat(queue.filter((t) => !retitle.includes(t)));
     state = { night, titles, queue, namedGames, translated: 0, done: [] };
     await putJson(env, STATE, state);
     return { phase: "plan", titles: titles.length, queued: queue.length };
@@ -414,7 +421,9 @@ export async function runAutopack(env, now = new Date()) {
     .flatMap((finished) => finished.games?.length ? finished.games : [finished.game]));
   const separate = new Set((state.namedGames ?? []).filter((name) => published.has(name)));
   let rows;
-  if (job.titleId === GENERAL) {
+  if (job.retitle) {
+    rows = [];
+  } else if (job.titleId === GENERAL) {
     if (separate.size) {
       // Oyuna ayrılan satırları LIMIT'ten önce süz; aksi halde en çok okunan 5000 ad satırı ortak havuzu aç bırakır.
       // Oyun adlarını JSON tek bir bağlı parametreyle taşıyarak D1 değişken sayısı sınırına takılmayız.

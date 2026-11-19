@@ -506,3 +506,60 @@ test("unchanged extra pack is re-published with the new title once its main pack
   assert.equal(extra.version, 2);
   assert.equal(packs.find((p) => p.id === "red-dead-redemption-2").title, "Red Dead Redemption 2");
 });
+
+test("night plan retitles a listed extra pack first, without translating", async () => {
+  const id = "pool-rdr-2";
+  const k = "1111111111111111";
+  const cache = { lines: { [k]: { k, en: "We need to leave right now.", tr: "Hemen gitmemiz gerekiyor." } }, skip: {}, fail: {} };
+  const content = packBody(id, "Red Dead Redemption 2", cache, new BigUint64Array(), null).body;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+  cache.contentSha = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const stored = new Map([
+    ["auto/tr/name-rdr-2.json", JSON.stringify(cache)],
+    [`packs/${id}.json.gz`, "old"],
+    ["index.json", JSON.stringify({ packs: [
+      { id: "pool-gta-6", title: "Grand Theft Auto VI", version: 3, auto: true, game: "gta 6" },
+      { id, title: "Red Dead Redemption 2", version: 1, auto: true, game: "rdr 2" },
+      { id: "red-dead-redemption-2", title: "Red Dead Redemption 2", version: 1 },
+    ] })],
+  ]);
+  const env = {
+    AI: { run: async () => { throw new Error("retitle must not translate"); } },
+    PACKS: {
+      get: async (name) => name === "auto/known-keys.bin"
+        ? { arrayBuffer: async () => new ArrayBuffer(0) }
+        : stored.has(name) ? { text: async () => stored.get(name) } : null,
+      head: async (name) => stored.has(name) ? { key: name } : null,
+      put: async (name, data) => { stored.set(name, data); },
+    },
+    DB: {
+      prepare: (sql) => ({
+        bind: () => ({
+          all: async () => {
+            if (sql.includes("game_votes")) return { results: [{ game_key: "gta 6", installs: 5 }, { game_key: "rdr 2", installs: 5 }] };
+            if (sql.includes("GROUP BY game ")) {
+              return { results: [{ game: "Grand Theft Auto VI", lines: 90000 }, { game: "Red Dead Redemption 2", lines: 7533 }] };
+            }
+            if (sql.includes("GROUP BY title_id")) return { results: [] };
+            throw new Error("unexpected rows query: " + sql);
+          },
+          first: async () => ({ lines: 10 }),
+        }),
+      }),
+    },
+  };
+  const now = new Date("2026-11-20T03:07:00Z");
+  const plan = await runAutopack(env, now);
+  assert.equal(plan.phase, "plan");
+  const state = JSON.parse(stored.get("auto/state.json"));
+  assert.deepEqual(state.queue.map((q) => [q.gameKey ?? q.titleId, q.retitle === true]),
+    [["rdr 2", true], ["gta 6", false]]);
+  const step = await runAutopack(env, now);
+  assert.equal(step.phase, "build");
+  assert.equal(step.built, true);
+  const extra = JSON.parse(stored.get("index.json")).packs.find((p) => p.id === id);
+  assert.equal(extra.title, "Red Dead Redemption 2 (ek satırlar)");
+  // Ertesi gece ad zaten doğru: yeniden yazma sırası açılmaz.
+  await runAutopack(env, new Date("2026-11-21T03:07:00Z"));
+  assert.equal(JSON.parse(stored.get("auto/state.json")).queue.some((q) => q.retitle), false);
+});
