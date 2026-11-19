@@ -353,7 +353,9 @@ public final class SubtitleServer: @unchecked Sendable {
         let method = parts.first.map(String.init) ?? ""
 
         if method == "OPTIONS" {
-            respondAndClose(connection, status: "204 No Content")
+            // Chromium'un yerel ağ erişimi denetimi (Private Network Access) ön istekte bu başlıkları ister; yeni
+            // tarayıcılı TV'ler (Tizen 9.0 ve sonrası) başlık olmadan bilgisayara bağlanmayabilir. Eski TV'ler yok sayar.
+            respondAndClose(connection, status: "204 No Content", data: Data(), type: nil, extraHeaders: Self.preflightHeaders)
         } else if method == "GET" && path == "/events" {
             openStream(connection, viewer: target.contains("viewer=obs"))
         } else if method == "GET" && path == "/obs" {
@@ -372,8 +374,11 @@ public final class SubtitleServer: @unchecked Sendable {
         respondAndClose(connection, status: status, data: Data(body.utf8), type: nil)
     }
 
-    private func respondAndClose(_ connection: NWConnection, status: String, data: Data, type: String?) {
-        var head = "HTTP/1.1 \(status)\r\nAccess-Control-Allow-Origin: *\r\n"
+    static let preflightHeaders = "Access-Control-Allow-Methods: GET, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\n"
+        + "Access-Control-Allow-Private-Network: true\r\nAccess-Control-Max-Age: 600\r\n"
+
+    private func respondAndClose(_ connection: NWConnection, status: String, data: Data, type: String?, extraHeaders: String = "") {
+        var head = "HTTP/1.1 \(status)\r\nAccess-Control-Allow-Origin: *\r\n" + extraHeaders
         if let type { head += "Content-Type: \(type)\r\nCache-Control: no-cache\r\n" }
         head += "Content-Length: \(data.count)\r\nConnection: close\r\n\r\n"
         connection.send(content: Data(head.utf8) + data, completion: .contentProcessed { _ in connection.cancel() })

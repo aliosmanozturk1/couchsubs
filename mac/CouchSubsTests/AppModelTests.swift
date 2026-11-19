@@ -535,6 +535,22 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(store.load(String.self, for: StoreKey.tvKey), "tv-key")
     }
 
+    /// "TV'de test et": TV uygulaması bağlı değilse önce TV'de açılır (Samsung 65S95F'de TV'ye hiçbir şey gelmiyordu);
+    /// çeviri sürmüyorsa geçici bekçi bekleme bitince kapanır.
+    func testTestOnTVOpensTheTVAppWhenItIsNotConnected() async {
+        let services = FakeServices()
+        let store = MemoryStore()
+        store.save(LGTV(name: "Samsung", host: "127.0.0.1", brand: .samsung), for: StoreKey.tv)
+        store.save("tv-key", for: StoreKey.tvKey)
+        let model = AppModel(services: services, store: store, defaults: .isolated())
+        model.settings.output = .tv
+        model.testTVWait = .milliseconds(300)
+        await model.testSubtitle()
+        XCTAssertEqual(services.keepers.count, 1)
+        XCTAssertFalse(services.keepers[0].running)
+        XCTAssertFalse(model.openingTVAppForTest)
+    }
+
     /// #40: Samsung jetonla gelen bağlantıda jeton göndermeyince saklı jeton silinmemeli (yoksa TV her seferinde izin sorar).
     func testPairingWithoutNewTokenKeepsSavedToken() async throws {
         let services = FakeServices()

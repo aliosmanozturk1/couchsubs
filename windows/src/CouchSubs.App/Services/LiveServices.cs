@@ -89,7 +89,18 @@ public sealed class LiveServices : IAppServices
         if (tv.Brand == TvBrand.Samsung)
         {
             using var samsung = new SamsungClient(tv, key);
-            var token = await samsung.ConnectAsync();
+            string token;
+            try { token = await samsung.ConnectAsync(); }
+            catch (Exception error) when (error is not SsapException { Reason: "rejected" })
+            {
+                if (await SamsungDiscovery.DeveloperInfoAsync(tv.Host) is null) throw;
+                // TV uzaktan kumanda iznini sormadı ya da izin 60 saniyede gelmedi (The Frame'de Sanat Modu, izin kutusu
+                // kapalı TV'ler); TV ağda yanıt veriyor. Eşleşme durmaz: TV uygulaması geliştirici bağlantısıyla (sdb)
+                // kurulup açılır. Önceden "Bağlan" bir dakika bekleyip başa dönüyor, kurulum adımına hiç geçilmiyordu.
+                new TvInstall.InstallLog(TvInstallLogPath).Write(
+                    $"Samsung uzaktan kumanda izni alınamadı ({error.GetType().Name}: {error.Message}); TV 8001'de yanıt verdi, eşleşme izinsiz sürdü.");
+                return new TvPairing(key ?? "", true);
+            }
             try { await samsung.LaunchAsync(SamsungClient.AppId, new Dictionary<string, string> { ["server"] = server }); }
             catch (Exception) { /* TV uygulaması bilgisayarı kendisi de bulabilir */ }
             return new TvPairing(token, true);

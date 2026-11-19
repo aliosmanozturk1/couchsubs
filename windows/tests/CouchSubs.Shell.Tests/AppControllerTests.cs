@@ -1181,6 +1181,45 @@ public class AppControllerRunTests
         controller.Dispose();
     }
 
+    // "TV'de test et": TV uygulaması bağlı değilse önce TV'de açılır (Samsung 65S95F'de TV'ye hiçbir şey gelmiyordu).
+    private static (AppController Controller, FakeServices Services) SamsungReady()
+    {
+        var services = new FakeServices();
+        var store = new MemoryStore();
+        store.Save(StoreKeys.AccountId, Enumerable.Repeat((byte)1, 8).ToArray());
+        store.Save(StoreKeys.Console, new RegisteredConsole("192.168.1.253", "PS5", Enumerable.Repeat((byte)0x31, 16).ToArray(), Enumerable.Repeat((byte)2, 16).ToArray()));
+        store.Save(StoreKeys.Tv, new LgTv("Samsung", "127.0.0.1", TvBrand.Samsung));
+        store.Save(StoreKeys.TvKey, "samsung-token");
+        var controller = AppControllerTests.Make(services, store);
+        controller.TestTvWait = TimeSpan.FromMilliseconds(300);
+        return (controller, services);
+    }
+
+    [Fact]
+    public async Task TestOnTvOpensTheTvAppWhenTranslationIsNotRunning()
+    {
+        var (controller, services) = SamsungReady();
+        await controller.SendTestSubtitleAsync();
+        var keeper = Assert.Single(services.Keepers);
+        // Geçici bekçi bekleme bitince kapanır; çeviri başlamadan TV'ye dokunmaya devam etmez.
+        Assert.False(keeper.Running);
+        Assert.False(controller.OpeningTvAppForTest);
+        controller.Dispose();
+    }
+
+    [Fact]
+    public async Task TestOnTvAsksTheRunningKeeperToOpenTheTvApp()
+    {
+        var (controller, services) = SamsungReady();
+        await controller.StartAsync();
+        var keeper = Assert.Single(services.Keepers);
+        await controller.SendTestSubtitleAsync();
+        Assert.Single(services.Keepers);
+        Assert.Equal(1, keeper.Reconnects);
+        Assert.True(keeper.Running);
+        controller.Dispose();
+    }
+
     /// #40: bekçinin bağlantısında TV yeni jeton verirse saklanır; sonraki açılışta TV yeniden izin sormaz.
     [Fact]
     public async Task KeeperSavesNewTvToken()

@@ -1086,7 +1086,53 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public async Task SendTestSubtitleAsync()
     {
         try { await StartServerAsync(); } catch (SocketException) { }
+        // TV uygulaması bağlı değilse deneme altyazısı kimseye gitmiyordu: bekçi yalnız çeviri sürerken çalışır, TV
+        // uygulaması kapalıysa ya da bilgisayarı arıyorsa "TV'de test et"e TV'de hiçbir şey çıkmıyordu (Samsung 65S95F).
+        // Önce TV uygulaması açılır (Samsung'da geliştirici bağlantısıyla) ve bağlanması beklenir.
+        if (ShowsOnTv && HasTv && tv is { Brand: not TvBrand.AndroidTv } target && server.ConnectedClients == 0)
+            await OpenTvAppForTestAsync(target);
         SendTestSubtitle();
+    }
+
+    /// <summary>"TV'de test et"te TV uygulamasının açılıp bağlanması için en çok bu kadar beklenir.</summary>
+    public TimeSpan TestTvWait { get; set; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>Deneme altyazısından önce TV uygulaması bağlanıyor (ana ekrandaki düğme beklerken bunu gösterir).</summary>
+    public bool OpeningTvAppForTest
+    {
+        get => openingTvAppForTest;
+        private set => Set(ref openingTvAppForTest, value);
+    }
+
+    private bool openingTvAppForTest;
+
+    /// <summary>
+    /// TV uygulamasını açar ve bağlanmasını bekler. Çeviri sürüyorsa bekçi hemen yeniden dener; sürmüyorsa geçici bir
+    /// bekçi kurulur, bekleme bitince kapanır.
+    /// </summary>
+    private async Task OpenTvAppForTestAsync(LgTv target)
+    {
+        IKeeper? temporary = null;
+        if (keeper is not null) keeper.Reconnect();
+        else
+        {
+            var running = server;
+            temporary = services.MakeKeeper(target, store.Load<string>(StoreKeys.TvKey),
+                new Dictionary<string, string> { ["server"] = ServerAddress(target) }, () => running.ConnectedClients > 0,
+                moved => post(() => TvMoved(moved)), key => post(() => store.Save(StoreKeys.TvKey, key)));
+            temporary.Start(TimeSpan.FromSeconds(5));
+        }
+        OpeningTvAppForTest = true;
+        try
+        {
+            var deadline = DateTime.UtcNow + TestTvWait;
+            while (server.ConnectedClients == 0 && DateTime.UtcNow < deadline) await Task.Delay(250);
+        }
+        finally
+        {
+            temporary?.Stop();
+            OpeningTvAppForTest = false;
+        }
     }
 
     /// <summary>

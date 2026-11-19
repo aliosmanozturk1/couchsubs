@@ -70,6 +70,11 @@
                                     <DataTrigger Binding="{Binding ShowsOnTv}" Value="True">
                                         <Setter Property="Content" Value="{t:T 'Test on TV'}" />
                                     </DataTrigger>
+                                    <!-- TV uygulaması bağlı değilse önce TV'de açılır, bağlanınca deneme altyazısı gider. -->
+                                    <DataTrigger Binding="{Binding OpeningTvAppForTest}" Value="True">
+                                        <Setter Property="Content" Value="{t:T 'Opening the app on the TV…'}" />
+                                        <Setter Property="IsEnabled" Value="False" />
+                                    </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
