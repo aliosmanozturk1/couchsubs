@@ -213,6 +213,16 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public bool ConsoleKindLocked => consoleKindLocked;
     public bool IsXbox => consoleKind == GameConsoleKind.Xbox;
     public string ConsoleTitle => IsXbox ? "Xbox" : settings.FrameSource == FrameSource.CaptureWindow ? text["Selected window"] : "PS5";
+    /// <summary>
+    /// Ana ekrandaki "Görüntü kaynağı" satırının değeri: görüntünün nereden okunduğu, dokununca Ayarlar › Görüntü kaynağı
+    /// açılır. DM'de bildirildi: ayar yalnız Ayarlar'ın alt sıralarında olduğu için bulunamıyordu. Xbox'ta seçim yok, null.
+    /// </summary>
+    public string? PictureSourceTitle => IsXbox ? null : text[settings.FrameSource switch
+    {
+        FrameSource.RemotePlayWindow => "Remote Play window on this PC",
+        FrameSource.CaptureWindow => "OBS projector or game window",
+        _ => "The PS5 (second account)",
+    }];
     public bool HasXboxAccount => xboxToken is not null;
     public XboxConsole? SelectedXboxConsole => xboxConsole;
     public void SelectConsoleKind(GameConsoleKind kind)

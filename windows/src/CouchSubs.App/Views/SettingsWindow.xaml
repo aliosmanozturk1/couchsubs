@@ -551,7 +551,7 @@
                 </StackPanel>
             </TabItem>
             <!-- Görüntünün nereden okunduğu: PS5 bağlantısı ya da bu bilgisayardaki Remote Play penceresi (PS Remote Play / chiaki-ng). -->
-            <TabItem Header="{t:T 'Picture source'}">
+            <TabItem x:Name="PictureSourceSection" Header="{t:T 'Picture source'}">
                 <StackPanel>
                     <TextBlock Text="{t:T 'Picture source'}" Style="{StaticResource DisplayText}" Margin="0,0,0,12" />
                     <c:Card x:Name="PlayStationPictureSourceCard">

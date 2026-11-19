@@ -1062,6 +1062,19 @@ public class AppControllerRunTests
         Assert.Equal(OnboardingStep.Done, AppControllerTests.Make(store: store, settings: settings).Step);
     }
 
+    /// DM'de bildirildi: "Görüntü kaynağı" ayarı bulunamıyordu. Ana ekrandaki satır seçili kaynağı gösterir (Ayarlar'daki
+    /// seçeneklerle aynı ad); Xbox'ta seçim olmadığından satır yoktur.
+    [Fact]
+    public void PictureSourceTitleFollowsTheSelectedSource()
+    {
+        var controller = AppControllerTests.Make();
+        Assert.Equal("The PS5 (second account)", controller.PictureSourceTitle);
+        controller.Settings = controller.Settings with { FrameSource = FrameSource.RemotePlayWindow };
+        Assert.Equal("Remote Play window on this PC", controller.PictureSourceTitle);
+        controller.Settings = controller.Settings with { FrameSource = FrameSource.CaptureWindow };
+        Assert.Equal("OBS projector or game window", controller.PictureSourceTitle);
+    }
+
     /// Pencere modunda kurulmuş, sonra Ayarlar'da PS5 seçilmiş: "Hesabı bağla" görünür, sihirbaz ikinci hesap adımından açılır.
     [Fact]
     public void LinkAccountOpensWizardAtSecondAccount()

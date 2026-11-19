@@ -18,7 +18,7 @@ using Microsoft.Win32;
 namespace CouchSubs.App.Views;
 
 /// <summary>Ayarların doğrudan açılabilen bölümleri.</summary>
-public enum SettingsSection { Appearance, Translation }
+public enum SettingsSection { Appearance, Translation, PictureSource }
 
 public partial class SettingsWindow : Window
 {
@@ -849,6 +849,7 @@ public partial class SettingsWindow : Window
         window.Sections.SelectedItem = section switch
         {
             SettingsSection.Translation => window.TranslationSection,
+            SettingsSection.PictureSource => window.PictureSourceSection,
             _ => window.Sections.SelectedItem,
         };
     }
