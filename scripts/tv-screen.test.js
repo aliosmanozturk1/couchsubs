@@ -91,7 +91,8 @@ function render(width, height) {
 }
 
 if (process.env.CI) assert.ok(browser, 'CI: gerçek yerleşim testi için Chrome/Edge gerekli');
-for (const [width, height] of [[1280,720], [1920,1080], [3840,2160]]) {
+// 2580×1080: Samsung ultrawide (3440x1440) yüzeyinde platform.js'in verdiği görünüm (#304).
+for (const [width, height] of [[1280,720], [1920,1080], [3840,2160], [2580,1080]]) {
 test('TV ekran çevirisi: ' + width + '×' + height, {skip: !browser && 'Chrome/Edge bulunamadı'}, async t => {
   const r = render(width, height);
   assert.deepEqual(r.viewport, {width, height});
