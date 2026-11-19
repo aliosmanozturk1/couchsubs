@@ -292,6 +292,9 @@ test("oyun kimliği ve adı doğrulanır", () => {
   assert.equal(gameName("x".repeat(300)).length, 120);
   assert.equal(gameName(""), null);
   assert.equal(gameName(42), null);
+  // Ek paketten tanınan oyun asıl adıyla toplanır.
+  assert.equal(gameName("Marvel's Spider-Man 2 (ek satırlar)"), "Marvel's Spider-Man 2");
+  assert.equal(gameName(" (ek satırlar)"), null);
 });
 
 test("satırın oyunu havuza giren (ikinci) kurulumdan alınır; ilk bilinen oyun kalır", async () => {

@@ -15,7 +15,7 @@
 
 import { accepts } from "./filter.js";
 import { canon, key } from "./index.js";
-import { gameKey, gameSlug } from "./games.js";
+import { EXTRA_SUFFIX, gameKey, gameSlug } from "./games.js";
 
 /** Bir satırın pakete girmesi için onu okuyan en az farklı kurulum sayısı. */
 export const MIN_INSTALLS = 2;
@@ -304,11 +304,27 @@ async function readIndex(env) {
   return index.packs;
 }
 
+/** Paketin listedeki adı. Aynı oyunun elle hazırlanmış (auto olmayan) paketi listede varsa otomatik paket onun
+ *  eksiğini tamamlar: adına " (ek satırlar)" eklenir ki listede iki kez aynı ad görünmesin. Ek, adın anahtarını da
+ *  değiştirir; uygulamalar elle seçilen oyunu ada göre eşlediğinden (GamePacks.swift resolveLimit) seçim asıl pakete
+ *  gider. Asıl paket yoksa ad değişmez: yalnız ek paketi olan oyunun seçimi bu paketi bulmaya devam eder. */
+export function packTitle(job, packs) {
+  if (job.titleId === GENERAL) return GENERAL_TITLE;
+  const title = job.game || job.titleId;
+  const id = jobPackId(job);
+  const k = gameKey(title);
+  const main = packs.some((p) => p && !p.auto && p.id !== id
+    && ((k && typeof p.title === "string" && gameKey(p.title) === k) || (job.titleId && p.titleId === job.titleId)));
+  return main ? title + EXTRA_SUFFIX : title;
+}
+
 async function buildPack(env, job, cache, known) {
   const id = jobPackId(job);
-  const title = job.titleId === GENERAL ? GENERAL_TITLE : job.game || job.titleId;
-  const { body, count } = packBody(id, title, cache, known, job.titleId === GENERAL ? null : job.titleId);
   const packs = await readIndex(env);
+  // Ad gövdede de durduğundan ad değişince (asıl paket eklendi ya da kalktı) içerik özeti de değişir ve paket aynı
+  // gece yeniden yazılır; listedeki ad böylece kendiliğinden güncellenir.
+  const title = packTitle(job, packs);
+  const { body, count } = packBody(id, title, cache, known, job.titleId === GENERAL ? null : job.titleId);
   const previous = packs.find((p) => p.id === id);
   if (!previous && count < MIN_LINES) return { id, built: false, entries: count };
   const contentSha = await sha256Hex(new TextEncoder().encode(body));
