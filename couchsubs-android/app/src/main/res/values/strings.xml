@@ -158,6 +158,9 @@
     <string name="settings_display_mode_note">PS5 görüntüsü CouchSubs TV uygulamasının içinde siyah kalıyorsa Katman\'ı seçin: TV, PS5\'i kendi HDMI girişinde gösterir, altyazı görüntünün üstünde çıkar. Görüntü gelmezse TV uygulaması önce HDMI girişlerini gösterir, Katman varsa ona geçer. Google Play\'den kurulan TV uygulamasında Katman yok: orada bu seçim uygulanmaz, TV bunu ekranda söyler.</string>
     <string name="settings_screen_on">Ekranı açık tut</string>
     <string name="close">Kapat</string>
+    <!-- Kendi ürünlerimizin tanıtım popup'ı (promo.json) -->
+    <string name="promo_label">Sponsorlu</string>
+    <string name="promo_open">Bağlantıyı aç</string>
     <string name="ok">Tamam</string>
     <string name="next_continue">Devam</string>
     <string name="setup_step">Kurulum · Adım %1$d/3</string>

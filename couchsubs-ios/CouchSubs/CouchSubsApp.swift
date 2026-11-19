@@ -25,6 +25,8 @@ struct CouchSubsApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model: PhoneModel
     @StateObject private var app: AppModel
+    /// Kendi ürünlerimizin tanıtım popup'ı (promo.json; reklam SDK'sı ve izleme yok).
+    @StateObject private var promo: PromoController
     @Environment(\.scenePhase) private var scenePhase
     /// Son etkin oluştan beri arka plana gidildi mi (yalnız etkin değilken dönmek bağlantıyı yenilemez).
     @State private var wasInBackground = false
@@ -57,6 +59,12 @@ struct CouchSubsApp: App {
         model.onGameStarted = { [weak app] in Task { await app?.gameStarted() } }
         _model = StateObject(wrappedValue: model)
         _app = StateObject(wrappedValue: app)
+        _promo = StateObject(wrappedValue: PromoController(enabled: !testing))
+    }
+
+    /// Tanıtım popup'ı yalnız karşılama, kurulum ve ilk tur bittikten sonra hazırlanır (yeni kullanıcı ilk açılışta görmez).
+    @MainActor private var promoSetupDone: Bool {
+        UserDefaults.standard.bool(forKey: "welcomeSeen") && model.step == .done && app.tourDone
     }
 
     /// Hata ayıklama: COUCHSUBS_DEMO=1 ile kurulum bitmiş gibi açılır (ekran görüntüsü ve tasarım denetimi için;
@@ -81,6 +89,7 @@ struct CouchSubsApp: App {
             RootView()
                 .environmentObject(model)
                 .environmentObject(app)
+                .environmentObject(promo)
                 .appSurface()
                 // Meta'nın dönüş adresleri.
                 .onOpenURL { url in
@@ -88,12 +97,16 @@ struct CouchSubsApp: App {
                     ApplicationDelegate.shared.application(UIApplication.shared, open: url, sourceApplication: nil, annotation: nil)
                 }
                 .task { await app.start() }
+                // Soğuk açılışta promo.json'a arka planda bakılır (ön plana dönüşler aşağıda).
+                .task { await promo.refresh(setupDone: promoSetupDone) }
         }
         .onChange(of: scenePhase) { phase in
             switch phase {
             case .active:
                 model.becameActive(afterBackground: wasInBackground)
                 wasInBackground = false
+                // Ön plana gelince tanıtım popup'ına bakılır (promo.json en çok günde bir yeniden çekilir).
+                Task { await promo.refresh(setupDone: promoSetupDone) }
             case .background:
                 wasInBackground = true
                 Task { await model.flushPool() }
@@ -128,6 +141,7 @@ enum ConnectionAlert {
 struct RootView: View {
     @EnvironmentObject private var model: PhoneModel
     @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var promo: PromoController
     @AppStorage("welcomeSeen") private var welcomeSeen = false
     @State private var path: [Route] = []
 
@@ -230,5 +244,19 @@ struct RootView: View {
                 CoachTour(anchors: anchors) { withAnimation { app.tourDone = true } }
             }
         }
+        // Kendi ürünlerimizin tanıtımı (promo.json): yalnız boştaki ana ekranda, girişten 10 sn sonra; oturum, bağlanma,
+        // deneme, kurulum ve tur sırasında asla (Android'deki MainScreen ile aynı karar).
+        .overlay {
+            if let ready = promo.ready, PromoPolicy.shouldShow(ready.popup, record: promo.record, now: Date(), moment: promoMoment) {
+                PromoOverlay(ready: ready) { withAnimation { promo.dismissed(ready.popup) } }
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: promo.ready?.popup)
+    }
+
+    private var promoMoment: PromoMoment {
+        PromoMoment(onHome: path.isEmpty, sessionActive: model.isRunning || model.isStarting, demo: model.demoMode,
+                    onboarding: !welcomeSeen || model.step != .done, tour: !app.tourDone,
+                    inApp: Date().timeIntervalSince(promo.foregroundAt))
     }
 }
