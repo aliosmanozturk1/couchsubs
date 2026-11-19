@@ -1576,10 +1576,17 @@
 
   // Panel açıkken bekleme kutusu kapanır: ikisi üst üste binince yazılar okunmuyor.
   function showPanel(autoHide) {
+    hidePanelTip();
     $('waiting').className = 'hidden';
     $('panel').className = '';
     clearTimeout(panelTimer);
-    if (autoHide) panelTimer = setTimeout(hidePanel, 8000);
+    if (autoHide) panelTimer = setTimeout(autoHidePanel, 8000);
+  }
+
+  // Panel kendiliğinden kapandı: ilk açılışlarda panele nasıl dönüleceği söylenir.
+  function autoHidePanel() {
+    hidePanel();
+    maybeShowPanelTip();
   }
 
   function hidePanel() {
@@ -1589,6 +1596,35 @@
 
   function togglePanel() {
     if ($('panel').className === 'hidden') showPanel(false); else hidePanel();
+  }
+
+  // --- Panel ipucu ---
+  // Bağlanınca panel 8 sn görünüp kapanır; ekranda yalnız konsolun HDMI görüntüsü kalır. Kullanıcı uygulamanın onu
+  // "PlayStation ekranına attığını", uygulamaya ve ayarlara giremediğini sanıyordu. İlk PANEL_TIP_LAUNCHES açılışta panel
+  // kendiliğinden kapanınca altta kısa bir ipucu çıkar: Tamam paneli açar, altyazı ayarları telefonda ya da
+  // bilgisayardadır. Herhangi bir tuş ipucunu kapatır; Geri yalnız ipucunu kapatır, uygulamadan çıkmaz.
+  var PANEL_TIP_LAUNCHES = 3;
+  var PANEL_TIP_MS = 15000;
+  var panelTipTimer = null;
+  var panelTipDone = false; // Bu açılışta ipucu gösterildi ya da gösterilmeyecek.
+
+  function maybeShowPanelTip() {
+    if (panelTipDone || !server || demoRunning() || sourceTipShown() || noPictureShown()) return;
+    if ($('panel').className !== 'hidden') return;
+    panelTipDone = true;
+    var shown = Number(load('panelTips')) || 0;
+    if (shown >= PANEL_TIP_LAUNCHES) return;
+    save('panelTips', shown + 1);
+    $('panel-tip').className = '';
+    clearTimeout(panelTipTimer);
+    panelTipTimer = setTimeout(hidePanelTip, PANEL_TIP_MS);
+  }
+
+  function panelTipShown() { return $('panel-tip').className !== 'hidden'; }
+
+  function hidePanelTip() {
+    clearTimeout(panelTipTimer);
+    $('panel-tip').className = 'hidden';
   }
 
   // Sayı tuşu olmayan kumandalar için: panel açıkken sol ve sağ HDMI girişini değiştirir.
@@ -1603,6 +1639,7 @@
   var lastOkKey = 0;
   document.addEventListener('click', function () {
     if (Date.now() - lastOkKey < 400) return;
+    hidePanelTip();
     if (sourceTipShown()) hideSourceTip();
     else if (noPictureShown()) return;
     else if ($('waiting').className !== 'hidden') startDemo();
@@ -1611,6 +1648,11 @@
 
   document.addEventListener('keydown', function (e) {
     var code = e.keyCode;
+    if (panelTipShown()) {
+      hidePanelTip();
+      // Geri yalnız ipucunu kapatır; Tamam ve diğer tuşlar her zamanki işini de yapar (Tamam paneli açar).
+      if (code === KEY.BACK) { e.preventDefault(); return; }
+    }
     if (code === KEY.OK) lastOkKey = Date.now();
     if (code === KEY.OK && sourceTipShown()) {
       hideSourceTip();

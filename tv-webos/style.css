@@ -297,6 +297,27 @@ body.band #subtitle-cover { border-radius: 0; }
 #source-tip b { display: block; color: #F5B83D; font-size: 30px; margin-bottom: 8px; }
 #source-tip .close { display: block; margin-top: 12px; font-size: 24px; color: #A9A59C; }
 
+/* İlk açılışlarda panel kendiliğinden kapanınca üstte ortada (alttaki altyazıyı örtmez): panele Tamam ile dönülür.
+   Herhangi bir tuş kapatır. */
+#panel-tip {
+  position: absolute;
+  left: 50%;
+  top: 54px;
+  transform: translateX(-50%);
+  z-index: 21;
+  max-width: 1100px;
+  padding: 18px 30px;
+  border-radius: 24px;
+  border: 2px solid #F5B83D;
+  background: rgba(20, 21, 24, 0.95);
+  color: #F3EEE4;
+  font-size: 24px;
+  line-height: 1.4;
+  text-align: center;
+}
+#panel-tip.hidden { display: none; }
+#panel-tip b { display: block; color: #F5B83D; font-size: 30px; margin-bottom: 6px; }
+
 /* HDMI görüntüsü gelmeyince ortada açılan kutu: neden, ne yapılacağı ve HDMI girişi düğmeleri (◀▶ ve Tamam, ya da 1–4). */
 #no-picture { z-index: 22; }
 #no-picture .card {
