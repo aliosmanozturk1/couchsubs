@@ -6,6 +6,7 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 **Bu sürümde yeni**
 
+- **Android TV katmanında örtü İngilizce satırı kaplıyor (TV uygulaması 0.9.31, #473):** Katman modunda HDMI'yı TV'nin kendi ekranı biraz büyüterek gösteriyor; "İngilizce altyazının üstünü örtsün" zemini satırdan dar kalıyor, arka plan "Tam" olsa da İngilizce yazı yanlardan görünüyordu. Zemin artık bu büyütmeyi hesaba katıp satırı tamamen kaplıyor.
 - **TV uygulaması telefonu bulamıyordu (TV uygulaması 0.9.30, #484, #469):** Telefondan kurulan TV kendi ağ adresini söyleyemezse (eski LG webOS, bazı Samsung'lar) TV uygulaması hiçbir adresi denemiyor, "Ağda CouchSubs aranıyor…" ekranında kalıyordu; telefon da "TV uygulaması bekleniyor" diyordu. TV artık adresini eski webOS'un ve Samsung'un ağ API'sinden de soruyor, yine bilemezse yaygın ev ağlarını (192.168.1.x, 192.168.0.x, 10.0.0.x…) tarayıp telefondaki ya da bilgisayardaki CouchSubs'ı buluyor.
 - **Samsung ultra geniş monitörler (TV uygulaması 0.9.30, #304):** Odyssey G8 gibi 21:9 ve 32:9 ekranlarda CouchSubs TV uygulaması artık 16:9 bir kutuda değil, ekranın tamamında açılıyor; PS5 görüntüsü ve altyazı ekranı dolduruyor. 16:9 TV'lerde değişiklik yok.
 - **Android TV'de yeşil/siyah ekran (TV uygulaması 0.9.29, #453):** CouchSubs arka plana geçince (kumandadan Giriş › HDMI, Ana ekran) HDMI girişini artık bırakıyor; Thomson, Philips gibi TV'lerde TV'nin kendi HDMI ekranı yeşil ya da siyah kalmıyor. CouchSubs'a dönünce PS5 görüntüsü yeniden açılıyor.

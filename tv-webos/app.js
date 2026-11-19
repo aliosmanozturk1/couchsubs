@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.30';
+  var APP_VERSION = '0.9.31';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -514,9 +514,10 @@
     if (textId !== 'subtitle-text' || placement !== 'cover' || !currentBox) return null;
     var width = document.documentElement.clientWidth || window.innerWidth || 1920;
     var height = document.documentElement.clientHeight || window.innerHeight || 1080;
+    var box = coverBounds(screenBox(currentBox, isOverlay()), isOverlay());
     return {
-      width: bandShape ? width : (currentBox.right - currentBox.left + 2 * COVER_PAD) * width,
-      height: (currentBox.bottom - currentBox.top + 2 * COVER_PAD) * height
+      width: bandShape ? width : (box.right - box.left) * width,
+      height: (box.bottom - box.top) * height
     };
   }
 
@@ -888,7 +889,7 @@
   function layout() {
     var el = $('subtitle');
     var cover = $('subtitle-cover');
-    var box = placement === 'fixed' ? null : currentBox;
+    var box = placement === 'fixed' || !currentBox ? null : screenBox(currentBox, isOverlay());
     el.style.left = '8%';
     el.style.right = '8%';
     el.style.top = 'auto';
@@ -932,13 +933,39 @@
   // farklı iki kutu görünüyordu. Örtü çevirinin zeminini tamamen kapladığından ikisi tek bir siyah kutu gibi görünür.
   var COVER_PAD = 0.012;
 
+  // Katman modu (Android TV, #473): HDMI'yı CouchSubs değil TV'nin kendi giriş ekranı çizer ve resmi çoğu TV'de kenar
+  // taşmasıyla (overscan) %5'e kadar büyütür. İngilizce satırın yeri bilgisayarın gördüğü karedeki yeridir; ekranda daha
+  // geniş ve kenara doğru kaymış durur. Örtü kareye göre çizilince İngilizce satırdan dar kalıyor, yazı yanlardan
+  // görünüyordu (arka plan "Tam" olsa da saydam sanılıyordu). Uygulama içinde (TvView) resim büyütülmez; orada değişmez.
+  var OVERLAY_ZOOM = 1.05;
+  var OVERLAY_PAD = 0.01;
+
+  function isOverlay() {
+    return (' ' + ((document.body && document.body.className) || '') + ' ').indexOf(' overlay ') >= 0;
+  }
+
+  // Karedeki kutunun ekrandaki yeri: katmanda ekran ortasına göre büyütülmüş, uygulama içinde aynı.
+  function screenBox(box, overlay) {
+    if (!overlay) return box;
+    function at(value) { return Math.max(0, Math.min(1, 0.5 + (value - 0.5) * OVERLAY_ZOOM)); }
+    return { left: at(box.left), top: at(box.top), right: at(box.right), bottom: at(box.bottom) };
+  }
+
+  // Örtünün kapladığı alan (ekranın oranı olarak): satırın kutusu ve iki yanında pay. Katmanda pay biraz daha geniştir:
+  // TV resmi hiç büyütmese de büyütülmüş kutu ile bu pay İngilizce satırı yine kaplar.
+  function coverBounds(box, overlay) {
+    var pad = COVER_PAD + (overlay ? OVERLAY_PAD : 0);
+    return { left: box.left - pad, top: box.top - pad, right: box.right + pad, bottom: box.bottom + pad };
+  }
+
   function placeCover(cover, box, text) {
     var width = document.documentElement.clientWidth || window.innerWidth || 1920;
     var height = document.documentElement.clientHeight || window.innerHeight || 1080;
-    var left = (box.left - COVER_PAD) * width;
-    var top = (box.top - COVER_PAD) * height;
-    var right = (box.right + COVER_PAD) * width;
-    var bottom = (box.bottom + COVER_PAD) * height;
+    var bounds = coverBounds(box, isOverlay());
+    var left = bounds.left * width;
+    var top = bounds.top * height;
+    var right = bounds.right * width;
+    var bottom = bounds.bottom * height;
     if (text && text.width > 0 && text.height > 0) {
       left = Math.min(left, text.left);
       top = Math.min(top, text.top);
