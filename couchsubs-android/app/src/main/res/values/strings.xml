@@ -97,7 +97,7 @@
     <string name="target_phone">Bu telefonda</string>
     <string name="target_tvs_none">Ağda TV görülmedi (TV kapalı olabilir; sorun değil).</string>
 
-    <string name="main_phone_view">Altyazıyı telefonda göster</string>
+    <string name="main_phone_view">Altyazı ekranı</string>
     <string name="main_target">Altyazı</string>
     <string name="main_target_tv">TV</string>
     <string name="main_target_phone">Bu telefon</string>
@@ -441,9 +441,10 @@
     <string name="history">Geçmiş</string>
     <string name="history_note">Çevrilen son %1$d satır bu telefonda saklanır.</string>
     <string name="history_empty">Henüz altyazı yok. Bu ve önceki oturumlarda çevrilen satırlar burada görünür.</string>
-    <string name="history_copy_all">Tümünü kopyala</string>
     <string name="history_copied">Kopyalandı</string>
     <string name="history_copy">Kopyala</string>
+    <string name="developer_label">Geliştirici</string>
+    <string name="developer_a11y">Geliştirici: Enmera</string>
     <string name="history_clear">Temizle</string>
     <string name="history_clear_title">Geçmiş temizlensin mi?</string>
     <string name="history_clear_body">Kaydedilen bütün satırlar bu telefondan silinir.</string>

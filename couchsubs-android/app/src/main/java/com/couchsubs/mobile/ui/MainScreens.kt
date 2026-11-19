@@ -209,6 +209,7 @@ fun MainScreen(
                         { InfoRow(stringResource(R.string.main_last_session),
                             if (settings.lastSessionMs > 0) durationText(context, settings.lastSessionMs) else "—", onClick = onHistory) },
                     ))
+                    DeveloperSignature()
                 }
             }
             if (!status.demo) tour?.let { step ->

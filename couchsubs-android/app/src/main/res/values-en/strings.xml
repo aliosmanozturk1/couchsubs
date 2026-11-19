@@ -42,8 +42,8 @@
     <string name="error_model_unavailable">The translation model service is temporarily unavailable. Check Google Play services updates and try again.</string>
     <string name="error_model_timeout">The translation model download timed out. Check your connection and try again.</string>
     <string name="screen_translate">Translate screen</string>
-    <string name="screen_working">Translating the screen…</string>
-    <string name="screen_remove">Remove screen translations</string>
+    <string name="screen_working">Translating…</string>
+    <string name="screen_remove">Remove translations</string>
     <string name="screen_translating">Translating the screen…</string>
     <string name="screen_none">No text found on the screen.</string>
     <string name="screen_no_picture">Couldn\'t capture the screen: no picture from the PS5 yet.</string>
@@ -95,7 +95,7 @@
     <string name="target_phone">On this phone</string>
     <string name="target_tvs_none">No TV seen on the network (it may be off; that\'s fine).</string>
 
-    <string name="main_phone_view">Show subtitles on the phone</string>
+    <string name="main_phone_view">Subtitle screen</string>
     <string name="main_target">Subtitles</string>
     <string name="main_target_tv">TV</string>
     <string name="main_target_phone">This phone</string>
@@ -433,9 +433,10 @@
     <string name="history">History</string>
     <string name="history_note">The last %1$d translated lines are kept on this phone.</string>
     <string name="history_empty">No subtitles yet. Lines translated in this and earlier sessions appear here.</string>
-    <string name="history_copy_all">Copy all</string>
     <string name="history_copied">Copied</string>
     <string name="history_copy">Copy</string>
+    <string name="developer_label">Developer</string>
+    <string name="developer_a11y">Developer: Enmera</string>
     <string name="history_clear">Clear</string>
     <string name="history_clear_title">Clear the history?</string>
     <string name="history_clear_body">All saved lines are removed from this phone.</string>

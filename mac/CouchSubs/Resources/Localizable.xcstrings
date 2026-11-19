@@ -2020,6 +2020,38 @@
         }
       }
     },
+    "Developer": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Developer"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geliştirici"
+          }
+        }
+      }
+    },
+    "Developer: Enmera": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Developer: Enmera"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geliştirici: Enmera"
+          }
+        }
+      }
+    },
     "Developer Mode is on. One last step to install the TV app:": {
       "localizations": {
         "en": {
