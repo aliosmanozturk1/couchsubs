@@ -1,6 +1,38 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "I use a paid Gemini API key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I use a paid Gemini API key"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ücretli Gemini API anahtarı kullanıyorum"
+          }
+        }
+      }
+    },
+    "Paid API keys may incur charges. Google still enforces quotas.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paid API keys may incur charges. Google still enforces quotas."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ücretli API anahtarı ücretlendirilebilir. Google'ın kotaları yine geçerlidir."
+          }
+        }
+      }
+    },
     "More than one Android TV with debugging on was found on the network. Which one is yours?": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"More than one Android TV with debugging on was found on the network. Which one is yours?"}},"tr":{"stringUnit":{"state":"translated","value":"Ağda hata ayıklaması açık birden çok Android TV bulundu. Sizinki hangisi?"}}}},
     "You can see the TV's address on the TV in Settings › Network & Internet.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"You can see the TV's address on the TV in Settings › Network & Internet."}},"tr":{"stringUnit":{"state":"translated","value":"TV'nin adresi TV'de Ayarlar › Ağ ve İnternet'te yazar."}}}},
     "Install on the TV at %@": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Install on the TV at %@"}},"tr":{"stringUnit":{"state":"translated","value":"%@ adresindeki TV'ye kur"}}}},

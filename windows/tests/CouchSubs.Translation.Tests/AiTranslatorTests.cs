@@ -1087,7 +1087,6 @@ public class AiTranslatorTests
         Assert.False(old.FreeTier);
     }
 
-    /// <summary>Kayan bir dakikalık pencere: hak bitince istek verilmez, en eski istek pencereden çıkınca yeniden verilir.</summary>
     [Fact]
     public void GeminiPaidKeysSkipTheFreeTierBudgetAndFreeKeysStayIsolated()
     {
@@ -1105,6 +1104,7 @@ public class AiTranslatorTests
         Assert.Same(paid, RequestBudget.Shared(AiProvider.Gemini, model, apiKey: "paid-key", paidTier: true));
     }
 
+    /// <summary>Kayan bir dakikalık pencere: hak bitince istek verilmez, en eski istek pencereden çıkınca yeniden verilir.</summary>
     [Fact]
     public void RequestBudgetSlidingWindow()
     {

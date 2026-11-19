@@ -964,7 +964,6 @@ final class AITranslationTests: XCTestCase {
         XCTAssertEqual(old?.freeTier, false)
     }
 
-    /// Kayan bir dakikalık pencere: hak bitince istek verilmez, en eski istek pencereden çıkınca yeniden verilir.
     func testGeminiPaidTierDefaultsOffAndSurvivesSettingsSerialization() throws {
         let legacy = try JSONDecoder().decode(UserSettings.self, from: Data("{}".utf8))
         XCTAssertFalse(legacy.geminiPaidTier)
@@ -989,6 +988,7 @@ final class AITranslationTests: XCTestCase {
         XCTAssertTrue(paid === RequestBudget.shared(provider: .gemini, model: model, apiKey: "paid-key", paidTier: true))
     }
 
+    /// Kayan bir dakikalık pencere: hak bitince istek verilmez, en eski istek pencereden çıkınca yeniden verilir.
     func testRequestBudgetSlidingWindow() {
         var time = Date(timeIntervalSince1970: 1000)
         let budget = RequestBudget(perMinute: 3) { time }
