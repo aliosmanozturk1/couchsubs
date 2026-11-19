@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.29';
+  var APP_VERSION = '0.9.30';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -1376,6 +1376,12 @@
   var SCAN_PAUSE_MS = 30000;
   var SCAN_SOON_MS = 3000;
   var FAILS_BEFORE_SCAN = 3;
+  // TV kendi adresini söyleyemiyor ve kayıtlı adres de yoksa taranacak yaygın ev ağları (modemlerin varsayılanları,
+  // sırayla). Eskiden bu durumda tarama listesi boş kalıyor, hiçbir adres denenmiyordu: telefondan ya da başlatma
+  // parametresi vermeyen yoldan kurulan TV (eski webOS, adresini vermeyen Samsung) "Ağda CouchSubs aranıyor…" ekranında
+  // kalıyor, telefon "TV uygulaması bekleniyor" diyordu (#469, #484). Bir ağda CouchSubs bulununca sonrakiler taranmaz.
+  var GUESS_SUBNETS = ['192.168.1', '192.168.0', '10.0.0', '192.168.2', '192.168.100', '192.168.31', '192.168.50',
+    '192.168.178', '10.0.1', '192.168.10', '192.168.3', '192.168.8', '192.168.88'];
   var scanTimer = null;
   var scanDue = 0;
   var scanning = false;
@@ -1422,7 +1428,7 @@
     el.textContent = (tvAddress ? t('waitingAddress').replace('%1', tvAddress) + ' · ' : '') + t('waitingSearching');
   }
 
-  // Taranacak ağlar: TV'nin kendi ağı, sonra kayıtlı adresin ağı (aynıysa bir kez).
+  // Taranacak ağlar: TV'nin kendi ağı, sonra kayıtlı adresin ağı (aynıysa bir kez); ikisi de yoksa yaygın ev ağları (guessed).
   function scanSubnets(done) {
     var fromServer = subnetOf(server);
     function finish(ip) {
@@ -1434,7 +1440,8 @@
       var own = subnetOf(ip);
       if (own) list.push(own);
       if (fromServer && fromServer !== own) list.push(fromServer);
-      done(list);
+      if (list.length) return done(list, false);
+      done(GUESS_SUBNETS.slice(), true);
     }
     if (!platform.localAddress) return finish(null);
     var answered = false;
@@ -1534,18 +1541,29 @@
     if (scanning) return;
     cancelScan();
     scanning = true;
-    scanSubnets(function (subnets) {
+    scanSubnets(function (subnets, guessed) {
       var addresses = [];
       for (var s = 0; s < subnets.length; s++) {
         for (var host = 1; host <= 254; host++) addresses.push('http://' + subnets[s] + '.' + host + ':' + SERVER_PORT);
       }
       var next = 0, active = 0, done = false, found = [];
+      // Tahmin edilen ağlar birer birer taranır: CouchSubs bulunan ağda durulur (bilinen ağlar hep birlikte).
+      var stop = guessed ? Math.min(254, addresses.length) : addresses.length;
       function pump() {
-        while (!done && active < SCAN_PARALLEL && next < addresses.length) {
+        // Tahminli tarama uzun sürer; bu arada CouchSubs adresini kendisi verip bağlantı açıldıysa tarama bırakılır.
+        if (guessed && !done && !fallback && eventSource && eventSource.readyState === 1) {
+          done = true;
+          scanning = false;
+          return;
+        }
+        while (!done && active < SCAN_PARALLEL && next < stop) {
           active++;
           tryAddress(addresses[next++]);
         }
-        if (!done && !active && next >= addresses.length) finish(pickServer(found, serverId));
+        if (done || active || next < stop) return;
+        if (found.length || stop >= addresses.length) return finish(pickServer(found, serverId));
+        stop = Math.min(stop + 254, addresses.length);
+        pump();
       }
       // Kayıtlı kimlik bulununca tarama hemen biter; yoksa bütün ağ taranıp aralarından seçilir (eskiden ilk bulunan).
       function tryAddress(address) {

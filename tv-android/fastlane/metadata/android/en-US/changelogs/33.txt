@@ -1,0 +1,1 @@
+0.9.30: If the TV can't tell its own network address, the TV app now searches common home networks and finds CouchSubs on your phone or computer.

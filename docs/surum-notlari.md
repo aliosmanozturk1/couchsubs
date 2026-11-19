@@ -6,6 +6,7 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 **Bu sürümde yeni**
 
+- **TV uygulaması telefonu bulamıyordu (TV uygulaması 0.9.30, #484, #469):** Telefondan kurulan TV kendi ağ adresini söyleyemezse (eski LG webOS, bazı Samsung'lar) TV uygulaması hiçbir adresi denemiyor, "Ağda CouchSubs aranıyor…" ekranında kalıyordu; telefon da "TV uygulaması bekleniyor" diyordu. TV artık adresini eski webOS'un ve Samsung'un ağ API'sinden de soruyor, yine bilemezse yaygın ev ağlarını (192.168.1.x, 192.168.0.x, 10.0.0.x…) tarayıp telefondaki ya da bilgisayardaki CouchSubs'ı buluyor.
 - **Android TV'de yeşil/siyah ekran (TV uygulaması 0.9.29, #453):** CouchSubs arka plana geçince (kumandadan Giriş › HDMI, Ana ekran) HDMI girişini artık bırakıyor; Thomson, Philips gibi TV'lerde TV'nin kendi HDMI ekranı yeşil ya da siyah kalmıyor. CouchSubs'a dönünce PS5 görüntüsü yeniden açılıyor.
 - **OBS katmanında altyazı satırları (Windows, Mac):** Çeviri İngilizce satırı örterken OBS tarayıcı kaynağında 3-4 satıra bölünmüyor; uygulamanın penceresindeki gibi en çok 2-3 dengeli satırda kalıyor ve ekranın kenarından taşmıyor.
 - **DeepL daha kararlı (Windows, Mac, iPhone, Android, #433, #440, #441):** Çeviri sürerken DeepL bağlantısı açık tutuluyor (ilk satır daha hızlı); bağlantı koparsa satır bir kez daha deneniyor; hata sonrası bekleme 1 dakikadan 15 saniyeye indi. Kota ve anahtar hataları yeniden denenmiyor. Katkı: [DevBoX11](https://github.com/DevBoX11).

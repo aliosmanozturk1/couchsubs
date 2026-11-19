@@ -35,6 +35,16 @@
     } catch (e) {}
   }
 
+  // Samsung ağ API'sindeki IPv4 adresi (izin: network.public); API yoksa ya da adres boşsa null.
+  function samsungIp() {
+    try {
+      var ip = webapis.network.getIp();
+      return /^\d+\.\d+\.\d+\.\d+$/.test(ip || '') && ip !== '0.0.0.0' ? ip : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function hdmiSources(callback) {
     try {
       tizen.systeminfo.getPropertyValue('VIDEOSOURCE', function (info) {
@@ -77,6 +87,7 @@
 
     // Birim testi için (scripts/tv-tizen.test.js).
     viewportFor: viewportFor,
+    samsungIp: samsungIp,
 
     // Anynet+ (HDMI-CEC) ya da Otomatik Kaynak Değiştirme TV'yi kendiliğinden HDMI'ya geçirirse uygulama ipucu
     // gösterir (app.js). Menü adları Samsung'unkiler; başka TV'lerde gösterilmez.
@@ -143,8 +154,10 @@
           otherwise();
         }
       }
+      // Tizen'in sistem bilgisi adres vermezse Samsung'un ağ API'si (webapis.network.getIp) sorulur; o da yoksa null.
+      // Adres bilinmeyince app.js yaygın ev ağlarını tarar (#484).
       read('ETHERNET_NETWORK', function () {
-        read('WIFI_NETWORK', function () { callback(null); });
+        read('WIFI_NETWORK', function () { callback(samsungIp()); });
       });
     },
 

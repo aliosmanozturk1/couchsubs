@@ -75,3 +75,52 @@ test('config.xml: yüzey ekranın tamamı (base_screen_resolution=fullscreen)', 
   const config = fs.readFileSync(path.join(tizenDir, 'config.xml'), 'utf8');
   assert.match(config, /<tizen:metadata key="http:\/\/tizen\.org\/metadata\/app_ui_type\/base_screen_resolution" value="fullscreen"\/>/);
 });
+
+// TV'nin kendi adresi (#484): Tizen sistem bilgisi adres vermezse Samsung ağ API'si sorulur.
+function loadNetwork({ ethernet, wifi, samsung }) {
+  const answer = (value) => (name, ok, fail) => {
+    if (value === undefined) return fail(new Error('NotSupportedError'));
+    ok({ ipAddress: value });
+  };
+  const tizen = {
+    systeminfo: {
+      getPropertyValue(name, ok, fail) {
+        if (name === 'ETHERNET_NETWORK') return answer(ethernet)(name, ok, fail);
+        if (name === 'WIFI_NETWORK') return answer(wifi)(name, ok, fail);
+        ok({ connected: [], disconnected: [] });
+      },
+    },
+  };
+  const window = { innerWidth: 1920, innerHeight: 1080, addEventListener() {} };
+  const document = { querySelector: () => null };
+  const context = { window, document, tizen };
+  if (samsung !== undefined) {
+    context.webapis = { network: { getIp() { if (samsung instanceof Error) throw samsung; return samsung; } } };
+  }
+  vm.runInNewContext(code, context);
+  return window.COUCHSUBS_PLATFORM;
+}
+
+function addressOf(platform) {
+  let result = 'yanıt yok';
+  platform.localAddress((ip) => { result = ip; });
+  return result;
+}
+
+test('localAddress: Tizen sistem bilgisi adres verirse o kullanılır (kablolu önce)', () => {
+  assert.equal(addressOf(loadNetwork({ ethernet: '192.168.1.40', wifi: '192.168.1.41', samsung: '10.0.0.2' })), '192.168.1.40');
+  assert.equal(addressOf(loadNetwork({ ethernet: '', wifi: '192.168.1.41', samsung: '10.0.0.2' })), '192.168.1.41');
+});
+
+test('localAddress: sistem bilgisi adres vermezse Samsung ağ API\'si (webapis.network.getIp) sorulur', () => {
+  assert.equal(addressOf(loadNetwork({ samsung: '192.168.0.23' })), '192.168.0.23');
+  assert.equal(addressOf(loadNetwork({ ethernet: '', wifi: '', samsung: '192.168.0.23' })), '192.168.0.23');
+});
+
+test('localAddress: hiçbir yol adres vermezse null (app.js yaygın ev ağlarını tarar)', () => {
+  assert.equal(addressOf(loadNetwork({})), null);
+  assert.equal(addressOf(loadNetwork({ samsung: '' })), null);
+  assert.equal(addressOf(loadNetwork({ samsung: '0.0.0.0' })), null);
+  assert.equal(addressOf(loadNetwork({ samsung: new Error('SecurityError') })), null);
+  assert.equal(loadNetwork({}).samsungIp(), null);
+});
