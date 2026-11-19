@@ -290,7 +290,7 @@ footer a{color:var(--cream)}
               </a>
               <a class="btn ghost" data-indir="windows" href="https://github.com/yorulmazsinan/couchsubs/releases/latest/download/CouchSubs-windows-Setup.exe">Windows için indir</a>
             </div>
-            <p class="note" id="hero-note">macOS 13 ve üstü, Windows 10 ve 11. TV'ler: LG, Samsung, Android TV.</p>
+            <p class="note" id="hero-note">macOS 13 ve üstü, Windows 10 ve 11. Telefon: Android, iPhone. TV'ler: LG, Samsung, Android TV.</p>
           </div>
           <div class="beat" data-beat="1">
             <h2>Önce okur.</h2>
@@ -470,7 +470,7 @@ footer a{color:var(--cream)}
             <div class="phone"><img src="img/telefon-calisiyor.webp" alt="Telefon ekranı: çeviri sürüyor, hazır paketten gelen satırlar" width="780" height="1688" loading="lazy"></div>
             <div class="phone"><img src="img/telefon-paketler.webp" alt="Telefon ekranı: yedi oyunun hazır çeviri paketi" width="780" height="1688" loading="lazy"></div>
           </div>
-          <p class="soon"><b>Android</b> uygulaması Google Play'de, bilgisayar gerekmez. <b>iPhone</b> sürümü test ediliyor.</p>
+          <p class="soon"><b>Android</b> uygulaması Google Play'de, <b>iPhone</b> uygulaması TestFlight'ta. Telefonda bilgisayar gerekmez.</p>
         </div>
       </div>
     </div>
@@ -483,6 +483,7 @@ footer a{color:var(--cream)}
           <h2 id="paketler-h">Bu oyunların Türkçe yaması hazır.</h2>
         </div>
         <ul class="games">
+          <li>Grand Theft Auto VI</li>
           <li>Grand Theft Auto V</li>
           <li>Red Dead Redemption 2</li>
           <li>Elden Ring</li>
@@ -497,7 +498,7 @@ footer a{color:var(--cream)}
       <aside>
         <div class="fx fx-aside" data-fx="paketler" aria-hidden="true"></div>
         <p><strong>Oyunu açınca yama kendiliğinden seçilir.</strong> Yamada olan satır çeviri motoruna gitmeden, anında çıkar.</p>
-        <p>Yamada olmayan satırları seçtiğin motor çevirir. Yeni yamalar güncellemeyle gelir; listede olmayan oyunlar da çalışır.</p>
+        <p>Yamada olmayan satırları seçtiğin motor çevirir. Yeni yamaları uygulama kendiliğinden indirir; listede olmayan oyunlar da çalışır.</p>
       </aside>
     </div>
   </section>
@@ -521,22 +522,22 @@ footer a{color:var(--cream)}
         </div>
         <div class="card">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="5" width="20" height="13" rx="2"/><path d="M8 21h8"/></svg>Android TV</h3>
-          <p>Vestel, Arçelik, Beko, Grundig, Philips ve diğer Android TV, Google TV'ler. Bilgisayardaki CouchSubs kendisi kurar; elle kurmak istersen APK burada.</p>
+          <p>Vestel, Arçelik, Beko, Grundig, Philips ve diğer Android TV, Google TV'ler. Bilgisayardaki ya da telefondaki CouchSubs kendisi kurar; elle kurmak istersen APK burada.</p>
           <a class="btn ghost" data-indir="androidtv" href="https://github.com/yorulmazsinan/couchsubs/releases/latest/download/CouchSubs-androidtv.apk">APK'yı indir</a>
         </div>
         <div class="card">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="5" width="20" height="13" rx="2"/><path d="M8 21h8"/></svg>LG ve Samsung TV</h3>
-          <p>webOS 4 ve üstü LG'ler, 2019 ve sonrası Samsung'lar. TV uygulamasını bilgisayardaki CouchSubs kendisi kurar, ayrı bir şey indirmezsin.</p>
+          <p>webOS 4 ve üstü LG'ler, 2019 ve sonrası Samsung'lar. TV uygulamasını bilgisayardaki ya da telefondaki CouchSubs kendisi kurar, ayrı bir şey indirmezsin.</p>
           <a class="btn ghost" href="https://github.com/yorulmazsinan/couchsubs/blob/main/docs/tv-kurulum.md" rel="noopener">TV kurulum rehberi</a>
         </div>
-        <div class="card later">
+        <div class="card main" data-os="iphone">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>iPhone</h3>
-          <p>iPhone'a APK yüklenmez; iPhone uygulamaları yalnız App Store'dan gelir. iPhone sürümü App Store'a hazırlanıyor.</p>
-          <span class="tag">Yakında</span>
+          <p>Herkese açık TestFlight'ta ücretsiz. App Store'dan TestFlight'ı indir, bağlantıyı iPhone'da aç, <strong>Kabul Et</strong> ve <strong>Yükle</strong>'ye bas. Telefon PS5'e kendisi bağlanır, TV uygulamasını da kendisi kurar.</p>
+          <a class="btn primary" data-indir="iphone-testflight" href="https://testflight.apple.com/join/Um3jb5Fx" rel="noopener">TestFlight'ta aç</a>
         </div>
         <div class="card main" data-os="android">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>Android telefon</h3>
-          <p>Google Play'de ücretsiz: Android 8 ve üstü (64 bit). Telefon PS5'e kendisi bağlanır, bilgisayar gerekmez. Daha önce siteden APK kurduysanız Play sürümünden önce onu silin.</p>
+          <p>Google Play'de ücretsiz: Android 8 ve üstü, 32 ve 64 bit cihazlar. Telefon PS5'e kendisi bağlanır, TV uygulamasını da kendisi kurar; bilgisayar gerekmez. Daha önce siteden APK kurduysanız Play sürümünden önce onu silin.</p>
           <a class="btn primary" data-indir="android-play" href="https://play.google.com/store/apps/details?id=com.couchsubs.mobile" rel="noopener">Google Play'den indir</a>
         </div>
       </div>
@@ -560,7 +561,7 @@ footer a{color:var(--cream)}
           </details>
           <details>
             <summary>Hangi oyunlarda çalışır?</summary>
-            <p>Ekranda İngilizce altyazı gösteren her PS5 oyununda. GTA V, Red Dead Redemption 2, Elden Ring gibi hazır yaması olan oyunlarda satırlar yamadan anında gelir; diğerlerini seçtiğin çeviri motoru çevirir.</p>
+            <p>Ekranda İngilizce altyazı gösteren her PS5 oyununda. GTA 6, GTA V, Red Dead Redemption 2, Elden Ring gibi hazır yaması olan oyunlarda satırlar yamadan anında gelir; diğerlerini seçtiğin çeviri motoru çevirir.</p>
           </details>
           <details>
             <summary>PS5'e ya da oyuna bir şey kuruluyor mu?</summary>
@@ -572,11 +573,15 @@ footer a{color:var(--cream)}
           </details>
           <details>
             <summary>Oynarken bilgisayar açık kalmalı mı?</summary>
-            <p>Evet. Okuma ve çeviri bilgisayarda yapılır; CouchSubs arka planda açık kalmalı. Bilgisayarın TV'nin yanında olması gerekmez, aynı ev ağında olması yeter.</p>
+            <p>Bilgisayarla kullanıyorsan evet. Okuma ve çeviri bilgisayarda yapılır; CouchSubs arka planda açık kalmalı. Bilgisayarın TV'nin yanında olması gerekmez, aynı ev ağında olması yeter.</p>
           </details>
           <details>
             <summary>Telefonda ya da iPhone'da çalışır mı?</summary>
-            <p>Android telefon uygulaması Google Play'de: Play Store'da "CouchSubs" diye aratın ya da İndir bölümündeki düğmeye basın. Telefon PS5'e kendisi bağlanır, bilgisayar gerekmez. iPhone'lar APK açmadığı için iPhone sürümü App Store'dan gelecek.</p>
+            <p>Evet. Android uygulaması Google Play'de: Play Store'da "CouchSubs" diye aratın ya da İndir bölümündeki düğmeye basın. iPhone uygulaması herkese açık TestFlight'ta: App Store'dan TestFlight'ı indirin, <a href="https://testflight.apple.com/join/Um3jb5Fx" rel="noopener">bu bağlantıyı</a> iPhone'da açın, <strong>Kabul Et</strong> ve <strong>Yükle</strong>'ye basın, sonra CouchSubs'ı açıp PS5'i eşleyin. App Store sürümü Apple'ın incelemesinde. İki telefonda da bilgisayar gerekmez; telefon PS5'e kendisi bağlanır, Samsung, LG ve Android TV'ye TV uygulamasını da kendisi kurar.</p>
+          </details>
+          <details>
+            <summary>Xbox'ta çalışır mı?</summary>
+            <p>Evet, Beta olarak: Windows uygulaması ve Android telefon Xbox'a da bağlanır. Bir sorun görürsen GitHub'da bildir.</p>
           </details>
         </div>
         <div class="faq">
@@ -587,7 +592,7 @@ footer a{color:var(--cream)}
           </details>
           <details>
             <summary>Hangi TV'ler destekleniyor?</summary>
-            <p>webOS 4 ve üstü LG'ler (bir kullanıcı 2015 model webOS 2.2'de de çalıştırdı), 2019 ve sonrası Samsung'lar (2016–2018 modelleri deneysel) ve Vestel, Arçelik, Beko, Grundig, Philips gibi Android TV, Google TV'ler. TV yoksa altyazı bilgisayar ekranında da gösterilir.</p>
+            <p>webOS 4 ve üstü LG'ler (bir kullanıcı 2015 model webOS 2.2'de de çalıştırdı), 2019 ve sonrası Samsung'lar (2016–2018 modelleri deneysel) ve Vestel, Arçelik, Beko, Grundig, Philips gibi Android TV, Google TV'ler. Odyssey G8/G9 gibi Samsung ultra geniş monitörlerde görüntü ekranı doldurur. TV yoksa altyazı bilgisayar ekranında da gösterilir.</p>
           </details>
           <details>
             <summary>Windows "bilgisayarınızı korudu" diyor.</summary>
@@ -596,6 +601,14 @@ footer a{color:var(--cream)}
           <details>
             <summary>TV'de altyazı çıkmıyor.</summary>
             <p>Oyunda altyazının açık olduğuna, TV'de CouchSubs uygulamasının açık olduğuna ve TV'nin bilgisayarla aynı ağda olduğuna bak. Altyazı okunmuyorsa Ayarlar › Altyazı alanı'ndan alanı ayarla. Olmazsa uygulamadaki altyazı günlüğüyle GitHub'da sorun bildir.</p>
+          </details>
+          <details>
+            <summary>Evde iki PS5 ya da iki TV var.</summary>
+            <p>Sorun değil. CouchSubs PS5'i adıyla tanır, başka PS5'e geçmez; ağda birden çok Android TV varsa hangisine kurulacağını sorar. Her TV kendi bilgisayarına ya da telefonuna bağlanır.</p>
+          </details>
+          <details>
+            <summary>PS5 bağlantısı sık kopuyor.</summary>
+            <p>Bağlantı sık koparsa CouchSubs görüntüyü kendiliğinden 720p'ye düşürür; hata kodunun ne demek olduğunu da ekranda yazar. Wi-Fi zayıfsa PS5'i ağa kabloyla bağlamak da işe yarar.</p>
           </details>
           <details>
             <summary>Samsung TV kendiliğinden HDMI'ya geçiyor.</summary>
@@ -639,6 +652,10 @@ footer a{color:var(--cream)}
     actions.innerHTML = '<a class="btn primary" data-indir="android-play" href="https://play.google.com/store/apps/details?id=com.couchsubs.mobile" rel="noopener">Google Play\'den indir</a><a class="btn ghost" href="#indir">Diğer seçenekler</a>';
     document.getElementById('hero-note').textContent = 'Android telefonda bilgisayar gerekmez: Google Play\'den kurun.';
     var dla = document.querySelector('.dl'); dla.prepend(dla.querySelector('[data-os="android"]'));
+  } else if (/iPhone|iPad|iPod/i.test(ua)) {
+    actions.innerHTML = '<a class="btn primary" data-indir="iphone-testflight" href="https://testflight.apple.com/join/Um3jb5Fx" rel="noopener">TestFlight\'ta aç</a><a class="btn ghost" href="#indir">Diğer seçenekler</a>';
+    document.getElementById('hero-note').textContent = 'iPhone uygulaması herkese açık TestFlight\'ta: önce App Store\'dan TestFlight\'ı indir.';
+    var dli = document.querySelector('.dl'); dli.prepend(dli.querySelector('[data-os="iphone"]'));
   } else if (mobile) {
     actions.innerHTML = '<a class="btn primary" href="#indir">İndirme seçenekleri</a>';
     document.getElementById('hero-note').textContent = 'CouchSubs bilgisayarda çalışır. Bu sayfayı Mac ya da Windows bilgisayarında aç.';
@@ -1051,10 +1068,10 @@ requestAnimationFrame(frame);
     } };
   })();
 
-  // Paketler: yedi oyun kutusu, kaydırdıkça raftan çekilir
+  // Paketler: oyun kutuları, kaydırdıkça raftan çekilir
   scenes.paketler = (() => {
     const s = baseScene(), cam = new THREE.PerspectiveCamera(30, 4 / 3, 0.1, 50);
-    const names = ['GTA V', 'RDR 2', 'ELDEN RING', 'MAFIA', 'AC SHADOWS', 'DS 2', 'MW 2019', 'SPIDER-MAN 2', 'DEATH STR.'];
+    const names = ['GTA VI', 'GTA V', 'RDR 2', 'ELDEN RING', 'MAFIA', 'AC SHADOWS', 'DS 2', 'MW 2019', 'SPIDER-MAN 2', 'DEATH STR.'];
     const cases = names.map((n, i) => {
       const spine = canvasTex(64, 512, (g, w, h) => { g.fillStyle = i === 0 ? '#F5B83D' : '#24262c'; g.fillRect(0, 0, w, h); g.save(); g.translate(w / 2 + 9, h / 2); g.rotate(-Math.PI / 2); g.fillStyle = i === 0 ? '#17181B' : '#F3EEE4'; g.font = '700 28px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText(n, 0, 0); g.restore(); });
       const side = std(i === 0 ? 0xD9A030 : 0x2c2e35, 0.5);
