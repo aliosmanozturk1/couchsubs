@@ -12875,6 +12875,8 @@
         }
       }
     },
+    "Try with wireless debugging": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Try with wireless debugging"}},"tr":{"stringUnit":{"state":"translated","value":"Kablosuz hata ayıklamayla dene"}}}},
+    "The TV did not answer on the USB/network debugging port (5555). Newer Android TV and Google TV models keep this port closed. On the TV, turn on Developer options › Wireless debugging, then tap the button below.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The TV did not answer on the USB/network debugging port (5555). Newer Android TV and Google TV models keep this port closed. On the TV, turn on Developer options › Wireless debugging, then tap the button below."}},"tr":{"stringUnit":{"state":"translated","value":"TV, USB/ağ hata ayıklama portuna (5555) yanıt vermedi. Yeni Android TV ve Google TV'lerde bu port kapalıdır. TV'de Geliştirici seçenekleri › Kablosuz hata ayıklama'yı açın, sonra aşağıdaki düğmeye dokunun."}}}},
     "TCP 5555 is unreachable; wireless debugging uses a separate port": {
       "localizations": {
         "en": {
