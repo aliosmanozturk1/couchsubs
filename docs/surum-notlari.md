@@ -8,6 +8,8 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 - **DeepL daha kararlı (Windows, Mac, iPhone, Android, #433, #440, #441):** Çeviri sürerken DeepL bağlantısı açık tutuluyor (ilk satır daha hızlı); bağlantı koparsa satır bir kez daha deneniyor; hata sonrası bekleme 1 dakikadan 15 saniyeye indi. Kota ve anahtar hataları yeniden denenmiyor. Katkı: [DevBoX11](https://github.com/DevBoX11).
 - **TV uygulaması 0.9.27: Samsung ultra geniş monitörler (#304, #436):** Odyssey G8/G9 gibi 21:9 ve 32:9 ekranlarda PS5 görüntüsü artık ekranı dolduruyor (önceden ortada küçük kalıyordu). 16:9 TV'lerde değişiklik yok. TV'deki uygulama kendiliğinden güncellenir.
+- **"Ekranı çevir"de tuş simgeleri korunuyor (Windows, Mac, Android, #435):** Menü ve ipucu çevirilerinde oyundaki kumanda simgesi (△, R2 vb.) kesilip çevirinin içinde aynı yerde gösteriliyor; hangi tuşa basılacağı kaybolmuyor. Katkı: erayslyrt00.
+- **TV'de örtü modunda satır bölme (#442):** Örtü açıkken çeviri, örtüyle birlikte en küçük kutuyu verecek şekilde satırlara bölünüyor; ayar değişince ekrandaki yazı yeni ayarla yeniden diziliyor. Katkı: erayslyrt00.
 - **Android telefon:** [Google Play](https://play.google.com/store/apps/details?id=com.couchsubs.mobile) üzerinden güncelleniyor (0.1.0-beta.59).
 
 **beta.51'de gelenler:** GTA 6'da tuş ipuçlarının çevrilmemesi, PS5 bağlantısında sık kopmada 720p ve hata kodu açıklamaları, Samsung kurulum ve bağlantı düzeltmeleri (Host PC IP, "TV'de test et", arka plana düşen uygulama), TV uygulaması 0.9.26 (sade altyazı kutusu, panel ipucu), Xbox ses açıklaması. Katkı: erayslyrt00, erenbati.
