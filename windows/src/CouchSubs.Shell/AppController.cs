@@ -1636,7 +1636,11 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             DisconnectKind.RegistrationInvalid => text["The PS5 didn't accept this pairing. Pair the PS5 again with the second account in Settings."],
             // Eskiden ağ hatası, bulunamayan PS5 ve diğer nedenler hep yalnız "Yeniden bağlanılıyor…" idi.
             DisconnectKind.NotFound => text.Format("PS5 not found at %@. Make sure it is on and on the same network. Reconnecting…", detail ?? "?"),
-            DisconnectKind.Network => text["Can't reach the PS5. Reconnecting…"],
+            // Kablosuz ağda akış sık kopuyordu (GitHub #388, #401): yeniden bağlanılır, kalıcı çözüm kablodur.
+            DisconnectKind.Network => text["Lost the connection to the PS5. Reconnecting… If this keeps happening, connect the PS5 to the router with a cable."],
+            // 0x80108b12: PS5'te Uzaktan Oynatma kapalı (GitHub #9). Ayar açılınca yeniden denemede bağlanılır.
+            DisconnectKind.Rejected when detail == ApplicationReasons.RemotePlayDisabled =>
+                text.Format("Remote Play is turned off on the PS5 (code %@). On the PS5, go to Settings › System › Remote Play and turn on Enable Remote Play.", detail),
             // Eskiden "Yeniden bağlanılıyor… (Unknown Session Request Error)" görünüyordu (GitHub #33, #202).
             DisconnectKind.Rejected when !string.IsNullOrEmpty(detail) => text.Format("The PS5 rejected the connection (code %@). Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again.", detail),
             DisconnectKind.Rejected => text["The PS5 didn't start the session. Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again."],

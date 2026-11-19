@@ -640,6 +640,13 @@ CS_API cs_session *cs_session_start(const char *host, const uint8_t regist_key[0
 		const uint8_t account_id[8], int max_fps,
 		cs_frame_cb frame, cs_event_cb event, cs_log_cb log, void *user)
 {
+	return cs_session_start_ex(host, regist_key, morning, account_id, max_fps, 1080, frame, event, log, user);
+}
+
+CS_API cs_session *cs_session_start_ex(const char *host, const uint8_t regist_key[0x10], const uint8_t morning[0x10],
+		const uint8_t account_id[8], int max_fps, int video_height,
+		cs_frame_cb frame, cs_event_cb event, cs_log_cb log, void *user)
+{
 	if(!host || !regist_key || !morning || !account_id)
 		return NULL;
 
@@ -668,7 +675,8 @@ CS_API cs_session *cs_session_start(const char *host, const uint8_t regist_key[0
 	info.host = host; /* libchiaki adresi oturum açılırken kopyalar */
 	memcpy(info.regist_key, regist_key, sizeof(info.regist_key));
 	memcpy(info.morning, morning, sizeof(info.morning));
-	chiaki_connect_video_profile_preset(&info.video_profile, CHIAKI_VIDEO_RESOLUTION_PRESET_1080p, CHIAKI_VIDEO_FPS_PRESET_30);
+	chiaki_connect_video_profile_preset(&info.video_profile,
+			video_height == 720 ? CHIAKI_VIDEO_RESOLUTION_PRESET_720p : CHIAKI_VIDEO_RESOLUTION_PRESET_1080p, CHIAKI_VIDEO_FPS_PRESET_30);
 	info.video_profile.codec = CHIAKI_CODEC_H264;
 	info.video_profile_auto_downgrade = true;
 	info.enable_keyboard = false;

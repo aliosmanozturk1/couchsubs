@@ -1614,7 +1614,13 @@ public class AppControllerRunTests
         Assert.Equal("Turn on your PS5", AppController.StatusText(SessionState.Disconnected(DisconnectKind.ConsoleAsleep), true, text));
         Assert.Equal("Remote Play is in use on another device", AppController.StatusText(SessionState.Disconnected(DisconnectKind.InUse), true, text));
         Assert.Equal("The PS5 refused the connection. Set up the PS5 again.", AppController.StatusText(SessionState.Disconnected(DisconnectKind.Refused), true, text));
-        Assert.Equal("Can't reach the PS5. Reconnecting…", AppController.StatusText(SessionState.Disconnected(DisconnectKind.Network), true, text));
+        Assert.Equal("Lost the connection to the PS5. Reconnecting… If this keeps happening, connect the PS5 to the router with a cable.",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.Network), true, text));
+        Assert.Equal("PS5 ile bağlantı koptu, yeniden bağlanılıyor… Sık oluyorsa PS5'i modeme kabloyla bağlayın.",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.Network), true, Localizer.ForLanguage("tr")));
+        // 0x80108b12: PS5'te Uzaktan Oynatma kapalı (GitHub #9); genel "başka Remote Play açık olabilir" metni yanıltıyordu.
+        Assert.Equal("PS5'te Uzaktan Oynama kapalı (kod 0x80108b12). PS5'te Ayarlar › Sistem › Uzaktan Oynama'ya gidip Uzaktan Oynama'yı Etkinleştir'i açın.",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.Rejected, ApplicationReasons.RemotePlayDisabled), true, Localizer.ForLanguage("tr")));
         Assert.Equal("The PS5 didn't accept this pairing. Pair the PS5 again with the second account in Settings.",
             AppController.StatusText(SessionState.Disconnected(DisconnectKind.RegistrationInvalid), true, text));
         Assert.Equal("PS5 not found at 192.168.1.70. Make sure it is on and on the same network. Reconnecting…",

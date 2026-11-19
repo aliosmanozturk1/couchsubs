@@ -3742,6 +3742,22 @@
         }
       }
     },
+    "To hide the \"Remote Play connected\" message on the screen: on the PS5, go to Settings › System › Remote Play and turn on Hide Remote Play Connection Status Pop-Up. Do it for both your main account and the second account.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To hide the \"Remote Play connected\" message on the screen: on the PS5, go to Settings › System › Remote Play and turn on Hide Remote Play Connection Status Pop-Up. Do it for both your main account and the second account."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekrandaki \"Uzaktan Oynama bağlandı\" yazısını gizlemek için: PS5'te Ayarlar › Sistem › Uzaktan Oynama'ya gidip Uzaktan Oynama Bağlantı Durumu Açılır Penceresini Gizle'yi açın. Bunu hem ana hesabınızda hem ikinci hesapta yapın."
+          }
+        }
+      }
+    },
     "Still as the new user, go to Settings › System › Remote Play and turn on Enable Remote Play.": {
       "localizations": {
         "en": {
@@ -3753,7 +3769,7 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hâlâ yeni kullanıcıdayken Ayarlar › Sistem › Uzaktan Oynatma'ya gidip Uzaktan Oynatmayı Etkinleştir'i açın."
+            "value": "Hâlâ yeni kullanıcıdayken Ayarlar › Sistem › Uzaktan Oynama'ya gidip Uzaktan Oynama'yı Etkinleştir'i açın."
           }
         }
       }
@@ -7966,18 +7982,34 @@
         }
       }
     },
-    "Can't reach the PS5. Reconnecting…": {
+    "Lost the connection to the PS5. Reconnecting… If this keeps happening, connect the PS5 to the router with a cable.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Can't reach the PS5. Reconnecting…"
+            "value": "Lost the connection to the PS5. Reconnecting… If this keeps happening, connect the PS5 to the router with a cable."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "PS5'e ulaşılamıyor. Yeniden bağlanılıyor…"
+            "value": "PS5 ile bağlantı koptu, yeniden bağlanılıyor… Sık oluyorsa PS5'i modeme kabloyla bağlayın."
+          }
+        }
+      }
+    },
+    "Remote Play is turned off on the PS5 (code %@). On the PS5, go to Settings › System › Remote Play and turn on Enable Remote Play.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Play is turned off on the PS5 (code %@). On the PS5, go to Settings › System › Remote Play and turn on Enable Remote Play."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PS5'te Uzaktan Oynama kapalı (kod %@). PS5'te Ayarlar › Sistem › Uzaktan Oynama'ya gidip Uzaktan Oynama'yı Etkinleştir'i açın."
           }
         }
       }

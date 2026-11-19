@@ -633,7 +633,12 @@ class TranslationService : Service() {
             DisconnectKind.NETWORK -> getString(R.string.phase_network)
             DisconnectKind.REGISTRATION_INVALID -> getString(R.string.phase_registration_invalid)
             // Eskiden "Bağlantı koptu, yeniden bağlanılıyor…" görünüyordu, neden anlaşılmıyordu (GitHub #33, #202).
-            DisconnectKind.REJECTED -> state.detail?.let { getString(R.string.phase_rejected_code, it) } ?: getString(R.string.phase_rejected)
+            // 0x80108b12: PS5'te Uzaktan Oynatma kapalı (GitHub #9); genel "başka Remote Play açık olabilir" metni yanıltıyordu.
+            DisconnectKind.REJECTED -> when (state.detail) {
+                DisconnectKind.REMOTE_PLAY_DISABLED -> getString(R.string.phase_remote_play_disabled, state.detail)
+                null -> getString(R.string.phase_rejected)
+                else -> getString(R.string.phase_rejected_code, state.detail)
+            }
             DisconnectKind.NO_PICTURE -> getString(R.string.phase_no_picture)
             DisconnectKind.CONSOLE_ASLEEP -> getString(R.string.phase_asleep)
             DisconnectKind.LOGIN_PASSCODE -> getString(R.string.phase_passcode)

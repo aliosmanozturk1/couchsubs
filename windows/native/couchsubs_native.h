@@ -85,6 +85,12 @@ CS_API cs_session *cs_session_start(const char *host, const uint8_t regist_key[0
                                     const uint8_t account_id[8], int max_fps,
                                     cs_frame_cb frame, cs_event_cb event, cs_log_cb log, void *user);
 
+/* cs_session_start ile aynı; video_height 720 ise 720p (~10 Mbit/sn), değilse 1080p (~15 Mbit/sn) istenir. Bağlantı
+ * kablosuz ağda sık koparsa uygulama sonraki oturumları 720p açar. */
+CS_API cs_session *cs_session_start_ex(const char *host, const uint8_t regist_key[0x10], const uint8_t morning[0x10],
+                                       const uint8_t account_id[8], int max_fps, int video_height,
+                                       cs_frame_cb frame, cs_event_cb event, cs_log_cb log, void *user);
+
 /* PS5'in istediği giriş şifresini (ASCII rakamlar) gönderir. Olay geri çağrısı içinden çağrılmamalı (libchiaki olayı
  * kilit tutarken verir). Dönüş: 0 başarı. */
 CS_API int cs_session_set_login_pin(cs_session *session, const uint8_t *pin, size_t pin_size);
