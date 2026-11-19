@@ -45,6 +45,8 @@ struct CouchSubsApp: App {
         if !testing {
             model.requestNotificationPermission = { ConnectionAlert.requestPermission() }
             model.onConnectionLost = { ConnectionAlert.post() }
+            model.onPausedInBackground = { ConnectionAlert.schedulePausedInBackground() }
+            model.onResumedFromBackground = { ConnectionAlert.clearPausedInBackground() }
         }
         // Çevrilen son satırlar ("Geçmiş"); testlerde dosyaya dokunulmaz.
         if !testing { model.loadHistory() }
@@ -96,6 +98,7 @@ struct CouchSubsApp: App {
                 wasInBackground = false
             case .background:
                 wasInBackground = true
+                model.enteredBackground()
                 Task { await model.flushPool() }
             default: break
             }
@@ -122,6 +125,28 @@ enum ConnectionAlert {
         // Aynı kimlik: art arda kopmalarda bildirimler birikmez, sonuncusu kalır.
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+
+    private static let pausedIdentifier = "paused-in-background"
+    /// Arka plana geçişten bu kadar sonra uyarılır: Denetim Merkezi ya da kısa bir mesaj için çıkıp hemen dönen
+    /// kullanıcı bildirim görmez (dönünce `clearPausedInBackground` iptal eder).
+    private static let pausedDelay: TimeInterval = 8
+
+    /// iPhone'da çeviri arka planda ya da kilitli ekranda sürmez (iOS uygulamayı askıya alır; App Store kurallarına uyan
+    /// bir arka plan modu bu iş için yok). Bildirimi iOS zamanında kendisi gösterir; uygulamanın çalışması gerekmez.
+    static func schedulePausedInBackground() {
+        let content = UNMutableNotificationContent()
+        content.title = String(localized: "Subtitles paused")
+        content.body = String(localized: "iPhone pauses CouchSubs in the background and when the screen is locked. Open CouchSubs to continue; it reconnects by itself.")
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: pausedDelay, repeats: false)
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: pausedIdentifier, content: content, trigger: trigger))
+    }
+
+    static func clearPausedInBackground() {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [pausedIdentifier])
+        center.removeDeliveredNotifications(withIdentifiers: [pausedIdentifier])
     }
 }
 

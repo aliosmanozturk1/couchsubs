@@ -11817,6 +11817,8 @@
         }
       }
     },
+    "Subtitles paused": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Subtitles paused"}}, "tr": {"stringUnit": {"state": "translated", "value": "Altyazı duraklatıldı"}}}},
+    "iPhone pauses CouchSubs in the background and when the screen is locked. Open CouchSubs to continue; it reconnects by itself.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "iPhone pauses CouchSubs in the background and when the screen is locked. Open CouchSubs to continue; it reconnects by itself."}}, "tr": {"stringUnit": {"state": "translated", "value": "iPhone, arka plandaki ya da kilitli ekrandaki CouchSubs'u duraklatır. Devam etmek için CouchSubs'u açın; bağlantı kendiliğinden yenilenir."}}}},
     "PS5 connection lost": {
       "localizations": {
         "en": {
