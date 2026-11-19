@@ -543,7 +543,8 @@ final class AppModel: ObservableObject {
             if translationChanged { Task { await refreshTranslatorStatus() } }
             let languageChanged = settings.sourceLanguage != oldValue.sourceLanguage
                 || settings.targetLanguage != oldValue.targetLanguage
-            if isRunning, languageChanged || translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection {
+            if isRunning, languageChanged || translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection
+                || settings.watchSubtitleBackground != oldValue.watchSubtitleBackground {
                 if languageChanged { Task { await refreshTranslatorStatus() } }
                 makePipeline()
             }
@@ -1580,8 +1581,9 @@ final class AppModel: ObservableObject {
         screenTask = Task { [weak self] in
             do {
                 let reading = try await Task.detached(priority: .userInitiated) { try reader.readLines(frame, deep: false) }.value
-                // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AITranslationCore.translateAll).
-                let items = try await ScreenTranslation.translate(reading, using: translator) { shown in
+                // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AITranslationCore.translateAll). Yazının
+                // içindeki kumanda simgeleri okunan kareden kesilip TV'de çevirinin içine konur (ButtonIcons).
+                let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame) { shown in
                     guard !Task.isCancelled else { return }
                     let milliseconds = ScreenTranslation.displayMilliseconds(shown)
                     server.sendScreen(shown, durationMs: milliseconds)
@@ -1648,6 +1650,7 @@ final class AppModel: ObservableObject {
                                         server: server, scheduler: scheduler)
         pipeline.showSpeakerNames = settings.showSpeakerNames
         pipeline.skipsTurkish = settings.targetLanguage == "tr"
+        pipeline.watchSubtitleBackground = settings.watchSubtitleBackground
         pipeline.onPair = { [weak self, weak pipeline] source, translation in
             self?.lastSource = source
             self?.lastTranslation = translation
