@@ -192,6 +192,18 @@ class TranslationService : Service() {
     @Volatile private var playedGame: String? = null
 
     /**
+     * "GTA 6'daki telefonu otomatik çevir": GTA 6 oynanırken oyun içi telefonun pozu izlenir; telefon açıkken ekranı
+     * [regionWatcher]'da okunup "game-phone" alanı olarak gönderilir, hazır telefon mesajı alanı ve otomatik ekran yazısı
+     * okunmaz (Mac ve Windows ile aynı).
+     */
+    private val phoneTracker = com.couchsubs.mobile.core.GamePhoneTracker()
+    @Volatile private var playsGta6 = false
+    @Volatile private var phoneTracking = false
+    @Volatile private var phoneOpen = false
+    /** "Altyazı zeminini izle": yeniden kullanılan okumada zeminin durumu (yalnız okuma iş parçacığında). */
+    private val panelWatch = com.couchsubs.mobile.core.SubtitleBackground.Watch()
+
+    /**
      * Ekranda beliren yazı kutularını bulan ("Ekran yazılarını otomatik çevir"); bulduğu geçici alanlar ek alanlarla
      * birlikte [regionWatcher]'a verilir. Karo örneği kare iş parçacığında alınır, işlenmesi [detectorWork]'te.
      */
@@ -223,7 +235,40 @@ class TranslationService : Service() {
     /** Hazır alanlar: ayar açık, oyunun tabloda satırı var, kullanıcının etkin ek alanı ve etkin alan profili yok. */
     private fun refreshPresetAreas() {
         presetAreas = com.couchsubs.mobile.core.GameAreaPresets.active(
-            settings.gameAreaPresets, playedGame, settings.areaPreset, settings.extraAreas, settings.activeAreaProfile != null)
+            settings.gameAreaPresets, playedGame, settings.areaPreset, settings.extraAreas, settings.activeAreaProfile != null,
+            phoneOpen)
+    }
+
+    /** Oyun telefonu: izleyici saniyede üç kez bakar; telefon açıkken o kare kopyalanıp telefon oturumuna verilir. */
+    private fun offerGamePhone(frame: com.couchsubs.mobile.remoteplay.VideoFrame) {
+        val watcher = regionWatcher ?: return
+        if (!playsGta6 || !settings.autoReadGamePhone) {
+            if (phoneTracking) resetGamePhone()
+            return
+        }
+        phoneTracking = true
+        val capture = try {
+            val sample = phoneTracker.sample(com.couchsubs.mobile.ocr.LivePhoneImage(frame), com.couchsubs.mobile.core.monotonicClock())
+            if (!sample.sampled) return
+            sample.pose?.let { com.couchsubs.mobile.ocr.PhoneFrames.copy(frame, it) }
+        } catch (error: Exception) {
+            null
+        }
+        if (capture != null) watcher.observePhone(capture) else watcher.closePhone()
+        setPhoneOpen(capture != null)
+    }
+
+    private fun resetGamePhone() {
+        phoneTracking = false
+        phoneTracker.reset()
+        regionWatcher?.closePhone()
+        setPhoneOpen(false)
+    }
+
+    private fun setPhoneOpen(open: Boolean) {
+        if (phoneOpen == open) return
+        phoneOpen = open
+        refreshPresetAreas()
     }
 
     /**
@@ -232,7 +277,8 @@ class TranslationService : Service() {
      */
     private fun offerScreenText(frame: com.couchsubs.mobile.remoteplay.VideoFrame) {
         if (regionWatcher == null) return
-        if (fullScreenArea || !settings.autoScreenText) {
+        // Oyun telefonu açıkken ekranı telefon oturumu okur; otomatik ekran yazısı aynı yazıyı ikinci kez çevirmesin.
+        if (fullScreenArea || !settings.autoScreenText || phoneOpen) {
             if (autoAreas.isNotEmpty()) resetScreenText()
             return
         }
@@ -467,7 +513,8 @@ class TranslationService : Service() {
         regionWatcher = com.couchsubs.mobile.core.RegionWatcher({ crop -> areaReader.read(crop.pixels as RegionPixels) },
             areaTranslator, subtitleServer,
             prefetchWork = regionPrefetch,
-            prefetchTranslator = earlyTranslator ?: areaTranslator).apply {
+            prefetchTranslator = earlyTranslator ?: areaTranslator,
+            readPhone = { flat -> areaReader.read(RegionPixels(flat.nv21, flat.width, flat.height, 0L)) }).apply {
             prefetchesTranslations = earlyTranslator != null
             // Altyazı okuması yavaşsa ya da uzun süredir bitmediyse ek alanlar seyrek okunur (Mac, iPhone ve Windows ile aynı).
             slowdown = {
@@ -522,6 +569,7 @@ class TranslationService : Service() {
                     ocr.execute { read(pixels, area, capturedAt) }
                 }
             }
+            offerGamePhone(frame)
             offerScreenText(frame)
             // Ek alanlar saniyede bir, kendi iş parçacığında okunur; altyazı okumasını beklemez, onu bekletmez.
             regionWatcher?.offer(extraAreas + presetAreas + autoAreas, { r ->
@@ -535,6 +583,7 @@ class TranslationService : Service() {
             streaming = state == SessionState.Streaming
             if (!streaming) {
                 PlayedGame.consoleReported(null)
+                resetGamePhone()
                 regionWatcher?.reset()
                 resetScreenText()
             }
@@ -547,8 +596,10 @@ class TranslationService : Service() {
             // Elle seçilen oyunda satırlar yalnız o oyunun paketinde aranır, paketi yoksa hiç aranmaz (#218).
             PlayedGame.packs = library
             PlayedGame.onChange = { game ->
+                resetGamePhone()
                 regionWatcher?.reset()
                 playedGame = game?.name
+                playsGta6 = game?.name?.let { com.couchsubs.mobile.core.GameName.key(it) == "gta 6" } == true
                 refreshPresetAreas()
                 resetScreenText()
                 linePool.setGame(game)
@@ -745,7 +796,15 @@ class TranslationService : Service() {
             // silme saate bağlıdır, Windows'taki ReadScheduler gibi). Aynı okuma en çok 20 kare (hızlı okumada 2) kullanılır.
             val current = pipeline ?: return
             val maxReuse = if (settings.fastSubtitleDetection) FAST_MAX_REUSE else DEFAULT_MAX_REUSE
-            val reused = pixels.signature == lastSignature && reusedReads < maxReuse
+            var reused = pixels.signature == lastSignature && reusedReads < maxReuse
+            // "Altyazı zeminini izle" (GTA 6): yalnız koyu lacivert zeminin üstündeki satırlar hatta girer. Aynı okuma yeniden
+            // kullanılırken zemin yeniden sınanır; zemin yeni bir satırın altına geldiyse kare yeniden okunur.
+            val watchPanel = settings.watchSubtitleBackground
+            if (!watchPanel) panelWatch.reset()
+            val onPanel: (com.couchsubs.mobile.core.Reading) -> com.couchsubs.mobile.core.Reading =
+                { com.couchsubs.mobile.core.SubtitleBackground.filter(it, pixels.width, pixels.height, pixels.color) }
+            val step = if (reused && watchPanel) panelWatch.reuse(lastReading, onPanel) else null
+            if (reused && watchPanel && step == null) reused = false
             reusedReads = if (reused) reusedReads + 1 else 0
             val started = com.couchsubs.mobile.core.monotonicClock()
             if (!reused) readStartedAt = started
@@ -754,7 +813,10 @@ class TranslationService : Service() {
             lastSignature = pixels.signature
             lastReading = result
             lastOcrMs = ocrMs
-            current.process(result, area.box, com.couchsubs.mobile.core.RegionSignature.of(pixels.nv21, pixels.width, pixels.height),
+            val visible = if (!watchPanel) result else step?.visible ?: panelWatch.read(result, onPanel)
+            // Zemin kalktıysa bu boşluk bir OCR kaçağı değildir: bölge izi verilmez, satır hemen silinir.
+            current.process(visible, area.box,
+                if (step?.panelLeft == true) null else com.couchsubs.mobile.core.RegionSignature.of(pixels.nv21, pixels.width, pixels.height),
                 capturedAt, ocrMs)
         } catch (error: java.util.concurrent.TimeoutException) {
             // Okuma süresinde bitmedi: takılan tanıyıcı bırakılır, sonraki kare yenisiyle okunur (yoksa yeni okuma da
@@ -886,6 +948,7 @@ class TranslationService : Service() {
         targetListener = null
         areasListener?.let(settings::removeListener)
         areasListener = null
+        resetGamePhone()
         regionWatcher?.reset()
         regionWatcher = null
         resetScreenText()

@@ -260,6 +260,8 @@ class RegionWatcher(
      */
     private val prefetchWork: Executor = Executor { it.run() },
     private val prefetchTranslator: TextTranslator = translator,
+    /** Oyun telefonunun düzleştirilmiş ekranını okuyan ([GamePhoneReader]); verilmezse telefon okunmaz. */
+    private val readPhone: ((GamePhoneReader.Flat) -> Reading)? = null,
 ) {
     /** Tur aralığının çarpanı ([ReadPressure.slowdown]): altyazı okuması yavaşken ek alanlar seyrek okunur. */
     @Volatile var slowdown: () -> Int = { 1 }
@@ -586,8 +588,30 @@ class RegionWatcher(
         return true
     }
 
+    /** Açık oyun telefonunun oturumu ("GTA 6'daki telefonu otomatik çevir"); telefon kapalıyken null. */
+    private var phoneSession: PhoneRegionSession? = null
+    /** Telefon mesajları İngilizce: kısaltmalar çevirmene açık yazılır ([GamePhoneText.englishModelInput]). */
+    @Volatile var englishPhoneMessages = true
+
+    /** Telefon açık: izleyicinin telefonu gördüğü son kare. Okuma sonraki [offer] turunda, 450 ms'de bir yapılır. */
+    fun observePhone(capture: PhoneCapture) {
+        val read = readPhone ?: return
+        synchronized(lock) {
+            (phoneSession ?: PhoneRegionSession(read, translator, sender).also { phoneSession = it }).observe(capture)
+        }
+    }
+
+    /** Telefon kapandı: kutusu kalkar, bekleyen çevirisi gösterilmez. */
+    fun closePhone() {
+        val phone = synchronized(lock) { phoneSession.also { phoneSession = null } }
+        phone?.close()
+    }
+
     /** Otomatik alan okundu ama yazı yok ya da gürültü ([ScreenTextNoise]): bulucu o karoları reddeder. */
     @Volatile var onAutoRejected: ((String) -> Unit)? = null
+
+    /** Bir tur sürüyor mu. */
+    val isBusy: Boolean get() = synchronized(lock) { busy }
 
     /** Tamamlanan tur ve okuma sayısı (testler için). */
     var passes = 0
@@ -600,23 +624,33 @@ class RegionWatcher(
      * [run] ile (çağıranın iş parçacığında) başlatılır; true döner. Yoksa hemen false.
      */
     fun offer(areas: List<ExtraArea>, crop: (CropRegion) -> Crop?, run: (Runnable) -> Unit): Boolean {
+        var manualDue = false
+        var phone: PhoneRegionSession? = null
         val started = synchronized(lock) {
-            if (busy || (areas.isEmpty() && states.values.none { it.shown.isNotEmpty() })) return false
+            if (busy) return false
             val time = clock()
             // Otomatik ekran yazısı varken yazı ~1 sn içinde görünsün: tur aralığı en çok 500 ms.
             // Altyazı okuması yavaşladıysa ek alanlar seyrek okunur: altyazı her zaman önce.
             val interval = (if (areas.any { it.auto }) minOf(intervalMs, AUTO_INTERVAL_MS) else intervalMs) * maxOf(1, slowdown())
-            lastPass?.let { if (time - it < interval) return false }
-            lastPass = time
+            manualDue = (areas.isNotEmpty() || states.values.any { it.shown.isNotEmpty() }) &&
+                (lastPass?.let { time - it >= interval } ?: true)
+            // Telefon kendi saatinde okunur; ek alanların turunu beklemez.
+            phone = phoneSession?.takeIf { it.beginIfDue(time) }
+            if (!manualDue && phone == null) return false
+            if (manualDue) lastPass = time
             busy = true
             session
         }
         fun finish(): Unit = synchronized(lock) { if (started == session) busy = false }
         try {
-            val crops = areas.mapNotNull { area -> crop(area.region)?.let { area to it } }
+            val crops = if (manualDue) areas.mapNotNull { area -> crop(area.region)?.let { area to it } } else emptyList()
+            val due = phone
             run(Runnable {
                 try {
-                    pass(areas.map { it.id }.toSet(), crops, started)
+                    if (manualDue) pass(areas.map { it.id }.toSet(), crops, started)
+                    if (due != null && started == session && synchronized(lock) { phoneSession === due }) {
+                        due.visit(packLookup, skipsTurkish, englishPhoneMessages)
+                    }
                 } finally {
                     finish()
                 }
@@ -968,6 +1002,8 @@ class RegionWatcher(
 
     /** Çeviri durdu: süren tur bırakılır, TV'deki ek alan kutuları kalkar. */
     fun reset(): Unit = synchronized(lock) {
+        phoneSession?.close()
+        phoneSession = null
         session++
         busy = false
         lastPass = null

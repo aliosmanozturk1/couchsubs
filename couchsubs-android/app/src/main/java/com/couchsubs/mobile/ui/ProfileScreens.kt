@@ -85,6 +85,8 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var gameAreaPresets by remember { mutableStateOf(settings.gameAreaPresets) }
     var autoScreenText by remember { mutableStateOf(settings.autoScreenText) }
     var fastReading by remember { mutableStateOf(settings.fastSubtitleDetection) }
+    var gamePhone by remember { mutableStateOf(settings.autoReadGamePhone) }
+    var subtitleBackground by remember { mutableStateOf(settings.watchSubtitleBackground) }
     var usage by remember { mutableStateOf(settings.usageData) }
     LaunchedEffect(Unit) { tvs = withContext(Dispatchers.IO) { runCatching { TvDiscovery.search() }.getOrDefault(emptyList()) } }
     ScreenScaffold(top = { TopBar(stringResource(R.string.profile), onBack = onBack) { SettingsAction(onSettings) } }) {
@@ -129,6 +131,12 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
             } },
             { RowItem(stringResource(R.string.settings_fast_reading), stringResource(R.string.settings_fast_reading_short)) {
                 Switch(fastReading, { fastReading = it; settings.fastSubtitleDetection = it })
+            } },
+            { RowItem(stringResource(R.string.settings_game_phone)) {
+                Switch(gamePhone, { gamePhone = it; settings.autoReadGamePhone = it })
+            } },
+            { RowItem(stringResource(R.string.settings_subtitle_background), stringResource(R.string.settings_subtitle_background_short)) {
+                Switch(subtitleBackground, { subtitleBackground = it; settings.watchSubtitleBackground = it })
             } },
             { RowItem(stringResource(R.string.profile_usage), stringResource(R.string.profile_usage_note)) {
                 Switch(usage, { usage = it; Services.setUsageData(it) })

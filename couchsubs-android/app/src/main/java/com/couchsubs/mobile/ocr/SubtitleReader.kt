@@ -19,6 +19,8 @@ class RegionPixels(
     val nv21: ByteArray, val width: Int, val height: Int, val signature: Long,
     /** Bölgenin yarım çözünürlüklü U ve V düzlemleri (önce U, sonra V); kare renk taşımıyorsa null. */
     val chroma: ByteArray? = null,
+    /** Bölgenin karedeki sol üst köşesi (piksel). */
+    val left: Int = 0, val top: Int = 0,
 ) {
     /** Kumanda simgelerinin kesileceği gri kare (NV21'in başı parlaklık düzlemidir; kopya alınmaz). */
     val gray: GrayFrame get() = GrayFrame(nv21, width, height)
@@ -93,7 +95,7 @@ class SubtitleReader : AutoCloseable {
                     result
                 }
             }
-            return RegionPixels(out, width, height, signature, chroma)
+            return RegionPixels(out, width, height, signature, chroma, left, top)
         }
     }
 

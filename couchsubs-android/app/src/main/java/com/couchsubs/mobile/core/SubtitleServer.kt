@@ -103,6 +103,9 @@ class SubtitleServer(
     companion object {
         const val DEFAULT_PORT = 8787
 
+        /** Oyun içi telefonun çevirisini taşıyan ek alanın kimliği (Mac/iPhone ve Windows ile aynı). */
+        const val GAME_PHONE_ID = "game-phone"
+
         /** `/hello` yanıtı: uygulama, kurulum kimliği ve bağlı TV sayısı (Mac ve Windows ile aynı biçim). */
         fun helloBody(id: String, tvs: Int): String =
             "{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"${id.filter { it.isLetterOrDigit() && it.code < 128 || it == '-' }}\",\"tvs\":${maxOf(0, tvs)}}"
@@ -147,7 +150,7 @@ class SubtitleServer(
             val json = mutableMapOf<String, Any?>("id" to id, "text" to text)
             if (!icons.isNullOrEmpty()) json["icons"] = iconsJson(icons)
             // Alanda ayrı duran yazı gruplarının çevirileri kendi yerleriyle; eski TV uygulamaları birleşik `text`'i gösterir.
-            if (!blocks.isNullOrEmpty() && text.isNotEmpty()) json["blocks"] = blocks.map { itemJson(it) }
+            if (!blocks.isNullOrEmpty() && text.isNotEmpty()) json["blocks"] = blocks.map { itemJson(it, phone = id == GAME_PHONE_ID) }
             if (box != null) json["box"] = boxJson(box)
             if (lineHeight != null) json["line"] = Json.Decimal(Math.round(lineHeight.coerceIn(0.0, 1.0) * 10000) / 10000.0)
             return frame("region", json)
@@ -188,7 +191,7 @@ class SubtitleServer(
         }
 
         /** Yeriyle bir çeviri ("Ekranı çevir" öğesi ya da ek alan bloğu). */
-        private fun itemJson(item: ScreenTranslation.Item): Map<String, Any?> {
+        private fun itemJson(item: ScreenTranslation.Item, phone: Boolean = false): Map<String, Any?> {
             val json = mutableMapOf<String, Any?>(
                 "box" to boxJson(item.box), "line" to Json.Decimal(Math.round(item.lineHeight.coerceIn(0.0, 1.0) * 10000) / 10000.0),
                 "text" to item.translation,
@@ -196,10 +199,17 @@ class SubtitleServer(
             if (item.paragraphs) json["paragraphs"] = true
             item.icons?.takeIf { it.isNotEmpty() }?.let { json["icons"] = iconsJson(it) }
             // Otomatik ekran yazısının özgün görünüşü; eski TV uygulamaları bu alanları yok sayar.
-            item.surface?.let { json["surface"] = mapOf("background" to it.background, "flat" to it.flat, "foreground" to it.foreground) }
+            // Oyun telefonunun balonu yalnız zemin ve yazı rengini taşır (Mac/iPhone ve Windows ile aynı; `flat` yok).
+            item.surface?.let {
+                if (!phone) json["surface"] = mapOf("background" to it.background, "flat" to it.flat, "foreground" to it.foreground)
+                else if (isRgb(it.background) && isRgb(it.foreground)) json["surface"] = mapOf("background" to it.background, "foreground" to it.foreground)
+            }
             item.look?.let { json["style"] = mapOf("align" to it.align, "bold" to it.bold, "condensed" to it.condensed, "upper" to it.upper) }
             return json
         }
+
+        private fun isRgb(color: String) =
+            color.length == 7 && color[0] == '#' && color.drop(1).all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
 
         /** Çevirinin içindeki kumanda simgeleri: düz metindeki yeri (`at`) ve PNG'si (`src`); eski TV uygulamaları yok sayar. */
         fun iconsJson(icons: List<IconPlacement>) = icons.map { mapOf("at" to it.at, "src" to it.image) }
@@ -290,6 +300,15 @@ class SubtitleServer(
         blocks: List<ScreenTranslation.Item>?,
     ) {
         broadcast(regionFrame(id, text, box, lineHeight, icons, blocks), subtitle = true)
+        if (id == GAME_PHONE_ID) {
+            // Telefon ekranında oyun telefonunun çevirisi ek alan kutusu gibi tek kutuda görünür (iPhone ile aynı); büyük
+            // kutu korumasından geçen balonlar gösterilir.
+            val (kept, shown) = guarded(text, box, blocks)
+            val balloons = if (kept.isEmpty()) emptyList() else shown ?: emptyList()
+            onEvent?.invoke(SubtitleEvent.Region(id, balloons.joinToString("\n") { it.translation },
+                balloons.map { it.box }.reduceOrNull { a, b -> a.union(b) }))
+            return
+        }
         onEvent?.invoke(SubtitleEvent.Region(id, text, box, blocks?.takeIf { text.isNotEmpty() }))
     }
 

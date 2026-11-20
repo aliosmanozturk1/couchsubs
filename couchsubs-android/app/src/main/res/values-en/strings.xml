@@ -305,6 +305,10 @@
     <string name="settings_speaker_colors_short">Each speaker\'s name and line keep their own color.</string>
     <string name="settings_fast_reading">Check unchanged subtitle areas more often</string>
     <string name="settings_fast_reading_short">When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.</string>
+    <string name="settings_game_phone">Automatically translate the GTA 6 phone (experimental)</string>
+    <string name="settings_subtitle_background">Watch subtitle background (GTA 6 experimental)</string>
+    <string name="settings_subtitle_background_short">In GTA 6, set the subtitle background to Solid. Only text on the dark blue subtitle panel will be translated.</string>
+    <string name="subtitle_background_tip">“Watch subtitle background” is on: only text on GTA 6’s dark subtitle panel is read. Set the game’s subtitle background to Solid or turn this setting off.</string>
     <string name="settings_xbox_audio">Play Xbox sound on this device</string>
     <string name="settings_xbox_audio_short">While remote play is running, the Xbox mutes the TV and sends game sound only to this device (an Xbox limitation). If you turn this off, the game has no sound. To hear it from the TV or speakers, connect this phone to a Bluetooth speaker or headphones.</string>
     <string name="running_now">Now</string>

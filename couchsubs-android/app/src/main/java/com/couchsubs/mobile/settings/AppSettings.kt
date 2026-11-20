@@ -243,6 +243,22 @@ class AppSettings(context: Context) : AreaStore {
         get() = prefs.getBoolean("fastSubtitleDetection", false)
         set(value) = prefs.edit().putBoolean("fastSubtitleDetection", value).apply()
 
+    /**
+     * "GTA 6'daki telefonu otomatik çevir (deneysel)": GTA 6 oynanırken oyun içi telefon açılınca ekranı okunup çevrilir
+     * (Mac/Windows autoReadGamePhone); varsayılan kapalı.
+     */
+    var autoReadGamePhone: Boolean
+        get() = prefs.getBoolean("autoReadGamePhone", false)
+        set(value) = prefs.edit().putBoolean("autoReadGamePhone", value).apply()
+
+    /**
+     * "Altyazı zeminini izle (GTA 6, deneysel)": yalnız GTA 6'nın koyu lacivert opak altyazı zeminindeki yazı çevrilir
+     * (Mac/Windows watchSubtitleBackground); varsayılan kapalı.
+     */
+    var watchSubtitleBackground: Boolean
+        get() = prefs.getBoolean("watchSubtitleBackground", false)
+        set(value) = prefs.edit().putBoolean("watchSubtitleBackground", value).apply()
+
     /** Bu PS5'te son seçilen oyun ("Hangi oyunu oynuyorsunuz?" kartının ilk önerisi). */
     fun lastGame(console: String): String? = prefs.getString("lastGame.$console", null)
 

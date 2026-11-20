@@ -95,7 +95,7 @@ object ScreenTranslation {
     }
 
     /** Simgeli grupların simgeleri [frame]'den kesilir; kare yoksa gruplar olduğu gibi kalır. */
-    private fun withImages(groups: List<Group>, frame: GrayFrame?): List<Group> {
+    internal fun withImages(groups: List<Group>, frame: GrayFrame?): List<Group> {
         if (frame == null) return groups
         return groups.map { group ->
             val icons = group.icons
@@ -104,7 +104,7 @@ object ScreenTranslation {
     }
 
     /** Grubun gösterilecek çevirisi; çevirisi aslıyla aynıysa (ad, sayı, zaten Türkçe yazı) null. */
-    private fun item(group: Group, prepared: List<IconText.Protected>, translations: List<String>): Item? {
+    internal fun item(group: Group, prepared: List<IconText.Protected>, translations: List<String>): Item? {
         var changed = false
         val texts = mutableListOf<String>()
         val slots = mutableListOf<IconSlot>()
@@ -129,9 +129,9 @@ object ScreenTranslation {
      * biniyorsa ve yazı boyu benziyorsa o gruba katılır; küçük harfle başlayan satır üstteki bitmemiş cümleye katılır
      * ([continues]). Gruplar yukarıdan aşağı; en çok [MAX_GROUPS], en çok yazısı olanlar.
      */
-    fun groups(reading: Reading, keepPrompts: Boolean = false): List<Group> {
+    fun groups(reading: Reading, keepPrompts: Boolean = false, keepIdentifiers: Boolean = false): List<Group> {
         val marked = reading.withButtonIcons()
-        val lines = (if (keepPrompts) marked else marked.withoutButtonPrompts()).withoutOcrNoise().lines
+        val lines = (if (keepPrompts) marked else marked.withoutButtonPrompts()).withoutOcrNoise(keepIdentifiers).lines
             .filter { it.box != null && ScreenText.isWords(it.text) }
             .sortedBy { it.box!!.top }
         val groups = mutableListOf<MutableList<TextLine>>()

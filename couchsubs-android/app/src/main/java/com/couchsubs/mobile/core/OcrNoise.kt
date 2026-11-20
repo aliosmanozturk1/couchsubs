@@ -14,12 +14,14 @@ object OcrNoise {
         "^(?:[A-Za-z]{1,4}\\d{1,4}|\\d+(?:st|nd|rd|th|s|k|K|m|km|kg|cm|mm|p|x|fps|hp|HP|XP|xp|v|V|D|d)|[xX]\\d{1,3}|\\d+[.,]\\d+[A-Za-z]{0,3}|\\d{1,2}[:.]\\d{2}(?:am|pm|AM|PM)?)$"
     )
 
-    fun clean(line: String): String {
+    /** [keepIdentifiers]: oyun telefonundaki kullanıcı adı ve etiketler ("@vice.305", "#NightRide", "2gether") çöp sayılmaz. */
+    fun clean(line: String, keepIdentifiers: Boolean = false): String {
         val kept = mutableListOf<String>()
         val tokens = line.split(Regex("\\s+")).filter { it.isNotEmpty() }
         for ((index, token) in tokens.withIndex()) {
             // Kumanda simgesinin yeri (ButtonIcons.MARKER) çöp değildir.
-            if (token[0] == ButtonIcons.MARKER) {
+            if (token[0] == ButtonIcons.MARKER ||
+                (keepIdentifiers && (GamePhoneText.containsIdentifier(token) || GamePhoneText.isWrittenChatWord(token)))) {
                 kept.add(token)
                 continue
             }

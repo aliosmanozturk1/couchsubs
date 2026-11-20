@@ -40,6 +40,8 @@ data class TextLine(
     val text: String, val box: TextBox? = null, val words: List<TextWord>? = null, val icons: List<IconSlot>? = null,
     /** Okuyucunun güveni (0–1); bilinmiyorsa null. Otomatik ekran yazısında düşük güvenli satır çevrilmez. */
     val confidence: Float? = null,
+    /** Oyun telefonunda satırın düzleştirilmiş ekrandaki yeri ([GamePhoneReader]); [box] karedeki gerçek yeridir. */
+    val phoneBox: TextBox? = null,
 )
 
 /** Yazı tanımanın bulduğu bir sözcük ve yeri (okunan alanın kenarlarına oranla). */
@@ -105,7 +107,7 @@ class Reading(lines: List<TextLine>) {
     fun withoutButtonPrompts() = Reading(lines.filter { !it.icons.isNullOrEmpty() || !ButtonPrompts.isPrompt(it.text) })
 
     /** Yazı tanımanın uydurduğu sözcük çöpleri ("ou$3e") ayıklanmış hali. */
-    fun withoutOcrNoise() = Reading(lines.map { it.copy(text = OcrNoise.clean(it.text)) })
+    fun withoutOcrNoise(keepIdentifiers: Boolean = false) = Reading(lines.map { it.copy(text = OcrNoise.clean(it.text, keepIdentifiers)) })
 
     /** Yazının içindeki kumanda simgeleri [ButtonIcons.MARKER] ile işaretlenmiş hali (bkz. [ButtonIcons.mark]). */
     fun withButtonIcons() = Reading(ButtonIcons.joinHints(this).lines.map { ButtonIcons.mark(it) })
