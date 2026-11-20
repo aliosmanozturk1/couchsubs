@@ -50,6 +50,8 @@ public class OverlayService extends Service implements TvPage.Host {
     private TvPage page;
     /** TV'nin en son geçirildiği giriş (0: henüz geçilmedi). */
     private int tunedPort;
+    /** Bilgi panelinin tanı satırı için girişe nasıl geçildiği; sayfanın iş parçacığından okunur. */
+    private volatile String inputState = "none";
     private int pendingPort;
     private final Runnable switchInput = () -> switchInput(pendingPort);
     /** WebView işleminin gidişleri (bkz. pageGone): kısa sürede çok giderse katman bırakılır. */
@@ -171,6 +173,7 @@ public class OverlayService extends Service implements TvPage.Host {
             // TV girişlerini uygulamalara açmıyor (#275): girişe biz geçemiyoruz, kullanıcı kumandadan geçer; altyazı
             // yine görüntünün üstünde çıkar. Eskiden yalnız "kaynak desteklenmiyor" yazıyordu.
             tunedPort = port;
+            inputState = "HDMI " + port + " not offered";
             page.status("sourceError");
             Toast.makeText(this, getString(R.string.overlay_choose_input, port), Toast.LENGTH_LONG).show();
             return;
@@ -180,10 +183,12 @@ public class OverlayService extends Service implements TvPage.Host {
         try {
             startActivity(view);
             tunedPort = port;
+            inputState = "HDMI " + port + " opened";
             page.status("ready");
         } catch (ActivityNotFoundException | SecurityException e) {
             // TV bu yolla girişe geçemiyor: kullanıcı girişi kumandadan seçer, altyazı yine üstte görünür.
             tunedPort = port;
+            inputState = "HDMI " + port + " refused";
             page.status("sourceError");
             Toast.makeText(this, getString(R.string.overlay_choose_input, port), Toast.LENGTH_LONG).show();
         }
@@ -191,6 +196,10 @@ public class OverlayService extends Service implements TvPage.Host {
 
     @Override
     public void exit() { stopSelf(); }
+
+    /** Bilgi panelinin tanı satırı: katman modu ve TV'nin girişe nasıl geçirildiği. */
+    @Override
+    public String diagnostics() { return "mode overlay · input " + inputState; }
 
     /**
      * Katmandaki WebView işlemi çöktü ya da sistem kapattı (#616: Philips Android 8'de HDMI girişi açılınca). Eskiden

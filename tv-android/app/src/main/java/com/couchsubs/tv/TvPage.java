@@ -47,6 +47,12 @@ final class TvPage {
          * kurulmalı. Android 8+ bunu bildirir; ele alınmazsa uygulamanın tamamı kapanır (#616).
          */
         void pageGone(boolean crashed);
+
+        /**
+         * Bilgi panelinin tanı satırı için görüntü modu ve HDMI görüntüsünün durumu ("mode inApp · tv available").
+         * Sayfanın iş parçacığından çağrılır; yalnız iş parçacığı güvenli alanlar okunmalı.
+         */
+        String diagnostics();
     }
 
     private static final String TAG = "CouchSubsPage";
@@ -232,6 +238,19 @@ final class TvPage {
             ui.post(() -> {
                 if (storeDisplayMode(context, mode)) host.displayModeChanged(DisplayMode.normalize(mode));
             });
+        }
+
+        /** Bilgi panelinin tanı satırı: görüntü modu, TvView durumu, cihazın üreticisi, modeli ve Android sürümü. */
+        @JavascriptInterface
+        public String diagnostics() {
+            String state;
+            try {
+                state = host.diagnostics();
+            } catch (RuntimeException e) {
+                state = "";
+            }
+            return (state == null || state.isEmpty() ? "" : state + " · ") + Build.MANUFACTURER + " " + Build.MODEL
+                    + " · Android " + Build.VERSION.RELEASE + " (" + Build.VERSION.SDK_INT + ")";
         }
 
         /** Panelde görünen sürüm: Android uygulamasının kendi sürümü (ortak sayfadaki sayı diğer TV'lerinkidir). */

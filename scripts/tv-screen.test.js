@@ -101,6 +101,14 @@ function render(width, height) {
       result.phone = Array.from($('regions').querySelectorAll('.phone')).map(measure);
       showRegion({id:'game-phone', text:''});
       result.afterPhone = $('regions').textContent;
+      // Hatalı okuma ekranın tamamını kaplayan telefon kutusu gönderirse çizilmez (0.9.41-0.9.43'te ekranı opak kapatıyordu).
+      var full = {left:0, top:0, right:1, bottom:1};
+      showRegion({id:'game-phone', text:'Tam ekran', box:full, blocks:[{text:'Tam ekran', box:full}]});
+      result.fullPhone = $('regions').querySelectorAll('.phone').length;
+      showRegion({id:'game-phone', text:''});
+      showRegion({id:'huge', text:'Tam ekran', box:full});
+      result.fullRegion = !!regionBoxes.huge;
+      result.big = diag.big;
       showRegion({id:'q', text:'Yanıt', box:phoneBox, blocks:[reply]});
       result.normalColor = getComputedStyle($('regions').querySelector('.item')).backgroundColor;
       // Otomatik bulunan ekran yazısı özgün görünüşüyle: açık zemin + koyu kalın dar yazı, sağa yaslı; düz olmayan zemin %85.
@@ -279,6 +287,9 @@ test('TV ekran çevirisi: ' + width + '×' + height, {skip: !browser && 'Chrome/
     assert.ok(Math.abs(next.width - .032 * width) < 1);
     assert.ok(reply.bottom <= next.top);
     assert.equal(r.afterPhone, 'Ahıra git');
+    assert.equal(r.fullPhone, 0, 'tam ekran telefon kutusu çizilmemeli');
+    assert.equal(r.fullRegion, false, 'tam ekran ek alan kutusu çizilmemeli');
+    assert.equal(r.big, 2);
     assert.equal(r.normalColor, 'rgba(0, 0, 0, 0.97)');
     assert.equal(r.strip.white, 'nowrap');
     assert.ok(r.strip.scroll <= r.strip.client + 1, JSON.stringify(r.strip));

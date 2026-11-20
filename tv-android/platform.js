@@ -148,6 +148,15 @@
 
     localAddress: function (callback) { callback(bridge.localAddress() || null); },
 
+    // Bilgi panelindeki ikinci tanı satırı: görüntü modu (uygulama içinde / katman), TvView'in durumu, cihazın üreticisi,
+    // modeli, Android ve WebView sürümü. Eski TV uygulamasının köprüsünde yoktur; o zaman yalnız WebView sürümü yazar.
+    diagnostics: function () {
+      var text = '';
+      try { text = bridge.diagnostics ? String(bridge.diagnostics() || '') : ''; } catch (e) { text = ''; }
+      var chrome = /Chrom(?:e|ium)\/([\d.]+)/.exec(window.navigator.userAgent || '');
+      return (text ? text + ' · ' : '') + 'WebView ' + (chrome ? chrome[1] : '?');
+    },
+
     exit: function () { bridge.exit(); }
   };
 })();

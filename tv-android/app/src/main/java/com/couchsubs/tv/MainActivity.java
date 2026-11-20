@@ -87,6 +87,21 @@ public class MainActivity extends Activity implements TvPage.Host {
     private final Runnable hideHelpTask = this::hideHelp;
     /** Sayfanın WebView işleminin gidişleri (bkz. pageGone). */
     private final PageRestarts pageRestarts = new PageRestarts();
+    /** Görüntü geldikten sonraki kesinti: bir kez yeniden açılır, olmazsa söylenir (bkz. PictureOutage). */
+    private final PictureOutage outage = new PictureOutage();
+    private boolean outageWatching;
+    private final Runnable outageTick = this::checkOutage;
+    /** Bilgi panelindeki TvView durumu; sayfanın iş parçacığından okunur. */
+    private volatile String tvState = "idle";
+    /**
+     * Giriş bırakılınca kısa süre sonra bir kez daha bırakılır: oturum o anda kuruluyorsa ilk bırakma onu kaçırabilir ve
+     * aynı HDMI'yı tek oturuma veren TV'lerde (Philips, Thomson) TV'nin kendi giriş ekranı siyah kalır (#643, #453).
+     * Arada giriş yeniden açıldıysa (sıra numarası değişti) ikinci bırakma çalışmaz. Ekran kapandıktan sonra da çalışsın
+     * diye kendi Handler'ındadır.
+     */
+    private static final long SECOND_RELEASE_MS = 400;
+    private static final Handler RELEASE = new Handler(Looper.getMainLooper());
+    private int releaseGeneration;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -131,11 +146,23 @@ public class MainActivity extends Activity implements TvPage.Host {
         if (getSystemService(TV_INPUT_SERVICE) != null) {
             tvView = new TvView(this);
             tvView.setCallback(new TvView.TvInputCallback() {
-                @Override public void onConnectionFailed(String inputId) { noVideo(); retuneLater(); }
-                @Override public void onDisconnected(String inputId) { noVideo(); retuneLater(); }
+                @Override public void onConnectionFailed(String inputId) {
+                    tvState = "connection failed";
+                    noVideo();
+                    lostPicture();
+                    retuneLater();
+                }
+                @Override public void onDisconnected(String inputId) {
+                    tvState = "disconnected";
+                    noVideo();
+                    lostPicture();
+                    retuneLater();
+                }
                 @Override public void onVideoAvailable(String inputId) {
+                    tvState = "available";
                     retuneAttempts = 0;
                     watch.videoAvailable();
+                    outage.available();
                     // Görüntü gelen giriş kaydedilir: sonraki açılışta konsol yeniden aranmadan bu açılır (#367).
                     HdmiInputs.remember(MainActivity.this, inputId);
                     hideHelp();
@@ -143,6 +170,8 @@ public class MainActivity extends Activity implements TvPage.Host {
                     status("playing");
                 }
                 @Override public void onVideoUnavailable(String inputId, int reason) {
+                    tvState = "unavailable: " + reasonName(reason);
+                    lostPicture();
                     // PS5 oyuna girerken çözünürlük ya da HDR değiştirir; TV bunu kısa bir "ayarlanıyor" olarak bildirir.
                     // O arada ekran açık kalır, yoksa TV oyunun ortasında boşta sanıp ekran koruyucuya geçer.
                     if (reason == TvInputManager.VIDEO_UNAVAILABLE_REASON_TUNING
@@ -196,6 +225,84 @@ public class MainActivity extends Activity implements TvPage.Host {
         page.webView.requestFocus();
     }
 
+    private static String reasonName(int reason) {
+        switch (reason) {
+            case TvInputManager.VIDEO_UNAVAILABLE_REASON_UNKNOWN: return "unknown";
+            case TvInputManager.VIDEO_UNAVAILABLE_REASON_TUNING: return "tuning";
+            case TvInputManager.VIDEO_UNAVAILABLE_REASON_WEAK_SIGNAL: return "weak signal";
+            case TvInputManager.VIDEO_UNAVAILABLE_REASON_BUFFERING: return "buffering";
+            case TvInputManager.VIDEO_UNAVAILABLE_REASON_AUDIO_ONLY: return "audio only";
+            default: return "reason " + reason;
+        }
+    }
+
+    /**
+     * Görüntü bir kez geldikten sonra kesildi: kesinti izlenir (bkz. PictureOutage). Görüntü hiç gelmediyse bu iş
+     * FallbackWatch'ındır.
+     */
+    private void lostPicture() {
+        if (!resumed || !watch.played()) return;
+        outage.lost(SystemClock.elapsedRealtime());
+        if (!outageWatching) {
+            outageWatching = true;
+            handler.postDelayed(outageTick, WATCH_EVERY_MS);
+        }
+    }
+
+    private void stopOutageWatch() {
+        outageWatching = false;
+        handler.removeCallbacks(outageTick);
+        outage.reset();
+    }
+
+    /** Süren kesintide girişi bir kez bırakıp yeniden açar; yine gelmezse giriş seçiciyi ve Katman önerisini gösterir. */
+    private void checkOutage() {
+        outageWatching = false;
+        if (isFinishing() || tvView == null || !resumed || !outage.active()) return;
+        long now = SystemClock.elapsedRealtime();
+        String id = session.input();
+        boolean source = HdmiInputs.hasSource(this, id);
+        if (id != null && outage.shouldRetune(now, source)) {
+            resetQuietly(tvView);
+            tune(id);
+        } else if (outage.shouldTell(now, source) && !pickerShown && !pickerClosed) {
+            showPicker(true);
+        }
+        if (outage.pending()) {
+            outageWatching = true;
+            handler.postDelayed(outageTick, WATCH_EVERY_MS);
+        }
+    }
+
+    private static void resetQuietly(TvView view) {
+        try {
+            view.reset();
+        } catch (RuntimeException ignored) {
+            // Oturum zaten bırakılmış.
+        }
+    }
+
+    /**
+     * HDMI girişini bırakır; kısa süre sonra bir kez daha bırakır (bkz. SECOND_RELEASE_MS). removeView: TvView ekrandan da
+     * kaldırılır (çıkışta), yüzeyi de serbest kalsın.
+     */
+    private void releaseHdmi(boolean removeView, String why) {
+        TvView view = tvView;
+        if (view == null) return;
+        tvState = "released (" + why + ")";
+        keepScreenOn(false);
+        resetQuietly(view);
+        if (removeView) {
+            ViewGroup parent = (ViewGroup) view.getParent();
+            if (parent != null) parent.removeView(view);
+            tvView = null;
+        }
+        int generation = ++releaseGeneration;
+        RELEASE.postDelayed(() -> {
+            if (generation == releaseGeneration) resetQuietly(view);
+        }, SECOND_RELEASE_MS);
+    }
+
     /** HDMI görüntüsü kesildi ya da gelmiyor. */
     private void noVideo() {
         keepScreenOn(false);
@@ -244,8 +351,9 @@ public class MainActivity extends Activity implements TvPage.Host {
     /** Uygulama içinden katmana: TvView girişi bırakır ki TV kendi ekranında açabilsin. */
     private void switchToOverlay(int message) {
         stopWatching();
+        stopOutageWatch();
         String previous = session.input();
-        if (tvView != null) tvView.reset();
+        releaseHdmi(false, "overlay");
         session.clear();
         if (!startOverlay()) {
             // Katman açılamadı: uygulama kapanmaz, nedeni söylenir, bırakılan giriş yeniden açılır.
@@ -468,6 +576,7 @@ public class MainActivity extends Activity implements TvPage.Host {
         hidePicker();
         pickerClosed = false;
         watch.pause();
+        stopOutageWatch();
         // Seçim kalıcı: 4'ten büyük numaralar sayfada kaydedilmez, uygulama da kaydeder (#367).
         HdmiInputs.remember(this, HdmiInputs.idForPort(this, port));
         if (port >= 1 && port <= 4 && page != null) page.key(48 + port);
@@ -522,8 +631,26 @@ public class MainActivity extends Activity implements TvPage.Host {
         if (!pickerShown && !pickerClosed) showPicker(true);
     }
 
+    /**
+     * CouchSubs'tan çıkış (kumandada Geri, giriş seçicide "Çık", çeviri durunca bilgisayarın isteği): HDMI girişi
+     * bırakılır, TvView ekrandan kaldırılır ve ekran görev listesinden de çıkarılarak kapanır; arkada giriş tutan bir şey
+     * kalmaz.
+     */
     @Override
-    public void exit() { finish(); }
+    public void exit() {
+        stopWatching();
+        stopOutageWatch();
+        session.clear();
+        releaseHdmi(true, "exit");
+        finishAndRemoveTask();
+    }
+
+    /** Bilgi panelinin tanı satırı: görüntü modu ve TvView'in durumu. */
+    @Override
+    public String diagnostics() {
+        int retunes = outage.retunes();
+        return "mode inApp · tv " + tvState + (retunes > 0 ? " · retune " + retunes : "");
+    }
 
     @Override
     public void displayModeChanged(String mode) {
@@ -615,6 +742,8 @@ public class MainActivity extends Activity implements TvPage.Host {
             if (isFinishing()) return;
         }
         if (page != null) page.background(true);
+        // Ekran artık görünmüyor: giriş onPause'da bırakıldı; arada yeniden tutulmuş olmasın diye bir kez daha bırakılır.
+        if (tvView != null && !resumed) resetQuietly(tvView);
     }
 
     @Override
@@ -641,10 +770,8 @@ public class MainActivity extends Activity implements TvPage.Host {
         resumed = false;
         stopWatching();
         watch.pause();
-        if (tvView != null && session.toBackground()) {
-            tvView.reset();
-            keepScreenOn(false);
-        }
+        stopOutageWatch();
+        if (tvView != null && session.toBackground()) releaseHdmi(false, "background");
     }
 
     /** Bağlantı koptuysa birkaç kez, gittikçe seyrek yeniden dener. */
@@ -659,6 +786,9 @@ public class MainActivity extends Activity implements TvPage.Host {
     private void tune(String id) {
         // Ekran arka plandaysa giriş açılmaz, yalnız hatırlanır; öne gelince açılır (onResume).
         if (!session.want(id)) return;
+        // Bekleyen gecikmeli bırakma bu yeni oturumu kapatmasın.
+        releaseGeneration++;
+        tvState = "tuning";
         watch.tuned(SystemClock.elapsedRealtime());
         // PS5 görüntüsü gelirken TV boşta sanmasın: giriş açılır açılmaz ekran açık tutulur; görüntü gerçekten yoksa
         // (PS5 kapalı, kablo çıktı) noVideo() bırakır.
@@ -699,7 +829,7 @@ public class MainActivity extends Activity implements TvPage.Host {
     @Override
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
-        if (tvView != null) tvView.reset();
+        releaseHdmi(true, "closed");
         if (page != null) page.destroy();
         super.onDestroy();
     }
