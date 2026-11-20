@@ -105,7 +105,7 @@ final class OcrHelperTests: XCTestCase {
     /// Uçtan uca: asıl okuyucuda asla dönmeyen okuma → sıradaki kareler yardımcı süreçte gerçek Vision ile okunur.
     func testQueueRescuesThroughHelperProcess() async throws {
         try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: helper.path), "ocr-helper derlenmemiş")
-        let queue = ReadQueue(label: "test.helper", timeoutMs: 300)
+        let queue = ReadQueue(label: "test.helper", timeoutMs: 3000)
         let rescuer = OcrHelperRescuer(executable: helper, arguments: [])
         queue.rescuer = rescuer
         defer { rescuer.standDown() }

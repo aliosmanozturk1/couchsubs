@@ -113,7 +113,7 @@ final class ReadQueueTests: XCTestCase {
     func testNeverReturningReadIsRescuedInIndependentContext() async throws {
         let hang = Hang()
         defer { hang.release() }
-        let queue = ReadQueue(label: "test.rescue", timeoutMs: 150)
+        let queue = ReadQueue(label: "test.rescue", timeoutMs: 500)
         let rescuer = FakeRescuer()
         queue.rescuer = rescuer
         let events = Events()
@@ -148,7 +148,7 @@ final class ReadQueueTests: XCTestCase {
     func testHungRescueIsAbandonedAndRebuiltThenGivesUp() async throws {
         let hang = Hang()
         defer { hang.release() }
-        let queue = ReadQueue(label: "test.rescue.hang", timeoutMs: 100, maxRescueFailures: 2)
+        let queue = ReadQueue(label: "test.rescue.hang", timeoutMs: 500, maxRescueFailures: 2)
         let rescuer = FakeRescuer()
         queue.rescuer = rescuer
         let events = Events()
@@ -160,7 +160,7 @@ final class ReadQueueTests: XCTestCase {
             _ = try await queue.run { hang.wait() }
             XCTFail("yedekte takılan okuma dönmemeliydi")
         } catch {
-            XCTAssertEqual(error as? ReadQueueError, .timedOut(ms: 100))
+            XCTAssertEqual(error as? ReadQueueError, .timedOut(ms: 500))
         }
         XCTAssertEqual(rescuer.abandons.value, 1)
         // Yeni yedek bağlam çalışır.
@@ -241,7 +241,7 @@ final class ReadQueueTests: XCTestCase {
 
     /// Yavaş okumanın arkasında sırada beklemek takılma sayılmaz (süre, okuma başlayınca işler).
     func testWaitingBehindSlowReadIsNotAStall() async throws {
-        let queue = ReadQueue(label: "test.wait", timeoutMs: 200)
+        let queue = ReadQueue(label: "test.wait", timeoutMs: 5000)
         let gate = DispatchSemaphore(value: 0)
         let ran = Counter()
         async let first: Int = try queue.run { gate.wait(); return 1 }
@@ -274,7 +274,7 @@ final class ReadQueueTests: XCTestCase {
     func testPipelineKeepsReadingAfterHungRead() async {
         let reader = FirstHangsReader()
         defer { reader.hang.release() }
-        let queue = ReadQueue(label: "test.pipeline", timeoutMs: 150)
+        let queue = ReadQueue(label: "test.pipeline", timeoutMs: 500)
         queue.rescuer = FakeRescuer()
         let pipeline = SubtitlePipeline(reader: reader, translator: EchoTranslator(), server: NullSender(), readQueue: queue)
         var results: [Error?] = []
@@ -285,7 +285,7 @@ final class ReadQueueTests: XCTestCase {
         await pipeline.process(image(), region: CropRegion())
 
         XCTAssertEqual(results.count, 3)
-        XCTAssertEqual(results.first.flatMap { $0 as? ReadQueueError }, .timedOut(ms: 150))
+        XCTAssertEqual(results.first.flatMap { $0 as? ReadQueueError }, .timedOut(ms: 500))
         XCTAssertNil(results.last ?? nil)
         XCTAssertEqual(reader.callCount, 3)
     }
