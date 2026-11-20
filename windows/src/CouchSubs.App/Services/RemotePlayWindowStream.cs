@@ -360,6 +360,9 @@ public sealed class RemotePlayWindowStream : IStreamSession
         private bool warnedBlack;
         private Windows.Graphics.SizeInt32 size;
         private bool disposed;
+        /// <summary>Kare gelmiyor ya da kopyalanamıyorsa nedeni altyazi.log'a yazılır (GitHub #566).</summary>
+        private readonly WindowCaptureWatch watch = new();
+        private readonly System.Threading.Timer watchTimer;
 
         public string Name { get; }
         public int Width => size.Width;
@@ -386,6 +389,21 @@ public sealed class RemotePlayWindowStream : IStreamSession
             item.Closed += (_, _) => owner.CaptureEnded(this, number, "pencere kapandı");
             pool.FrameArrived += OnFrameArrived;
             session.StartCapture();
+            SubtitleLog.Write($"pencere yakalanıyor: {Name}, {size.Width}x{size.Height}");
+            watchTimer = new System.Threading.Timer(_ => CheckFrames(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+
+        /// <summary>Yakalama başladı ama okumaya kare gitmiyorsa nedeni iki günlüğe de yazılır.</summary>
+        private void CheckFrames()
+        {
+            if (disposed || watch.Delivered)
+            {
+                watchTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                return;
+            }
+            if (watch.Tick(clock.Elapsed) is not { } note) return;
+            RemotePlayLog.Note($"{Name}: {note}");
+            SubtitleLog.Write(note);
         }
 
         /// <summary>Windows yakalanan pencerenin çevresine sarı bir çerçeve çizer. Destekleyen sürümlerde (Windows 11;
@@ -429,6 +447,7 @@ public sealed class RemotePlayWindowStream : IStreamSession
         {
             using var frame = sender.TryGetNextFrame();
             if (frame is null || disposed) return;
+            watch.Arrived();
             if (frame.ContentSize.Width != size.Width || frame.ContentSize.Height != size.Height)
             {
                 // Pencere büyütüldü ya da tam ekrana geçti: havuz yeni boya kurulur, bu kare atlanır.
@@ -441,6 +460,7 @@ public sealed class RemotePlayWindowStream : IStreamSession
             // Önceki kare hâlâ kopyalanıyorsa bu kare atlanır.
             if (Interlocked.Exchange(ref busy, 1) == 1) return;
             lastFrameMs = now;
+            watch.CopyStarted(clock.Elapsed);
             try
             {
                 using var bitmap = SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface, BitmapAlphaMode.Premultiplied).AsTask().GetAwaiter().GetResult();
@@ -448,15 +468,20 @@ public sealed class RemotePlayWindowStream : IStreamSession
                 if (width < 2 || height < 2) return;
                 var pixels = new byte[width * height * 4];
                 bitmap.CopyToBuffer(pixels.AsBuffer());
+                watch.CopyEnded();
                 CheckBlack(pixels);
+                if (watch.FrameDelivered()) SubtitleLog.Write($"pencereden ilk kare: {width}x{height}");
                 owner.Deliver(new Frame(pixels, width, height, width * 4));
             }
             catch (Exception error)
             {
-                RemotePlayLog.Note($"Remote Play karesi kopyalanamadı: {error.GetType().Name}: {error.Message}");
+                var text = $"{error.GetType().Name}: {error.Message}";
+                RemotePlayLog.Note($"Remote Play karesi kopyalanamadı: {text}");
+                if (watch.Failed(text)) SubtitleLog.Write($"pencere karesi kopyalanamadı: {text}");
             }
             finally
             {
+                watch.CopyEnded();
                 Volatile.Write(ref busy, 0);
             }
         }
@@ -491,6 +516,7 @@ public sealed class RemotePlayWindowStream : IStreamSession
         {
             if (disposed) return;
             disposed = true;
+            try { watchTimer.Dispose(); } catch (Exception) { }
             try { session.Dispose(); } catch (Exception) { }
             try { pool.Dispose(); } catch (Exception) { }
             try { device.Dispose(); } catch (Exception) { }
