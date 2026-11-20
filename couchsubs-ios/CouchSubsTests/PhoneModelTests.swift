@@ -209,6 +209,30 @@ final class PhoneModelTests: XCTestCase {
         XCTAssertEqual(model.settings.translationEngine, .free)
     }
 
+    /// "GTA 6'daki telefonu otomatik çevir": kapalı gelir; yalnız çeviri sürerken, ayar açıkken ve oyun GTA 6 iken izlenir.
+    func testGamePhoneIsTrackedOnlyInGTA6WhenTurnedOn() {
+        XCTAssertFalse(UserSettings().autoReadGamePhone)
+        XCTAssertFalse(UserSettings().watchSubtitleBackground)
+        XCTAssertTrue(PhoneModel.tracksGamePhone(running: true, enabled: true, game: "Grand Theft Auto VI"))
+        XCTAssertTrue(PhoneModel.tracksGamePhone(running: true, enabled: true, game: "GTA 6"))
+        XCTAssertFalse(PhoneModel.tracksGamePhone(running: true, enabled: false, game: "GTA 6"))
+        XCTAssertFalse(PhoneModel.tracksGamePhone(running: false, enabled: true, game: "GTA 6"))
+        XCTAssertFalse(PhoneModel.tracksGamePhone(running: true, enabled: true, game: "Red Dead Redemption 2"))
+        XCTAssertFalse(PhoneModel.tracksGamePhone(running: true, enabled: true, game: nil))
+    }
+
+    /// Oyun telefonunun çevirisi telefon ekranında tek kutuda durur; boş liste yalnız o kutuyu kaldırır.
+    func testGamePhoneTranslationIsOneBoxOnThePhoneScreen() {
+        let other = PhoneModel.PhoneRegion(id: "help", text: "Yardım", box: nil)
+        let items = [ScreenTranslation.Item(source: "Hi", translation: "Selam", box: TextBox(left: 0.7, top: 0.3, right: 0.9, bottom: 0.35), lineHeight: 0.03),
+                     ScreenTranslation.Item(source: "Bye", translation: "Hoşça kal", box: TextBox(left: 0.72, top: 0.4, right: 0.88, bottom: 0.45), lineHeight: 0.03)]
+        let shown = PhoneModel.phoneRegions([other], gamePhone: items)
+        XCTAssertEqual(shown.map(\.id), ["help", "game-phone"])
+        XCTAssertEqual(shown.last?.text, "Selam\nHoşça kal")
+        XCTAssertEqual(shown.last?.box, TextBox(left: 0.7, top: 0.3, right: 0.9, bottom: 0.45))
+        XCTAssertEqual(PhoneModel.phoneRegions(shown, gamePhone: []), [other])
+    }
+
     /// Ayarlar'daki DeepL kullanım satırı: kayıtlı anahtarın bu ayki kullanımı; anahtar yoksa satır çıkmaz.
     func testDeepLUsageNeedsASavedKey() async {
         let model = makeModel()

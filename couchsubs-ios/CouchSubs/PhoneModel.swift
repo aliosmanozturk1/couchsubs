@@ -64,7 +64,9 @@ final class PhoneModel: ObservableObject {
                 || settings.openAIModel != oldValue.openAIModel || settings.claudeModel != oldValue.claudeModel
                 || settings.aiInstruction != oldValue.aiInstruction
             if translationChanged { Task { await refreshTranslatorStatus() } }
-            if isRunning, translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection {
+            if settings.autoReadGamePhone != oldValue.autoReadGamePhone { configureGamePhone() }
+            if isRunning, translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection
+                || settings.watchSubtitleBackground != oldValue.watchSubtitleBackground {
                 makePipeline()
             }
         }
@@ -196,6 +198,8 @@ final class PhoneModel: ObservableObject {
     private var pipeline: SubtitlePipeline?
     /// Ek alanları (görev, telefon, bildirim) okuyup çeviren; çeviri sürerken ve ek alan varken var (Mac ile aynı).
     private var regionWatcher: RegionWatcher?
+    /// GTA 6'daki oyun telefonunun pozu ("GTA 6'daki telefonu otomatik çevir" açıkken ve oyun GTA 6 iken; Mac ile aynı).
+    private var gamePhoneTracker: GamePhoneTracker?
     /// Ekran yazılarını kendiliğinden bulan (ayar açık ve çeviri sürerken var); örnek arka planda, tek uçuşta alınır.
     private var screenTextDetector: ScreenTextDetector?
     private var screenTextBusy = false
@@ -291,6 +295,7 @@ final class PhoneModel: ObservableObject {
         let pool = self.pool
         gameChoice.onChange = { [weak self] game in
             self?.regionWatcher?.reset()
+            self?.configureGamePhone()
             Task { await pool.setGame(game) }
             // Bu oyunun (havuzdan otomatik) paketi sunucuda yeni çıkmış olabilir.
             if game != nil { self?.onGameStarted() }
@@ -635,6 +640,7 @@ final class PhoneModel: ObservableObject {
         regionWatcher?.reset()
         regionWatcher = nil
         screenTextDetector?.reset()
+        gamePhoneTracker = nil
         // Yeni "Başlat" eski oturumdan kalan (belki takılmış) okumayı beklemeden temiz başlar.
         frameGate.reset()
         server.pairing.setSession(false)
@@ -807,6 +813,7 @@ final class PhoneModel: ObservableObject {
         if case .disconnected = state {
             pipeline?.reset()
             regionWatcher?.reset()
+            gamePhoneTracker?.reset()
             screenTextDetector?.reset()
             server.clear()
         }
@@ -826,6 +833,7 @@ final class PhoneModel: ObservableObject {
         missionRegion = nil
         pipeline.onMissionChanged = { [weak self] region in self?.missionRegion = region }
         pipeline.skipsTurkish = settings.targetLanguage == "tr"
+        pipeline.watchSubtitleBackground = settings.watchSubtitleBackground
         pipeline.onPair = { [weak self, weak pipeline] source, translation in
             self?.lastSource = source
             self?.lastTranslation = translation
@@ -852,6 +860,19 @@ final class PhoneModel: ObservableObject {
         onlineIssue = nil
         pipeline.warmUp()
         self.pipeline = pipeline
+        configureGamePhone()
+    }
+
+    /// Oyun telefonu yalnız ayar açıkken ve oynanan oyun GTA 6 iken izlenir (Mac'teki `configureGamePhone` ile aynı).
+    private func configureGamePhone() {
+        regionWatcher?.closePhone()
+        gamePhoneTracker = Self.tracksGamePhone(running: pipeline != nil, enabled: settings.autoReadGamePhone,
+                                                game: gameChoice.game?.name) ? GamePhoneTracker() : nil
+    }
+
+    static func tracksGamePhone(running: Bool, enabled: Bool, game: String?) -> Bool {
+        guard running, enabled, let game else { return false }
+        return GameName.key(game) == "gta 6"
     }
 
     /// Ek alanlar aynı dil, motor ve paketlerle okunur; ayrı bir okuyucu ve çevirmenle (altyazının sırasını beklemez).
@@ -868,8 +889,8 @@ final class PhoneModel: ObservableObject {
 
     /// Kendiliğinden bulunan ekran yazıları (ayar açıkken, Tam ekran dışında; Mac ile aynı). Karo örneği arka planda
     /// tek uçuşta alınır; altyazı alanı ve okunan ek alanlar dışlanır.
-    private func screenTextAreas(_ frame: CGImage, capturedAt: Int, watched: [ExtraArea]) -> [ExtraArea] {
-        guard settings.autoScreenText, !settings.extraAreasPausedByFullScreen else {
+    private func screenTextAreas(_ frame: CGImage, capturedAt: Int, watched: [ExtraArea], phoneOpen: Bool) -> [ExtraArea] {
+        guard settings.autoScreenText, !settings.extraAreasPausedByFullScreen, !phoneOpen else {
             screenTextDetector = nil
             return []
         }
@@ -899,13 +920,15 @@ final class PhoneModel: ObservableObject {
         guard let current = pipeline else { return }
         // Ek alanlar altyazıyla aynı OCR kuyruğunu kullanır; saniyede bir tur yeterlidir.
         // Kullanıcının ek alanı yoksa bilinen oyunun hazır alanları (GameAreaPresets; ör. GTA 6 yardım kutusu ve mesajlar).
-        var areas = settings.watchedExtraAreas(game: gameChoice.game?.name)
+        // Oyun telefonu açıkken ekranı ayrıca okunur; hazır alanlardaki telefon mesajı ve otomatik ekran yazısı o sırada okunmaz.
+        let pose = gamePhoneTracker?.sample(frame, now: capturedAt).pose
+        var areas = settings.watchedExtraAreas(game: gameChoice.game?.name, phoneOpen: pose != nil)
         if settings.autoScreenText, let missionRegion {
             areas.append(ExtraArea(id: MissionLine.areaId, name: "Mission", region: missionRegion, auto: true))
         }
-        areas += screenTextAreas(frame, capturedAt: capturedAt, watched: areas)
-        if regionWatcher == nil, !areas.isEmpty { regionWatcher = makeRegionWatcher(packLookup: current.packLookup) }
-        regionWatcher?.offer(frame, areas: areas)
+        areas += screenTextAreas(frame, capturedAt: capturedAt, watched: areas, phoneOpen: pose != nil)
+        if regionWatcher == nil, !areas.isEmpty || pose != nil { regionWatcher = makeRegionWatcher(packLookup: current.packLookup) }
+        regionWatcher?.offer(frame, areas: areas, phone: pose)
         // Ekranda menü açık (otomatik ekran yazısı menü durumunda): menü satırları altyazıya karışmasın, altyazı okunmaz.
         if screenTextDetector?.inMenu == true { return }
         // Önceki kare hâlâ işleniyorsa bu kare atlanır. Tek okuma bitmezse çeviri tamamen duruyor, "Durdur / Başlat"
@@ -1132,7 +1155,12 @@ final class PhoneModel: ObservableObject {
         case .clear:
             stack.clear(now: now)
         // "Ekranı çevir" sonuçları yazının yerinde gösterilir (`screenItems`); satır yığınına girmez.
-        case .screen, .screenClear, .gamePhone:
+        case .screen, .screenClear:
+            return
+        // Oyun telefonunun çevirisi telefon ekranında ek alan kutusu gibi tek kutuda görünür (TV'de satırlar kendi yerinde;
+        // boş liste kutuyu kaldırır).
+        case .gamePhone(let items):
+            phoneRegions = Self.phoneRegions(phoneRegions, gamePhone: items)
             return
         // Ek alanın çevirisi telefon ekranında da kendi yerinde küçük kutuda görünür (boş metin kutuyu kaldırır).
         case .region(let id, let text, let box):
@@ -1154,6 +1182,19 @@ final class PhoneModel: ObservableObject {
         }
         phoneRefresh()
     }
+
+    /// Oyun telefonunun kutusu (`game-phone`) eklenmiş ya da kaldırılmış ek alan kutuları.
+    static func phoneRegions(_ regions: [PhoneRegion], gamePhone items: [ScreenTranslation.Item]) -> [PhoneRegion] {
+        var regions = regions.filter { $0.id != gamePhoneRegionId }
+        let boxes = items.map(\.box)
+        if let first = boxes.first {
+            regions.append(PhoneRegion(id: gamePhoneRegionId, text: items.map(\.translation).joined(separator: "\n"),
+                                       box: boxes.dropFirst().reduce(first) { $0.union($1) }))
+        }
+        return regions
+    }
+
+    static let gamePhoneRegionId = "game-phone"
 
     private func phoneRefresh() {
         let now = clock()

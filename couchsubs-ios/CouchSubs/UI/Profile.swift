@@ -96,9 +96,19 @@ struct ProfileScreen: View {
                           "When a game with ready areas (such as GTA 6) is being played, its help box and messages are read and translated automatically. Your own extra areas take precedence.",
                           isOn: $model.settings.gameAreaPresets)
                 RowDivider()
+                // Mac ve Windows'taki iki deneysel GTA 6 ayarı; ikisi de kapalı gelir.
+                Toggle(isOn: $model.settings.autoReadGamePhone) {
+                    Text("Automatically translate the GTA 6 phone (experimental)").font(Mobile.TypeScale.headline)
+                }
+                .tint(Mobile.Palette.accent)
+                RowDivider()
                 toggleRow("Check unchanged subtitle areas more often",
                           "When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.",
                           isOn: $model.settings.fastSubtitleDetection)
+                RowDivider()
+                toggleRow("Watch subtitle background (GTA 6 experimental)",
+                          "In GTA 6, set the subtitle background to Solid. Only text on the dark blue subtitle panel will be translated.",
+                          isOn: $model.settings.watchSubtitleBackground)
                 RowDivider()
                 // Yalnız Xbox: uzaktan oynatmada Xbox sesi istemciye verip TV'yi susturabilir (PS5'te ses TV'de kalır).
                 if model.isXbox {
