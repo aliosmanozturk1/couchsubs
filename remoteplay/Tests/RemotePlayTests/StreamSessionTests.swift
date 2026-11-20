@@ -61,6 +61,21 @@ final class ReconnectPolicyTests: XCTestCase {
         XCTAssertEqual(delays, [8, 16, 32, 60])
     }
 
+    /// Üç dört dakikada bir kopan ağda bekleme büyümez: eskiden (5 dk kuralı) 8, 16, 32, 60 sn diye büyüyüp 60 sn'de
+    /// kalıyor, her kopma bir dakikadan uzun sürüyordu.
+    func testSessionsOfAFewMinutesRetryAfterEightSeconds() {
+        var policy = ReconnectPolicy()
+        let start = Date(timeIntervalSince1970: 0)
+        var delays: [Int] = []
+        for round in 0..<4 {
+            let connected = start.addingTimeInterval(Double(round) * 1000)
+            policy.connected(at: connected)
+            policy.ended(at: connected.addingTimeInterval(180))
+            delays.append(policy.nextDelay())
+        }
+        XCTAssertEqual(delays, [8, 8, 8, 8])
+    }
+
     func testAStableSessionStartsTheBackoffOver() {
         var policy = ReconnectPolicy()
         _ = policy.nextDelay(); _ = policy.nextDelay(); _ = policy.nextDelay(); _ = policy.nextDelay()
@@ -120,6 +135,20 @@ final class QualityFallbackTests: XCTestCase {
 }
 
 final class PictureWatchdogTests: XCTestCase {
+    /// Kopma günlüğündeki özet nedeni ayırır: görüntü son ana kadar geldi mi, önce dondu mu, hiç gelmedi mi.
+    func testSummaryTellsHowTheSessionEnded() {
+        var watchdog = PictureWatchdog()
+        let connected = Date(timeIntervalSince1970: 10)
+        XCTAssertNil(watchdog.summary(at: connected))
+        watchdog.connected(at: connected)
+        XCTAssertEqual(watchdog.summary(at: connected.addingTimeInterval(8)), "oturum 8 sn sürdü, hiç görüntü gelmedi")
+        watchdog.picture(at: connected.addingTimeInterval(1))
+        watchdog.picture(at: connected.addingTimeInterval(2))
+        XCTAssertEqual(watchdog.summary(at: connected.addingTimeInterval(17.5)), "oturum 17 sn sürdü, 2 görüntü geldi, sonuncusu 15.5 sn önce")
+        watchdog.ended()
+        XCTAssertNil(watchdog.summary(at: connected.addingTimeInterval(18)))
+    }
+
     private let start = Date(timeIntervalSince1970: 0)
 
     /// Hata: istenen IDR karesi de bozuk gelince libchiaki yeniden istemiyor, bağlantı açık kalıp hiç kare gelmiyordu;

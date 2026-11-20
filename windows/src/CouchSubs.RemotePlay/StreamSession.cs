@@ -43,14 +43,15 @@ internal sealed class WakePolicy
 /// başlar. Eskiden her bağlanışta sıfırlanıyordu: PS5 oturumu açılıp birkaç saniyede düşürünce (ör. "açıldıktan 3-4 sn
 /// sonra kapanıyor") 2 sn sonra yeniden bağlanılıyor, PS5'te ikinci hesap durmadan girip çıkıyordu.
 ///
-/// Akış sürerken kopan oturumdan sonra en az 8 sn beklenir; aralık ancak 5 dk süren oturumdan sonra baştan başlar. Eskiden
+/// Akış sürerken kopan oturumdan sonra en az 8 sn beklenir; aralık 2 dk süren oturumdan sonra baştan başlar. Eskiden
 /// 60 sn yetiyordu ve en çok 30 sn beklenirdi: kablosuz ağ bozulunca oturumlar birer dakika sürüp düşüyor, her seferinde
 /// 2 sn sonra yeniden deneniyordu. Yeni oturum istekleri PS5'in eski oturumu bırakmasını beklemeden geldikçe PS5 30 sn ile
-/// birkaç dakika yanıt vermiyordu (GitHub #593).
+/// birkaç dakika yanıt vermiyordu (GitHub #593). Bir ara 5 dk'ydı: üç dört dakikada bir kopan ağda bekleme 8, 16, 32,
+/// 60 sn diye büyüyüp 60 sn'de kalıyor, her kopma bir dakikadan uzun sürüyordu ("sürekli kopuyor").
 /// </summary>
 internal sealed class ReconnectPolicy
 {
-    public static readonly TimeSpan StableAfter = TimeSpan.FromMinutes(5);
+    public static readonly TimeSpan StableAfter = TimeSpan.FromMinutes(2);
     public const int MaxDelay = 60;
     /// <summary>Akış sürerken kopan oturumdan sonraki en kısa bekleme: 2 &lt;&lt; 2 = 8 sn.</summary>
     public const int AfterDropAttempt = 2;
@@ -161,6 +162,9 @@ internal sealed class PictureWatchdog
     private long? since;
     /// <summary>Bu oturumda görüntü geldi mi.</summary>
     private bool hasPicture;
+    /// <summary>Oturumun bağlandığı an (ms) ve o andan beri gelen görüntü sayısı: kopma günlüğü için.</summary>
+    private long connectedAt;
+    private long pictures;
 
     /// <summary>Oturum bağlandı: süre bağlanma anından sayılır (ilk kare hiç gelmezse de yakalanır).</summary>
     public void Connected(long nowMs)
@@ -169,6 +173,8 @@ internal sealed class PictureWatchdog
         {
             since = nowMs;
             hasPicture = false;
+            connectedAt = nowMs;
+            pictures = 0;
         }
     }
 
@@ -180,6 +186,22 @@ internal sealed class PictureWatchdog
             if (since is null) return;
             since = nowMs;
             hasPicture = true;
+            pictures++;
+        }
+    }
+
+    /// <summary>Kopma günlüğüne eklenen özet: oturum kaç saniye sürdü, kaç görüntü geldi, son görüntü kaç saniye önceydi.
+    /// Bağlı değilken null. Kopmanın nedenini ayırır: görüntü son ana kadar geliyorsa bağlantıyı PS5 ya da ağ kesmiştir;
+    /// saniyelerdir gelmiyorsa akış önce donmuştur.</summary>
+    public string? Summary(long nowMs)
+    {
+        lock (gate)
+        {
+            if (since is not { } last) return null;
+            var lasted = (nowMs - connectedAt) / 1000;
+            return hasPicture
+                ? $"oturum {lasted} sn sürdü, {pictures} görüntü geldi, sonuncusu {(nowMs - last) / 1000.0:0.0} sn önce"
+                : $"oturum {lasted} sn sürdü, hiç görüntü gelmedi";
         }
     }
 
@@ -566,6 +588,9 @@ public sealed class StreamSession : IStreamSession
                     // Eski bir oturumun (ör. ReconnectNow ile kapatılanın) kapanma olayı yeni oturumu etkilemez.
                     if (box?.Generation != eventGeneration || !IsCurrent(eventGeneration)) return;
                     var wasStreaming = streaming;
+                    // Bekçi değil libchiaki kapattı (PS5 ya da ağ); görüntünün son ana kadar gelip gelmediği nedeni ayırır.
+                    if (watchdog.Summary(Environment.TickCount64) is { } summary)
+                        RemotePlayLog.Note($"PS5 oturumunu libchiaki kapattı ({reason.Kind}); {summary}");
                     CloseBox();
                     policy.Ended(Environment.TickCount64);
                     if (wasStreaming && QualityFallback.CountsAsDrop(reason.Kind)) NoteDrop();
@@ -612,7 +637,8 @@ public sealed class StreamSession : IStreamSession
                 ScheduleWatch(boxGeneration);
                 return;
             }
-            RemotePlayLog.Note($"PS5'ten {(int)gap.TotalSeconds} sn'dir görüntü gelmiyor (bağlantı açık); oturum yeniden kuruluyor");
+            RemotePlayLog.Note($"PS5'ten {(int)gap.TotalSeconds} sn'dir görüntü gelmiyor (bağlantı açık); oturumu görüntü bekçisi yeniden kuruyor; "
+                               + watchdog.Summary(Environment.TickCount64));
             CloseBox();
             policy.Ended(Environment.TickCount64);
             NoteDrop();
@@ -634,6 +660,7 @@ public sealed class StreamSession : IStreamSession
         Emit(new SessionState(SessionPhase.Disconnected, reason));
         if (!IsCurrent(current)) return;
         var delay = policy.NextDelay(inUse: reason.Kind == DisconnectKind.InUse);
+        RemotePlayLog.Note($"PS5 oturumu: {delay} sn sonra yeniden denenecek");
         queue.PostAfter(TimeSpan.FromSeconds(delay), () => Connect(current));
     }
 

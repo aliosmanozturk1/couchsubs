@@ -30,13 +30,14 @@ struct FrameThrottle {
 /// bağlanışta sıfırlanıyordu: PS5 oturumu açılıp birkaç saniyede düşürünce (ör. aynı ikinci hesapla bağlı başka bir
 /// cihaz) telefon 2 sn sonra yeniden bağlanıyor, PS5'te ikinci hesap durmadan girip çıkıyordu.
 ///
-/// Akış sürerken kopan oturumdan sonra en az 8 sn beklenir; aralık ancak 5 dk süren oturumdan sonra baştan başlar.
+/// Akış sürerken kopan oturumdan sonra en az 8 sn beklenir; aralık 2 dk süren oturumdan sonra baştan başlar.
 /// Eskiden 60 sn yetiyordu ve en çok 30 sn beklenirdi: kablosuz ağ bozulunca oturumlar birer dakika sürüp düşüyor, her
 /// seferinde 2 sn sonra yeniden deneniyor, "her dakika bağlanıp kopuyor" döngüsü uzun süre sürüyordu (TestFlight, iPad).
 /// Yeni oturum istekleri PS5'in eski oturumu bırakmasını beklemeden geldikçe PS5 30 sn ile birkaç dakika yanıt
-/// vermiyordu (GitHub #593).
+/// vermiyordu (GitHub #593). Bir ara 5 dk'ydı: üç dört dakikada bir kopan ağda bekleme 8, 16, 32, 60 sn diye büyüyüp
+/// 60 sn'de kalıyor, her kopma bir dakikadan uzun sürüyordu ("sürekli kopuyor").
 struct ReconnectPolicy {
-    static let stableAfter: TimeInterval = 5 * 60
+    static let stableAfter: TimeInterval = 2 * 60
     static let maxDelay = 60
     /// Akış sürerken kopan oturumdan sonraki en kısa bekleme: `2 << afterDropAttempt` = 8 sn.
     static let afterDropAttempt = 2
@@ -183,6 +184,9 @@ struct PictureWatchdog {
     private var since: Date?
     /// Bu oturumda görüntü geldi mi.
     private var hasPicture = false
+    /// Oturumun bağlandığı an ve o andan beri gelen görüntü sayısı: kopma günlüğü için.
+    private var connectedAt = Date()
+    private var pictures = 0
     /// Art arda hiç görüntü gelmeyen oturum sayısı; görüntü gelince sıfırlanır.
     private(set) var noPictureSessions = 0
 
@@ -197,6 +201,8 @@ struct PictureWatchdog {
     mutating func connected(at now: Date = Date()) {
         since = now
         hasPicture = false
+        connectedAt = now
+        pictures = 0
     }
 
     /// Görüntü geldi.
@@ -204,7 +210,18 @@ struct PictureWatchdog {
         guard since != nil else { return }
         since = now
         hasPicture = true
+        pictures += 1
         noPictureSessions = 0
+    }
+
+    /// Kopma günlüğüne eklenen özet: oturum kaç saniye sürdü, kaç görüntü geldi, son görüntü kaç saniye önceydi. Bağlı
+    /// değilken nil. Kopmanın nedenini ayırır: görüntü son ana kadar geliyorsa bağlantıyı PS5 ya da ağ kesmiştir;
+    /// saniyelerdir gelmiyorsa akış önce donmuştur.
+    func summary(at now: Date = Date()) -> String? {
+        guard let since else { return nil }
+        let lasted = Int(now.timeIntervalSince(connectedAt))
+        guard hasPicture else { return "oturum \(lasted) sn sürdü, hiç görüntü gelmedi" }
+        return "oturum \(lasted) sn sürdü, \(pictures) görüntü geldi, sonuncusu \(String(format: "%.1f", now.timeIntervalSince(since))) sn önce"
     }
 
     /// `stalled` boşluk bildirdi; oturum kapatılırken ne yapılacağı.
@@ -735,6 +752,10 @@ public final class StreamSession: @unchecked Sendable {
                 // Eski bir oturumun (ör. reconnectNow ile kapatılanın) kapanma olayı yeni oturumu etkilemez.
                 guard let self, self.box?.generation == eventGeneration else { return }
                 let wasStreaming = self.streaming
+                // Bekçi değil libchiaki kapattı (PS5 ya da ağ); görüntünün son ana kadar gelip gelmediği nedeni ayırır.
+                if let summary = self.watch({ $0.summary() }) {
+                    RemotePlayLog.write("PS5 oturumunu libchiaki kapattı (\(reason)); \(summary)")
+                }
                 self.closeBox()
                 self.policy.ended()
                 if wasStreaming, QualityFallback.countsAsDrop(reason) { self.noteDrop() }
@@ -777,7 +798,9 @@ public final class StreamSession: @unchecked Sendable {
             guard let gap = self.watch({ $0.stalled() }) else { return self.scheduleWatch(boxGeneration) }
             let next = self.watch { $0.afterStall() }
             let streak = self.watch { $0.noPictureSessions }
-            RemotePlayLog.write("PS5'ten \(Int(gap)) sn'dir görüntü gelmiyor (bağlantı açık, art arda görüntüsüz oturum \(streak)): \(next)")
+            let summary = self.watch { $0.summary() } ?? ""
+            RemotePlayLog.write("PS5'ten \(Int(gap)) sn'dir görüntü gelmiyor (bağlantı açık, art arda görüntüsüz oturum \(streak)); "
+                + "oturumu görüntü bekçisi kapatıyor: \(next); \(summary)")
             self.closeBox()
             self.policy.ended()
             self.noteDrop()
@@ -803,6 +826,7 @@ public final class StreamSession: @unchecked Sendable {
         emit(.disconnected(DisconnectReason.classify(reason, searchAnswered: searchAnswered, host: console.host)))
         guard isCurrent(current) else { return }
         let delay = policy.nextDelay(inUse: reason == .inUse)
+        RemotePlayLog.write("PS5 oturumu: \(delay) sn sonra yeniden denenecek")
         queue.asyncAfter(deadline: .now() + .seconds(delay)) { [weak self] in self?.connect(current) }
     }
 

@@ -8,6 +8,20 @@ import org.junit.Test
 
 /** Bağlıyken görüntü kesilince oturum yeniden kurulur (Mac/Windows ile aynı kural). */
 class PictureWatchdogTest {
+    /** Kopma günlüğündeki özet nedeni ayırır: görüntü son ana kadar geldi mi, önce dondu mu, hiç gelmedi mi. */
+    @Test
+    fun summaryTellsHowTheSessionEnded() {
+        val watchdog = PictureWatchdog()
+        assertNull(watchdog.summary(0))
+        watchdog.connected(10_000)
+        assertEquals("oturum 8 sn sürdü, hiç görüntü gelmedi", watchdog.summary(18_000))
+        watchdog.picture(11_000)
+        watchdog.picture(12_000)
+        assertEquals("oturum 17 sn sürdü, 2 görüntü geldi, sonuncusu 15.5 sn önce", watchdog.summary(27_500))
+        watchdog.ended()
+        assertNull(watchdog.summary(28_000))
+    }
+
     /**
      * Hata: istenen IDR karesi de bozuk gelince libchiaki yeniden istemiyor, bağlantı açık kalıp hiç kare gelmiyordu;
      * oturum hiç yeniden kurulmuyor, altyazı ancak uygulamayı kapatıp açınca dönüyordu.

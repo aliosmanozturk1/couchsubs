@@ -166,14 +166,16 @@ class CrashRetryLimit {
  * sıfırlanıyordu: PS5 oturumu açılıp birkaç saniyede düşürünce 2 sn sonra yeniden bağlanılıyor, PS5'te ikinci hesap
  * durmadan girip çıkıyordu.
  *
- * Akış sürerken kopan oturumdan sonra en az 8 sn beklenir; aralık ancak 5 dk süren oturumdan sonra baştan başlar. Eskiden
+ * Akış sürerken kopan oturumdan sonra en az 8 sn beklenir; aralık 2 dk süren oturumdan sonra baştan başlar. Eskiden
  * 60 sn yetiyordu ve en çok 30 sn beklenirdi: kablosuz ağ bozulunca oturumlar birer dakika sürüp düşüyor, her seferinde
  * 2 sn sonra yeniden deneniyor, bağlan-kop döngüsü uzun süre sürüyordu (Redmi Pad, iPad). Yeni oturum istekleri PS5'in
- * eski oturumu bırakmasını beklemeden geldikçe PS5 30 sn ile birkaç dakika yanıt vermiyordu (GitHub #593).
+ * eski oturumu bırakmasını beklemeden geldikçe PS5 30 sn ile birkaç dakika yanıt vermiyordu (GitHub #593). Bir ara
+ * 5 dk'ydı: üç dört dakikada bir kopan ağda bekleme 8, 16, 32, 60 sn diye büyüyüp 60 sn'de kalıyor, her kopma bir
+ * dakikadan uzun sürüyordu ("sürekli kopuyor").
  */
 class ReconnectPolicy {
     companion object {
-        const val STABLE_AFTER_MS = 5 * 60_000L
+        const val STABLE_AFTER_MS = 2 * 60_000L
         const val MAX_DELAY_SECONDS = 60
         /** Akış sürerken kopan oturumdan sonraki en kısa bekleme: 2 shl 2 = 8 sn. */
         const val AFTER_DROP_ATTEMPT = 2
@@ -321,6 +323,9 @@ class PictureWatchdog {
     private var hasPicture = false
     /** Art arda hiç görüntü gelmeyen oturum sayısı; görüntü gelince sıfırlanır. */
     private var noPictureSessions = 0
+    /** Oturumun bağlandığı an (ms) ve o andan beri gelen görüntü sayısı: kopma günlüğü için. */
+    private var connectedAt = 0L
+    private var pictures = 0L
 
     /** Bir sonraki oturum, üreticiye göre seçilen çözücü türünün (yazılım/donanım) tersiyle başlasın mı. */
     val swapDecoder: Boolean @Synchronized get() = noPictureSessions % 2 == 1
@@ -339,6 +344,8 @@ class PictureWatchdog {
     @Synchronized fun connected(nowMs: Long) {
         since = nowMs
         hasPicture = false
+        connectedAt = nowMs
+        pictures = 0
     }
 
     /** Görüntü geldi (kare iş parçacığından). */
@@ -346,8 +353,21 @@ class PictureWatchdog {
         if (since != null) {
             since = nowMs
             hasPicture = true
+            pictures++
             noPictureSessions = 0
         }
+    }
+
+    /**
+     * Kopma günlüğüne eklenen özet: oturum kaç saniye sürdü, kaç görüntü geldi, son görüntü kaç saniye önceydi. Bağlı
+     * değilken null. Kopmanın nedenini ayırır: görüntü son ana kadar geliyorsa bağlantıyı PS5 ya da ağ kesmiştir;
+     * saniyelerdir gelmiyorsa akış önce donmuştur.
+     */
+    @Synchronized fun summary(nowMs: Long): String? {
+        val last = since ?: return null
+        val lasted = (nowMs - connectedAt) / 1000
+        return if (hasPicture) "oturum $lasted sn sürdü, $pictures görüntü geldi, sonuncusu ${(nowMs - last) / 100 / 10.0} sn önce"
+        else "oturum $lasted sn sürdü, hiç görüntü gelmedi"
     }
 
     /** [stalledMs] boşluk bildirdi; oturum kapatılırken ne yapılacağı. */
@@ -624,6 +644,12 @@ class StreamSession(
                         else SessionState.Disconnected(general, text)
                     val kind = state.kind
                     Log.i(TAG, "Oturum kapandı: $kind ${state.detail.orEmpty()} $text")
+                    // Bekçi değil libchiaki kapattı (PS5 ya da ağ); görüntünün son ana kadar gelip gelmediği nedeni ayırır.
+                    watchdog.summary(SystemClock.elapsedRealtime())?.let {
+                        val note = "PS5 oturumunu libchiaki kapattı ($kind); $it"
+                        Log.i(TAG, note)
+                        Backend.breadcrumb(note)
+                    }
                     val wasStreaming = streaming
                     closeNative()
                     policy.ended(SystemClock.elapsedRealtime())
@@ -672,7 +698,8 @@ class StreamSession(
                 val next = watchdog.stalled()
                 val streak = watchdog.noPictureStreak
                 val text = "PS5: ${gap / 1000} sn'dir görüntü yok (bağlantı açık, kare $framesReceived, " +
-                    "art arda görüntüsüz oturum $streak): ${next.name}"
+                    "art arda görüntüsüz oturum $streak); oturumu görüntü bekçisi kapatıyor: ${next.name}; " +
+                    watchdog.summary(SystemClock.elapsedRealtime()).orEmpty()
                 Log.w(TAG, text)
                 Backend.breadcrumb(text)
                 Telemetry.event("no_picture", "next" to next.name.lowercase(), "streak" to streak, "frames" to framesReceived)

@@ -36,6 +36,19 @@ class ReconnectTest {
         assertEquals(listOf(8, 16, 32, 60), delays)
     }
 
+    /** Üç dört dakikada bir kopan ağda bekleme büyümez (5 dk kuralında 8, 16, 32, 60 sn diye büyüyüp 60 sn'de kalıyordu). */
+    @Test
+    fun sessionsOfAFewMinutesRetryAfterEightSeconds() {
+        val policy = ReconnectPolicy()
+        val delays = List(4) { round ->
+            val connected = round * 1_000_000L
+            policy.connected(connected)
+            policy.ended(connected + 180_000)
+            policy.nextDelaySeconds()
+        }
+        assertEquals(listOf(8, 8, 8, 8), delays)
+    }
+
     @Test
     fun backoffDoublesUpToSixtySeconds() {
         val policy = ReconnectPolicy()

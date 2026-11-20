@@ -136,6 +136,22 @@ public class ReconnectPolicyTests
         Assert.Equal([8, 16, 32, 60], delays);
     }
 
+    /// <summary>Üç dört dakikada bir kopan ağda bekleme büyümez: eskiden (5 dk kuralı) 8, 16, 32, 60 sn diye büyüyüp
+    /// 60 sn'de kalıyor, her kopma bir dakikadan uzun sürüyordu.</summary>
+    [Fact]
+    public void SessionsOfAFewMinutesRetryAfterEightSeconds()
+    {
+        var policy = new ReconnectPolicy();
+        var delays = Enumerable.Range(0, 4).Select(round =>
+        {
+            var connected = round * 1_000_000L;
+            policy.Connected(connected);
+            policy.Ended(connected + 180_000);
+            return policy.NextDelay();
+        }).ToList();
+        Assert.Equal([8, 8, 8, 8], delays);
+    }
+
     [Fact]
     public void InUseWaitsAtLeastEightSeconds()
     {
@@ -184,6 +200,23 @@ public class QualityFallbackTests
 
 public class PictureWatchdogTests
 {
+    /// <summary>Kopma günlüğündeki özet nedeni ayırır: görüntü son ana kadar geldi mi, önce dondu mu, hiç gelmedi mi.</summary>
+    [Fact]
+    public void SummaryTellsHowTheSessionEnded()
+    {
+        var watchdog = new PictureWatchdog();
+        Assert.Null(watchdog.Summary(0));
+        watchdog.Connected(10_000);
+        Assert.Equal("oturum 8 sn sürdü, hiç görüntü gelmedi", watchdog.Summary(18_000));
+        watchdog.Picture(11_000);
+        watchdog.Picture(12_000);
+        var summary = watchdog.Summary(27_500)!;
+        Assert.StartsWith("oturum 17 sn sürdü, 2 görüntü geldi, sonuncusu 15", summary);
+        Assert.EndsWith("5 sn önce", summary);
+        watchdog.Ended();
+        Assert.Null(watchdog.Summary(28_000));
+    }
+
     /// <summary>
     /// Hata: istenen IDR karesi de bozuk gelince libchiaki yeniden istemiyor, bağlantı açık kalıp hiç kare gelmiyordu;
     /// oturum hiç yeniden kurulmuyor, altyazı ancak uygulamayı kapatıp açınca dönüyordu.
