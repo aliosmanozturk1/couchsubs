@@ -22,6 +22,11 @@ extension AppServices {
     /// Bu Mac'teki Remote Play penceresinden (PS Remote Play ya da chiaki-ng) okuyan görüntü kaynağı (bkz. `RemotePlayWindowStream`).
     func makeWindowStream(app: RemotePlayApp) -> StreamControlling { RemotePlayWindowStream(app: app) }
     func remotePlayInstalled(_ app: RemotePlayApp) -> Bool { RemotePlayWindowStream.isInstalled(app) }
+    /// Kullanıcının seçtiği OBS projektörü ya da oyun penceresini okuyan kaynak; aynı ScreenCaptureKit hattı.
+    func makeCaptureWindowStream(target: WindowCaptureTarget) -> StreamControlling { RemotePlayWindowStream(target: target) }
+    func captureWindows() async -> [WindowCaptureTarget] { await RemotePlayWindowStream.captureWindows() }
+    func screenRecordingAllowed() -> Bool { RemotePlayWindowStream.screenRecordingAllowed }
+    func openScreenRecordingSettings() { RemotePlayWindowStream.openScreenRecordingSettings() }
     /// PS5'te o an çalışan oyun: yalnız bağlı PS5'in adresine keşif sorusu gider (ortak havuz için; bkz. `RunningGame`).
     func runningGame(host: String) async -> RunningGame? {
         guard let info = await Console.discover(timeout: .seconds(2), host: host).first else { return nil }
@@ -66,6 +71,12 @@ protocol AppServices: AnyObject {
     func makeWindowStream(app: RemotePlayApp) -> StreamControlling
     /// Seçilen Remote Play uygulaması (PS Remote Play ya da chiaki-ng) bu Mac'te kurulu mu.
     func remotePlayInstalled(_ app: RemotePlayApp) -> Bool
+    /// Seçilen pencereden okuma (`UserSettings.captureWindow`): kaynak, seçilebilir pencereler ve ekran kaydı izni
+    /// (varsayılanları yukarıda; testlerde sahtesi).
+    func makeCaptureWindowStream(target: WindowCaptureTarget) -> StreamControlling
+    func captureWindows() async -> [WindowCaptureTarget]
+    func screenRecordingAllowed() -> Bool
+    func openScreenRecordingSettings()
     /// Xbox (Beta): Microsoft girişi, hesaptaki Xbox'lar ve ev yayını oturumu (varsayılanları yukarıda; testlerde sahtesi).
     func makeXboxAuth(userToken: XboxUserToken?, onUserToken: @escaping @Sendable (XboxUserToken?) -> Void) -> XboxAuth
     func xboxConsoles(auth: XboxAuth) async throws -> [XboxConsole]
@@ -572,7 +583,8 @@ final class AppModel: ObservableObject {
             if settings.appearance != oldValue.appearance { settings.appearance.apply() }
             let windowAppChanged = settings.frameSource == .remotePlayWindow && settings.remotePlayApp != oldValue.remotePlayApp
             let xboxAudioChanged = isXbox && settings.xboxAudioOnDevice != oldValue.xboxAudioOnDevice
-            if settings.frameSource != oldValue.frameSource || windowAppChanged || xboxAudioChanged, isRunning {
+            let captureWindowChanged = settings.frameSource == .captureWindow && settings.captureWindow != oldValue.captureWindow
+            if settings.frameSource != oldValue.frameSource || windowAppChanged || captureWindowChanged || xboxAudioChanged, isRunning {
                 // Görüntü kaynağı (ya da okunan Remote Play uygulaması, Xbox'ta ses çıkışı) değişti: çeviri yeniden başlar.
                 // TV uygulaması kapatılmaz; kapanıp yeniden açılsa TV girişi gidip gelirdi.
                 stop(closingTVApp: false)
@@ -659,7 +671,7 @@ final class AppModel: ObservableObject {
         showSettings = true
     }
 
-    private let services: AppServices
+    let services: AppServices
     private let store: AppStore
     private let defaults: UserDefaults
     /// Çalışan okuma hattının dilleri.
@@ -766,7 +778,7 @@ final class AppModel: ObservableObject {
         let ready = platform == .xbox
             ? xboxLinked && store.load(Bool.self, for: StoreKey.setupComplete) == true
             : Self.setupIsComplete(store: store, accountId: accountId, console: console, paired: paired,
-                                   readsWindow: loaded.frameSource == .remotePlayWindow)
+                                   readsWindow: loaded.frameSource != .ps5)
         self.tvKeySaved = tvKeySaved
         hasLoginPasscode = LoginPasscode.normalized(store.load(String.self, for: StoreKey.loginPasscode)) != nil
         self.accountId = accountId
@@ -1786,7 +1798,8 @@ final class AppModel: ObservableObject {
         // Xbox (Beta) için Microsoft girişi ve seçilmiş Xbox gerekir; görüntü kaynağı ayarı Xbox'ta geçerli değildir.
         let xbox = isXbox && !demoMode && xboxSignedIn ? xboxConsole : nil
         let readsWindow = !isXbox && settings.frameSource == .remotePlayWindow && !demoMode
-        guard demoMode || readsWindow || (isXbox ? xbox != nil : console != nil && accountId != nil) else { return }
+        let captureTarget = readsCaptureWindow && !demoMode ? settings.captureWindow : nil
+        guard demoMode || readsWindow || captureTarget != nil || (isXbox ? xbox != nil : console != nil && accountId != nil) else { return }
         isStarting = true
         defer { isStarting = false }
 
@@ -1804,7 +1817,7 @@ final class AppModel: ObservableObject {
         if settings.dubbing.enabled, dubbingModelReady { makeDubber().prepare() }
         SubtitleLog.write("oturum başladı: CouchSubs \(AppIdentity.version), \(settings.sourceLanguage)→\(settings.targetLanguage), "
             + "motor: \(onlineTranslationActive ? settings.onlineEngine.rawValue : "ücretsiz"), paketler: \(settings.gamePacks ? "açık" : "kapalı"), "
-            + "görüntü: \(demoMode ? "deneme modu" : xbox != nil ? "Xbox (Beta)" : readsWindow ? "PS Remote Play penceresi" : "PS5")")
+            + "görüntü: \(demoMode ? "deneme modu" : xbox != nil ? "Xbox (Beta)" : readsWindow ? "PS Remote Play penceresi" : captureTarget != nil ? "seçilen pencere" : "PS5")")
 
         let session: StreamControlling
         if demoMode {
@@ -1813,6 +1826,9 @@ final class AppModel: ObservableObject {
         } else if readsWindow {
             RemotePlayLog.write("Çeviri başladı; görüntü bu Mac'teki Remote Play penceresinden (\(settings.remotePlayApp.rawValue))")
             session = services.makeWindowStream(app: settings.remotePlayApp)
+        } else if let captureTarget {
+            RemotePlayLog.write("Çeviri başladı; seçilen pencere: \(captureTarget.processName) / \(captureTarget.title)")
+            session = services.makeCaptureWindowStream(target: captureTarget)
         } else if let xbox {
             RemotePlayLog.write("Çeviri başladı; Xbox'a bağlanılıyor (Beta): \(xbox.name)")
             session = services.makeXboxStream(auth: xboxAuth, console: xbox, playAudio: settings.xboxAudioOnDevice)
@@ -1863,8 +1879,7 @@ final class AppModel: ObservableObject {
     /// Çeviri başlatılabilir mi: görüntü kaynağı hazır (PS5 kurulu ya da PS Remote Play penceresi seçili) ve altyazının
     /// gideceği bir yer var (TV eşleşmiş ya da bilgisayar ekranı seçili).
     var canStart: Bool {
-        (isXbox ? xboxSignedIn && xboxConsole != nil : settings.frameSource == .remotePlayWindow || (console != nil && accountId != nil))
-            && (settings.output.showsOnComputer || hasTV)
+        (isXbox ? xboxSignedIn && xboxConsole != nil : pictureSourceReady) && (settings.output.showsOnComputer || hasTV)
     }
 
     /// TV uygulamasını başlatır ve açık tutar; TV kapalıysa açıldığında bağlanır. Altyazı TV'ye gitmiyorsa ya da TV
@@ -1888,7 +1903,7 @@ final class AppModel: ObservableObject {
     /// TV'de oynayıp Mac'e dokunmayınca ekran kendi ayarıyla (prizdeyken çoğu zaman 10 dakika) kapanıyor, altyazı
     /// kesiliyordu. PS5'ten doğrudan okunup yalnız TV'ye gönderiliyorsa ekran kendi ayarıyla kapanabilir.
     var keepsDisplayOn: Bool {
-        (!isXbox && settings.frameSource == .remotePlayWindow) || settings.output.showsOnComputer
+        (!isXbox && settings.frameSource != .ps5) || settings.output.showsOnComputer
     }
 
     /// Mac'in boşta uyuması (ve gerekiyorsa ekranın kapanması) engellenir; çeviri sürerken ayar değişince yeniden kurulur.
@@ -2427,6 +2442,9 @@ final class AppModel: ObservableObject {
         if isXbox { return Self.xboxStatusText(sessionState, running: isRunning, console: xboxConsole, signedIn: xboxSignedIn) }
         if settings.frameSource == .remotePlayWindow {
             return Self.windowStatusText(sessionState, running: isRunning, installed: !remotePlayMissing)
+        }
+        if settings.frameSource == .captureWindow {
+            return Self.captureWindowStatusText(sessionState, running: isRunning, target: settings.captureWindow)
         }
         return Self.statusText(sessionState, running: isRunning, pairedName: console.map { $0.name.isEmpty ? "PS5" : $0.name })
     }

@@ -28,6 +28,20 @@ final class FakeServices: AppServices {
     /// PS Remote Play / chiaki-ng bu Mac'te kurulu mu (Ayarlar'daki indirme satırları, ana ekran uyarısı).
     var remotePlayInstalledResult = true
     func remotePlayInstalled(_ app: RemotePlayApp) -> Bool { remotePlayInstalledResult }
+    /// Seçilen pencereden okuma: gerçek ScreenCaptureKit'e gidilmez; açık pencereler ve izin elle verilir.
+    var captureWindowStreams: [WindowCaptureTarget] = []
+    var openCaptureWindows: [WindowCaptureTarget] = []
+    var screenRecordingAllowedResult = true
+    var screenRecordingSettingsOpened = 0
+    func makeCaptureWindowStream(target: WindowCaptureTarget) -> StreamControlling {
+        captureWindowStreams.append(target)
+        let stream = FakeStream()
+        streams.append(stream)
+        return stream
+    }
+    func captureWindows() async -> [WindowCaptureTarget] { screenRecordingAllowedResult ? openCaptureWindows : [] }
+    func screenRecordingAllowed() -> Bool { screenRecordingAllowedResult }
+    func openScreenRecordingSettings() { screenRecordingSettingsOpened += 1 }
     var consoles = [ConsoleInfo(host: "192.168.1.253", name: "PS5-789", isAwake: true)]
     var tvs = [LGTV(name: "LG TV", host: "192.168.1.153")]
     var registered: RegisteredConsole?

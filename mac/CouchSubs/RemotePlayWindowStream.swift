@@ -51,12 +51,12 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
     var onConsoleMoved: ((RegisteredConsole) -> Void)?
 
     private let queue = DispatchQueue(label: "com.couchsubs.remoteplay-window", qos: .userInitiated)
-    private let lock = NSLock()
+    let lock = NSLock()
     /// Her başlatma/durdurma bir numara alır; eski aramanın ya da yakalamanın geç gelen sonucu yenisine karışmaz.
     private var generation = 0
     private var running = false
-    private var stream: SCStream?
-    private var window: (id: CGWindowID, size: CGSize)?
+    private(set) var stream: SCStream?
+    private(set) var window: (id: CGWindowID, size: CGSize)?
     /// Pencere arama ve izleme görevleri; yalnız ana iş parçacığında kurulur ve kaldırılır (`start`, `stop`,
     /// `reconnectNow` uygulama modelinden ana iş parçacığında çağrılır).
     private var search: Task<Void, Never>?
@@ -66,13 +66,27 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
     /// bildirimi okuma hattını sıfırlıyor ve günlüğe yazıyordu).
     private var reported: SessionState?
     private let bundleIdentifiers: [String]
+    /// Kullanıcının seçtiği OBS projektörü ya da oyun penceresi (`UserSettings.captureWindow`); Remote Play okunurken nil.
+    /// Seçiliyken hiçbir uygulama açılmaz, yalnız bu pencere aranır ve kapanınca başka pencereye geçilmez.
+    private let selected: WindowCaptureTarget?
+    /// Seçilen pencereden kare gelmiyorsa nedeni günlüğe yazılır, siyah kareler uyarılır (bkz. `RemotePlayWindowStream+Selected`).
+    var selectedCapture: SelectedCapture?
+    var frameWatch: Task<Void, Never>?
 
     init(app: RemotePlayApp = .automatic) {
         bundleIdentifiers = Self.bundleIdentifiers(for: app)
+        selected = nil
         super.init()
     }
 
-    private func report(_ state: SessionState) {
+    /// OBS ya da oyun penceresi kullanıcı tarafından seçildi: Remote Play açılmaz, tam ekran yakalanmaz.
+    init(target: WindowCaptureTarget) {
+        bundleIdentifiers = []
+        selected = target
+        super.init()
+    }
+
+    func report(_ state: SessionState) {
         let changed = lock.withLock { () -> Bool in
             guard reported != state else { return false }
             reported = state
@@ -89,7 +103,7 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
             return generation
         }
         report(.connecting)
-        Self.openRemotePlayIfNeeded(bundleIdentifiers)
+        if selected == nil { Self.openRemotePlayIfNeeded(bundleIdentifiers) }
         startSearch(current)
     }
 
@@ -130,7 +144,7 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
         startSearch(current)
     }
 
-    private func isCurrent(_ number: Int) -> Bool {
+    func isCurrent(_ number: Int) -> Bool {
         lock.withLock { running && generation == number }
     }
 
@@ -139,8 +153,10 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
         search = nil
         sizeWatch?.cancel()
         sizeWatch = nil
+        frameWatch?.cancel()
+        frameWatch = nil
         let old = lock.withLock { () -> SCStream? in
-            defer { stream = nil; window = nil }
+            defer { stream = nil; window = nil; selectedCapture = nil }
             return stream
         }
         if let old { Task { try? await old.stopCapture() } }
@@ -159,7 +175,8 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
                     return
                 case .noWindow:
                     if !reported {
-                        RemotePlayLog.write("Remote Play penceresi bekleniyor (PS Remote Play ya da chiaki-ng)")
+                        RemotePlayLog.write(self.selected.map { "Seçilen pencere bekleniyor: \($0.processName) / \($0.title)" }
+                            ?? "Remote Play penceresi bekleniyor (PS Remote Play ya da chiaki-ng)")
                         reported = true
                     }
                     self.report(.connecting)
@@ -197,7 +214,14 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
         } catch {
             return .noPermission
         }
-        guard let target = Self.gameWindow(in: content.windows, bundleIdentifiers: bundleIdentifiers) else { return .noWindow }
+        // Seçilen pencere açık değilse Remote Play'e ya da başka pencereye geçilmez.
+        let found: SCWindow?
+        if let selected {
+            found = Self.selectedWindow(selected, in: content.windows)
+        } else {
+            found = Self.gameWindow(in: content.windows, bundleIdentifiers: bundleIdentifiers)
+        }
+        guard let target = found else { return .noWindow }
         let filter = SCContentFilter(desktopIndependentWindow: target)
         let stream = SCStream(filter: filter, configuration: Self.configuration(for: target.frame.size), delegate: self)
         do {
@@ -210,6 +234,7 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
             guard running, generation == number else { return false }
             self.stream = stream
             window = (target.windowID, target.frame.size)
+            if selected != nil { selectedCapture = SelectedCapture(filter: filter) }
             return true
         }
         guard kept else {
@@ -219,7 +244,10 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
         let name = target.owningApplication?.applicationName ?? "Remote Play"
         RemotePlayLog.write("\(name) penceresi okunuyor: \(Int(target.frame.width))x\(Int(target.frame.height))")
         report(.streaming)
-        await MainActor.run { watchWindow(number) }
+        await MainActor.run {
+            watchWindow(number)
+            if selected != nil { watchFrames(number) }
+        }
         return .attached
     }
 
@@ -271,7 +299,14 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
                 tick += 1
                 let (stream, window) = self.lock.withLock { (self.stream, self.window) }
                 guard let stream, let window else { continue }
-                if tick % 3 == 0, await Self.betterWindowAppeared(than: window.id, bundleIdentifiers: self.bundleIdentifiers) {
+                if self.selected != nil {
+                    // Seçilen pencere kapandı: aynı pencere yeniden aranır, başka pencereye ya da masaüstüne geçilmez.
+                    if Self.currentSize(of: window.id) == nil {
+                        RemotePlayLog.write("Seçilen pencere kapandı; yeniden açılması bekleniyor")
+                        await MainActor.run { self.reconnectNow() }
+                        return
+                    }
+                } else if tick % 3 == 0, await Self.betterWindowAppeared(than: window.id, bundleIdentifiers: self.bundleIdentifiers) {
                     RemotePlayLog.write("Remote Play'de oyun başka bir pencerede; o pencereye geçiliyor")
                     await MainActor.run { self.reconnectNow() }
                     return
@@ -304,15 +339,32 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
     // MARK: - SCStreamOutput, SCStreamDelegate
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        let capture = lock.withLock { self.stream === stream ? selectedCapture : nil }
+        if let capture {
+            capture.watch.arrived()
+            // Yedek yakalamaya geçildiyse aynı kare iki yoldan verilmez.
+            if capture.usesFallback { return }
+        }
         guard type == .screen, sampleBuffer.isValid, let pixels = sampleBuffer.imageBuffer else { return }
         // Değişmeyen ekranda gelen boş kareler okunmaz.
         if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
            let raw = attachments.first?[.status] as? Int, let status = SCFrameStatus(rawValue: raw), status != .complete {
             return
         }
+        capture?.watch.copyStarted(at: capture?.elapsed ?? 0)
         var image: CGImage?
-        VTCreateCGImageFromCVPixelBuffer(pixels, options: nil, imageOut: &image)
-        guard let image else { return }
+        let status = VTCreateCGImageFromCVPixelBuffer(pixels, options: nil, imageOut: &image)
+        capture?.watch.copyEnded()
+        guard let image else {
+            if let capture, capture.watch.failed("VTCreateCGImageFromCVPixelBuffer: \(status)") {
+                SubtitleLog.write("pencere karesi kopyalanamadı: VTCreateCGImageFromCVPixelBuffer: \(status)")
+            }
+            return
+        }
+        if let capture {
+            noteBlack(Self.isBlack(pixels), capture: capture, stream: stream)
+            if capture.watch.frameDelivered() { SubtitleLog.write("pencereden ilk kare: \(image.width)x\(image.height)") }
+        }
         onFrame?(image)
     }
 
@@ -322,15 +374,18 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
             guard running, self.stream === stream else { return nil }
             self.stream = nil
             window = nil
+            selectedCapture = nil
             generation += 1
             return generation
         }
         guard let current else { return }
-        RemotePlayLog.write("Remote Play penceresi kapandı: \(error.localizedDescription)")
+        RemotePlayLog.write("\(selected == nil ? "Remote Play penceresi" : "Seçilen pencere") kapandı: \(error.localizedDescription)")
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isCurrent(current) else { return }
             self.sizeWatch?.cancel()
             self.sizeWatch = nil
+            self.frameWatch?.cancel()
+            self.frameWatch = nil
             self.report(.connecting)
             self.startSearch(current)
         }

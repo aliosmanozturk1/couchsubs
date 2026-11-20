@@ -88,9 +88,10 @@ public enum SubtitleOutput: String, Codable, CaseIterable {
 
 /// Görüntünün nereden okunduğu. `ps5`: CouchSubs PS5'e kendisi bağlanır (ikinci hesap). `remotePlayWindow`: oyun bu
 /// bilgisayardaki Sony PS Remote Play uygulamasında oynanır, CouchSubs yalnız onun penceresini okur; PS5'e ikinci oturum
-/// açılmadığı için ikinci hesap gerekmez. Eski kayıtlar `ps5` ile açılır.
+/// açılmadığı için ikinci hesap gerekmez. `captureWindow`: kullanıcının seçtiği OBS projektörü ya da oyun penceresi okunur
+/// (bkz. `WindowCaptureTarget`; Windows'taki `CaptureWindow`). Eski kayıtlar `ps5` ile açılır.
 public enum FrameSource: String, Codable, CaseIterable {
-    case ps5, remotePlayWindow
+    case ps5, remotePlayWindow, captureWindow
 }
 
 /// Görüntü pencereden okunurken hangi Remote Play uygulamasının penceresi: hangisi açıksa (Sony'nin PS Remote Play'i ya
@@ -177,6 +178,8 @@ public struct UserSettings: Codable, Equatable {
     public var frameSource = FrameSource.ps5
     /// Pencereden okunurken hangi Remote Play uygulaması (bkz. `RemotePlayApp`).
     public var remotePlayApp = RemotePlayApp.automatic
+    /// OBS ya da başka bir açık pencere seçildiyse yalnız bu pencere okunur (varsayılan nil; masaüstünde).
+    public var captureWindow: WindowCaptureTarget?
     /// Oyuna göre kaydedilmiş alanlar (son kullanılan sonda, en çok `AreaProfiles.maxCount`; bkz. `GameAreas`).
     public var areaProfiles: [AreaProfile] = []
     /// Şu an uygulanan profilin anahtarı; genel alanlar kullanılıyorsa nil.
@@ -227,6 +230,7 @@ public struct UserSettings: Codable, Equatable {
         appearance = (try? values.decodeIfPresent(AppAppearance.self, forKey: .appearance)) ?? defaults.appearance
         frameSource = (try? values.decodeIfPresent(FrameSource.self, forKey: .frameSource)) ?? defaults.frameSource
         remotePlayApp = (try? values.decodeIfPresent(RemotePlayApp.self, forKey: .remotePlayApp)) ?? defaults.remotePlayApp
+        captureWindow = try? values.decodeIfPresent(WindowCaptureTarget.self, forKey: .captureWindow)
         areaProfiles = Array(((try? values.decodeIfPresent([AreaProfile].self, forKey: .areaProfiles)) ?? defaults.areaProfiles)
             .suffix(AreaProfiles.maxCount))
         activeAreaProfile = try? values.decodeIfPresent(String.self, forKey: .activeAreaProfile)

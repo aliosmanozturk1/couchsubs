@@ -579,6 +579,7 @@ private struct FrameSourceCard: View {
             Picker("Read the picture from", selection: $model.settings.frameSource) {
                 Text("The PS5 (second account)").tag(FrameSource.ps5)
                 Text("Remote Play window on this Mac").tag(FrameSource.remotePlayWindow)
+                Text("OBS projector or game window").tag(FrameSource.captureWindow)
             }
             if model.settings.frameSource == .remotePlayWindow {
                 Picker("Remote Play app", selection: $model.settings.remotePlayApp) {
@@ -606,6 +607,8 @@ private struct FrameSourceCard: View {
                         Button("Download chiaki-ng") { model.openDownload(for: .chiaki) }.buttonStyle(.secondary)
                     }
                 }
+            } else if model.settings.frameSource == .captureWindow {
+                CaptureWindowPanel()
             } else {
                 HintText(text: "CouchSubs connects to the PS5 with the second account. Sony's PS Remote Play can't be used at the same time.")
                 if model.needsPS5Link {

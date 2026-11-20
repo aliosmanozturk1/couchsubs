@@ -35,6 +35,16 @@ struct SecondAccountStep: View {
                         }
                     }
                 }
+                // OBS projektörü ya da oyun penceresi olanlar: pencere sonradan Ayarlar › Görüntü kaynağı'nda seçilir.
+                Card {
+                    HStack {
+                        Text("Have OBS or a game window on this Mac?").font(.csBody.weight(.semibold))
+                        Spacer()
+                        Button("Select") { model.useCaptureWindow() }
+                            .buttonStyle(.secondary)
+                    }
+                    HintText(text: "CouchSubs can read only the OBS projector or game window you select in Settings › Picture source. No second PSN account or additional capture app is needed.")
+                }
             }
         }
     }

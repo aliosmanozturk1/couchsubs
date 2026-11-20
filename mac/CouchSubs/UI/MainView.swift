@@ -131,7 +131,8 @@ struct MainControls: View {
                         }
                     }
                 } else {
-                    StatusTile(symbol: "gamecontroller", title: "PS5", value: model.ps5StatusText,
+                    StatusTile(symbol: "gamecontroller", title: model.settings.frameSource == .captureWindow ? "Selected window" : "PS5",
+                               value: model.ps5StatusText,
                                tone: AppModel.ps5Tone(model.sessionState, running: model.isRunning))
                 }
                 // Altyazı yalnız bilgisayar ekranındaysa TV durumu gösterilmez.
@@ -161,8 +162,7 @@ struct MainControls: View {
     }
 
     private var pictureSourceName: String {
-        model.settings.frameSource == .remotePlayWindow
-            ? String(localized: "Remote Play window on this Mac") : String(localized: "The PS5 (second account)")
+        AppModel.pictureSourceTitle(model.settings.frameSource)
     }
 
     private var engineName: String {
