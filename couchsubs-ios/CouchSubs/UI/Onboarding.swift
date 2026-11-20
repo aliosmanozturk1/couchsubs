@@ -138,6 +138,17 @@ struct PSNScreen: View {
     /// Giriş sayfası açılamadı ya da Sony hata kodu döndürdü; eskiden yok sayılıyor, sayfa beyaz kalıyordu (TestFlight).
     @State private var pageProblem: String?
     @State private var pageAttempt = 0
+    /// Uygulama içi giriş Sony'nin "Can't connect to the server" hatasında kalırsa giriş tarayıcıda yapılır, yönlendirme
+    /// adresi buraya yapıştırılır (Windows, Mac ve Android'deki "Tarayıcıda giriş yap" ile aynı akış).
+    @State private var showBrowser = false
+    /// Tarayıcıya uygulama içi sayfa sunucusuna bağlanamadığı için geçildi (nedeni de yazılır).
+    @State private var browserAutomatic = false
+    @State private var browserURL = ""
+    @State private var browserError: String?
+    /// Son denenen yönlendirme adresi: tek kullanımlık kod panodan ikinci kez denenmez.
+    @State private var lastBrowserRedirect: String?
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         MobileScreen {
@@ -156,8 +167,26 @@ struct PSNScreen: View {
             if model.accountId != nil { MobilePill(text: String(localized: "Signed in"), dot: true) }
             if working { ProgressView().tint(Mobile.Palette.accent) }
             if let error { MobileNote(text: error) }
+            if showBrowser {
+                if browserAutomatic {
+                    MobileNote(text: String(localized: "Sony's sign-in page could not reach its server inside the app, so sign-in moved to your browser."))
+                }
+                MobileNote(text: String(localized: "Sign in with your second account in the browser that opened. When you finish, the browser stays on a remoteplay.dl.playstation.net page that only says redirect. Tap the address bar, copy the whole address and come back here. CouchSubs picks up the copied address by itself; if it does not, paste it below and tap Save."))
+                TextField("", text: $browserURL)
+                    .textFieldStyle(MobileFieldStyle())
+                    .keyboardType(.URL)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onSubmit(submitBrowser)
+                if let browserError { MobileNote(text: browserError) }
+                Button("Save", action: submitBrowser).buttonStyle(.mobileSecondary).disabled(working)
+                Button("Open the browser again") { openURL(PSNAccount.authorizeURL) }.buttonStyle(.mobileGhost)
+            }
         } bottom: {
             Button("Why a second account?") { showWhy = true }.buttonStyle(.mobileGhost)
+            if !showBrowser {
+                Button("Sign in in the browser") { openBrowserLogin(automatic: false) }.buttonStyle(.mobileGhost).disabled(working)
+            }
             if model.accountId != nil {
                 Button("Sign in again") {
                     redirected = false
@@ -183,7 +212,12 @@ struct PSNScreen: View {
         }) {
             NavigationStack {
                 ZStack {
-                    LoginWebView(onRedirect: received, onProblem: { pageProblem = $0 }, reloadToken: pageAttempt)
+                    LoginWebView(onRedirect: received, onProblem: { pageProblem = $0 }, reloadToken: pageAttempt, onUnreachable: {
+                        // Sony'nin sayfası uygulama içinde sunucusuna bağlanamadı; aynı giriş tarayıcıda çalışıyor.
+                        redirected = true
+                        showLogin = false
+                        openBrowserLogin(automatic: true)
+                    })
                     if let pageProblem { loginProblem(pageProblem) }
                 }
                 .navigationTitle(Text(verbatim: "PlayStation Network"))
@@ -198,6 +232,9 @@ struct PSNScreen: View {
                 }
             }
             .presentationDragIndicator(.visible)
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active { takeRedirectFromPasteboard() }
         }
         .sheet(isPresented: $showWhy) {
             VStack(alignment: .leading, spacing: Mobile.Space.gap) {
@@ -224,6 +261,37 @@ struct PSNScreen: View {
     private func retryLogin() {
         pageProblem = nil
         pageAttempt += 1
+    }
+
+    /// Sony'nin giriş sayfası Safari'de açılır, adres yapıştırma alanı görünür.
+    private func openBrowserLogin(automatic: Bool) {
+        showBrowser = true
+        browserAutomatic = automatic
+        browserError = nil
+        error = nil
+        openURL(PSNAccount.authorizeURL)
+    }
+
+    /// Kullanıcı tarayıcıdan dönünce panoda adres varsa kendiliğinden alınır (iOS yapıştırma iznini kendisi sorar).
+    private func takeRedirectFromPasteboard() {
+        guard showBrowser, !working, UIPasteboard.general.hasStrings || UIPasteboard.general.hasURLs,
+              let redirect = PSNAccount.redirect(fromPastedText: UIPasteboard.general.string),
+              redirect.absoluteString != lastBrowserRedirect else { return }
+        browserURL = redirect.absoluteString
+        submitBrowser()
+    }
+
+    private func submitBrowser() {
+        guard !working else { return }
+        guard let redirect = PSNAccount.redirect(fromPastedText: browserURL) else {
+            browserError = String(localized: "This address has no sign-in code. It should start with https://remoteplay.dl.playstation.net/remoteplay/redirect?code=")
+            return
+        }
+        browserError = nil
+        lastBrowserRedirect = redirect.absoluteString
+        browserURL = ""
+        showBrowser = false
+        received(redirect)
     }
 
     private func received(_ url: URL) {
