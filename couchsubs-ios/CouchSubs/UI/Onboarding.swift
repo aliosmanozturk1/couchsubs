@@ -472,7 +472,7 @@ struct TargetScreen: View {
         } content: {
             ScreenTitle(caption: setup ? "Setup · Step 3/3" : nil, title: "Where are the subtitles?",
                         message: "You can change this later on the home screen.")
-            Tile(emphasis: model.settings.output.showsOnTV && model.hasTV ? .selected : .none) {
+            Tile(emphasis: model.settings.output == .tv && model.hasTV ? .selected : .none) {
                 HStack(spacing: Mobile.Space.gap) {
                     MobileTileIcon(symbol: "tv")
                     Text("On the TV, over the game").font(Mobile.TypeScale.headline)
@@ -502,6 +502,13 @@ struct TargetScreen: View {
                              emphasis: model.settings.output == .computer ? .selected : .none)
                 }
                 .buttonStyle(.plain)
+                // Mac ve Windows'taki "İkisi de": altyazı hem TV'de hem bu telefonda görünür (TV eşleşmişken seçilir).
+                Button { model.settings.output = .both } label: {
+                    InfoTile(symbol: "rectangle.on.rectangle", title: "Both", caption: "On the TV and on this phone",
+                             emphasis: model.settings.output == .both && model.hasTV ? .selected : .none)
+                }
+                .buttonStyle(.plain)
+                .disabled(!model.hasTV)
                 Button { showManual = true } label: {
                     InfoTile(symbol: "questionmark.circle", title: "My TV is not listed", caption: "Supported TVs")
                 }

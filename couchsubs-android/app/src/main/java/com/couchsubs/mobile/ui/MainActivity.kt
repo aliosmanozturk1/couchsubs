@@ -270,6 +270,7 @@ class MainActivity : ComponentActivity() {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         TranslationService.start(this)
+        // Yalnız "Bu telefonda" seçiliyken kendiliğinden açılır; "İkisi de"de "Telefonda göster" düğmesiyle (iPhone ile aynı).
         if (Services.settings.target == SubtitleTarget.PHONE) startActivity(Intent(this, PhoneSubtitleActivity::class.java))
     }
 }

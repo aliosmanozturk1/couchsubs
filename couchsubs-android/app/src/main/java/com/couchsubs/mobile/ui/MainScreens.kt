@@ -190,8 +190,8 @@ fun MainScreen(
                             corner = { Pill(stringResource(R.string.beta)) }, chevron = true, onClick = onPairing)
                           else StatusTile(CouchIcons.Gamepad, "PS5", settings.console?.name ?: stringResource(R.string.profile_not_paired), it,
                             corner = { if (settings.console != null) StatusLabel(stringResource(R.string.main_paired)) }, chevron = true, onClick = onPairing) },
-                        { StatusTile(if (settings.target == SubtitleTarget.TV) CouchIcons.Tv else CouchIcons.Smartphone, stringResource(R.string.main_target),
-                            if (settings.target == SubtitleTarget.TV) settings.tvName ?: stringResource(R.string.main_target_tv) else stringResource(R.string.main_target_phone),
+                        { StatusTile(if (settings.target.showsOnTv) CouchIcons.Tv else CouchIcons.Smartphone, stringResource(R.string.main_target),
+                            targetName(settings),
                             it.then(mark(TourStep.TARGET)), chevron = true, onClick = onTarget) },
                     )
                     // Paket karosu: başlık ve not tek satır, sağda yalnız `›`; paketler kapalıysa nötr "Kapalı" etiketi.
@@ -308,7 +308,7 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
         if (!status.streaming && status.phase.isNotEmpty()) Text(status.phase, style = Tokens.Type.caption, color = Tokens.Color.secondary)
         AnimatedNote(status.error)
         // TV'ye çevirirken telefon kilitlenebilir: pil kısıtlaması açıksa çeviri ekran kapanınca durabilir.
-        if (!status.demo && Services.settings.target == SubtitleTarget.TV) BackgroundLimitNote()
+        if (!status.demo && Services.settings.target.showsOnTv) BackgroundLimitNote()
         val current = status.recent.firstOrNull()
         // İlk altyazı gelene kadar ve bağlantı koptuğunda: kolu açınca PS5'te ana hesap seçilmeli (GitHub #231, MainAccountTip).
         if (com.couchsubs.mobile.remoteplay.MainAccountTip.visible(ps5 = !Services.settings.xbox, demo = status.demo,
@@ -356,7 +356,7 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
             } },
             { Tile(it) {
                 TileLabel(stringResource(R.string.main_tvs_label))
-                Text(if (Services.settings.target == SubtitleTarget.TV) status.connectedTvs.toString() else stringResource(R.string.main_target_phone),
+                Text(if (Services.settings.target.showsOnTv) status.connectedTvs.toString() else stringResource(R.string.main_target_phone),
                     style = Tokens.Type.titleNumeric, color = Tokens.Color.text)
             } },
         )

@@ -150,6 +150,7 @@ struct ProfileScreen: View {
 
     private var targetName: String {
         if model.settings.output == .computer { return String(localized: "This phone") }
+        if model.settings.output == .both, model.hasTV { return String(format: String(localized: "%@ and this phone"), model.tv?.name ?? "TV") }
         return model.hasTV ? model.tv?.name ?? "TV" : String(localized: "Not set up")
     }
 
@@ -414,6 +415,7 @@ struct SettingsScreen: View {
 
     private var targetName: String {
         if model.settings.output == .computer { return String(localized: "This phone") }
+        if model.settings.output == .both, model.hasTV { return String(format: String(localized: "%@ and this phone"), model.tv?.name ?? "TV") }
         return model.hasTV ? model.tv?.name ?? "TV" : String(localized: "Not set up")
     }
 

@@ -31,7 +31,13 @@ import javax.crypto.spec.GCMParameterSpec
 enum class ConsolePlatform { PLAYSTATION, XBOX }
 
 /** Altyazının gösterileceği yer. */
-enum class SubtitleTarget { TV, PHONE }
+/** Altyazının gösterildiği yer; [BOTH]: TV'de ve bu telefonda (Mac ve Windows'taki "İkisi de", iPhone ile aynı). */
+enum class SubtitleTarget {
+    TV, PHONE, BOTH;
+
+    val showsOnTv: Boolean get() = this != PHONE
+    val showsOnPhone: Boolean get() = this != TV
+}
 
 /** Çeviri motoru: ücretsiz cihaz üstü (ML Kit) ya da kullanıcının anahtarıyla çevrimiçi hizmet. */
 enum class EngineChoice { FREE, DEEPL, GEMINI, OPENAI, CLAUDE }

@@ -281,6 +281,17 @@ fun TargetScreen(onBack: (() -> Unit)? = null, onTvInstall: (() -> Unit)? = null
             // TV uygulamasını bilgisayarsız, bu telefondan kurmak (ilk kurulumda da).
             if (onTvInstall != null) GhostButton(stringResource(R.string.tvinstall_entry), onClick = onTvInstall)
         }
+        // Mac ve Windows'taki "İkisi de": altyazı hem TV'de hem bu telefonda görünür.
+        Tile(Modifier.fillMaxWidth(), style = if (target == SubtitleTarget.BOTH) TileStyle.ACTIVE else TileStyle.NORMAL, onClick = { target = SubtitleTarget.BOTH }) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.inline)) {
+                TileIcon(CouchIcons.Tv)
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.target_both), style = Tokens.Type.headline, color = Tokens.Color.text)
+                    Text(stringResource(R.string.target_both_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                }
+                if (target == SubtitleTarget.BOTH) SelectedCheck()
+            }
+        }
         TwoColumns(
             { StatusTile(CouchIcons.Smartphone, stringResource(R.string.target_phone_note), stringResource(R.string.target_phone), it,
                 style = if (target == SubtitleTarget.PHONE) TileStyle.ACTIVE else TileStyle.NORMAL,

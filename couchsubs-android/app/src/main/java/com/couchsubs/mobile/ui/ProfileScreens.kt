@@ -97,8 +97,7 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
         )
         Tile(Modifier.fillMaxWidth(), onClick = onTarget) {
             TileLabel(stringResource(R.string.profile_tvs))
-            Text(if (settings.target == SubtitleTarget.TV) settings.tvName ?: stringResource(R.string.main_target_tv) else stringResource(R.string.main_target_phone),
-                style = Tokens.Type.title, color = Tokens.Color.text)
+            Text(targetName(settings), style = Tokens.Type.title, color = Tokens.Color.text)
             when (val found = tvs) {
                 null -> Text(stringResource(R.string.target_searching), style = Tokens.Type.caption, color = Tokens.Color.secondary)
                 else -> Text(if (found.isEmpty()) stringResource(R.string.target_tvs_none) else found.joinToString { "${it.name} (${brandName(it.brand)})" },
@@ -285,7 +284,7 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             }
             Text(stringResource(R.string.settings_background_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
         }
-        if (settings.target == SubtitleTarget.TV) Tile(Modifier.fillMaxWidth()) {
+        if (settings.target.showsOnTv) Tile(Modifier.fillMaxWidth()) {
             SectionTitle(stringResource(R.string.settings_section_tv))
             // TV'de çevirinin yeri (Mac ve Windows'taki Yeri seçimi, iPhone ile aynı): üstünde/altında seçilince oyundaki
             // İngilizce altyazı da görünür; sabit yerde yükseklik kaydırıcıyla ayarlanır, bırakınca TV'de örnek altyazı çıkar.
@@ -341,8 +340,7 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
         var xboxAudio by remember { mutableStateOf(settings.xboxAudioOnDevice) }
         RowList(listOfNotNull<@Composable () -> Unit>(
             { RowItem(stringResource(R.string.settings_packs), onClick = onPacks) { Pill(stringResource(if (settings.packsEnabled) R.string.main_packs_on else R.string.main_packs_off)) } },
-            { RowItem(stringResource(R.string.settings_target), if (settings.target == SubtitleTarget.TV) settings.tvName ?: stringResource(R.string.main_target_tv)
-                else stringResource(R.string.main_target_phone), onClick = onTarget) },
+            { RowItem(stringResource(R.string.settings_target), targetName(settings), onClick = onTarget) },
             { RowItem(stringResource(R.string.platform_setting), stringResource(if (settings.xbox) R.string.platform_xbox else R.string.platform_ps), onClick = onPlatform) {
                 if (settings.xbox) Pill(stringResource(R.string.beta)) } },
             if (settings.xbox) ({ RowItem("Xbox", settings.xboxConsole?.name ?: stringResource(R.string.profile_not_paired), onClick = onPairing) })
@@ -372,7 +370,7 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
                 context.getString(R.string.settings_test_needs_start)
             // TV bağlı değilse yazı TV'ye gitmiyordu; TV'deki 6 haneli kodun nereye yazılacağı aranıyordu (kod yazılmaz,
             // bu telefonda açılan "Bu TV eşleşsin mi?" penceresinde onaylanır).
-            else if (settings.target == SubtitleTarget.TV && TranslationService.connectedTvs() == 0)
+            else if (settings.target.showsOnTv && TranslationService.connectedTvs() == 0)
                 context.getString(R.string.settings_test_tv_not_connected)
             else null
         }
@@ -478,4 +476,15 @@ private fun deepLUsageText(usage: KeyCheck.DeepLUsage): String = when (usage.sta
     OnlineKeyState.QUOTA_EXCEEDED -> stringResource(R.string.deepl_quota_used_up)
     OnlineKeyState.INVALID -> stringResource(R.string.deepl_key_not_accepted)
     else -> stringResource(R.string.deepl_unreachable)
+}
+
+/** Altyazı hedefinin adı: TV'nin adı, "Bu telefon" ya da ikisi birden (iPhone ile aynı). */
+@Composable
+fun targetName(settings: AppSettings): String {
+    val tv = settings.tvName ?: stringResource(R.string.main_target_tv)
+    return when (settings.target) {
+        SubtitleTarget.TV -> tv
+        SubtitleTarget.PHONE -> stringResource(R.string.main_target_phone)
+        SubtitleTarget.BOTH -> stringResource(R.string.main_target_both, tv)
+    }
 }

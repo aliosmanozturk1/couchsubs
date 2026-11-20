@@ -157,7 +157,7 @@ class TranslationService : Service() {
 
     @Volatile private var subtitlePort = 8787
     private fun launchTv(key: String) {
-        if (settings.target != SubtitleTarget.TV) return
+        if (!settings.target.showsOnTv) return
         Thread({ runCatching {
             com.couchsubs.mobile.tv.TvSessionLauncher.launch(settings, subtitlePort, key,
                 adbKeyFile = java.io.File(noBackupFilesDir, "adb/adbkey"), connected = { (server?.connectedClients ?: 0) > 0 },
@@ -370,7 +370,7 @@ class TranslationService : Service() {
         subtitleServer.pairing.setSession(true)
         subtitleServer.onPairingRequest = { ticket -> LiveState.update { it.copy(pairing = ticket) } }
         subtitleServer.onLegacyClient = { LiveState.update { it.copy(legacyTv = true) }; Log.i(TAG, "TV uygulamasını güncelleyin; geçiş bağlantısı.") }
-        subtitleServer.sendsToTv = settings.target == SubtitleTarget.TV
+        subtitleServer.sendsToTv = settings.target.showsOnTv
         subtitleServer.speakerColors = settings.speakerColors
         // Konuşan renkleri oturum boyunca sabittir; yeni oturum yeni defterle başlar.
         com.couchsubs.mobile.core.SpeakerColors.session.reset()
@@ -388,7 +388,7 @@ class TranslationService : Service() {
         // Çeviri sürerken Ayarlar'da yazı boyu ya da rengi değişirse TV hemen yeni görünüme geçer (iPhone ile aynı).
         styleListener = settings.onStyleChanged { server?.sendStyle(settings.style) }
         // Çeviri sürerken hedef TV'ye (ya da telefona) çevrilirse altyazı hemen oraya gider (iPhone ile aynı).
-        targetListener = settings.onTargetChanged { server?.sendsToTv = settings.target == SubtitleTarget.TV }
+        targetListener = settings.onTargetChanged { server?.sendsToTv = settings.target.showsOnTv }
         region = settings.region
         extraAreas = settings.extraAreas.watched(settings.areaPreset)
         fullScreenArea = settings.areaPreset == com.couchsubs.mobile.core.AreaPreset.FULL

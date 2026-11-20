@@ -64,7 +64,8 @@ object TvAppUpdate {
         settings.installedTv = tv
         // Kurulumun 3. adımından TV uygulaması kurulunca altyazı TV'ye gider ve kurulum biter; yoksa uygulama her
         // açılışta yine 3. adımdan (altyazının yeri) başlıyordu, "Devam"a basılmadıysa ana ekrana hiç gelinmiyordu (#113).
-        settings.target = SubtitleTarget.TV
+        // "İkisi de" seçiliyse korunur; yalnız "Bu telefonda" TV'ye döner.
+        if (!settings.target.showsOnTv) settings.target = SubtitleTarget.TV
         settings.onboarded = true
         state.value = tv.version?.takeIf { it.isNotEmpty() }?.let { TvAppStatus.UpToDate(it) } ?: TvAppStatus.Unknown
     }
