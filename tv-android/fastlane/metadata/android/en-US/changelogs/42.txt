@@ -1,0 +1,1 @@
+0.9.39: On ultrawide Samsung monitors the PS5 picture is resized correctly again when the PS5 goes from the menu into a game (signal change).

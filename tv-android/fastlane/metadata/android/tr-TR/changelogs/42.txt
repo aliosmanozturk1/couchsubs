@@ -1,0 +1,1 @@
+0.9.39: Ultra geniş Samsung monitörde PS5 menüden oyuna geçince (görüntü sinyali değişince) PS5 görüntüsü yeniden doğru ölçüye getiriliyor.

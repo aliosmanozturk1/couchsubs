@@ -46,7 +46,21 @@ function load(innerWidth, innerHeight, opts = {}) {
       ok([...rect]);
     },
   };
-  if (area) tvwindow.getRect = (ok) => ok(current ? [...current] : null);
+  if (area) tvwindow.getRect = (ok) => ok(opts.lyingRect ? ['0px', '0px', bounds[0] + 'px', bounds[1] + 'px'] : current ? [...current] : null);
+  // Çözünürlük değişikliği dinleyicisi ve zamanlayıcılar elle yürütülür.
+  const listeners = [];
+  tvwindow.addVideoResolutionChangeListener = (callback) => { listeners.push(callback); return listeners.length; };
+  tvwindow.getVideoResolution = (ok) => ok({ width: 1920, height: 1080, frequency: 60, type: 'HDMI' });
+  let timers = [];
+  let intervals = [];
+  const setTimeout = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
+  const clearTimeout = (id) => { if (timers[id - 1]) timers[id - 1].fn = null; };
+  const setInterval = (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; };
+  const runTimers = () => { const due = timers; timers = []; for (const t of due) if (t.fn) t.fn(); };
+  const tick = () => { for (const t of intervals) t.fn(); };
+  const resolution = (info) => { for (const l of listeners) l(info); };
+  // Samsung pencereyi kendiliğinden '100%'e döndürür (PS5 sinyal değişimi).
+  const resetWindow = () => { current = ['0px', '0px', bounds[0] + 'px', bounds[1] + 'px']; };
   const tizen = {
     systeminfo: {
       getPropertyValue(name, ok) { ok({ connected: [{ type: 'HDMI', number: 1 }], disconnected: [] }); },
@@ -54,10 +68,11 @@ function load(innerWidth, innerHeight, opts = {}) {
     tvwindow,
   };
   const document = { querySelector: (q) => (q === 'meta[name="viewport"]' ? meta : null) };
-  vm.runInNewContext(code, { window, document, tizen });
+  vm.runInNewContext(code, { window, document, tizen, setTimeout, clearTimeout, setInterval });
   const diagnostics = [];
   window.COUCHSUBS_PLATFORM.pictureDiagnostics((text) => diagnostics.push(text));
-  return { platform: window.COUCHSUBS_PLATFORM, meta, shown, store, diagnostics, current: () => current };
+  return { platform: window.COUCHSUBS_PLATFORM, meta, shown, store, diagnostics, current: () => current,
+    runTimers, tick, resolution, resetWindow, listeners, pending: () => timers.filter((t) => t.fn).length, intervals: () => intervals.length };
 }
 
 test('16:9 TV (1080p ve 4K): görünüm 1920 piksel kalır', () => {
@@ -306,4 +321,74 @@ test('config.xml: her izin Samsung TV\'de var ve paketin en düşük Tizen sür�
 
 test('platform.js: Samsung TV\'de olmayan Tizen Power API\'si çağrılmıyor (#497)', () => {
   assert.doesNotMatch(code, /tizen\.power/);
+});
+
+// #304: PS5 menüden oyuna geçince HDMI sinyali değişir, Samsung pencereyi '100%'e döndürür; görüntü yeniden dört yandan
+// çubuklu kalıyordu. Sinyal değişince ve kutu bozulunca pencere yeniden istenir.
+const BOX = ['330px', '0px', '1920px', '1080px'];
+
+test('Sinyal değişince (PS5 menü → oyun) 16:9 kutu kısa gecikmeyle yeniden istenir', () => {
+  const loaded = load(2580, 1080, { screen: [3440, 1440] });
+  playHdmi(loaded);
+  assert.equal(loaded.listeners.length, 1);
+  loaded.resetWindow();
+  loaded.resolution({ width: 3840, height: 2160, frequency: 60, type: 'HDMI' });
+  // Hemen değil, sinyal oturunca (iki deneme).
+  assert.equal(loaded.pending(), 2);
+  const before = loaded.shown.length;
+  loaded.runTimers();
+  assert.deepEqual(loaded.shown.slice(before).map((s) => s.rect), [FULL, BOX, FULL, BOX]);
+  assert.deepEqual(loaded.current(), BOX);
+  assert.match(loaded.diagnostics.at(-1), /^signal 3840\/2160\/60\/HDMI → .*330,0,1920,1080 ok/);
+});
+
+test('Aynı çözünürlük yeniden bildirilirse pencere yenilenmez; ilk değer de yenilemez', () => {
+  const loaded = load(2580, 1080, { screen: [3440, 1440] });
+  playHdmi(loaded);
+  loaded.platform.videoResolution(() => {});
+  loaded.resolution({ width: 1920, height: 1080, frequency: 60, type: 'HDMI' });
+  assert.equal(loaded.pending(), 0);
+  loaded.resolution({ width: 1920, height: 1080, frequency: 120, type: 'HDMI' });
+  assert.equal(loaded.pending(), 2);
+  loaded.runTimers();
+  loaded.resolution({ width: 1920, height: 1080, frequency: 120, type: 'HDMI' });
+  assert.equal(loaded.pending(), 0);
+});
+
+test('Samsung kutuyu sessizce 100%e döndürürse birkaç saniyede bir sınanır ve yeniden istenir', () => {
+  const loaded = load(2580, 1080, { screen: [3440, 1440] });
+  playHdmi(loaded);
+  assert.equal(loaded.intervals(), 1);
+  let before = loaded.shown.length;
+  loaded.tick();
+  assert.equal(loaded.shown.length, before, 'kutu duruyorsa yeniden çizilmez');
+  loaded.resetWindow();
+  loaded.tick();
+  assert.deepEqual(loaded.shown.slice(before).map((s) => s.rect), [FULL, BOX]);
+  assert.match(loaded.diagnostics.at(-1), /^reset 0,0,2580,1080 → /);
+  before = loaded.shown.length;
+  loaded.tick();
+  assert.equal(loaded.shown.length, before);
+});
+
+test('getRect kabul edilen kutuyu söylemiyorsa sınama yapılmaz (boşuna yeniden çizim yok)', () => {
+  const loaded = load(2580, 1080, { screen: [3440, 1440], lyingRect: true });
+  playHdmi(loaded);
+  const before = loaded.shown.length;
+  loaded.tick();
+  loaded.tick();
+  assert.equal(loaded.shown.length, before);
+});
+
+test('Ekranı doldur seçiliyken ve 16:9 TV\'de sınama/yeniden isteme yok', () => {
+  const fill = load(2580, 1080, { screen: [3440, 1440], picture: 'fill' });
+  playHdmi(fill);
+  const before = fill.shown.length;
+  fill.tick();
+  assert.equal(fill.shown.length, before);
+  const tv = load(1920, 1080);
+  playHdmi(tv);
+  assert.equal(tv.intervals(), 0);
+  tv.resolution({ width: 3840, height: 2160, frequency: 60, type: 'HDMI' });
+  assert.equal(tv.pending(), 0);
 });
