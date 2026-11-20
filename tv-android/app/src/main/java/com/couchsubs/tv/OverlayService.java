@@ -195,7 +195,11 @@ public class OverlayService extends Service implements TvPage.Host {
     /**
      * Katmandaki WebView işlemi çöktü ya da sistem kapattı (#616: Philips Android 8'de HDMI girişi açılınca). Eskiden
      * Android bunu ele alınmadı sayıp uygulamayı kapatıyordu, katman sessizce kayboluyordu. Sayfa yeniden kurulur; kısa
-     * sürede birkaç kez yinelenirse katman bırakılır ve uygulama nedeni söyleyerek açılır.
+     * sürede birkaç kez yinelenirse katman bırakılır ve nedeni söylenir.
+     *
+     * Katman bırakılırken CouchSubs ekranı öne getirilmez (0.9.41'de getiriliyordu): katmanı kullanan TV'lerin çoğu HDMI'yı
+     * uygulamanın içinde gösteremiyor. Oyunun ortasında açılan ekran orada siyah kalır, 10 sn sonra yeniden katmana geçilir
+     * (FallbackWatch), sayfa yine gider ve görüntü tekrar tekrar kararır. Görüntü TV'nin kendi giriş ekranında kalır.
      */
     @Override
     public void pageGone(boolean crashed) {
@@ -207,8 +211,8 @@ public class OverlayService extends Service implements TvPage.Host {
         }
         if (!restarts.allow(SystemClock.elapsedRealtime())) {
             Log.w(TAG, "overlay page keeps dying; leaving overlay mode");
+            Toast.makeText(this, R.string.overlay_renderer_failed, Toast.LENGTH_LONG).show();
             stopSelf();
-            openApp(DisplayMode.FAILED_RENDERER);
             return;
         }
         ui.postDelayed(() -> {

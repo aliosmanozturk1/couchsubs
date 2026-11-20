@@ -117,9 +117,7 @@ public class MainActivity extends Activity implements TvPage.Host {
         }
         showInApp();
         if (start == DisplayMode.Start.IN_APP_NEEDS_PERMISSION) showPermissionHelp(R.string.overlay_permission_needed);
-        else if (start == DisplayMode.Start.IN_APP_OVERLAY_FAILED)
-            showOverlayFailed(DisplayMode.FAILED_RENDERER.equals(intent.getStringExtra(EXTRA_OVERLAY_FAILED))
-                    ? R.string.page_renderer_failed : R.string.overlay_failed);
+        else if (start == DisplayMode.Start.IN_APP_OVERLAY_FAILED) showOverlayFailed();
     }
 
     /** Katman açılabilir mi: bu derlemede var (Play paketinde yok) ve "Diğer uygulamaların üzerinde göster" izni verilmiş. */
