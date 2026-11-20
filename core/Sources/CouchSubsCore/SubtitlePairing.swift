@@ -4,26 +4,44 @@ import Foundation
 /// Kısa kod karşılaştırma içindir; teslim için ayrı 128 bit istek sırrı gerekir.
 public final class SubtitlePairing: @unchecked Sendable {
     public struct Ticket: Sendable, Identifiable, Equatable { public let id: String; public let code: String }
+    /// Onay bekleyen istek bu kadar eskiyse yeni istek onun yerini alır (bkz. `begin`).
+    static let supersedeAfterMs: Int64 = 2000
     private let lock = NSLock()
     private let now: () -> Int64
     private var session = false
     private var manualUntil: Int64 = 0
     private var expires: Int64 = 0
     private var cooldown: Int64 = 0
+    private var began: Int64 = 0
     private var ticket: Ticket?
     private var approved = false
+    private var delivered = false
     public init(clock: @escaping () -> Int64 = { Int64(DispatchTime.now().uptimeNanoseconds / 1_000_000) }) { now = clock }
     public func setSession(_ active: Bool) { lock.lock(); defer { lock.unlock() }; session = active; if !active { clear() } }
     public func open() { lock.lock(); defer { lock.unlock() }; manualUntil = now() + 120000 }
     public func reset() { lock.lock(); defer { lock.unlock() }; clear() }
-    private func clear() { ticket = nil; approved = false; manualUntil = 0; cooldown = 0 }
-    private func expire() { if ticket != nil && now() >= expires { ticket = nil; approved = false; cooldown = now() + 10000 } }
+    private func clear() { ticket = nil; approved = false; delivered = false; manualUntil = 0; cooldown = 0 }
+    /// Süresi dolan isteğin bekleme süresi dolduğu andan sayılır. Eskiden ilk bakıldığı andan sayılıyordu: TV'de
+    /// "Eşleştirme tamamlanmadı" çıktıktan sonra Tamam'a basınca istek hep reddediliyor (409), TV on saniye boyunca
+    /// "Çeviriyi başlat'a basın" diyordu (çeviri sürerken).
+    private func expire() { if ticket != nil && now() >= expires { ticket = nil; approved = false; delivered = false; cooldown = expires + 10000 } }
+    /// Eşleştirme açık mı (çeviri sürüyor ya da "TV eşleştir"in iki dakikası dolmadı).
+    public var isOpen: Bool { lock.lock(); defer { lock.unlock() }; return session || now() < manualUntil }
+    /// Onay bekleyen istek (yoksa nil). Arayüz kaçırdığı isteği buradan yeniden gösterir.
+    public var pending: Ticket? { lock.lock(); defer { lock.unlock() }; expire(); return approved ? nil : ticket }
+    /// TV'nin eşleştirme isteği. Onay bekleyen bir istek varken gelen yeni istek (TV uygulaması yeniden açıldı ya da
+    /// TV'de Tamam ile yeniden denendi) eskisinin yerini alır: telefonda yeni kodla yeni pencere açılır. Eskiden eski
+    /// istek iki dakika dolana kadar her yeni istek reddediliyor, telefondaki pencere TV'de artık görünmeyen kodu
+    /// gösteriyordu. Anahtarı teslim edilmiş istek de yeni isteği engellemez.
     public func begin() -> Ticket? {
         lock.lock(); defer { lock.unlock() }
         expire()
-        guard (session || now() < manualUntil), ticket == nil, now() >= cooldown else { return nil }
+        guard session || now() < manualUntil, now() >= cooldown else { return nil }
+        if ticket != nil {
+            guard approved ? delivered : now() - began >= Self.supersedeAfterMs else { return nil }
+        }
         let result = Ticket(id: SubtitleAccess.createKey(), code: String(Int.random(in: 100000...999999)))
-        ticket = result; expires = now() + 120000; approved = false
+        ticket = result; began = now(); expires = began + 120000; approved = false; delivered = false
         return result
     }
     @discardableResult public func resolve(_ id: String, accept: Bool) -> Bool {
@@ -36,6 +54,8 @@ public final class SubtitlePairing: @unchecked Sendable {
     public func poll(_ id: String) -> String {
         lock.lock(); defer { lock.unlock() }
         expire()
-        return ticket?.id == id ? (approved ? "approved" : "pending") : "expired"
+        guard ticket?.id == id else { return "expired" }
+        if approved { delivered = true }
+        return approved ? "approved" : "pending"
     }
 }

@@ -356,15 +356,47 @@ final class PhoneModel: ObservableObject {
 
     @Published private(set) var subtitleAccessKey = ""
     @Published private(set) var legacyTVWarning = false
+    /// TV'nin onay bekleyen eşleştirme isteği. Onay penceresi ve her ekranın üstündeki "TV eşleşmek istiyor" satırı
+    /// bunu gösterir; sunucudaki istekle `syncTVPairing` eşitler (süresi dolan ya da yerini yenisi alan istek kalkar).
     @Published var tvPairingRequest: SubtitlePairing.Ticket?
+    /// "TV eşleştir"e basıldı: TV'de ne yapılacağı Ayarlar'da yazılır (eskiden düğme hiçbir şey göstermiyordu).
+    @Published private(set) var tvPairingOpened = false
+    private var tvPairingWatch: Task<Void, Never>?
     func resolveTVPairing(_ ticket: SubtitlePairing.Ticket, accept: Bool) {
-        server.pairing.resolve(ticket.id, accept: accept)
+        let resolved = server.pairing.resolve(ticket.id, accept: accept)
+        SubtitleLog.write("TV eşleştirme isteği \(accept ? "onaylandı" : "reddedildi")\(resolved ? "" : " (istek artık geçerli değil)")")
+        if resolved, accept { tvPairingOpened = false }
         tvPairingRequest = nil
+        // Onaylanan istek geçersizdiyse (süresi doldu, TV yeniden denedi) bekleyen yeni istek hemen gösterilir.
+        syncTVPairing()
+    }
+
+    /// Arayüzdeki isteği sunucudaki bekleyen istekle eşitler. İstek geldiğinde, uygulama öne geldiğinde ve istek
+    /// beklerken saniyede bir çağrılır: gösterilemeyen istek kaybolmaz, geçersiz istek ekranda kalmaz.
+    func syncTVPairing() {
+        let pending = server.pairing.pending
+        if tvPairingRequest != pending { tvPairingRequest = pending }
+        guard pending != nil, tvPairingWatch == nil else { return }
+        tvPairingWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled else { return }
+                let pending = self.server.pairing.pending
+                if self.tvPairingRequest != pending { self.tvPairingRequest = pending }
+                if pending == nil { self.tvPairingWatch = nil; return }
+            }
+        }
     }
     var subtitleViewerAddress: String { "http://\(NetworkAddress.near(nil) ?? "127.0.0.1"):\(serverPort)/obs?k=\(subtitleAccessKey)" }
+    /// Ayarlar'daki "TV eşleştir": çeviri sürse de sürmese de eşleştirmeyi iki dakika açar, yanıt vermeyen sunucuyu
+    /// yeniden açar ve bekleyen istek varsa onay penceresini yeniden gösterir (kurtarma yolu).
     func openTVPairing() async {
-        do { try await startServer(); server.pairing.open() }
-        catch { SubtitleLog.write("TV eşleştirme sunucusu açılamadı.") }
+        if serverStarted { await reviveServerIfSilent() } else { await ensureServer() }
+        guard serverStarted else { SubtitleLog.write("TV eşleştirme sunucusu açılamadı."); return }
+        server.pairing.open()
+        tvPairingOpened = true
+        SubtitleLog.write("TV eşleştirme elle açıldı (2 dk); port=\(serverPort)")
+        syncTVPairing()
     }
 
     func rotateSubtitleKey() {
@@ -374,6 +406,7 @@ final class PhoneModel: ObservableObject {
         keeper = nil
         server.rotateKey(key)
         tvPairingRequest = nil
+        tvPairingOpened = false
         subtitleAccessKey = key
         startKeeper()
     }
@@ -381,8 +414,8 @@ final class PhoneModel: ObservableObject {
     private func attachServer() {
         server.onPairingRequest = { [weak self] ticket in
             Task { @MainActor [weak self] in
-                guard let self, self.server.pairing.poll(ticket.id) == "pending" else { return }
-                self.tvPairingRequest = ticket
+                SubtitleLog.write("TV eşleştirme istedi; onay bekleniyor")
+                self?.syncTVPairing()
             }
         }
         server.onLegacyClient = { [weak self] in
@@ -648,6 +681,7 @@ final class PhoneModel: ObservableObject {
         frameGate.reset()
         server.pairing.setSession(false)
         tvPairingRequest = nil
+        tvPairingOpened = false
         isRunning = false
         onlineIssue = nil
         sessionState = .disconnected(.stopped)
@@ -666,6 +700,8 @@ final class PhoneModel: ObservableObject {
         // Dinleyici "açık" görünse de askıdan sonra bağlantı kabul etmeyebilir: kendi adresinden sorulur, yanıt yoksa
         // yeniden açılır (TV uygulaması telefonu bulamıyor, telefon "TV uygulaması bekleniyor"da kalıyordu).
         if afterBackground, isRunning || serverStarted { Task { await reviveServerIfSilent() } }
+        // Uygulama öndeyken gösterilemeyen (ya da arka plandayken gelen) eşleştirme isteği yeniden gösterilir.
+        syncTVPairing()
         guard isRunning else { return }
         if afterBackground { markBackground(false) }
         if afterBackground || !Self.isLive(sessionState) { session?.reconnectNow() }
@@ -1474,11 +1510,12 @@ final class PhoneModel: ObservableObject {
         let previousPort = serverPort
         if serverStarted {
             serverStarted = false
-            server.stop()
+            // Eşleştirme durumu korunur: onay bekleyen istek ve "TV eşleştir" süresi yeniden açılışta silinmez.
+            server.stop(keepPairing: true)
         }
         // Önceki açılışta 8787 alınamayıp rastgele porta düşüldüyse yeniden 8787 denenir: TV uygulaması ağı o portta tarar.
         if serverPort != AppIdentity.serverPort {
-            server = SubtitleServer(port: AppIdentity.serverPort, key: server.accessKey)
+            server = SubtitleServer(port: AppIdentity.serverPort, key: server.accessKey, pairing: server.pairing)
             attachServer()
         }
         do {
@@ -1488,8 +1525,8 @@ final class PhoneModel: ObservableObject {
             SubtitleLog.write("Altyazı sunucusu açılamadı; TV bağlanamaz: \(error)")
             return
         }
+        syncTVPairing()
         guard isRunning else { return }
-        // stop() eşleştirme oturumunu da kapatır; çeviri sürüyorsa yeniden açılır.
         server.pairing.setSession(true)
         if serverPort != previousPort, keeper != nil {
             keeper?.stop()
@@ -1497,6 +1534,9 @@ final class PhoneModel: ObservableObject {
             startKeeper()
         }
     }
+
+    /// Testler için: sağlık yoklamasının yanıt alamadığı durumdaki gibi sunucuyu yeniden açar.
+    func restartServer() async { await ensureServer(force: true) }
 
     /// Sunucu kendi adresinden `/hello` isteğine yanıt veriyor mu (dinleyici gerçekten bağlantı kabul ediyor mu).
     func serverAnswers() async -> Bool {
@@ -1513,6 +1553,9 @@ final class PhoneModel: ObservableObject {
     private func reviveServerIfSilent() async -> Bool {
         // TV bağlıyken sunucuya dokunulmaz (yeniden açmak bağlı TV'yi düşürür).
         if serverStarted, server.isListening, tvClients > 0 { return true }
+        if await serverAnswers() { return true }
+        // Tek bir yanıtsız yoklama (askıdan yeni dönen uygulama) sunucuyu kapatmasın: TV o sırada kod bekliyor olabilir.
+        try? await Task.sleep(for: .milliseconds(500))
         if await serverAnswers() { return true }
         RemotePlayLog.write("Altyazı sunucusu yanıt vermiyor; yeniden açılıyor")
         SubtitleLog.write("Altyazı sunucusu yanıt vermiyor; yeniden açılıyor")
@@ -1563,7 +1606,7 @@ final class PhoneModel: ObservableObject {
             serverPort = try await server.start()
         } catch {
             RemotePlayLog.write("Altyazı sunucusu \(AppIdentity.serverPort) portunu alamadı (\(error)); rastgele port deneniyor")
-            server = SubtitleServer(port: 0, key: server.accessKey)
+            server = SubtitleServer(port: 0, key: server.accessKey, pairing: server.pairing)
             attachServer()
             serverPort = try await server.start()
         }

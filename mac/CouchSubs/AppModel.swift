@@ -967,7 +967,8 @@ final class AppModel: ObservableObject {
     @Published var tvPairingRequest: SubtitlePairing.Ticket?
     func resolveTVPairing(_ ticket: SubtitlePairing.Ticket, accept: Bool) {
         server.pairing.resolve(ticket.id, accept: accept)
-        tvPairingRequest = nil
+        // Onaylanan istek artık geçerli değilse (süresi doldu, TV yeniden denedi) bekleyen yeni istek gösterilir.
+        tvPairingRequest = server.pairing.pending
     }
     func openTVPairing() async {
         do { try await startServer(); server.pairing.open() }
@@ -988,8 +989,8 @@ final class AppModel: ObservableObject {
     private func attachServer() {
         server.onPairingRequest = { [weak self] ticket in
             Task { @MainActor [weak self] in
-                guard let self, self.server.pairing.poll(ticket.id) == "pending" else { return }
-                self.tvPairingRequest = ticket
+                guard let self, let pending = self.server.pairing.pending else { return }
+                self.tvPairingRequest = pending
             }
         }
         server.onLegacyClient = { [weak self] in
@@ -2593,7 +2594,7 @@ final class AppModel: ObservableObject {
             serverPort = try await server.start()
         } catch {
             // 8787 başka bir uygulamada; TV'ye zaten adres bildirildiği için herhangi bir boş port olur.
-            server = SubtitleServer(port: 0, key: server.accessKey)
+            server = SubtitleServer(port: 0, key: server.accessKey, pairing: server.pairing)
             attachServer()
             serverPort = try await server.start()
         }

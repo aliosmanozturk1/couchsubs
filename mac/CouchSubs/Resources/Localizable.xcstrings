@@ -437,6 +437,26 @@
         }
       }
     },
+    "A TV wants to pair" : {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV eşleşmek istiyor"
+          }
+        }
+      }
+    },
+    "Pairing is open for 2 minutes. Open CouchSubs on the TV; if the TV says pairing did not finish, press OK on its remote. When the TV shows a code, approve it in the window that opens on this phone." : {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eşleştirme 2 dakika açık. TV'de CouchSubs'ı açın; TV'de “Eşleştirme tamamlanmadı” yazıyorsa kumandada Tamam'a basın. TV'de kod çıkınca bu telefonda açılan pencerede onaylayın."
+          }
+        }
+      }
+    },
     "Pair this TV?" : {
       "localizations": {
         "tr": {

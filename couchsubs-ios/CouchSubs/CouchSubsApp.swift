@@ -178,12 +178,74 @@ enum ConnectionAlert {
     }
 }
 
+/// "Bu TV eşleşsin mi?" penceresi. O an en üstte hangi ekran varsa (kök, tam ekran altyazı, bir sayfa) onun üstünde açılır.
+@MainActor
+final class TVPairingPrompt {
+    private weak var alert: UIAlertController?
+    private var shownId: String?
+
+    func show(_ ticket: SubtitlePairing.Ticket?, resolve: @escaping (SubtitlePairing.Ticket, Bool) -> Void) {
+        if let alert, alert.presentingViewController != nil {
+            if shownId == ticket?.id { return }
+            // İstek kalktı ya da yerini yenisi aldı: eski kodu gösteren pencere kapanır, yenisi bir sonraki denemede açılır.
+            alert.dismiss(animated: false)
+            self.alert = nil
+            return
+        }
+        guard let ticket, let top = Self.topController(), !(top is UIAlertController),
+              !top.isBeingPresented, !top.isBeingDismissed else { return }
+        let alert = UIAlertController(
+            title: String(localized: "Pair this TV?"),
+            message: String(format: String(localized: "TV code: %@. You don't type this code anywhere: if your TV shows the same code, approve it here."), ticket.code),
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: String(localized: "Reject"), style: .cancel) { _ in resolve(ticket, false) })
+        let approve = UIAlertAction(title: String(localized: "Approve"), style: .default) { _ in resolve(ticket, true) }
+        alert.addAction(approve)
+        alert.preferredAction = approve
+        top.present(alert, animated: true)
+        self.alert = alert
+        shownId = ticket.id
+    }
+
+    private static func topController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }),
+              var top = (scene.windows.first(where: \.isKeyWindow) ?? scene.windows.first)?.rootViewController else { return nil }
+        while let presented = top.presentedViewController, !presented.isBeingDismissed { top = presented }
+        return top
+    }
+}
+
+/// Onay bekleyen TV eşleştirme isteği: pencere görünmese de her ekranın üstünde durur.
+struct TVPairingBanner: View {
+    @EnvironmentObject private var model: PhoneModel
+    let ticket: SubtitlePairing.Ticket
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Mobile.Space.inline) {
+            Label(String(localized: "A TV wants to pair"), systemImage: "tv").font(Mobile.TypeScale.headline)
+            Text(String(format: String(localized: "TV code: %@. You don't type this code anywhere: if your TV shows the same code, approve it here."), ticket.code))
+                .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Mobile.Space.gap) {
+                Button("Approve") { model.resolveTVPairing(ticket, accept: true) }.buttonStyle(.mobilePrimary)
+                Button("Reject") { model.resolveTVPairing(ticket, accept: false) }.buttonStyle(.mobileSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Mobile.Space.tile)
+        .background(Mobile.Palette.surface)
+        .overlay(alignment: .bottom) { Rectangle().fill(Mobile.Palette.accent).frame(height: 1) }
+    }
+}
+
 struct RootView: View {
     @EnvironmentObject private var model: PhoneModel
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var promo: PromoController
     @AppStorage("welcomeSeen") private var welcomeSeen = false
     @State private var path: [Route] = []
+    @State private var pairingPrompt = TVPairingPrompt()
 
     var body: some View {
         Group {
@@ -199,11 +261,21 @@ struct RootView: View {
             }
         }
         .onChange(of: model.demoMode) { _ in path = [] }
-        .alert(item: $model.tvPairingRequest) { ticket in
-            Alert(title: Text("Pair this TV?"),
-                  message: Text(String(format: String(localized: "TV code: %@. You don't type this code anywhere: if your TV shows the same code, approve it here."), ticket.code)),
-                  primaryButton: .default(Text("Approve")) { model.resolveTVPairing(ticket, accept: true) },
-                  secondaryButton: .cancel(Text("Reject")) { model.resolveTVPairing(ticket, accept: false) })
+        // TV'nin eşleştirme isteği: onay penceresi en üstteki ekranda açılır (tam ekran altyazı ya da bir sayfa açıkken de)
+        // ve istek beklediği sürece her ekranın üstünde onay satırı durur. Eskiden pencere SwiftUI `.alert(item:)` ile kök
+        // görünümden sunuluyordu: başka bir ekran sunulmuşken ya da istek değiştiğinde pencere sessizce düşebiliyor,
+        // TV'de kod beklerken telefonda onaylanacak bir şey görünmüyordu (TestFlight, 21 Kas).
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let ticket = model.tvPairingRequest { TVPairingBanner(ticket: ticket) }
+        }
+        .animation(.easeOut(duration: 0.2), value: model.tvPairingRequest)
+        .task(id: model.tvPairingRequest?.id) {
+            // Pencere o an açılamıyorsa (uygulama önde değil, başka bir pencere kapanıyor) açılana kadar yeniden denenir.
+            while !Task.isCancelled {
+                pairingPrompt.show(model.tvPairingRequest) { ticket, accept in model.resolveTVPairing(ticket, accept: accept) }
+                guard model.tvPairingRequest != nil else { return }
+                try? await Task.sleep(for: .seconds(1))
+            }
         }
         .preferredColorScheme(.dark)
         .tint(Mobile.Palette.accent)
