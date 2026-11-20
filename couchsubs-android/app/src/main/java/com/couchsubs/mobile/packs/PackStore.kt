@@ -160,10 +160,26 @@ class PackStore(
     }
 }
 
-/** server/packs Worker'ı. */
-class HttpPackServer(private val baseUrl: String) : PackServer {
+/**
+ * server/packs Worker'ı. [baseUrls]: birincil adres (workers.dev) ve yedekleri (couchsubs-packs.enmeraapps.com); bazı ağlar
+ * (DNS, reklam engelleyici, operatör) *.workers.dev'e ulaşamıyor (#583). Her istek son çalışan adresten başlar; ağ hatası,
+ * zaman aşımı ya da 5xx olursa sıradakini dener. 4xx (404, 429) sunucunun gerçek cevabıdır, başka adres denenmez. Çalışan
+ * adres bu nesne yaşadıkça (uygulama açıkken) hatırlanır; o da düşerse sıra yeniden baştan dolaşılır.
+ */
+class HttpPackServer(
+    baseUrls: List<String>,
+    private val fetch: (String) -> ByteArray = ::httpGet,
+) : PackServer {
+    constructor(baseUrl: String) : this(listOf(baseUrl))
+
+    val baseUrls: List<String> = baseUrls.map { it.trim().trimEnd('/') }.filter { it.isNotEmpty() }.distinct()
+
+    /** Son başarılı adresin sırası. */
+    @Volatile var preferred = 0
+        private set
+
     override fun list(): List<RemotePack> {
-        val body = String(request("$baseUrl/v1/packs"), Charsets.UTF_8)
+        val body = String(request("/v1/packs"), Charsets.UTF_8)
         // Eksik/null ya da bozuk liste başarısız yanıttır, boş liste değildir: boş sayılırsa indirilmiş paketler silinir.
         val packs = try {
             JSONObject(body).optJSONArray("packs")
@@ -177,22 +193,46 @@ class HttpPackServer(private val baseUrl: String) : PackServer {
         }
     }
 
-    override fun download(id: String): ByteArray = request("$baseUrl/v1/packs/$id")
+    override fun download(id: String): ByteArray = request("/v1/packs/$id")
 
-    private fun request(url: String): ByteArray {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        try {
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 60_000
-            val status = connection.responseCode
-            if (status !in 200..299) throw PackDownloadException(status, "HTTP $status")
-            return connection.inputStream.use { it.readBytes() }
-        } catch (error: PackDownloadException) {
-            throw error
-        } catch (error: IOException) {
-            throw PackDownloadException(null, error.message ?: "network")
-        } finally {
-            connection.disconnect()
+    private fun request(path: String): ByteArray {
+        if (baseUrls.isEmpty()) throw PackDownloadException(null, "no pack server")
+        val start = preferred.coerceIn(0, baseUrls.size - 1)
+        var last: PackDownloadException? = null
+        for (step in baseUrls.indices) {
+            val index = (start + step) % baseUrls.size
+            try {
+                val data = fetch(baseUrls[index] + path)
+                preferred = index
+                return data
+            } catch (error: PackDownloadException) {
+                if (!retryable(error.status)) throw error
+                last = error
+            }
         }
+        throw last ?: PackDownloadException(null, "network")
+    }
+
+    companion object {
+        /** Ağ hatası (status null) ya da 5xx: başka adres denenir. */
+        fun retryable(status: Int?): Boolean = status == null || status >= 500
+    }
+}
+
+/** Düz GET; 2xx değilse [PackDownloadException] (ağ hatasında status null). */
+private fun httpGet(url: String): ByteArray {
+    val connection = URL(url).openConnection() as HttpURLConnection
+    try {
+        connection.connectTimeout = 15_000
+        connection.readTimeout = 60_000
+        val status = connection.responseCode
+        if (status !in 200..299) throw PackDownloadException(status, "HTTP $status")
+        return connection.inputStream.use { it.readBytes() }
+    } catch (error: PackDownloadException) {
+        throw error
+    } catch (error: IOException) {
+        throw PackDownloadException(null, error.message ?: "network")
+    } finally {
+        connection.disconnect()
     }
 }

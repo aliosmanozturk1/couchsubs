@@ -33,6 +33,8 @@ object Services {
         private set
     lateinit var packStore: PackStore
         private set
+    /** Paket sunucusu: workers.dev, ulaşılamazsa yedek adres (couchsubs-packs.enmeraapps.com); çalışan adres hatırlanır. */
+    private val packServer by lazy { HttpPackServer(listOf(BuildConfig.PACKS_URL, BuildConfig.PACKS_FALLBACK_URL)) }
     /** Ayarlar › Oyun paketleri'nden içe aktarılan topluluk paketleri (yalnız bu telefonda; sunucuya gitmez). */
     lateinit var importedPacksDirectory: File
         private set
@@ -99,7 +101,7 @@ object Services {
         Backend.init(app)
         Meta.init(app)
         applyMeasurement()
-        packStore = PackStore(File(app.filesDir, "packs-remote"), HttpPackServer(BuildConfig.PACKS_URL.trimEnd('/')))
+        packStore = PackStore(File(app.filesDir, "packs-remote"), packServer)
         importedPacksDirectory = File(app.filesDir, "packs-imported")
         // Açılışta hemen, sonra uygulama açık kaldıkça günde bir yeni ve güncellenen paketlere bakılır (iPhone'daki gibi).
         refreshPacks(force = true)
@@ -171,7 +173,7 @@ object Services {
         val local = packLibrary(context).infos
         val remote = if (BuildConfig.PACKS_URL.isBlank()) emptyList()
         else try {
-            HttpPackServer(BuildConfig.PACKS_URL.trimEnd('/')).list()
+            packServer.list()
         } catch (error: Exception) {
             Log.w(TAG, "paket listesi", error)
             if (packStatus.value != PackStatus.DOWNLOADING) packStatus.value = packStatus(error)

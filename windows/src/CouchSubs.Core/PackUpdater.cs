@@ -24,6 +24,9 @@ public sealed record RemotePack(
 /// sunucudan kalkan paket silinir. Yarım ya da bozuk dosya hiç yüklenmez (önce geçici dosya, doğrulanınca yerine).
 /// Klasöre kullanıcının kendi bıraktığı (sunucudan inmemiş ya da sonradan değiştirilmiş) dosyanın üstüne yazılmaz, o dosya
 /// silinmez. Sunucu adresi yapılandırmadan gelir (<see cref="ConfiguredBaseUrl"/>); adres yoksa özellik kapalıdır.
+/// Birincil adrese (workers.dev) ulaşılamazsa (ağ hatası, zaman aşımı, 5xx) yedek adres (<see cref="ConfiguredFallbackUrl"/>)
+/// denenir; bazı ağlar *.workers.dev'i engelliyor (#583). Her istek son çalışan adresten başlar, 4xx'te başka adres
+/// denenmez; çalışan adres uygulama açıkken hatırlanır. Mac'teki CouchSubsCore/PackMirrors.swift ile aynı kurallar.
 /// Mac'teki CouchSubsCore/PackUpdater.swift ile aynı kurallar.
 /// </summary>
 public sealed partial class PackUpdater : IDisposable
@@ -61,7 +64,8 @@ public sealed partial class PackUpdater : IDisposable
 
     private sealed record Listing([property: JsonPropertyName("packs")] List<RemotePack>? Packs);
 
-    private readonly Uri baseUrl;
+    private readonly IReadOnlyList<Uri> baseUrls;
+    private int preferred;
     private readonly string directory;
     private readonly string stateFile;
     private readonly HttpClient http;
@@ -71,9 +75,14 @@ public sealed partial class PackUpdater : IDisposable
     /// <param name="directory">Paketlerin konacağı klasör (uygulamada <see cref="GamePackLibrary.UserDirectory"/>).</param>
     /// <param name="stateFile">Durum dosyası; paket klasörünün dışında durur ki paket gibi okunmasın.</param>
     /// <param name="handler">HTTP katmanı; testlerde sahtesi verilir.</param>
-    public PackUpdater(Uri baseUrl, string directory, string stateFile, HttpMessageHandler? handler = null, Func<DateTimeOffset>? clock = null)
+    /// <param name="fallbackUrls">Birincil adrese ulaşılamazsa sırayla denenen yedek adresler.</param>
+    public PackUpdater(Uri baseUrl, string directory, string stateFile, HttpMessageHandler? handler = null, Func<DateTimeOffset>? clock = null,
+        IEnumerable<Uri>? fallbackUrls = null)
     {
-        this.baseUrl = new Uri(baseUrl.AbsoluteUri.TrimEnd('/') + "/");
+        baseUrls = new[] { baseUrl }.Concat(fallbackUrls ?? [])
+            .Select(url => new Uri(url.AbsoluteUri.TrimEnd('/') + "/"))
+            .DistinctBy(url => url.AbsoluteUri)
+            .ToList();
         this.directory = directory;
         this.stateFile = stateFile;
         http = handler is null ? new HttpClient() : new HttpClient(handler);
@@ -89,7 +98,23 @@ public sealed partial class PackUpdater : IDisposable
     {
         var fromBuild = (assembly ?? Assembly.GetEntryAssembly())?.GetCustomAttributes<AssemblyMetadataAttribute>()
             .FirstOrDefault(a => a.Key == "CouchSubsPacksUrl")?.Value;
-        foreach (var candidate in new[] { environment ?? Environment.GetEnvironmentVariable("COUCHSUBS_PACKS_URL"), fromBuild })
+        return FirstUrl(environment ?? Environment.GetEnvironmentVariable("COUCHSUBS_PACKS_URL"), fromBuild);
+    }
+
+    /// <summary>
+    /// Yedek adres: <c>COUCHSUBS_PACKS_FALLBACK_URL</c> ortam değişkeni ya da derlemedeki <c>CouchSubsPacksFallbackUrl</c>
+    /// (App projesinde MSBuild özelliği). Yoksa null: yalnız birincil adres kullanılır.
+    /// </summary>
+    public static Uri? ConfiguredFallbackUrl(string? environment = null, Assembly? assembly = null)
+    {
+        var fromBuild = (assembly ?? Assembly.GetEntryAssembly())?.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "CouchSubsPacksFallbackUrl")?.Value;
+        return FirstUrl(environment ?? Environment.GetEnvironmentVariable("COUCHSUBS_PACKS_FALLBACK_URL"), fromBuild);
+    }
+
+    private static Uri? FirstUrl(params string?[] candidates)
+    {
+        foreach (var candidate in candidates)
         {
             var value = candidate?.Trim();
             if (string.IsNullOrEmpty(value) || !Uri.TryCreate(value, UriKind.Absolute, out var url)) continue;
@@ -97,6 +122,9 @@ public sealed partial class PackUpdater : IDisposable
         }
         return null;
     }
+
+    /// <summary>Son başarılı adresin sırası (0: birincil).</summary>
+    public int PreferredIndex => Volatile.Read(ref preferred);
 
     public IReadOnlyList<Installed> InstalledPacks => Load().Packs;
 
@@ -197,18 +225,29 @@ public sealed partial class PackUpdater : IDisposable
         catch (JsonException) { return null; }
     }
 
+    /// <summary>Son çalışan adresten başlayarak sırayla dener; ağ hatası, zaman aşımı ya da 5xx'te sıradakine geçer.</summary>
     private async Task<byte[]?> GetAsync(string path, CancellationToken cancellationToken)
     {
-        try
+        var start = Math.Clamp(Volatile.Read(ref preferred), 0, baseUrls.Count - 1);
+        for (var step = 0; step < baseUrls.Count; step++)
         {
-            using var response = await http.GetAsync(new Uri(baseUrl, path), cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) return null;
-            return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            var index = (start + step) % baseUrls.Count;
+            try
+            {
+                using var response = await http.GetAsync(new Uri(baseUrls[index], path), cancellationToken).ConfigureAwait(false);
+                if ((int)response.StatusCode >= 500) continue;
+                if (!response.IsSuccessStatusCode) return null;
+                var data = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+                Volatile.Write(ref preferred, index);
+                return data;
+            }
+            catch (Exception error) when (error is HttpRequestException or TaskCanceledException or IOException)
+            {
+                // Kullanıcı iptal ettiyse başka adres denenmez.
+                if (cancellationToken.IsCancellationRequested) return null;
+            }
         }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
-        {
-            return null;
-        }
+        return null;
     }
 
     private string PackFile(string id) => Path.Combine(directory, $"{id}.json.gz");

@@ -27,6 +27,12 @@ Elle paket `index.json`'a eklenirken var olan `pool-*` girdileri korunmalıdır 
 
 Yayın adresi: `https://couchsubs-packs.enmera.workers.dev` (R2 kovası `couchsubs-packs`, liste sürümü 1).
 
+Yedek adres: `https://couchsubs-packs.enmeraapps.com` (aynı Worker; `wrangler.toml` `routes` içinde Custom Domain, DNS
+kaydını ve sertifikayı Cloudflare açar; 2026-11-20). Bazı ağlar (DNS, reklam engelleyici, operatör) `*.workers.dev`'e
+ulaşamıyor (#583): uygulamalar önce workers.dev'i dener, ağ hatası, zaman aşımı ya da 5xx olursa yedeğe geçer ve çalışan
+adresi uygulama açıkken hatırlar; 4xx (404, 429) gerçek cevaptır, yedek denenmez. `couchsubs.enmeraapps.com` sitesi
+Plesk'tedir, bu adresle ilgisi yoktur.
+
 ```sh
 cd server/packs
 npm install
@@ -47,7 +53,8 @@ gelmez. Uygulamalar indirdiği dosyayı listedeki (`index.json`) SHA-256 ile do�
 
 Uygulamalardaki adres: Android `couchsubs-android/secrets.properties` içindeki `packs.url`; iPhone/iPad
 `couchsubs-ios/Config/App.xcconfig` `PACKS_API_BASE_URL`; Mac `mac/project.yml` `PACKS_API_BASE_URL`; Windows yayın
-derlemesinde `-p:CouchSubsPacksUrl` (`.github/workflows/windows.yml`).
+derlemesinde `-p:CouchSubsPacksUrl` (`.github/workflows/windows.yml`). Yedek adres sırasıyla `packs.fallbackUrl`,
+`PACKS_API_FALLBACK_URL` (iPhone ve Mac) ve `-p:CouchSubsPacksFallbackUrl`.
 
 ## Test
 

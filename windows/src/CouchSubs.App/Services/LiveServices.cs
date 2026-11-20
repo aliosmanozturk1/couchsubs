@@ -59,7 +59,8 @@ public sealed class LiveServices : IAppServices
     // Paket sunucusu yapılandırıldıysa (COUCHSUBS_PACKS_URL ya da derlemedeki CouchSubsPacksUrl) indirilen paketler
     // kullanıcının paket klasörüne gider; adres yoksa kapalı.
     public PackUpdater? PackUpdates { get; } = PackUpdater.ConfiguredBaseUrl() is { } url
-        ? new PackUpdater(url, GamePackLibrary.UserDirectory, Path.Combine(AppPaths.Data, "packs-remote.json"))
+        ? new PackUpdater(url, GamePackLibrary.UserDirectory, Path.Combine(AppPaths.Data, "packs-remote.json"),
+            fallbackUrls: PackUpdater.ConfiguredFallbackUrl() is { } fallback ? [fallback] : null)
         : null;
 
     public async Task<IReadOnlyList<ConsoleInfo>> DiscoverConsolesAsync()

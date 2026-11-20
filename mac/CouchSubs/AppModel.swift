@@ -769,7 +769,8 @@ final class AppModel: ObservableObject {
         guard let base = PackUpdater.configuredBaseURL() else { return }
         let state = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(AppIdentity.name, isDirectory: true).appendingPathComponent("packs-remote.json")
-        let updater = PackUpdater(baseURL: base, directory: GamePackLibrary.userDirectory, stateFile: state)
+        let updater = PackUpdater(baseURL: base, fallbackURLs: PackUpdater.configuredFallbackURL().map { [$0] } ?? [],
+                                  directory: GamePackLibrary.userDirectory, stateFile: state)
         packUpdater = updater
         let packs = self.packs
         packUpdates = Task.detached(priority: .background) { [weak self] in

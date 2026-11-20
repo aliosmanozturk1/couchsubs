@@ -63,7 +63,9 @@ struct CouchSubsApp: App {
         if !testing { model.loadHistory() }
 
         let analytics = AppAnalytics(firebase: firebase, meta: !testing && AppConfig.facebookAppID != nil)
-        let store = testing ? nil : AppConfig.packsBaseURL.map { PackStore(baseURL: $0, directory: PackStore.defaultDirectory) }
+        let store = testing ? nil : AppConfig.packsBaseURL.map {
+            PackStore(baseURL: $0, fallbackURLs: AppConfig.packsFallbackURL.map { [$0] } ?? [], directory: PackStore.defaultDirectory)
+        }
         let app = AppModel(analytics: analytics, packStore: store, library: library)
         model.onAnalytics = { [analytics] event in analytics.log(event) }
         app.onPacksChanged = { [weak model] in model?.packsChanged() }

@@ -22,6 +22,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CSPacksBaseURL</key>
 	<string>$(PACKS_API_BASE_URL)</string>
+	<key>CSPacksFallbackURL</key>
+	<string>$(PACKS_API_FALLBACK_URL)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>NSHumanReadableCopyright</key>

@@ -30,7 +30,8 @@ public struct RemotePack: Codable, Equatable, Sendable {
 /// Klasörde kullanıcının kendi bıraktığı dosyalar da durur: sunucudan inmemiş (durum dosyasında olmayan ya da sonradan
 /// değiştirilmiş) bir dosyanın üstüne yazılmaz, o dosya silinmez.
 ///
-/// Sunucu adresi yapılandırmadan gelir (`configuredBaseURL`); adres yoksa özellik kapalıdır. Windows'taki
+/// Sunucu adresi yapılandırmadan gelir (`configuredBaseURL`); adres yoksa özellik kapalıdır. Birincil adrese ulaşılamazsa
+/// (ağ hatası, zaman aşımı, 5xx) yedek adres (`configuredFallbackURL`) denenir (`PackMirrors`). Windows'taki
 /// CouchSubs.Core/PackUpdater.cs ile aynı kurallar.
 public actor PackUpdater {
     /// Açılışta ve günde bir bakılır. Havuzdan her gece otomatik üretilen paketler (server/pool, `pool-<oyun kimliği>`)
@@ -73,18 +74,18 @@ public actor PackUpdater {
         let packs: [RemotePack]
     }
 
-    private let baseURL: URL
+    private let mirrors: PackMirrors
     private let directory: URL
     private let stateFile: URL
     private let fetch: Fetch
     private let clock: @Sendable () -> Date
 
     /// `directory`: paketlerin konacağı klasör (uygulamada `GamePackLibrary.userDirectory`); `stateFile` onun dışında
-    /// durur ki paket gibi okunmasın.
-    public init(baseURL: URL, directory: URL, stateFile: URL,
+    /// durur ki paket gibi okunmasın. `fallbackURLs`: birincil adres ulaşılamazsa sırayla denenen yedekler.
+    public init(baseURL: URL, fallbackURLs: [URL] = [], directory: URL, stateFile: URL,
                 fetch: @escaping Fetch = { try await URLSession.shared.data(for: $0) },
                 clock: @escaping @Sendable () -> Date = Date.init) {
-        self.baseURL = baseURL
+        mirrors = PackMirrors(primary: baseURL, fallbacks: fallbackURLs)
         self.directory = directory
         self.stateFile = stateFile
         self.fetch = fetch
@@ -96,8 +97,20 @@ public actor PackUpdater {
     /// paket indirme kapalı kalır.
     public static func configuredBaseURL(environment: [String: String] = ProcessInfo.processInfo.environment,
                                          defaults: UserDefaults = .standard, bundle: Bundle = .main) -> URL? {
-        let candidates = [environment["COUCHSUBS_PACKS_URL"], defaults.string(forKey: "packsURL"),
-                          bundle.object(forInfoDictionaryKey: "CSPacksBaseURL") as? String]
+        firstURL([environment["COUCHSUBS_PACKS_URL"], defaults.string(forKey: "packsURL"),
+                  bundle.object(forInfoDictionaryKey: "CSPacksBaseURL") as? String])
+    }
+
+    /// Yedek adres (birincil adrese ulaşılamazsa): `COUCHSUBS_PACKS_FALLBACK_URL`, `packsFallbackURL` ayarı ya da Info.plist
+    /// `CSPacksFallbackURL` (derleme ayarı `PACKS_API_FALLBACK_URL`). Yoksa nil: yalnız birincil adres kullanılır.
+    public static func configuredFallbackURL(environment: [String: String] = ProcessInfo.processInfo.environment,
+                                             defaults: UserDefaults = .standard, bundle: Bundle = .main) -> URL? {
+        firstURL([environment["COUCHSUBS_PACKS_FALLBACK_URL"], defaults.string(forKey: "packsFallbackURL"),
+                  bundle.object(forInfoDictionaryKey: "CSPacksFallbackURL") as? String])
+    }
+
+    /// İlk geçerli http(s) adresi; boş ya da doldurulmamış derleme değişkeni (`$(...)`) atlanır.
+    public static func firstURL(_ candidates: [String?]) -> URL? {
         for candidate in candidates {
             guard let value = candidate?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty, !value.hasPrefix("$("),
                   let url = URL(string: value), url.scheme == "https" || url.scheme == "http", url.host != nil else { continue }
@@ -191,22 +204,18 @@ public actor PackUpdater {
     // MARK: - Ağ
 
     private func list() async -> [RemotePack]? {
-        guard let data = await get(baseURL.appendingPathComponent("v1").appendingPathComponent("packs")) else { return nil }
+        guard let data = await get("v1/packs") else { return nil }
         return (try? JSONDecoder().decode(Listing.self, from: data))?.packs
     }
 
     private func download(_ id: String) async -> Data? {
-        guard let data = await get(baseURL.appendingPathComponent("v1").appendingPathComponent("packs").appendingPathComponent(id)),
+        guard let data = await get("v1/packs/\(id)"),
               data.count <= Self.maxPackBytes else { return nil }
         return data
     }
 
-    private func get(_ url: URL) async -> Data? {
-        var request = URLRequest(url: url, timeoutInterval: 60)
-        request.httpMethod = "GET"
-        guard let (data, response) = try? await fetch(request), let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode) else { return nil }
-        return data
+    private func get(_ path: String) async -> Data? {
+        try? await mirrors.get(path, timeout: 60, fetch: fetch).get()
     }
 
     // MARK: - Disk

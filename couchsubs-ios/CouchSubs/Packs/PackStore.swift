@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import CouchSubsCore
 import CryptoKit
 import Foundation
 
@@ -57,15 +58,17 @@ actor PackStore {
     /// PS5'te yeni bir oyun tanınınca son bakış bundan eskiyse hemen bakılır (o oyunun paketi yeni çıkmış olabilir).
     static let gameCheckInterval: TimeInterval = 10 * 60
 
-    private let baseURL: URL
+    private let mirrors: PackMirrors
     private let directory: URL
     private let session: URLSession
     private let now: @Sendable () -> Date
 
     /// `directory`: paket önbelleği (Application Support/CouchSubs/Packs); `files` alt klasörü paketleri, `manifest.json`
-    /// son listeyi tutar.
-    init(baseURL: URL, directory: URL, session: URLSession = .shared, now: @escaping @Sendable () -> Date = { Date() }) {
-        self.baseURL = baseURL
+    /// son listeyi tutar. `fallbackURLs`: `baseURL`'e (workers.dev) ulaşılamazsa (ağ hatası, zaman aşımı, 5xx) sırayla
+    /// denenen yedek adresler (#583); çalışan adres uygulama açıkken hatırlanır (`PackMirrors`).
+    init(baseURL: URL, fallbackURLs: [URL] = [], directory: URL, session: URLSession = .shared,
+         now: @escaping @Sendable () -> Date = { Date() }) {
+        mirrors = PackMirrors(primary: baseURL, fallbacks: fallbackURLs)
         self.directory = directory
         self.session = session
         self.now = now
@@ -166,19 +169,12 @@ actor PackStore {
     }
 
     private func fetch(path: String) async throws -> Data {
-        var request = URLRequest(url: baseURL.appending(path: path))
-        request.timeoutInterval = 30
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw Failure.network
-        }
-        guard let http = response as? HTTPURLResponse else { throw Failure.badResponse }
-        switch http.statusCode {
-        case 200..<300: return data
-        default: throw Failure.server(http.statusCode)
+        let session = self.session
+        switch await mirrors.get(path, timeout: 30, fetch: { try await session.data(for: $0) }) {
+        case let .success(data): return data
+        case .failure(.network): throw Failure.network
+        case .failure(.badResponse): throw Failure.badResponse
+        case let .failure(.status(code)): throw Failure.server(code)
         }
     }
 }

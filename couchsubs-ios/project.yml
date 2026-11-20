@@ -125,6 +125,7 @@ targets:
         UIUserInterfaceStyle: Dark
         # Config/App.xcconfig + Secrets.xcconfig'ten (bkz. AppConfig.swift).
         CSPacksBaseURL: $(PACKS_API_BASE_URL)
+        CSPacksFallbackURL: $(PACKS_API_FALLBACK_URL)
         FacebookAppID: $(FACEBOOK_APP_ID)
         FacebookClientToken: $(FACEBOOK_CLIENT_TOKEN)
         FacebookDisplayName: CouchSubs
