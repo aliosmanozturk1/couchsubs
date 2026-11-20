@@ -46,6 +46,21 @@ final class LegacyTizenPackageTests: XCTestCase {
         XCTAssertTrue(XMLParser(data: Data(adapted.utf8)).parse())
     }
 
+    /// Yalın paket (#638): SHA-256 imzalı tam paket de yalın [118] alırsa denenir.
+    func testLeanPackageAlsoDropsProfileAndTwoPrivileges() throws {
+        let adapted = try configOf(LegacyTizenPackage.adapt(wgt(try repoConfig()), lean: true))
+        let withoutComments = adapted.replacingOccurrences(of: "<!--[\\s\\S]*?-->", with: "", options: .regularExpression)
+        for removed in ["network.public", "<tizen:metadata", "<tizen:profile", "application.launch", "network.get"] {
+            XCTAssertFalse(withoutComments.contains(removed), removed)
+        }
+        for kept in ["tv.window", "tv.inputdevice", "internet"] {
+            XCTAssertTrue(withoutComments.contains("http://tizen.org/privilege/\(kept)\""), kept)
+        }
+        XCTAssertTrue(withoutComments.contains("required_version=\"2.4\""))
+        XCTAssertTrue(withoutComments.contains("<tizen:application id=\"CouchSubsT.CouchSubs\" package=\"CouchSubsT\""))
+        XCTAssertTrue(XMLParser(data: Data(adapted.utf8)).parse())
+    }
+
     func testOtherFilesStayTheSame() throws {
         let files = try StoredZip.read(LegacyTizenPackage.adapt(wgt(try repoConfig())))
         XCTAssertEqual(files.map(\.name), ["config.xml", "index.html"])

@@ -14,6 +14,11 @@ import java.util.zip.ZipOutputStream
  *
  * Tizen 2.4 tanımadığı satırı içeren paketi sebep yazmadan `install failed[118]` ile reddediyor; `power` izni
  * çıkarıldıktan sonra da (#497) 0.9.38 aynı hatayı verdi (#621). Yeni TV'lerde paket değişmez.
+ *
+ * Bu da yetmedi (#638, UE60KU7000): imza SHA-256'ya çevrildi ([WgtSigner.Digest]). TV yine yalın `install failed[118]`
+ * derse aynı kurulumda bir kez de "yalın" paket denenir: `tizen:profile` satırı ile `application.launch` ve
+ * `network.get` izinleri de çıkar (uygulama bunlarsız da açılır; TV adresi ağ taramasıyla bulunur). Hangisinin tuttuğu
+ * günlükten görülür.
  */
 object LegacyTizenPackage {
     /** Bu sürümden eski TV'lerde (Tizen 2.x) paket sadeleştirilir. */
@@ -26,14 +31,22 @@ object LegacyTizenPackage {
         Regex("""[ \t]*<tizen:metadata key="http://tizen\.org/metadata/app_ui_type/base_screen_resolution"[^>]*/>[ \t]*\r?\n?"""),
     )
 
-    /** config.xml'den yukarıdaki satırlar çıkarılır; değişen bir şey yoksa paket olduğu gibi döner. */
-    fun adapt(wgt: ByteArray): ByteArray {
+    /** Yalın pakette ayrıca çıkarılanlar (günlük için). */
+    const val LEAN_REMOVED = "tizen:profile, application.launch, network.get"
+
+    private val leanRemoved = listOf(
+        Regex("""[ \t]*<tizen:profile\s[^>]*/>[ \t]*\r?\n?"""),
+        Regex("""[ \t]*<tizen:privilege name="http://tizen\.org/privilege/(application\.launch|network\.get)"\s*/>[ \t]*\r?\n?"""),
+    )
+
+    /** config.xml'den yukarıdaki satırlar ([lean] ise yalın paketinkiler de) çıkarılır; değişen bir şey yoksa paket olduğu gibi döner. */
+    fun adapt(wgt: ByteArray, lean: Boolean = false): ByteArray {
         val files = WgtSigner.readEntries(wgt)
         var changed = false
         val adapted = files.map { entry ->
             if (entry.name != "config.xml") return@map entry
             val original = entry.data.toString(Charsets.UTF_8)
-            val config = removed.fold(original) { text, pattern -> pattern.replace(text, "") }
+            val config = (if (lean) removed + leanRemoved else removed).fold(original) { text, pattern -> pattern.replace(text, "") }
             if (config == original) entry else {
                 changed = true
                 WgtSigner.Entry(entry.name, config.toByteArray(Charsets.UTF_8))

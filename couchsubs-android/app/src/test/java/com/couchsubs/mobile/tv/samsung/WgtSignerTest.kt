@@ -49,10 +49,10 @@ class WgtSignerTest {
     private val distributor = TestCertificates.issue("CN=TizenSDK", authorKey.public)
 
     /** İmzalı paketin bütün dosyaları, sırasıyla (readEntries imza dosyalarını atladığı için zip baştan okunur). */
-    private fun signed(input: ByteArray = wgt()): List<WgtSigner.Entry> {
+    private fun signed(input: ByteArray = wgt(), digest: WgtSigner.Digest = WgtSigner.Digest.SHA512): List<WgtSigner.Entry> {
         val output = WgtSigner.sign(input,
             WgtSigner.Signer(authorKey.private, listOf(author, TestCertificates.ca)),
-            WgtSigner.Signer(authorKey.private, listOf(distributor, TestCertificates.ca)))
+            WgtSigner.Signer(authorKey.private, listOf(distributor, TestCertificates.ca)), digest)
         val all = ArrayList<WgtSigner.Entry>()
         java.util.zip.ZipInputStream(ByteArrayInputStream(output)).use { zip ->
             while (true) {
@@ -76,6 +76,50 @@ class WgtSignerTest {
         assertEquals(files.keys.toList() + "#prop", authorRefs)
         val distributorRefs = validate(entries.getValue("signature1.xml"), distributor, entries)
         assertEquals(listOf("author-signature.xml") + files.keys + "#prop", distributorRefs)
+    }
+
+    /** Tizen 2.x TV'ler (2016) için SHA-256 (#638): imza ve bütün özetler Santuario ile doğrulanır. */
+    @Test
+    fun sha256SignaturesValidateAndNameTheirAlgorithms() {
+        val entries = signed(digest = WgtSigner.Digest.SHA256).associate { it.name to it.data }
+        assertEquals(files.keys.toList() + "#prop", validate(entries.getValue("author-signature.xml"), author, entries))
+        assertEquals(listOf("author-signature.xml") + files.keys + "#prop", validate(entries.getValue("signature1.xml"), distributor, entries))
+        for (name in listOf("author-signature.xml", "signature1.xml")) {
+            val xml = String(entries.getValue(name), Charsets.UTF_8)
+            assertTrue(xml.contains("<SignatureMethod Algorithm=\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\">"))
+            assertTrue(xml.contains("<DigestMethod Algorithm=\"http://www.w3.org/2001/04/xmlenc#sha256\">"))
+            assertTrue(xml.contains("<CanonicalizationMethod Algorithm=\"http://www.w3.org/2001/10/xml-exc-c14n#\">"))
+            assertFalse(xml.contains("sha512"))
+        }
+    }
+
+    @Test
+    fun defaultStaysSha512() {
+        val xml = String(signed().first { it.name == "author-signature.xml" }.data, Charsets.UTF_8)
+        assertTrue(xml.contains("xmldsig-more#rsa-sha512"))
+        assertTrue(xml.contains("xmlenc#sha512"))
+        assertFalse(xml.contains("sha256"))
+    }
+
+    /** Bilinen girdi, bilinen özet: Windows'taki WgtSignerTests ve iPhone'daki WgtSignerTests ile aynı değerler. */
+    @Test
+    fun knownInputGivesKnownDigests() {
+        val known = listOf(WgtSigner.Entry("config.xml", "<widget/>".toByteArray()), WgtSigner.Entry("index.html", "<p>merhaba</p>".toByteArray()))
+        fun prop(id: String, digest: WgtSigner.Digest) = WgtSigner.digest(WgtSigner.propObject(id, canonical = true).toByteArray(), digest)
+        fun signedInfoHash(digest: WgtSigner.Digest): String {
+            val canonical = WgtSigner.canonicalSignedInfo(WgtSigner.signedInfo(known, prop("AuthorSignature", digest), digest))
+            return java.security.MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray()).joinToString("") { "%02x".format(it) }
+        }
+        val sha256 = WgtSigner.Digest.SHA256
+        assertEquals("EY7MvyaBrTJqCTlmhv1sr4UMN5v2uF5KXyQLW3VbiAA=", WgtSigner.digest(known[0].data, sha256))
+        assertEquals("6KF08mjdP2RJgT9dsGq+QSvYwK9Gf1evjAdB8iPWFUM=", WgtSigner.digest(known[1].data, sha256))
+        assertEquals("lpo8tUDs054eLlBQXiDPVDVKfw30ZZdtkRs1jd7H5K8=", prop("AuthorSignature", sha256))
+        assertEquals("u/jU3U4Zm5ihTMSjKGlGYbWzDfRkGphPPHx3gJIYEJ4=", prop("DistributorSignature", sha256))
+        assertEquals("fd26f785814408973737073c499f19c6fce194dad6ec3f3cf3205a640ff5d975", signedInfoHash(sha256))
+        val sha512 = WgtSigner.Digest.SHA512
+        assertEquals("hSUufNpfpXKCyTwglfu2Zrqtt8W2nXG1K6Vfy7fwYUMDL5lpBwC0EgpxeKlzb9I40BrzBklgo31V7Pl1ZqoOTQ==", WgtSigner.digest(known[0].data, sha512))
+        assertEquals("aXbSAVgmAz0GsBUeZ1UmNDRrxkWhDUVGb45dZcNRq429wX3X+x6kaXT3NdNDTSNVTU+ypkysPMGvQY10fG1EWQ==", prop("AuthorSignature", sha512))
+        assertEquals("844e74e1b6dd5518e71f58ee694827115d657d623d35bb6711216ac8c74c6e27", signedInfoHash(sha512))
     }
 
     @Test

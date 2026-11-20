@@ -15,7 +15,8 @@ import java.util.zip.ZipOutputStream
 
 /**
  * Tizen web uygulaması paketini (.wgt) imzalar: W3C Widget Signature biçiminde `author-signature.xml` (paketin dosyaları)
- * ve `signature1.xml` (dağıtıcı; önce yazar imzası, sonra dosyalar). Özet SHA-512, imza RSA-SHA512.
+ * ve `signature1.xml` (dağıtıcı; önce yazar imzası, sonra dosyalar). Özet ve imza [Digest] ile seçilir: Tizen 3.0 ve
+ * üstünde SHA-512 (bugünkü Tizen Studio gibi), Tizen 2.x TV'lerde (2016) SHA-256 (#638).
  *
  * Android'de XML imza kütüphanesi (javax.xml.crypto) yoktur. İmzalanan iki parça (SignedInfo ve `#prop` nesnesi) bu
  * sınıfın kendi yazdığı, yapısı sabit XML olduğundan kanonik biçimleri doğrudan üretilir: SignedInfo exclusive C14N,
@@ -25,10 +26,17 @@ import java.util.zip.ZipOutputStream
 object WgtSigner {
     private const val DSIG = "http://www.w3.org/2000/09/xmldsig#"
     private const val DSP = "http://www.w3.org/2009/xmldsig-properties"
-    private const val RSA_SHA512 = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha512"
-    private const val SHA512 = "http://www.w3.org/2001/04/xmlenc#sha512"
     private const val EXC_C14N = "http://www.w3.org/2001/10/xml-exc-c14n#"
     private const val C14N11 = "http://www.w3.org/2006/12/xml-c14n11"
+
+    /** İmzadaki özet ve imza algoritması. */
+    enum class Digest(val signatureMethod: String, val digestMethod: String, internal val hash: String, internal val signature: String) {
+        /** W3C Widget Signature'ın zorunlu tuttuğu, Tizen 2.x SDK'sının ürettiği biçim; Tizen 2.x TV'lerde kullanılır. */
+        SHA256("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256", "http://www.w3.org/2001/04/xmlenc#sha256", "SHA-256", "SHA256withRSA"),
+
+        /** Bugünkü Tizen Studio'nun ve TizenSdb'nin ürettiği biçim (Tizen 3.0 ve üstü). */
+        SHA512("http://www.w3.org/2001/04/xmldsig-more#rsa-sha512", "http://www.w3.org/2001/04/xmlenc#sha512", "SHA-512", "SHA512withRSA"),
+    }
 
     class Entry(val name: String, val data: ByteArray)
 
@@ -36,10 +44,10 @@ object WgtSigner {
     class Signer(val key: PrivateKey, val chain: List<X509Certificate>)
 
     /** İmzasız ya da imzalı paketi yeniden imzalar; eski imza dosyaları atılır, diğer dosyaların sırası korunur. */
-    fun sign(wgt: ByteArray, author: Signer, distributor: Signer): ByteArray {
+    fun sign(wgt: ByteArray, author: Signer, distributor: Signer, digest: Digest = Digest.SHA512): ByteArray {
         val files = readEntries(wgt)
-        val authorSignature = Entry("author-signature.xml", signature("AuthorSignature", files, author))
-        val distributorSignature = Entry("signature1.xml", signature("DistributorSignature", listOf(authorSignature) + files, distributor))
+        val authorSignature = Entry("author-signature.xml", signature("AuthorSignature", files, author, digest))
+        val distributorSignature = Entry("signature1.xml", signature("DistributorSignature", listOf(authorSignature) + files, distributor, digest))
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->
             for (entry in listOf(authorSignature, distributorSignature) + files) {
@@ -66,9 +74,9 @@ object WgtSigner {
     }
 
     /** Bir imza dosyası (`<Signature Id="…">`), XML bildirimi ve girinti olmadan. */
-    internal fun signature(id: String, files: List<Entry>, signer: Signer): ByteArray {
-        val signedInfo = signedInfo(files, digest(propObject(id, canonical = true).toByteArray(Charsets.UTF_8)))
-        val value = Signature.getInstance("SHA512withRSA").run {
+    internal fun signature(id: String, files: List<Entry>, signer: Signer, digest: Digest = Digest.SHA512): ByteArray {
+        val signedInfo = signedInfo(files, digest(propObject(id, canonical = true).toByteArray(Charsets.UTF_8), digest), digest)
+        val value = Signature.getInstance(digest.signature).run {
             initSign(signer.key)
             update(canonicalSignedInfo(signedInfo).toByteArray(Charsets.UTF_8))
             sign()
@@ -87,17 +95,17 @@ object WgtSigner {
     }
 
     /** Dosyadaki SignedInfo (ad alanı üst öğeden gelir). */
-    internal fun signedInfo(files: List<Entry>, propDigest: String): String {
+    internal fun signedInfo(files: List<Entry>, propDigest: String, digest: Digest = Digest.SHA512): String {
         val xml = StringBuilder("<SignedInfo>")
         xml.append("<CanonicalizationMethod Algorithm=\"$EXC_C14N\"></CanonicalizationMethod>")
-        xml.append("<SignatureMethod Algorithm=\"$RSA_SHA512\"></SignatureMethod>")
+        xml.append("<SignatureMethod Algorithm=\"${digest.signatureMethod}\"></SignatureMethod>")
         for (file in files) {
             xml.append("<Reference URI=\"").append(attr(file.name)).append("\">")
-            xml.append("<DigestMethod Algorithm=\"$SHA512\"></DigestMethod>")
-            xml.append("<DigestValue>").append(digest(file.data)).append("</DigestValue></Reference>")
+            xml.append("<DigestMethod Algorithm=\"${digest.digestMethod}\"></DigestMethod>")
+            xml.append("<DigestValue>").append(digest(file.data, digest)).append("</DigestValue></Reference>")
         }
         xml.append("<Reference URI=\"#prop\"><Transforms><Transform Algorithm=\"$C14N11\"></Transform></Transforms>")
-        xml.append("<DigestMethod Algorithm=\"$SHA512\"></DigestMethod><DigestValue>").append(propDigest).append("</DigestValue></Reference>")
+        xml.append("<DigestMethod Algorithm=\"${digest.digestMethod}\"></DigestMethod><DigestValue>").append(propDigest).append("</DigestValue></Reference>")
         xml.append("</SignedInfo>")
         return xml.toString()
     }
@@ -123,7 +131,8 @@ object WgtSigner {
             "</SignatureProperties></Object>"
     }
 
-    internal fun digest(data: ByteArray): String = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-512").digest(data))
+    internal fun digest(data: ByteArray, digest: Digest = Digest.SHA512): String =
+        Base64.getEncoder().encodeToString(MessageDigest.getInstance(digest.hash).digest(data))
 
     /** Kanonik XML'deki öznitelik kaçışları. */
     internal fun attr(value: String): String = buildString {

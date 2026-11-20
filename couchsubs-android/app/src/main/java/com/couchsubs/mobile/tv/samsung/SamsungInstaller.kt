@@ -74,8 +74,11 @@ class SamsungInstaller(
         /**
          * Kurar; TV başka sertifikayla kurulmuş eski kopya ya da paket kimliği yüzünden reddederse eski kopyayı kaldırıp
          * bir kez daha dener. Sonuç yine başarısızsa TV'nin söylediği sebeple [SamsungInstallException] atar.
+         *
+         * @param alternative İki deneme de sebepsiz (yalın `[118]`) başarısız olursa çağrılır: başka biçimde hazırlanmış
+         * paketi sıraya koyup adını döner (yoksa null); o paketle üçüncü kez denenir.
          */
-        fun installWithRecovery(tv: SamsungTvShell, progress: (InstallStep) -> Unit, log: InstallLog) {
+        fun installWithRecovery(tv: SamsungTvShell, progress: (InstallStep) -> Unit, log: InstallLog, alternative: (() -> String?)? = null) {
             val output = tv.install()
             log.write("vd_appinstall çıktısı:\n${output.trim()}")
             val problem = SamsungDiagnostics.classify(output)
@@ -84,19 +87,32 @@ class SamsungInstaller(
             if (!SamsungDiagnostics.removingOldCopyMayHelp(problem))
                 throw SamsungInstallException(SamsungDiagnostics.toError(problem), SamsungDiagnostics.summary(output))
             progress(InstallStep.UNINSTALLING)
-            val removal = StringBuilder()
-            for (id in listOf(PACKAGE_ID, APP_ID)) {
-                try {
-                    removal.append("$id: ${tv.shell("0 vd_appuninstall $id").trim()}\n")
-                } catch (error: IOException) {
-                    removal.append("$id: ${error.message}\n")
+            fun remove(): String {
+                val removal = StringBuilder()
+                for (id in listOf(PACKAGE_ID, APP_ID)) {
+                    try {
+                        removal.append("$id: ${tv.shell("0 vd_appuninstall $id").trim()}\n")
+                    } catch (error: IOException) {
+                        removal.append("$id: ${error.message}\n")
+                    }
                 }
+                return removal.toString().trim()
             }
-            log.write("Eski kopya kaldırıldı mı:\n${removal.toString().trim()}")
+            log.write("Eski kopya kaldırıldı mı:\n${remove()}")
             val retry = tv.install()
             log.write("İkinci deneme vd_appinstall çıktısı:\n${retry.trim()}")
             val retryProblem = SamsungDiagnostics.classify(retry)
             if (retryProblem == InstallProblem.NONE) return
+            // TV iki kez de sebep söylemediyse (yalın [118]) ve başka biçimde hazırlanabilen paket varsa onunla bir kez daha.
+            val label = if (problem == InstallProblem.OTHER && retryProblem == InstallProblem.OTHER) alternative?.invoke() else null
+            if (label != null) {
+                log.write("Eski kopya kaldırıldı mı:\n${remove()}")
+                val last = tv.install()
+                log.write("Üçüncü deneme ($label) vd_appinstall çıktısı:\n${last.trim()}")
+                val lastProblem = SamsungDiagnostics.classify(last)
+                if (lastProblem == InstallProblem.NONE) return
+                throw SamsungInstallException(SamsungDiagnostics.toError(lastProblem), SamsungDiagnostics.summary(last))
+            }
             throw SamsungInstallException(SamsungDiagnostics.toError(retryProblem), SamsungDiagnostics.summary(retry))
         }
     }
@@ -169,18 +185,34 @@ class SamsungInstaller(
 
             progress(InstallStep.SIGNING)
             val key = profile.privateKey()
-            val unsigned = if (LegacyTizenPackage.applies(platform)) {
-                LegacyTizenPackage.adapt(wgt()).also {
-                    log.write("Tizen $platform: paketten network.public izni ve ultra geniş ekran ayarı çıkarıldı (#621).")
-                }
-            } else wgt()
-            val signed = WgtSigner.sign(unsigned,
+            // Tizen 2.x (2016): #71'de çalışan config.xml ve SHA-256 imza; TV yine yalın [118] derse yalın paket (#638).
+            val legacy = LegacyTizenPackage.applies(platform)
+            val digest = if (legacy) WgtSigner.Digest.SHA256 else WgtSigner.Digest.SHA512
+            fun sign(unsigned: ByteArray) = WgtSigner.sign(unsigned,
                 WgtSigner.Signer(key, SamsungCertificates.chain(profile.author())),
-                WgtSigner.Signer(key, SamsungCertificates.chain(profile.distributor())))
+                WgtSigner.Signer(key, SamsungCertificates.chain(profile.distributor())), digest)
+            val original = wgt()
+            val signed = if (legacy) {
+                sign(LegacyTizenPackage.adapt(original)).also {
+                    log.write("Tizen $platform: paketten network.public izni ve ultra geniş ekran ayarı çıkarıldı (#621).")
+                    log.write("Tizen $platform: imza SHA-256 ile üretildi (rsa-sha256, sha256 özet; yeni TV'lerde SHA-512).")
+                }
+            } else sign(original)
             log.write("Paket imzalandı (${signed.size} bayt).")
             progress(InstallStep.INSTALLING)
             try {
-                installWithRecovery(SdbShell(device, signed, toolPath), progress, log)
+                val shell = SdbShell(device, signed, toolPath)
+                var lean = false
+                val alternative: (() -> String?)? = if (!legacy) null else {
+                    {
+                        shell.signed = sign(LegacyTizenPackage.adapt(original, lean = true))
+                        lean = true
+                        log.write("Tizen $platform: yalın paket hazırlandı (${LegacyTizenPackage.LEAN_REMOVED} de çıkarıldı), imza SHA-256.")
+                        "yalın paket"
+                    }
+                }
+                installWithRecovery(shell, progress, log, alternative)
+                if (legacy) log.write("Tizen $platform: ${if (lean) "yalın paket" else "tam paket"} SHA-256 imzayla kuruldu.")
             } catch (error: SamsungInstallException) {
                 if (error.error == SamsungInstallError.CERTIFICATE_REJECTED) {
                     // TV bu sertifikayı kabul etmiyor; bir sonraki denemede Samsung'dan yenisi istensin.
@@ -253,7 +285,7 @@ class SamsungInstaller(
     }
 
     /** Gerçek TV: paket `sdk_toolpath`'e gönderilir ve `vd_appinstall` ile kurulur. */
-    private class SdbShell(private val device: SdbConnection, private val signed: ByteArray, private val toolPath: String) : SamsungTvShell {
+    private class SdbShell(private val device: SdbConnection, var signed: ByteArray, private val toolPath: String) : SamsungTvShell {
         private val remote = "$toolPath/couchsubs-%08x.wgt".format(SecureRandom().nextInt())
 
         /** TizenSdb'deki gibi hata da çıktıya yazılır; tanı çıktıdan yapılır. */

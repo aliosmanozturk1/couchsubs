@@ -172,6 +172,63 @@ public class SamsungInstallTests
         Assert.Equal(1, tv.Installs);
     }
 
+    private const string Bare118 = "app_id[CouchSubsT.CouchSubs] install start\napp_id[CouchSubsT.CouchSubs] install failed[118]";
+
+    /// <summary>Tizen 2.4 (#638): TV iki kez sebepsiz [118] derse başka biçimde hazırlanan paket bir kez denenir.</summary>
+    [Fact]
+    public async Task BareFailureTwiceTriesTheAlternativePackageOnce()
+    {
+        var tv = new FakeTv(Bare118, Bare118, Success);
+        var log = TempLog();
+        var prepared = 0;
+        await SamsungTvInstaller.InstallWithRecoveryAsync(tv, null, log, CancellationToken.None, alternative: () =>
+        {
+            prepared++;
+            return "yalın paket";
+        });
+        Assert.Equal(3, tv.Installs);
+        Assert.Equal(1, prepared);
+        Assert.Equal(4, tv.Commands.Count);
+        Assert.Contains("Üçüncü deneme (yalın paket) vd_appinstall çıktısı", File.ReadAllText(log.Path!));
+    }
+
+    [Fact]
+    public async Task AlternativeThatAlsoFailsIsReportedWithTheTvsWords()
+    {
+        var tv = new FakeTv(Bare118, Bare118, Bare118);
+        var error = await Assert.ThrowsAsync<SamsungInstallException>(() =>
+            SamsungTvInstaller.InstallWithRecoveryAsync(tv, null, new InstallLog(null), CancellationToken.None, alternative: () => "yalın paket"));
+        Assert.Equal(SamsungInstallError.InstallFailed, error.Error);
+        Assert.Contains("install failed[118]", error.Detail);
+        Assert.Equal(3, tv.Installs);
+    }
+
+    [Fact]
+    public async Task AlternativeIsNotPreparedWhenTheRetryWorksOrTheTvGivesAReason()
+    {
+        var prepared = 0;
+        string? Alternative()
+        {
+            prepared++;
+            return "yalın paket";
+        }
+
+        var cleared = new FakeTv(Bare118, Success);
+        await SamsungTvInstaller.InstallWithRecoveryAsync(cleared, null, new InstallLog(null), CancellationToken.None, Alternative);
+        Assert.Equal(2, cleared.Installs);
+
+        var mismatch = new FakeTv(AuthorMismatch, AuthorMismatch);
+        await Assert.ThrowsAsync<SamsungInstallException>(() =>
+            SamsungTvInstaller.InstallWithRecoveryAsync(mismatch, null, new InstallLog(null), CancellationToken.None, Alternative));
+        Assert.Equal(2, mismatch.Installs);
+
+        var none = new FakeTv(Bare118, Bare118);
+        await Assert.ThrowsAsync<SamsungInstallException>(() =>
+            SamsungTvInstaller.InstallWithRecoveryAsync(none, null, new InstallLog(null), CancellationToken.None, () => null));
+        Assert.Equal(2, none.Installs);
+        Assert.Equal(0, prepared);
+    }
+
     [Fact]
     public async Task FailingUninstallStillRetriesAndIsLogged()
     {

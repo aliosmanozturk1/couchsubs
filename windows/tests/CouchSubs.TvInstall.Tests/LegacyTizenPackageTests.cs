@@ -68,6 +68,23 @@ public class LegacyTizenPackageTests
         Assert.StartsWith("<?xml", adapted);
     }
 
+    /// <summary>Yalın paket (#638): SHA-256 imzalı tam paket de yalın [118] alırsa denenir.</summary>
+    [Fact]
+    public void LeanPackageAlsoDropsProfileAndTwoPrivileges()
+    {
+        var wgt = Wgt(Config());
+        Assert.True(LegacyTizenPackage.Adapt(wgt, lean: true));
+        var adapted = Read(wgt, "config.xml");
+        var withoutComments = Regex.Replace(adapted, @"<!--[\s\S]*?-->", "");
+        foreach (var removed in new[] { "network.public", "<tizen:metadata", "<tizen:profile", "application.launch", "network.get" })
+            Assert.DoesNotContain(removed, withoutComments);
+        foreach (var kept in new[] { "tv.window", "tv.inputdevice", "internet" })
+            Assert.Contains($"http://tizen.org/privilege/{kept}\"", withoutComments);
+        Assert.Contains("required_version=\"2.4\"", withoutComments);
+        Assert.Contains("<tizen:application id=\"CouchSubsT.CouchSubs\" package=\"CouchSubsT\"", withoutComments);
+        XDocument.Parse(adapted);
+    }
+
     [Fact]
     public void OtherFilesStayTheSame()
     {

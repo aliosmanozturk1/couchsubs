@@ -101,6 +101,9 @@ enum SamsungDiagnostics {
 
     static func removingOldCopyMayHelp(_ problem: Problem) -> Bool { [.certificateMismatch, .packageBlocked, .other].contains(problem) }
 
+    /// İki deneme de sebepsiz (yalın `[118]`) başarısızsa başka biçimde hazırlanmış paket denenir (Tizen 2.x, #638).
+    static func alternativeMayHelp(_ first: Problem, _ retry: Problem) -> Bool { first == .other && retry == .other }
+
     static func toError(_ problem: Problem) -> SamsungInstallError {
         switch problem {
         case .connectionLost: .connectionLost
@@ -649,18 +652,30 @@ final class SamsungInstaller {
 
         progress(.signing)
         let key = try profile.privateKey()
-        var unsigned = try wgt()
-        if LegacyTizenPackage.applies(platform) {
-            unsigned = try LegacyTizenPackage.adapt(unsigned)
-            log.write("Tizen \(platform): paketten network.public izni ve ultra geniş ekran ayarı çıkarıldı (#621).")
+        // Tizen 2.x (2016): #71'de çalışan config.xml ve SHA-256 imza; TV yine yalın [118] derse yalın paket (#638).
+        let legacy = LegacyTizenPackage.applies(platform)
+        let author = WgtSigner.Signer(key: key, chain: SamsungCertificates.chain(try profile.author()))
+        let distributor = WgtSigner.Signer(key: key, chain: SamsungCertificates.chain(try profile.distributor()))
+        let original = try wgt()
+        func sign(_ unsigned: [UInt8]) throws -> [UInt8] {
+            try WgtSigner.sign(unsigned, author: author, distributor: distributor, digest: legacy ? .sha256 : .sha512)
         }
-        let signed = try WgtSigner.sign(unsigned,
-                                        author: WgtSigner.Signer(key: key, chain: SamsungCertificates.chain(try profile.author())),
-                                        distributor: WgtSigner.Signer(key: key, chain: SamsungCertificates.chain(try profile.distributor())))
+        let signed = try sign(legacy ? LegacyTizenPackage.adapt(original) : original)
+        if legacy {
+            log.write("Tizen \(platform): paketten network.public izni ve ultra geniş ekran ayarı çıkarıldı (#621).")
+            log.write("Tizen \(platform): imza SHA-256 ile üretildi (rsa-sha256, sha256 özet; yeni TV'lerde SHA-512).")
+        }
         log.write("Paket imzalandı (\(signed.count) bayt).")
         progress(.installing)
         do {
-            try installWithRecovery(device, signed, toolPath)
+            var lean = false
+            try installWithRecovery(device, signed, toolPath, alternative: !legacy ? nil : {
+                let package = try sign(LegacyTizenPackage.adapt(original, lean: true))
+                lean = true
+                self.log.write("Tizen \(platform): yalın paket hazırlandı (\(LegacyTizenPackage.leanRemovedNames) de çıkarıldı), imza SHA-256.")
+                return ("yalın paket", package)
+            })
+            if legacy { log.write("Tizen \(platform): \(lean ? "yalın paket" : "tam paket") SHA-256 imzayla kuruldu.") }
         } catch let failure as SamsungInstallFailure {
             if failure.error == .certificateRejected {
                 profile.discard()
@@ -689,7 +704,10 @@ final class SamsungInstaller {
         return output
     }
 
-    private func installWithRecovery(_ device: SdbConnection, _ signed: [UInt8], _ toolPath: String) throws {
+    /// - Parameter alternative: İki deneme de sebepsiz (yalın `[118]`) başarısız olursa çağrılır: başka biçimde hazırlanmış
+    ///   paketi adıyla döner; o paketle üçüncü kez denenir.
+    private func installWithRecovery(_ device: SdbConnection, _ signed: [UInt8], _ toolPath: String,
+                                     alternative: (() throws -> (label: String, package: [UInt8]))? = nil) throws {
         let output = install(device, signed, toolPath)
         log.write("vd_appinstall çıktısı:\n\(output.trimmingCharacters(in: .whitespacesAndNewlines))")
         let problem = SamsungDiagnostics.classify(output)
@@ -699,15 +717,28 @@ final class SamsungInstaller {
             throw SamsungInstallFailure(error: SamsungDiagnostics.toError(problem), detail: SamsungDiagnostics.summary(output))
         }
         progress(.uninstalling)
-        var removal = ""
-        for id in [Self.packageId, Self.appId] {
-            removal += "\(id): " + ((try? device.shell("0 vd_appuninstall \(id)").trimmingCharacters(in: .whitespacesAndNewlines)) ?? "?") + "\n"
+        func remove() -> String {
+            var removal = ""
+            for id in [Self.packageId, Self.appId] {
+                removal += "\(id): " + ((try? device.shell("0 vd_appuninstall \(id)").trimmingCharacters(in: .whitespacesAndNewlines)) ?? "?") + "\n"
+            }
+            return removal
         }
-        log.write("Eski kopya kaldırıldı mı:\n\(removal)")
+        log.write("Eski kopya kaldırıldı mı:\n\(remove())")
         let retry = install(device, signed, toolPath)
         log.write("İkinci deneme vd_appinstall çıktısı:\n\(retry.trimmingCharacters(in: .whitespacesAndNewlines))")
         let retryProblem = SamsungDiagnostics.classify(retry)
         if retryProblem == .none { return }
+        // TV iki kez de sebep söylemediyse (yalın [118]) ve başka biçimde hazırlanabilen paket varsa onunla bir kez daha.
+        if SamsungDiagnostics.alternativeMayHelp(problem, retryProblem), let alternative {
+            let (label, package) = try alternative()
+            log.write("Eski kopya kaldırıldı mı:\n\(remove())")
+            let last = install(device, package, toolPath)
+            log.write("Üçüncü deneme (\(label)) vd_appinstall çıktısı:\n\(last.trimmingCharacters(in: .whitespacesAndNewlines))")
+            let lastProblem = SamsungDiagnostics.classify(last)
+            if lastProblem == .none { return }
+            throw SamsungInstallFailure(error: SamsungDiagnostics.toError(lastProblem), detail: SamsungDiagnostics.summary(last))
+        }
         throw SamsungInstallFailure(error: SamsungDiagnostics.toError(retryProblem), detail: SamsungDiagnostics.summary(retry))
     }
 

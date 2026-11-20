@@ -79,14 +79,33 @@ enum StoredZip {
 }
 
 /// Tizen web uygulaması paketini (.wgt) imzalar: `author-signature.xml` ve `signature1.xml` (W3C Widget Signature).
-/// Özet SHA-512, imza RSA-SHA512. Kanonik biçimler doğrudan üretilir (Android'deki WgtSigner ile aynı metin).
+/// Özet ve imza `Digest` ile seçilir: Tizen 3.0 ve üstünde SHA-512 (bugünkü Tizen Studio gibi), Tizen 2.x TV'lerde
+/// (2016) SHA-256 (#638). Kanonik biçimler doğrudan üretilir (Android'deki WgtSigner ile aynı metin).
 enum WgtSigner {
     private static let dsig = "http://www.w3.org/2000/09/xmldsig#"
     private static let dsp = "http://www.w3.org/2009/xmldsig-properties"
-    private static let rsaSha512 = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha512"
-    private static let sha512 = "http://www.w3.org/2001/04/xmlenc#sha512"
     private static let excC14n = "http://www.w3.org/2001/10/xml-exc-c14n#"
     private static let c14n11 = "http://www.w3.org/2006/12/xml-c14n11"
+
+    /// İmzadaki özet ve imza algoritması.
+    enum Digest {
+        /// W3C Widget Signature'ın zorunlu tuttuğu, Tizen 2.x SDK'sının ürettiği biçim; Tizen 2.x TV'lerde kullanılır.
+        case sha256
+        /// Bugünkü Tizen Studio'nun ve TizenSdb'nin ürettiği biçim (Tizen 3.0 ve üstü).
+        case sha512
+
+        var signatureMethod: String {
+            self == .sha256 ? "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" : "http://www.w3.org/2001/04/xmldsig-more#rsa-sha512"
+        }
+
+        var digestMethod: String {
+            self == .sha256 ? "http://www.w3.org/2001/04/xmlenc#sha256" : "http://www.w3.org/2001/04/xmlenc#sha512"
+        }
+
+        var algorithm: SecKeyAlgorithm {
+            self == .sha256 ? .rsaSignatureMessagePKCS1v15SHA256 : .rsaSignatureMessagePKCS1v15SHA512
+        }
+    }
 
     struct Signer {
         let key: RsaKey
@@ -94,19 +113,19 @@ enum WgtSigner {
         let chain: [TVCertificate]
     }
 
-    static func sign(_ wgt: [UInt8], author: Signer, distributor: Signer) throws -> [UInt8] {
+    static func sign(_ wgt: [UInt8], author: Signer, distributor: Signer, digest: Digest = .sha512) throws -> [UInt8] {
         let files = try StoredZip.read(wgt).filter { entry in
             let lower = entry.name.lowercased()
             return !entry.name.hasSuffix("/") && !lower.hasSuffix("author-signature.xml") && !lower.hasSuffix("signature1.xml")
         }
-        let authorSignature = StoredZip.Entry(name: "author-signature.xml", data: try signature("AuthorSignature", files, author))
-        let distributorSignature = StoredZip.Entry(name: "signature1.xml", data: try signature("DistributorSignature", [authorSignature] + files, distributor))
+        let authorSignature = StoredZip.Entry(name: "author-signature.xml", data: try signature("AuthorSignature", files, author, digest))
+        let distributorSignature = StoredZip.Entry(name: "signature1.xml", data: try signature("DistributorSignature", [authorSignature] + files, distributor, digest))
         return StoredZip.write([authorSignature, distributorSignature] + files)
     }
 
-    static func signature(_ id: String, _ files: [StoredZip.Entry], _ signer: Signer) throws -> [UInt8] {
-        let info = signedInfo(files, propDigest: digest(Array(propObject(id, canonical: true).utf8)))
-        let value = try signer.key.sign(.rsaSignatureMessagePKCS1v15SHA512, Data(canonicalSignedInfo(info).utf8))
+    static func signature(_ id: String, _ files: [StoredZip.Entry], _ signer: Signer, _ digest: Digest = .sha512) throws -> [UInt8] {
+        let info = signedInfo(files, propDigest: self.digest(Array(propObject(id, canonical: true).utf8), digest), digest)
+        let value = try signer.key.sign(digest.algorithm, Data(canonicalSignedInfo(info).utf8))
         var xml = "<Signature xmlns=\"\(dsig)\" Id=\"\(attr(id))\">"
         xml += info
         xml += "<SignatureValue>\(value.base64EncodedString())</SignatureValue>"
@@ -120,17 +139,17 @@ enum WgtSigner {
         return Array(xml.utf8)
     }
 
-    static func signedInfo(_ files: [StoredZip.Entry], propDigest: String) -> String {
+    static func signedInfo(_ files: [StoredZip.Entry], propDigest: String, _ digest: Digest = .sha512) -> String {
         var xml = "<SignedInfo>"
         xml += "<CanonicalizationMethod Algorithm=\"\(excC14n)\"></CanonicalizationMethod>"
-        xml += "<SignatureMethod Algorithm=\"\(rsaSha512)\"></SignatureMethod>"
+        xml += "<SignatureMethod Algorithm=\"\(digest.signatureMethod)\"></SignatureMethod>"
         for file in files {
             xml += "<Reference URI=\"\(attr(file.name))\">"
-            xml += "<DigestMethod Algorithm=\"\(sha512)\"></DigestMethod>"
-            xml += "<DigestValue>\(digest(file.data))</DigestValue></Reference>"
+            xml += "<DigestMethod Algorithm=\"\(digest.digestMethod)\"></DigestMethod>"
+            xml += "<DigestValue>\(self.digest(file.data, digest))</DigestValue></Reference>"
         }
         xml += "<Reference URI=\"#prop\"><Transforms><Transform Algorithm=\"\(c14n11)\"></Transform></Transforms>"
-        xml += "<DigestMethod Algorithm=\"\(sha512)\"></DigestMethod><DigestValue>\(propDigest)</DigestValue></Reference>"
+        xml += "<DigestMethod Algorithm=\"\(digest.digestMethod)\"></DigestMethod><DigestValue>\(propDigest)</DigestValue></Reference>"
         xml += "</SignedInfo>"
         return xml
     }
@@ -154,7 +173,9 @@ enum WgtSigner {
             + "</SignatureProperties></Object>"
     }
 
-    static func digest(_ data: [UInt8]) -> String { Data(SHA512.hash(data: data)).base64EncodedString() }
+    static func digest(_ data: [UInt8], _ digest: Digest = .sha512) -> String {
+        digest == .sha256 ? Data(SHA256.hash(data: data)).base64EncodedString() : Data(SHA512.hash(data: data)).base64EncodedString()
+    }
 
     static func attr(_ value: String) -> String {
         var out = ""

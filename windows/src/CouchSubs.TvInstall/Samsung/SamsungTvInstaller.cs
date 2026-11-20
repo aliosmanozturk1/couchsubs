@@ -231,16 +231,40 @@ public sealed partial class SamsungTvInstaller(string host, string profilesDirec
         DeleteLeftovers(Path.GetTempPath());
         var staged = Path.Combine(Path.GetTempPath(), $"couchsubs-{Guid.NewGuid():N}.wgt");
         File.Copy(wgtPath, staged);
+        // Kurulacak paket en sondaki; Tizen 2.x'te gerekirse yanına yalın paket eklenir (ayrı dosya: TizenInstaller
+        // ilkini açık bırakabiliyor).
+        var packages = new List<string> { staged };
         try
         {
-            if (LegacyTizenPackage.Applies(platform) && LegacyTizenPackage.Adapt(staged))
-                Log.Write($"Tizen {platform}: paketten network.public izni ve ultra geniş ekran ayarı çıkarıldı (#621).");
-            await TizenWgtSigner.ReSignWgtWithCertsInPlace(staged, profile.AuthorP12, profile.DistributorP12, profile.Password);
+            // Tizen 2.x (2016): #71'de çalışan config.xml ve SHA-256 imza; TV yine yalın [118] derse yalın paket (#638).
+            var legacy = LegacyTizenPackage.Applies(platform);
+            if (legacy)
+            {
+                if (LegacyTizenPackage.Adapt(staged))
+                    Log.Write($"Tizen {platform}: paketten network.public izni ve ultra geniş ekran ayarı çıkarıldı (#621).");
+                WgtSigner.SignInPlace(staged, profile.AuthorP12, profile.DistributorP12, profile.Password, WgtDigest.Sha256);
+                Log.Write($"Tizen {platform}: imza SHA-256 ile üretildi (rsa-sha256, sha256 özet; yeni TV'lerde SHA-512).");
+            }
+            else
+            {
+                await TizenWgtSigner.ReSignWgtWithCertsInPlace(staged, profile.AuthorP12, profile.DistributorP12, profile.Password);
+            }
             Log.Write("Paket imzalandı.");
             Progress?.Invoke("installing");
             try
             {
-                await InstallWithRecoveryAsync(new SdbShell(device, staged, toolPath), Progress, Log, cancellationToken);
+                await InstallWithRecoveryAsync(new SdbShell(device, () => packages[^1], toolPath), Progress, Log, cancellationToken,
+                    alternative: !legacy ? null : () =>
+                    {
+                        var lean = Path.Combine(Path.GetTempPath(), $"couchsubs-{Guid.NewGuid():N}.wgt");
+                        File.Copy(wgtPath, lean);
+                        packages.Add(lean);
+                        LegacyTizenPackage.Adapt(lean, lean: true);
+                        WgtSigner.SignInPlace(lean, profile.AuthorP12, profile.DistributorP12, profile.Password, WgtDigest.Sha256);
+                        Log.Write($"Tizen {platform}: yalın paket hazırlandı ({LegacyTizenPackage.LeanRemoved} de çıkarıldı), imza SHA-256.");
+                        return "yalın paket";
+                    });
+                if (legacy) Log.Write($"Tizen {platform}: {(packages.Count > 1 ? "yalın paket" : "tam paket")} SHA-256 imzayla kuruldu.");
             }
             catch (SamsungInstallException error) when (error.Error is SamsungInstallError.CertificateRejected)
             {
@@ -252,7 +276,7 @@ public sealed partial class SamsungTvInstaller(string host, string profilesDirec
         }
         finally
         {
-            DeleteStaged(staged);
+            foreach (var package in packages) DeleteStaged(package);
         }
         // TV "kuruldu" deyip eski sürümde kalırsa bu da sessiz geçmesin.
         var after = await ReadInstalledVersionAsync(device, cancellationToken);
@@ -320,8 +344,12 @@ public sealed partial class SamsungTvInstaller(string host, string profilesDirec
     /// Kurar; TV başka sertifikayla kurulmuş eski kopya ya da paket kimliği yüzünden reddederse eski kopyayı kaldırıp bir
     /// kez daha dener. Sonuç yine başarısızsa TV'nin söylediği sebeple <see cref="SamsungInstallException"/> atar.
     /// </summary>
+    /// <param name="alternative">
+    /// İki deneme de sebepsiz (yalın <c>[118]</c>) başarısız olursa çağrılır: başka biçimde hazırlanmış paketi sıraya
+    /// koyup adını döner (yoksa null); o paketle üçüncü kez denenir.
+    /// </param>
     internal static async Task InstallWithRecoveryAsync(ISamsungTvShell tv, Action<string>? progress, InstallLog log,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Func<string?>? alternative = null)
     {
         var output = await tv.InstallAsync(cancellationToken);
         log.Write($"vd_appinstall çıktısı:\n{output.Trim()}");
@@ -334,18 +362,33 @@ public sealed partial class SamsungTvInstaller(string host, string profilesDirec
         // Başka sertifikayla kurulmuş eski kopya ("Author certificate not match") ya da yarım kalmış kayıt: kaldırıp bir
         // kez daha dene. TV sürümüne göre kaldırma paket kimliğini ya da uygulama kimliğini bekliyor; ikisi de denenir.
         progress?.Invoke("uninstalling");
-        var removal = "";
-        foreach (var id in new[] { PackageId, AppId })
-        {
-            try { removal += $"{id}: {(await tv.ShellAsync($"0 vd_appuninstall {id}", cancellationToken)).Trim()}\n"; }
-            catch (Exception error) when (error is not OperationCanceledException) { removal += $"{id}: {error.Message}\n"; }
-        }
-        log.Write($"Eski kopya kaldırıldı mı:\n{removal.Trim()}");
+        log.Write($"Eski kopya kaldırıldı mı:\n{await RemoveAsync()}");
         var retry = await tv.InstallAsync(cancellationToken);
         log.Write($"İkinci deneme vd_appinstall çıktısı:\n{retry.Trim()}");
         var retryProblem = SamsungInstallDiagnostics.Classify(retry);
         if (retryProblem == InstallProblem.None) return;
+        // TV iki kez de sebep söylemediyse (yalın [118]) ve başka biçimde hazırlanabilen paket varsa onunla bir kez daha.
+        if (problem == InstallProblem.Other && retryProblem == InstallProblem.Other && alternative?.Invoke() is { } label)
+        {
+            log.Write($"Eski kopya kaldırıldı mı:\n{await RemoveAsync()}");
+            var last = await tv.InstallAsync(cancellationToken);
+            log.Write($"Üçüncü deneme ({label}) vd_appinstall çıktısı:\n{last.Trim()}");
+            var lastProblem = SamsungInstallDiagnostics.Classify(last);
+            if (lastProblem == InstallProblem.None) return;
+            throw new SamsungInstallException(SamsungInstallDiagnostics.ToError(lastProblem), SamsungInstallDiagnostics.Summary(last));
+        }
         throw new SamsungInstallException(SamsungInstallDiagnostics.ToError(retryProblem), SamsungInstallDiagnostics.Summary(retry));
+
+        async Task<string> RemoveAsync()
+        {
+            var removal = "";
+            foreach (var id in new[] { PackageId, AppId })
+            {
+                try { removal += $"{id}: {(await tv.ShellAsync($"0 vd_appuninstall {id}", cancellationToken)).Trim()}\n"; }
+                catch (Exception error) when (error is not OperationCanceledException) { removal += $"{id}: {error.Message}\n"; }
+            }
+            return removal.Trim();
+        }
     }
 
     /// <summary>
@@ -551,10 +594,10 @@ public sealed partial class SamsungTvInstaller(string host, string profilesDirec
     }
 
     /// <summary>Gerçek TV: TizenSdb'nin sdb bağlantısı ve TizenInstaller'ı.</summary>
-    private sealed class SdbShell(SdbTcpDevice device, string stagedPackage, string toolPath) : ISamsungTvShell
+    private sealed class SdbShell(SdbTcpDevice device, Func<string> stagedPackage, string toolPath) : ISamsungTvShell
     {
         public Task<string> InstallAsync(CancellationToken cancellationToken) =>
-            CaptureAsync(() => new TizenInstaller(stagedPackage, device, toolPath).InstallApp());
+            CaptureAsync(() => new TizenInstaller(stagedPackage(), device, toolPath).InstallApp());
 
         public Task<string> ShellAsync(string command, CancellationToken cancellationToken) =>
             device.ShellCommandAsync(command, cancellationToken);

@@ -57,6 +57,20 @@ class LegacyTizenPackageTest {
         javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(adapted.byteInputStream())
     }
 
+    /** Yalın paket (#638): SHA-256 imzalı tam paket de yalın [118] alırsa denenir. */
+    @Test
+    fun yalinPakettenProfilVeIkiIzinDeCikar() {
+        val adapted = configOf(LegacyTizenPackage.adapt(wgt(config), lean = true))
+        val withoutComments = adapted.replace(Regex("<!--[\\s\\S]*?-->"), "")
+        for (removed in listOf("network.public", "<tizen:metadata", "<tizen:profile", "application.launch", "network.get"))
+            assertFalse(removed, withoutComments.contains(removed))
+        for (kept in listOf("tv.window", "tv.inputdevice", "internet"))
+            assertTrue(kept, withoutComments.contains("http://tizen.org/privilege/$kept\""))
+        assertTrue(withoutComments.contains("required_version=\"2.4\""))
+        assertTrue(withoutComments.contains("<tizen:application id=\"CouchSubsT.CouchSubs\" package=\"CouchSubsT\""))
+        javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(adapted.byteInputStream())
+    }
+
     @Test
     fun digerDosyalarAyniKalir() {
         val files = WgtSigner.readEntries(LegacyTizenPackage.adapt(wgt(config)))

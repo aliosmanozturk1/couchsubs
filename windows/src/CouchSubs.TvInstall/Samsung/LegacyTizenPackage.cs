@@ -26,14 +26,26 @@ internal static partial class LegacyTizenPackage
 
     public static bool Applies(string platform) => platform.Length > 0 && Versions.IsNewer(FirstModern, platform);
 
-    /// <summary>config.xml metninden iki satırı çıkarır.</summary>
-    internal static string AdaptConfig(string config) => ScreenResolution().Replace(NetworkPublic().Replace(config, ""), "");
+    /// <summary>Yalın pakette ayrıca çıkarılanlar (günlük için).</summary>
+    internal const string LeanRemoved = "tizen:profile, application.launch, network.get";
+
+    /// <summary>
+    /// config.xml metninden iki satırı çıkarır. <paramref name="lean"/>: imza SHA-256'ya çevrildikten sonra da TV yalın
+    /// <c>install failed[118]</c> derse (#638) aynı kurulumda bir kez denenen yalın paket; <c>tizen:profile</c> satırı ile
+    /// <c>application.launch</c> ve <c>network.get</c> izinleri de çıkar (uygulama bunlarsız da açılır; TV adresi ağ
+    /// taramasıyla bulunur). Hangisinin tuttuğu günlükten görülür.
+    /// </summary>
+    internal static string AdaptConfig(string config, bool lean = false)
+    {
+        var adapted = ScreenResolution().Replace(NetworkPublic().Replace(config, ""), "");
+        return lean ? LeanPrivileges().Replace(Profile().Replace(adapted, ""), "") : adapted;
+    }
 
     /// <summary>
     /// Paketin (imzalanmadan önceki geçici kopyanın) config.xml'inden yukarıdaki satırlar çıkarılır; değişen bir şey
     /// yoksa dosyaya dokunulmaz. Değiştiyse true.
     /// </summary>
-    public static bool Adapt(string wgtPath)
+    public static bool Adapt(string wgtPath, bool lean = false)
     {
         string original;
         using (var read = ZipFile.OpenRead(wgtPath))
@@ -42,7 +54,7 @@ internal static partial class LegacyTizenPackage
             using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
             original = reader.ReadToEnd();
         }
-        var config = AdaptConfig(original);
+        var config = AdaptConfig(original, lean);
         if (config == original) return false;
         using var zip = ZipFile.Open(wgtPath, ZipArchiveMode.Update);
         using var stream = zip.GetEntry("config.xml")!.Open();
@@ -57,4 +69,10 @@ internal static partial class LegacyTizenPackage
 
     [GeneratedRegex("""[ \t]*<tizen:metadata key="http://tizen\.org/metadata/app_ui_type/base_screen_resolution"[^>]*/>[ \t]*\r?\n?""")]
     private static partial Regex ScreenResolution();
+
+    [GeneratedRegex("""[ \t]*<tizen:profile\s[^>]*/>[ \t]*\r?\n?""")]
+    private static partial Regex Profile();
+
+    [GeneratedRegex("""[ \t]*<tizen:privilege name="http://tizen\.org/privilege/(application\.launch|network\.get)"\s*/>[ \t]*\r?\n?""")]
+    private static partial Regex LeanPrivileges();
 }

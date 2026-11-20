@@ -179,6 +179,43 @@ class SamsungInstallerTest {
         }
     }
 
+    private val bare118 = "app_id[CouchSubsT.CouchSubs] install start\napp_id[CouchSubsT.CouchSubs] install failed[118]"
+
+    /** Tizen 2.4 (#638): TV iki kez sebepsiz [118] derse başka biçimde hazırlanan paket bir kez denenir. */
+    @Test
+    fun bareFailureTwiceTriesTheAlternativePackageOnce() {
+        val tv = FakeTv(bare118, bare118, success)
+        var prepared = 0
+        SamsungInstaller.installWithRecovery(tv, {}, InstallLog(null)) {
+            prepared++
+            "yalın paket"
+        }
+        assertEquals(3, tv.installs)
+        assertEquals(1, prepared)
+    }
+
+    @Test
+    fun alternativeIsNotPreparedWhenTheRetryWorksOrTheTvGivesAReason() {
+        var prepared = 0
+        val alternative: () -> String? = {
+            prepared++
+            "yalın paket"
+        }
+        val cleared = FakeTv(bare118, success)
+        SamsungInstaller.installWithRecovery(cleared, {}, InstallLog(null), alternative)
+        assertEquals(2, cleared.installs)
+
+        val stuck = FakeTv(authorMismatch, authorMismatch)
+        assertTrue(runCatching { SamsungInstaller.installWithRecovery(stuck, {}, InstallLog(null), alternative) }.exceptionOrNull() is SamsungInstallException)
+        assertEquals(2, stuck.installs)
+        assertEquals(0, prepared)
+
+        val failing = FakeTv(bare118, bare118, bare118)
+        val error = runCatching { SamsungInstaller.installWithRecovery(failing, {}, InstallLog(null), alternative) }.exceptionOrNull() as SamsungInstallException
+        assertEquals(SamsungInstallError.INSTALL_FAILED, error.error)
+        assertEquals(3, failing.installs)
+    }
+
     @Test
     fun failingUninstallStillRetriesAndIsLogged() {
         val tv = FakeTv(mismatch, success).apply { uninstallError = IOException("Remote closed channel") }

@@ -41,6 +41,29 @@ Tizen 3.0 için yapılanlar ve neyin doğrulandığı:
   2.4–4.0'da çalışması, `0 vd_applist` çıktısının bu TV'lerde aynı biçimde gelmesi, `webapis.appcommon` ekran koruyucu
   ayarı ve Web Audio dublajı.
 
+### Tizen 2.4'te `install failed[118]` (#497, #621, #638)
+
+Tizen 2.4 kurulumu reddederken sebep yazmaz; yalın `[118]` imza, sertifika, config ya da TV'de kalmış yarım kopya
+olabilir. `power` izni (#497) ve `network.public` + `base_screen_resolution` (#621) çıkarıldıktan sonra da gerçek bir
+UE60KU7000 aynı hatayı verdi (#638; sdb, DUID, Samsung sertifikası, cihaz profili ve imza adımları başarılıydı).
+
+- **İmza biçimi:** dört uygulama da paketi `rsa-sha512` + `sha512` özetle imzalıyordu (bugünkü Tizen Studio ve TizenSdb
+  gibi). Tizen 2.x'te artık `rsa-sha256` + `sha256` kullanılır (W3C Widget Signature'ın zorunlu tuttuğu, Tizen 2.x
+  SDK'sının ürettiği biçim); Tizen 3.0 ve üstünde imza değişmedi. Telefonlarda `WgtSigner`'ın `Digest` seçeneği, Mac ve
+  Windows'ta `WgtSigner.cs` (3.0 ve üstünde imzayı yine TizenSdb atar). Kanonikleştirme (exclusive C14N; `#prop` için
+  C14N 1.1), referans sırası, `#prop` nesnesi ve zincir (yaprak + ara sertifika, kök yok) aynıdır.
+- **Deneme zinciri (yalnız Tizen 2.x):** 1) tam paket, SHA-256; 2) yalın `[118]` gelirse eski kopya kaldırılıp aynı
+  paket; 3) yine yalın `[118]` ise "yalın paket" (`tizen:profile` satırı ile `application.launch` ve `network.get`
+  izinleri de çıkar), SHA-256. Her adım ve hangisinin tuttuğu günlüğe yazılır ("tam paket SHA-256 imzayla kuruldu" /
+  "yalın paket …").
+- **Bilinen ama yapılmayan:** başka projelerdeki gerçek TV raporlarına göre (free-my-tv #349: KU6300, KU6640, KU6400;
+  hepsi Tizen 2.4) bu TV'lerde Samsung'un DUID'li dağıtıcı sertifikasıyla imzalı paket tek sayfalık deneme
+  uygulamasında bile `[118]` alıyor; Tizen Studio'nun kendi "Tizen" sertifikasıyla (yazar: Tizen Developers CA,
+  dağıtıcı: SDK'daki eski `tizen-distributor-signer.p12`) imzalı paket kuruluyor, KU6300'de SHA-512 imzayla bile.
+  Aynı kaynaklarda bir Full HD modelde (UA40K5300) ayrıca SHA-256 gerektiği yazıyor. CouchSubs bu sertifikayı
+  kullanmıyor: SDK'nın CA anahtarını ve imzalayıcı dosyasını uygulamaya gömmek ayrı bir karar. SHA-256 de yetmezse
+  sıradaki aday budur; o zamana kadar elle kurulumda Tizen Studio'da **Tizen** türünde sertifika profili denenebilir.
+
 ## Yapı
 
 Arayüz kodu LG ile ortaktır (`tv-webos/`). Samsung'a özgü olanlar `tv-tizen/` içindedir:

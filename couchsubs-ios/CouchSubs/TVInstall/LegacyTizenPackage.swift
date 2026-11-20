@@ -11,6 +11,11 @@ import Foundation
 ///
 /// Tizen 2.4 tanımadığı satırı içeren paketi sebep yazmadan `install failed[118]` ile reddediyor; `power` izni
 /// çıkarıldıktan sonra da (#497) 0.9.38 aynı hatayı verdi (#621). Yeni TV'lerde paket değişmez.
+///
+/// Bu da yetmedi (#638, UE60KU7000): imza SHA-256'ya çevrildi (`WgtSigner.Digest`). TV yine yalın `install failed[118]`
+/// derse aynı kurulumda bir kez de "yalın" paket denenir: `tizen:profile` satırı ile `application.launch` ve
+/// `network.get` izinleri de çıkar (uygulama bunlarsız da açılır; TV adresi ağ taramasıyla bulunur). Hangisinin tuttuğu
+/// günlükten görülür.
 enum LegacyTizenPackage {
     /// Bu sürümden eski TV'lerde (Tizen 2.x) paket sadeleştirilir.
     private static let firstModern = "3.0"
@@ -22,13 +27,22 @@ enum LegacyTizenPackage {
         #"[ \t]*<tizen:metadata key="http://tizen\.org/metadata/app_ui_type/base_screen_resolution"[^>]*/>[ \t]*\r?\n?"#,
     ]
 
-    /// config.xml'den yukarıdaki satırlar çıkarılır; değişen bir şey yoksa paket olduğu gibi döner.
-    static func adapt(_ wgt: [UInt8]) throws -> [UInt8] {
+    /// Yalın pakette ayrıca çıkarılanlar (günlük için).
+    static let leanRemovedNames = "tizen:profile, application.launch, network.get"
+
+    private static let leanRemoved = [
+        #"[ \t]*<tizen:profile\s[^>]*/>[ \t]*\r?\n?"#,
+        #"[ \t]*<tizen:privilege name="http://tizen\.org/privilege/(application\.launch|network\.get)"\s*/>[ \t]*\r?\n?"#,
+    ]
+
+    /// config.xml'den yukarıdaki satırlar (`lean` ise yalın paketinkiler de) çıkarılır; değişen bir şey yoksa paket olduğu
+    /// gibi döner.
+    static func adapt(_ wgt: [UInt8], lean: Bool = false) throws -> [UInt8] {
         var changed = false
         let adapted = try StoredZip.read(wgt).map { entry -> StoredZip.Entry in
             guard entry.name == "config.xml" else { return entry }
             let original = String(decoding: entry.data, as: UTF8.self)
-            let config = removed.reduce(original) { text, pattern in
+            let config = (lean ? removed + leanRemoved : removed).reduce(original) { text, pattern in
                 text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
             }
             guard config != original else { return entry }
