@@ -109,8 +109,8 @@ public static class LgDiscovery
     internal static async Task<List<string>> CollectResponses(string searchTarget, TimeSpan timeout, CancellationToken cancellationToken,
         IReadOnlyList<string>? unicast = null)
     {
-        var hosts = new List<string>();
         using var udp = new UdpClient(AddressFamily.InterNetwork);
+        IgnoreUnreachableReplies(udp.Client);
         var request = Encoding.ASCII.GetBytes(
             $"M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\nST: {searchTarget}\r\n\r\n");
         var target = new IPEndPoint(IPAddress.Parse("239.255.255.250"), 1900);
@@ -140,16 +140,42 @@ public static class LgDiscovery
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(timeout);
-        try
+        return await ReceiveHosts(token => udp.ReceiveAsync(token), searchTarget, deadline.Token);
+    }
+
+    /// <summary>
+    /// Süre dolana kadar SSDP yanıtlarını toplar. Windows'ta UDP soketi, daha önce gönderilen bir paket için gelen "port
+    /// kapalı" (ICMP) yanıtını sonraki okumada "bağlantı zorla kapatıldı" (10054) hatası olarak verir: tek tek aranan
+    /// adreslerde 1900 portu kapalı cihazlar bunu tetikler. Bu hata atlanır, okuma sürer; önceden uygulama çöküyordu (#556).
+    /// Başka bir soket hatasında o ana dek bulunanlar döner.
+    /// </summary>
+    internal static async Task<List<string>> ReceiveHosts(Func<CancellationToken, ValueTask<UdpReceiveResult>> receive,
+        string searchTarget, CancellationToken deadline)
+    {
+        var hosts = new List<string>();
+        while (true)
         {
-            while (true)
-            {
-                var result = await udp.ReceiveAsync(deadline.Token);
-                if (HostFromSsdpResponse(Encoding.UTF8.GetString(result.Buffer), searchTarget) is { } host) hosts.Add(host);
-            }
+            UdpReceiveResult result;
+            try { result = await receive(deadline); }
+            catch (OperationCanceledException) { break; }
+            catch (SocketException error) when (error.SocketErrorCode == SocketError.ConnectionReset && !deadline.IsCancellationRequested) { continue; }
+            catch (SocketException) { break; }
+            catch (ObjectDisposedException) { break; }
+            if (HostFromSsdpResponse(Encoding.UTF8.GetString(result.Buffer), searchTarget) is { } host) hosts.Add(host);
         }
-        catch (OperationCanceledException) { }
         return hosts;
+    }
+
+    /// <summary>
+    /// Windows'ta UDP soketinin ICMP "port kapalı" yanıtlarını okuma hatasına çevirmesini kapatır (SIO_UDP_CONNRESET).
+    /// Başka sistemlerde bu davranış yoktur.
+    /// </summary>
+    private static void IgnoreUnreachableReplies(Socket socket)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        const int SioUdpConnReset = unchecked((int)0x9800000C);
+        try { socket.IOControl(SioUdpConnReset, [0, 0, 0, 0], null); }
+        catch (Exception error) when (error is SocketException or PlatformNotSupportedException or NotSupportedException) { }
     }
 
     /// <summary>TV'nin ağdaki adını (ör. "[LG] webOS TV UK7550") cihaz tanımından okur.</summary>
