@@ -260,6 +260,8 @@ public sealed record UserSettings
     /// <see cref="ScreenTextDetector"/>). Altyazı alanı Tam ekranken çalışmaz. Eski ayar dosyalarında yoktur; açık başlar.
     /// </summary>
     public bool AutoScreenText { get; init; } = true;
+    /// <summary>"Ekranı çevir" tuşuna basan kullanıcıya "artık kendiliğinden" bilgisi bir kez gösterildi.</summary>
+    public bool ScreenKeyNoticeShown { get; init; }
     /// <summary>
     /// Bilinen oyunlarda hazır ek alanlar (<see cref="Core.GameAreaPresets"/>; ör. GTA 6'nın yardım kutusu ve mesajları)
     /// kendiliğinden okunur. Kullanıcının kendi ek alanı varsa onunki kullanılır. Eski ayar dosyalarında yoktur; açık başlar.

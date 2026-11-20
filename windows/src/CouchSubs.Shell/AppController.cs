@@ -1382,6 +1382,28 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         }
     }
 
+    /// <summary>
+    /// Eski "Ekranı çevir" tuşu (Num 9 / Ctrl+Shift+9). Ekran yazıları kendiliğinden çevriliyor: otomatik çeviri açıkken
+    /// ilk basışta bir kez bunu söyler; sonraki basışlarda (ya da otomatik çeviri kapalıyken) onu açıp kapatır ve durumu
+    /// söyler. Bilgi altyazı gibi TV'de ve bilgisayar ekranında birkaç saniye görünür.
+    /// </summary>
+    public void ScreenKeyPressed()
+    {
+        var text = Localizer.Current;
+        string message;
+        if (settings.AutoScreenText && !settings.ScreenKeyNoticeShown)
+        {
+            Settings = settings with { ScreenKeyNoticeShown = true };
+            message = text["On-screen text is now translated automatically."];
+        }
+        else
+        {
+            Settings = settings with { AutoScreenText = !settings.AutoScreenText, ScreenKeyNoticeShown = true };
+            message = settings.AutoScreenText ? text["Automatic on-screen text translation is on."] : text["Automatic on-screen text translation is off."];
+        }
+        if (isRunning) server.SendSubtitle(message, 4000);
+    }
+
     /// <summary>Süren "ekranı çevir" işi; yeniden basılınca iptal edilir.</summary>
     private CancellationTokenSource? screenWork;
     /// <summary>TV'deki ekran çevirilerinin kalkacağı an; bu andan önce yeniden basmak onları kaldırır.</summary>

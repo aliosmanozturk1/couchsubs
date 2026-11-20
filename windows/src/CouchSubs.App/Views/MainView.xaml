@@ -168,12 +168,6 @@
                                         <TextBlock x:Name="EngineText" Style="{StaticResource InfoRowValue}" HorizontalAlignment="Right" Margin="12,0,0,0" />
                                     </DockPanel>
                                 </Button>
-                                <Border Style="{StaticResource InfoDivider}" />
-                                <DockPanel Style="{StaticResource InfoRow}">
-                                    <TextBlock Text="{t:T 'Translate screen'}" Style="{StaticResource InfoRowLabel}" />
-                                    <!-- Ayarlar › Kısayollar'da seçili tuşlar, her biri bir tuş; kısayol yoksa "kısayol yok" (ShowScreenKeys). -->
-                                    <StackPanel x:Name="ScreenKeys" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" />
-                                </DockPanel>
                             </StackPanel>
                         </c:Card>
                     </Grid>

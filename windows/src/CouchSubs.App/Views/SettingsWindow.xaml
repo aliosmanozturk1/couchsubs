@@ -495,9 +495,6 @@
                             <TextBlock x:Name="AreaHint" Style="{StaticResource HintText}" Margin="0,12,0,0" TextWrapping="Wrap" />
                         </StackPanel>
                     </c:Card>
-                    <c:Card x:Name="ScreenCard" Margin="0,12,0,0">
-                        <TextBlock x:Name="ScreenHint" Style="{StaticResource HintText}" TextWrapping="Wrap" />
-                    </c:Card>
                     <c:Card x:Name="FreeAreaCard" Margin="0,12,0,0">
                         <StackPanel>
                             <TextBlock x:Name="FreeAreaHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,12" />

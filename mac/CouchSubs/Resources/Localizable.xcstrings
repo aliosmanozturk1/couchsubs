@@ -14035,6 +14035,70 @@
         }
       }
     },
+    "On-screen text on or off": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On-screen text on or off"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran yazıları açık / kapalı"
+          }
+        }
+      }
+    },
+    "On-screen text is now translated automatically.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On-screen text is now translated automatically."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artık ekran yazıları kendiliğinden çevriliyor."
+          }
+        }
+      }
+    },
+    "Automatic on-screen text translation is on.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic on-screen text translation is on."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran yazılarının otomatik çevirisi açık."
+          }
+        }
+      }
+    },
+    "Automatic on-screen text translation is off.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic on-screen text translation is off."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran yazılarının otomatik çevirisi kapalı."
+          }
+        }
+      }
+    },
     "Use ready areas for known games": {
       "localizations": {
         "en": {

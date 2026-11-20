@@ -23,7 +23,10 @@ public enum HotkeyAction
     Snapshot,
     /// <summary>Num 0 / Ctrl+Shift+0: canlı altyazı çevirisini duraklat / sürdür.</summary>
     PauseSubtitles,
-    /// <summary>Num 9 / Ctrl+Shift+9: ekranın tamamını bir kez çevir; yeniden basınca çeviriler kalkar.</summary>
+    /// <summary>
+    /// Num 9 / Ctrl+Shift+9: eskiden "Ekranı çevir"di. Ekran yazıları artık kendiliğinden çevriliyor: ilk basışta bu bir
+    /// kez söylenir, sonra tuş otomatik ekran yazısı çevirisini açıp kapatır (bkz. AppController.ScreenKeyPressed).
+    /// </summary>
     Screen,
     /// <summary>Num 7 / Ctrl+Shift+7: bilgisayar ekranındaki altyazı penceresinde "Tıklamalar geçsin"i aç / kapat.</summary>
     ClickThrough,

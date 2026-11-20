@@ -1229,9 +1229,6 @@ public partial class SettingsWindow : Window
     {
         var settings = controller.Settings;
         RefreshButton.Content = HotkeyText.Title(settings, HotkeyAction.Snapshot, "Refresh picture (%@)");
-        ScreenCard.Title = HotkeyText.Title(settings, HotkeyAction.Screen, "Translate the screen (%@)");
-        ScreenHint.Text = HotkeyText.Sentence(settings, HotkeyAction.Screen,
-            "Press %@ while playing: every text on the screen is translated once and shown on the TV in its own place. Press again to remove the translations.");
         FreeAreaCard.Title = HotkeyText.Title(settings, HotkeyAction.FreeArea, "Free area (%@)");
         FreeAreaHint.Text = HotkeyText.Sentence(settings, HotkeyAction.FreeArea,
             "Press %@ while playing: the picture freezes on the PC, drag over any part of it to translate that part once. Esc closes.");

@@ -93,7 +93,7 @@ public partial class ShellWindow : Window
             case HotkeyAction.PauseSubtitles: controller.ToggleSubtitles(); break;
             case HotkeyAction.Snapshot: controller.RequestSnapshot(); break;
             case HotkeyAction.FreeArea: FreeAreaWindow.Open(controller); break;
-            case HotkeyAction.Screen: _ = controller.TranslateScreenAsync(); break;
+            case HotkeyAction.Screen: controller.ScreenKeyPressed(); break;
             case HotkeyAction.ClickThrough: controller.ToggleClickThrough(); break;
         }
     }

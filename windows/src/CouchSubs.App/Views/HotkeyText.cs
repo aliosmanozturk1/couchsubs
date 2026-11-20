@@ -33,7 +33,7 @@ internal static class HotkeyText
     /// <summary>Ayarlar › Kısayollar'daki satır adı.</summary>
     public static string Name(HotkeyAction action) => Localizer.Current[action switch
     {
-        HotkeyAction.Screen => "Translate the screen",
+        HotkeyAction.Screen => "On-screen text on or off",
         HotkeyAction.FreeArea => "Free area",
         HotkeyAction.ExtraRegion1 => "Translate area 1",
         HotkeyAction.ExtraRegion2 => "Translate area 2",
