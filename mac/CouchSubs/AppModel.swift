@@ -533,8 +533,6 @@ final class AppModel: ObservableObject {
     @Published private(set) var xboxSignedIn: Bool
     let xboxAuth: XboxAuth
     private let xboxTokenSink = XboxTokenSink()
-    /// Xbox (Beta) bu Mac'te açık mı. Arayüzü tamamlanana kadar gizli: `defaults write com.couchsubs.mac xboxBeta -bool YES`.
-    let xboxAvailable: Bool
     /// İkinci hesabın PS5 giriş şifresi Anahtarlık'ta kayıtlı.
     @Published private(set) var hasLoginPasscode: Bool
     @Published var tv: LGTV?
@@ -746,10 +744,8 @@ final class AppModel: ObservableObject {
         let tvKeySaved = store.load(String.self, for: StoreKey.tvKey) != nil
         let paired = tv != nil && tvKeySaved
         let loaded = defaults.data(forKey: StoreKey.settings).flatMap { try? JSONDecoder().decode(UserSettings.self, from: $0) } ?? UserSettings()
-        // Xbox (Beta): konsol türü, Microsoft jetonu ve seçilen Xbox. Bayrak kapalıyken kayıtlı tür yok sayılır.
-        xboxAvailable = defaults.bool(forKey: Self.xboxFlagKey)
-        let savedPlatform = defaults.string(forKey: XboxStoreKey.platform).flatMap(ConsolePlatform.init(rawValue:)) ?? .playstation
-        let platform = xboxAvailable ? savedPlatform : .playstation
+        // Xbox (Beta): konsol türü, Microsoft jetonu ve seçilen Xbox.
+        let platform = defaults.string(forKey: XboxStoreKey.platform).flatMap(ConsolePlatform.init(rawValue:)) ?? .playstation
         self.platform = platform
         let xboxConsole = store.load(XboxConsole.self, for: XboxStoreKey.console)
         let xboxToken = XboxUserToken.parse(store.load(String.self, for: XboxStoreKey.userToken))
@@ -1066,8 +1062,6 @@ final class AppModel: ObservableObject {
 
     // MARK: - Xbox (Beta)
 
-    static let xboxFlagKey = "xboxBeta"
-
     var isXbox: Bool { platform == .xbox }
 
     /// Sihirbazda gösterilen adımlar: Xbox'ta "İkinci hesap" yoktur.
@@ -1075,7 +1069,7 @@ final class AppModel: ObservableObject {
 
     /// Konsol türünü seçer (karşılama adımı ve Ayarlar › Konsol). Çeviri sürüyorsa yeni konsolla yeniden başlar.
     func choosePlatform(_ value: ConsolePlatform) {
-        guard value != platform, value == .playstation || xboxAvailable else { return }
+        guard value != platform else { return }
         let wasRunning = isRunning && !demoMode
         if wasRunning { stop(closingTVApp: false) }
         platform = value

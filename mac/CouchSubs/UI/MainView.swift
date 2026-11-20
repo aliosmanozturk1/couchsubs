@@ -121,6 +121,15 @@ struct MainControls: View {
                 if model.demoMode {
                     StatusTile(symbol: "play.rectangle", title: "Demo mode", value: model.ps5StatusText,
                                tone: AppModel.ps5Tone(model.sessionState, running: model.isRunning))
+                } else if model.isXbox {
+                    StatusTile(symbol: "gamecontroller", title: "Xbox · Beta", value: model.ps5StatusText,
+                               tone: AppModel.ps5Tone(model.sessionState, running: model.isRunning)) {
+                        // Microsoft girişi ya da Xbox seçimi eksikse buradan tamamlanır.
+                        if model.needsXboxLink {
+                            Button(model.xboxSignedIn ? "Choose your Xbox" : "Sign in with Microsoft") { model.linkXbox() }
+                                .buttonStyle(.secondary)
+                        }
+                    }
                 } else {
                     StatusTile(symbol: "gamecontroller", title: "PS5", value: model.ps5StatusText,
                                tone: AppModel.ps5Tone(model.sessionState, running: model.isRunning))
@@ -136,7 +145,12 @@ struct MainControls: View {
             // Ayar bilgisi durum karosu gibi değil, satır olarak durur (TASARIM.md › InfoCard).
             InfoCard {
                 // Görüntünün nereden okunduğu; dokununca Ayarlar › Görüntü kaynağı (DM'de ayar bulunamıyordu).
-                InfoRow("Picture source", value: pictureSourceName, action: { model.openSettings(.source) })
+                if model.isXbox {
+                    // Xbox'ta görüntü kaynağı seçimi yok (Windows'taki gibi gizli); konsol türü gösterilir.
+                    InfoRow("Console", value: String(localized: "Xbox Series / Xbox One (Beta)"), action: { model.openSettings(.console) })
+                } else {
+                    InfoRow("Picture source", value: pictureSourceName, action: { model.openSettings(.source) })
+                }
                 InfoDivider()
                 InfoRow("Translation", value: engineName, action: { model.openSettings(.translation) })
                 InfoDivider()

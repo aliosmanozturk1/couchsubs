@@ -57,9 +57,8 @@ final class XboxModelTests: XCTestCase {
     private let salon = XboxConsole(id: "F1", name: "Salon", model: "XboxSeriesX", streamingEnabled: true)
     private let storedToken = #"{"access_token":"A","refresh_token":"R","expires_on":"2099-01-01T00:00:00Z"}"#
 
-    private func defaults(flag: Bool = true, platform: ConsolePlatform? = nil) -> UserDefaults {
+    private func defaults(platform: ConsolePlatform? = nil) -> UserDefaults {
         let defaults = UserDefaults.isolated()
-        if flag { defaults.set(true, forKey: AppModel.xboxFlagKey) }
         if let platform { defaults.set(platform.rawValue, forKey: XboxStoreKey.platform) }
         return defaults
     }
@@ -76,17 +75,16 @@ final class XboxModelTests: XCTestCase {
 
     private func settle() async { try? await Task.sleep(for: .milliseconds(50)) }
 
-    func testXboxStaysHiddenWithoutTheFlag() {
-        let store = MemoryStore()
-        store.save(storedToken, for: XboxStoreKey.userToken)
-        store.save(salon, for: XboxStoreKey.console)
-        let model = AppModel(services: FakeServices(), store: store, defaults: defaults(flag: false, platform: .xbox))
-        XCTAssertFalse(model.xboxAvailable)
-        XCTAssertFalse(model.isXbox)
-        XCTAssertEqual(model.step, .welcome)
-        model.choosePlatform(.xbox)
+    func testPlayStationIsTheDefaultAndTheChoiceIsRemembered() {
+        let userDefaults = defaults()
+        let model = AppModel(services: FakeServices(), store: MemoryStore(), defaults: userDefaults)
         XCTAssertFalse(model.isXbox)
         XCTAssertEqual(model.wizardSteps.count, AppModel.Step.allCases.count - 1)
+        XCTAssertEqual(model.wizardSteps[1], .secondAccount)
+        model.choosePlatform(.xbox)
+        XCTAssertTrue(model.isXbox)
+        XCTAssertEqual(model.wizardSteps[1], .psnLogin)
+        XCTAssertTrue(AppModel(services: FakeServices(), store: MemoryStore(), defaults: userDefaults).isXbox)
     }
 
     func testWizardSkipsSecondAccountAndSignsInWithDeviceCode() async throws {

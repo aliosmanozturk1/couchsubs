@@ -17,8 +17,8 @@ struct OnboardingView: View {
                             switch model.step {
                             case .welcome: WelcomeStep()
                             case .secondAccount: SecondAccountStep()
-                            case .psnLogin: PSNLoginStep()
-                            case .console: ConsoleStep()
+                            case .psnLogin: if model.isXbox { XboxLoginStep() } else { PSNLoginStep() }
+                            case .console: if model.isXbox { XboxConsoleStep() } else { ConsoleStep() }
                             case .tv: TVStep()
                             case .test: TestStep()
                             case .betterTranslation, .done: BetterTranslationStep()
@@ -78,10 +78,12 @@ private struct StepButtons: View {
 private struct StepSidebar: View {
     @EnvironmentObject private var model: AppModel
 
-    private var steps: [AppModel.Step] { AppModel.Step.allCases.filter { $0 != .done } }
+    /// Xbox'ta "İkinci hesap" adımı yoktur; numaralar listedeki sıraya göredir.
+    private var steps: [AppModel.Step] { model.wizardSteps }
 
     var body: some View {
         let total = steps.count
+        let position = min((steps.firstIndex(of: model.step) ?? total - 1) + 1, total)
         VStack(alignment: .leading, spacing: Theme.space("xs")) {
             HStack(spacing: Theme.space("m")) {
                 LogoView(size: 32)
@@ -89,15 +91,15 @@ private struct StepSidebar: View {
             }
             .padding(.horizontal, Theme.space("s"))
             .padding(.bottom, Theme.space("m"))
-            ForEach(steps, id: \.self) { step in
-                StepRow(step: step, current: model.step)
+            ForEach(Array(steps.enumerated()), id: \.element) { index, step in
+                StepRow(step: step, current: model.step, number: index + 1, xbox: model.isXbox)
             }
             Spacer(minLength: Theme.space("l"))
-            Text(String(format: String(localized: "Step %lld of %lld"), min(model.step.rawValue + 1, total), total))
+            Text(String(format: String(localized: "Step %lld of %lld"), position, total))
                 .font(.csCaption.monospacedDigit())
                 .foregroundStyle(Color.csSecondary)
                 .padding(.horizontal, Theme.space("s"))
-            ProgressBar(value: Double(model.step.rawValue + 1) / Double(total))
+            ProgressBar(value: Double(position) / Double(total))
                 .padding(.horizontal, Theme.space("s"))
                 .padding(.top, Theme.space("xs"))
         }
@@ -110,6 +112,9 @@ private struct StepSidebar: View {
 private struct StepRow: View {
     let step: AppModel.Step
     let current: AppModel.Step
+    /// Listedeki sıra (1'den).
+    let number: Int
+    var xbox = false
 
     private var isDone: Bool { step.rawValue < current.rawValue }
     private var isCurrent: Bool { step == current }
@@ -117,7 +122,7 @@ private struct StepRow: View {
     var body: some View {
         HStack(spacing: Theme.space("m")) {
             marker
-            Text(Self.title(step))
+            Text(Self.title(step, xbox: xbox))
                 .font(isCurrent ? .csBody.weight(.semibold) : .csBody)
                 .foregroundStyle(isCurrent || isDone ? Color.csText : Color.csSecondary)
                 .lineLimit(2)
@@ -141,7 +146,7 @@ private struct StepRow: View {
                 .frame(width: size, height: size)
                 .background(Circle().fill(Color.csSuccess))
         } else {
-            Text("\(step.rawValue + 1)")
+            Text("\(number)")
                 .font(.csCaption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(isCurrent ? Color.csOnAccent : Color.csSecondary)
                 .frame(width: size, height: size)
@@ -150,12 +155,12 @@ private struct StepRow: View {
     }
 
     /// Adımın kendi başlığı (adım ekranındaki StepLayout başlığıyla aynı).
-    static func title(_ step: AppModel.Step) -> LocalizedStringKey {
+    static func title(_ step: AppModel.Step, xbox: Bool = false) -> LocalizedStringKey {
         switch step {
         case .welcome: "Welcome to CouchSubs"
         case .secondAccount: "A second PSN account"
-        case .psnLogin: "Sign in with the second account"
-        case .console: "Connect your PS5"
+        case .psnLogin: xbox ? "Sign in to Xbox" : "Sign in with the second account"
+        case .console: xbox ? "Choose your Xbox" : "Connect your PS5"
         case .tv: "Connect your TV"
         case .test: "Let's test it"
         case .betterTranslation, .done: "Better translation (free)"

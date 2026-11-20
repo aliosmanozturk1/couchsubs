@@ -159,11 +159,11 @@ Text recognition (Vision) and translation (Translation framework) are provided b
 | Component | License | Source |
 |---|---|---|
 | WebRTC for Android (`io.github.webrtc-sdk:android`, Google libwebrtc build) | BSD-3-Clause with WebRTC patent grant | https://github.com/webrtc-sdk/webrtc |
-| WebRTC for iOS (`stasel/WebRTC`, Google libwebrtc build) | BSD-3-Clause with WebRTC patent grant | https://github.com/stasel/WebRTC |
+| WebRTC for iOS and macOS (`stasel/WebRTC`, Google libwebrtc build) | BSD-3-Clause with WebRTC patent grant | https://github.com/stasel/WebRTC |
 | Protocol constants and sequence from xal-node, xbox-webapi, xbox-xcloud-player and Greenlight (ported to Kotlin and Swift) | MIT | https://github.com/unknownskl |
 
-The Android and iPhone apps do not bundle the Node.js helper or the JavaScript player. They send the same requests as
-the Windows helper and open WebRTC with the platform library; H.264 is decoded by the phone's hardware decoder. The MIT
+The Android, iPhone and Mac apps do not bundle the Node.js helper or the JavaScript player. They send the same requests
+as the Windows helper and open WebRTC with the platform library; H.264 is decoded by the device's hardware decoder. The MIT
 notices for the ported projects are in `windows/xbox-bridge/licenses/`.
 
 ## Trademarks

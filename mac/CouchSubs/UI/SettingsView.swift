@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 
 /// Ayarların bölümleri; solda kenar çubuğunda listelenir, sağda seçili olan gösterilir.
 enum SettingsSection: CaseIterable, Identifiable {
-    case appearance, dubbing, translation, packs, language, area, obs, source, ps5, about
+    case appearance, dubbing, translation, packs, language, area, obs, console, source, ps5, about
 
     var id: Self { self }
 
@@ -19,6 +19,7 @@ enum SettingsSection: CaseIterable, Identifiable {
         case .language: "Language"
         case .area: "Subtitle area"
         case .obs: "OBS overlay"
+        case .console: "Console"
         case .source: "Picture source"
         case .ps5: "PS5 login passcode"
         case .about: "About CouchSubs"
@@ -34,6 +35,7 @@ enum SettingsSection: CaseIterable, Identifiable {
         case .language: "character.bubble"
         case .area: "rectangle.dashed"
         case .obs: "dot.radiowaves.left.and.right"
+        case .console: "gamecontroller"
         case .source: "rectangle.on.rectangle"
         case .ps5: "lock"
         case .about: "info.circle"
@@ -123,6 +125,7 @@ struct SidebarRow: View {
 
 /// Seçili bölümün başlığı ve karoları.
 private struct SettingsPage: View {
+    @EnvironmentObject private var model: AppModel
     let section: SettingsSection
 
     var body: some View {
@@ -141,8 +144,10 @@ private struct SettingsPage: View {
             case .language: LanguageCard()
             case .area: AreaCards()
             case .obs: OBSCard()
+            case .console: ConsoleSettingsCard()
             case .source:
-                FrameSourceCard()
+                // Xbox'ta (Beta) görüntü hep Xbox'ın ev yayınından gelir; kaynak seçimi yerine oyun sesi ayarı durur.
+                if model.isXbox { XboxSoundCard() } else { FrameSourceCard() }
                 DemoModeCard()
             case .ps5: LoginPasscodeCard()
             case .about:
