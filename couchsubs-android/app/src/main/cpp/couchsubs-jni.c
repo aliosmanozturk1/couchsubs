@@ -411,7 +411,8 @@ JNIEXPORT void JNICALL JNI_FCN(register)(JNIEnv *env, jclass cls, jstring host_s
 
 /* Kotlin'deki StreamSession.Native ile aynı değerler. */
 enum { CS_EVENT_CONNECTED = 1, CS_EVENT_LOGIN_PIN = 2, CS_EVENT_QUIT = 3 };
-enum { CS_QUIT_STOPPED = 1, CS_QUIT_IN_USE = 2, CS_QUIT_REFUSED = 3, CS_QUIT_NETWORK = 4, CS_QUIT_OTHER = 5 };
+/* CS_QUIT_RP_CRASHED: PS5'teki Uzaktan Oynatma çöktü (CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH, GitHub #519). */
+enum { CS_QUIT_STOPPED = 1, CS_QUIT_IN_USE = 2, CS_QUIT_REFUSED = 3, CS_QUIT_NETWORK = 4, CS_QUIT_OTHER = 5, CS_QUIT_RP_CRASHED = 6 };
 
 typedef struct {
 	ChiakiSession session;
@@ -439,6 +440,8 @@ static int cs_quit_reason(ChiakiQuitReason reason)
 		case CHIAKI_QUIT_REASON_CTRL_CONNECT_FAILED:
 		case CHIAKI_QUIT_REASON_STREAM_CONNECTION_UNKNOWN:
 			return CS_QUIT_NETWORK;
+		case CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH:
+			return CS_QUIT_RP_CRASHED;
 		default:
 			return CS_QUIT_OTHER;
 	}

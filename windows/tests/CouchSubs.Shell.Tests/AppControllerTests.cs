@@ -1705,6 +1705,11 @@ public class AppControllerRunTests
             AppController.StatusText(SessionState.Disconnected(DisconnectKind.Rejected, ApplicationReasons.RemotePlayDisabled), true, Localizer.ForLanguage("tr")));
         Assert.Equal("The PS5 didn't accept this pairing. Pair the PS5 again with the second account in Settings.",
             AppController.StatusText(SessionState.Disconnected(DisconnectKind.RegistrationInvalid), true, text));
+        // GitHub #519: İngilizce "Remote Play on Console has crashed" yerine yerelleştirilmiş yönlendirme.
+        Assert.Equal("Remote Play on the PS5 has crashed. Turn the PS5 off completely (not rest mode) and back on, then connect again.",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.ConsoleRemotePlayCrashed), true, text));
+        Assert.Equal("PS5'teki Uzaktan Oynatma çöktü. PS5'i tamamen kapatıp (bekleme modu değil) açın, sonra yeniden bağlanın.",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.ConsoleRemotePlayCrashed), true, Localizer.ForLanguage("tr")));
         Assert.Equal("PS5 not found at 192.168.1.70. Make sure it is on and on the same network. Reconnecting…",
             AppController.StatusText(SessionState.Disconnected(DisconnectKind.NotFound, "192.168.1.70"), true, text));
         Assert.Equal("Reconnecting… (Session Request RP Version Mismatch)",

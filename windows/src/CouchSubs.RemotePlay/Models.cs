@@ -55,6 +55,11 @@ public enum DisconnectKind
     /// "Unknown Session Request Error" diye verir (GitHub #33, #202). Ayrıntı: PS5'in "Reported Application Reason" kodu
     /// (ör. 0x80108bff; günlükte kod yoksa null).</summary>
     Rejected,
+    /// <summary>PS5'teki Uzaktan Oynatma çöktü (libchiaki CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH, "Remote Play on Console
+    /// has crashed"). PS5 tamamen kapatılıp açılana kadar her oturum isteği aynı yanıtı alır; eskiden İngilizce metinle
+    /// sonsuza kadar "Yeniden bağlanılıyor…" deneniyordu (GitHub #519). <see cref="CrashRetryLimit.MaxRetries"/> denemeden
+    /// sonra durulur.</summary>
+    ConsoleRemotePlayCrashed,
 }
 
 /// <summary>PS5 oturum giriş şifresi (4 hane). PS5 ikinci hesapta şifre isterse Ayarlar'da kayıtlı şifre gönderilir.</summary>

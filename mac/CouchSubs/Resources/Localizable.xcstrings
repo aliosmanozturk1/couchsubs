@@ -4222,6 +4222,22 @@
         }
       }
     },
+    "Remote Play on the PS5 has crashed. Turn the PS5 off completely (not rest mode) and back on, then connect again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote Play on the PS5 has crashed. Turn the PS5 off completely (not rest mode) and back on, then connect again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PS5'teki Uzaktan Oynatma çöktü. PS5'i tamamen kapatıp (bekleme modu değil) açın, sonra yeniden bağlanın."
+          }
+        }
+      }
+    },
     "The PS5 didn't accept this pairing. Pair the PS5 again with the second account in Settings.": {
       "localizations": {
         "en": {

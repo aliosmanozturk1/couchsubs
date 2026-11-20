@@ -295,6 +295,17 @@ final class DisconnectReasonTests: XCTestCase {
         XCTAssertEqual(DisconnectReason(quit: CHIAKI_QUIT_REASON_STREAM_CONNECTION_REMOTE_DISCONNECTED), .network)
     }
 
+    /// GitHub #519: PS5'teki Uzaktan Oynatma çöktüyse İngilizce libchiaki metni (.other) değil, ayrı bir neden.
+    func testConsoleRemotePlayCrashIsItsOwnReason() {
+        XCTAssertEqual(DisconnectReason(quit: CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH), .consoleRemotePlayCrashed)
+        XCTAssertEqual(DisconnectReason(quit: CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH, sessionRequestHint: .rejected(0x80108b10)),
+                       .consoleRemotePlayCrashed)
+        // PS5 aramaya yanıt vermese de "bulunamadı" sayılmaz; 720p'ye düşürme nedeni de değildir.
+        XCTAssertEqual(DisconnectReason.classify(.consoleRemotePlayCrashed, searchAnswered: false, host: "192.168.1.70"),
+                       .consoleRemotePlayCrashed)
+        XCTAssertFalse(QualityFallback.countsAsDrop(.consoleRemotePlayCrashed))
+    }
+
     /// "Unknown Session Request Error"ın asıl nedeni libchiaki'nin günlük satırındadır (satırlar session.c'deki gibi).
     func testSessionRequestLogLinesAreClassified() {
         XCTAssertEqual(DisconnectReason.sessionRequestHint(fromLog: "Reported Application Reason: 0x80108b09 (Regist failed, probably invalid PIN)"),
@@ -408,5 +419,27 @@ final class WakePolicyTests: XCTestCase {
         policy.streamed()
         policy.reset()
         XCTAssertEqual(policy.action(awake: false), .wake)
+    }
+}
+
+final class CrashRetryLimitTests: XCTestCase {
+    /// GitHub #519: PS5 çöktü dedikçe sonsuza kadar "Yeniden bağlanılıyor…" yerine iki denemeden sonra durulur.
+    func testStopsAfterTwoRetries() {
+        var limit = CrashRetryLimit()
+        XCTAssertEqual(CrashRetryLimit.maxRetries, 2)
+        XCTAssertTrue(limit.crashed())
+        XCTAssertTrue(limit.crashed())
+        XCTAssertFalse(limit.crashed())
+        XCTAssertFalse(limit.crashed())
+        XCTAssertEqual(limit.crashes, 4)
+    }
+
+    /// Çeviri yeniden başlatılınca, ağ değişince ya da bağlanınca sayaç baştan.
+    func testResetAllowsRetriesAgain() {
+        var limit = CrashRetryLimit()
+        for _ in 0...CrashRetryLimit.maxRetries { _ = limit.crashed() }
+        limit.reset()
+        XCTAssertEqual(limit.crashes, 0)
+        XCTAssertTrue(limit.crashed())
     }
 }

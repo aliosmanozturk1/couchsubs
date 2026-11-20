@@ -87,6 +87,26 @@ struct WakePolicy {
     }
 }
 
+/// PS5'teki Uzaktan Oynatma çöktüyse (`DisconnectReason.consoleRemotePlayCrashed`) kaç kez yeniden denenir (Windows ve
+/// Android'deki CrashRetryLimit ile aynı kural).
+///
+/// PS5 tamamen kapatılıp açılmadan her oturum isteği aynı yanıtı alır; eskiden sonsuza kadar "Yeniden bağlanılıyor…"
+/// deneniyordu (GitHub #519). Art arda `maxRetries` denemeden sonra durulur ve kullanıcıya PS5'i tamamen kapatıp açması
+/// söylenir. Sayaç çeviri başlayınca, ağ değişince ve bağlanınca sıfırlanır.
+struct CrashRetryLimit {
+    static let maxRetries = 2
+    /// Art arda bildirilen çökme sayısı.
+    private(set) var crashes = 0
+
+    mutating func reset() { crashes = 0 }
+
+    /// PS5 çöktü dedi: yeniden denenecekse true, durulacaksa false.
+    mutating func crashed() -> Bool {
+        crashes += 1
+        return crashes <= Self.maxRetries
+    }
+}
+
 /// Bağlantı sık kopuyorsa görüntü 720p'ye düşürülür (Windows ve Android'deki QualityFallback ile aynı kural).
 ///
 /// 1080p akış ~15 Mbit/sn, 720p ~10 Mbit/sn ister. Kablosuz ağda PS5 akışı birkaç dakikada bir kopuyor ya da görüntü
@@ -214,6 +234,10 @@ public enum DisconnectReason: Equatable, Sendable {
     /// "Unknown Session Request Error" diye verir (GitHub #33, #202). Değer: PS5'in "Reported Application Reason" kodu
     /// (libchiaki'nin tanımadığı kodlar, ör. 0x80108bff; günlükte kod yoksa nil).
     case rejected(UInt32?)
+    /// PS5'teki Uzaktan Oynatma çöktü (CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH, "Remote Play on Console has crashed").
+    /// PS5 tamamen kapatılıp açılana kadar her oturum isteği aynı yanıtı alır; eskiden İngilizce metinle sonsuza kadar
+    /// "Yeniden bağlanılıyor…" deneniyordu (GitHub #519). `CrashRetryLimit.maxRetries` denemeden sonra durulur.
+    case consoleRemotePlayCrashed
     case other(String)
 
     /// Oturum ağ hatasıyla düştüyse ve PS5 aramaya da yanıt vermediyse neden "bulunamadı"dır (eskiden yalnız
@@ -272,6 +296,7 @@ public enum DisconnectReason: Equatable, Sendable {
              CHIAKI_QUIT_REASON_PSN_REGIST_FAILED: self = .refused
         case CHIAKI_QUIT_REASON_STREAM_CONNECTION_REMOTE_DISCONNECTED, CHIAKI_QUIT_REASON_STREAM_CONNECTION_REMOTE_SHUTDOWN,
              CHIAKI_QUIT_REASON_CTRL_CONNECT_FAILED, CHIAKI_QUIT_REASON_STREAM_CONNECTION_UNKNOWN: self = .network
+        case CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH: self = .consoleRemotePlayCrashed
         default: self = .other(String(cString: chiaki_quit_reason_string(quit)))
         }
     }
@@ -432,6 +457,8 @@ public final class StreamSession: @unchecked Sendable {
     /// Bağlıyken görüntü gelmezse oturum yeniden kurulur. Kare çözme kuyruğundan da yazılır; `watchLock` ile korunur.
     private var watchdog = PictureWatchdog()
     private let watchLock = NSLock()
+    /// PS5'teki Uzaktan Oynatma çöktüyse en çok iki kez yeniden denenir (yalnız `queue`).
+    private var crashLimit = CrashRetryLimit()
 
     /// Durdurma isteği ve kuşak numarası; her başlat/durdur yeni bir kuşak açar ve eski
     /// bloklar (yeniden deneme, eski oturumun kapanma olayı) kendini iptal eder.
@@ -455,6 +482,7 @@ public final class StreamSession: @unchecked Sendable {
         queue.async { [weak self] in
             self?.policy.reset()
             self?.wakePolicy.reset()
+            self?.crashLimit.reset()
             self?.watch { $0.reset() }
             self?.connect(current)
         }
@@ -474,6 +502,7 @@ public final class StreamSession: @unchecked Sendable {
             guard let self else { return }
             self.closeBox()
             self.policy.reset()
+            self.crashLimit.reset()
             self.watch { $0.reset() }
             self.connect(current)
         }
@@ -635,6 +664,7 @@ public final class StreamSession: @unchecked Sendable {
                 guard let self, self.box?.generation == eventGeneration else { return }
                 self.policy.connected()
                 self.wakePolicy.streamed()
+                self.crashLimit.reset()
                 self.streaming = true
                 self.watch { $0.connected() }
                 self.emit(.streaming)
@@ -671,6 +701,16 @@ public final class StreamSession: @unchecked Sendable {
                     // Kayıt geçersiz: yeniden denemek aynı yere çıkar (eskiden sonsuza kadar "Yeniden bağlanılıyor…").
                     _ = self.bump(running: false)
                     return self.emit(.disconnected(.registrationInvalid))
+                }
+                if reason == .consoleRemotePlayCrashed {
+                    let retry = self.crashLimit.crashed()
+                    RemotePlayLog.write("PS5'teki Uzaktan Oynatma çöktü (art arda \(self.crashLimit.crashes)); "
+                        + (retry ? "yeniden deneniyor" : "yeniden bağlanma bırakıldı, PS5 tamamen kapatılıp açılmalı"))
+                    if !retry {
+                        // PS5 kapatılıp açılmadan her deneme aynı yanıtı alır (eskiden sonsuz "Yeniden bağlanılıyor…").
+                        _ = self.bump(running: false)
+                        return self.emit(.disconnected(reason))
+                    }
                 }
                 self.scheduleReconnect(eventGeneration, reason: reason)
             }

@@ -25,6 +25,7 @@
     <string name="phase_rejected_code">The PS5 rejected the connection (code %1$s). Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again.</string>
     <string name="phase_rejected">The PS5 didn\'t start the session. Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again.</string>
     <string name="phase_registration_invalid">The PS5 didn\'t accept this pairing. Pair the PS5 again with the second account in Settings.</string>
+    <string name="phase_console_rp_crashed">Remote Play on the PS5 has crashed. Turn the PS5 off completely (not rest mode) and back on, then connect again.</string>
     <string name="phase_no_picture">No picture from the PS5. Is Remote Play turned off, or is the PS5 in rest mode? Check, then start translating again.</string>
     <string name="phase_not_found">PS5 not found on the network. Are the phone and PS5 on the same network?</string>
     <string name="phase_asleep">PS5 did not wake from rest mode.</string>

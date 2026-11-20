@@ -1761,6 +1761,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             // Eskiden "Yeniden bağlanılıyor… (Unknown Session Request Error)" görünüyordu (GitHub #33, #202).
             DisconnectKind.Rejected when !string.IsNullOrEmpty(detail) => text.Format("The PS5 rejected the connection (code %@). Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again.", detail),
             DisconnectKind.Rejected => text["The PS5 didn't start the session. Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again."],
+            // Eskiden İngilizce "Remote Play on Console has crashed" ile sonsuza kadar "Yeniden bağlanılıyor…" (GitHub #519).
+            DisconnectKind.ConsoleRemotePlayCrashed => text["Remote Play on the PS5 has crashed. Turn the PS5 off completely (not rest mode) and back on, then connect again."],
             DisconnectKind.Other when !string.IsNullOrEmpty(detail) => text.Format("Reconnecting… (%@)", detail),
             _ => text["Reconnecting…"],
         };
@@ -2397,6 +2399,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 SessionPhase.Streaming => $"{ConsoleTitle}: bağlandı",
                 _ => $"{ConsoleTitle}: bağlantı yok",
             });
+        // PS5'in kendi tarafındaki çökme ayrıca yazılır: kullanıcının günlüğünde nedeni görünsün (GitHub #519).
+        if (state.Reason?.Kind == DisconnectKind.ConsoleRemotePlayCrashed && SessionState.Reason?.Kind != DisconnectKind.ConsoleRemotePlayCrashed)
+            SubtitleLog.Write("PS5: Uzaktan Oynatma PS5'te çöktü (Remote Play on Console has crashed); PS5 tamamen kapatılıp açılmalı");
         SessionState = state;
         UpdateTroubleClocks();
         if (!IsXbox) UpdateGameProbe(state.Phase == SessionPhase.Streaming);
@@ -2670,7 +2675,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         var now = Clock();
         var ps5Trouble = !IsXbox && isRunning && sessionState.Phase != SessionPhase.Streaming && sessionState.Reason?.Kind is not
             (DisconnectKind.ConsoleAsleep or DisconnectKind.InUse or DisconnectKind.Refused or DisconnectKind.LoginPasscode
-             or DisconnectKind.LoginPasscodeIncorrect or DisconnectKind.RegistrationInvalid or DisconnectKind.Rejected);
+             or DisconnectKind.LoginPasscodeIncorrect or DisconnectKind.RegistrationInvalid or DisconnectKind.Rejected
+             or DisconnectKind.ConsoleRemotePlayCrashed);
         ps5TroubleSince = ps5Trouble ? ps5TroubleSince ?? now : null;
         // Altyazı TV'ye gitmiyorsa ya da TV yoksa TV beklenmez.
         tvWaitingSince = isRunning && ShowsOnTv && HasTv && tvClients == 0 ? tvWaitingSince ?? now : null;

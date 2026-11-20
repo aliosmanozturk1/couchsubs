@@ -63,4 +63,33 @@ class ReconnectTest {
         assertEquals(SessionState.Disconnected(DisconnectKind.REJECTED, DisconnectKind.REMOTE_PLAY_DISABLED),
             DisconnectKind.sessionRequestHint("Reported Application Reason: 0x80108b12 (unknown)"))
     }
+
+    /** GitHub #519: PS5'teki Uzaktan Oynatma çöktüyse İngilizce libchiaki metni (OTHER) değil, ayrı bir neden. */
+    @Test
+    fun consoleRemotePlayCrashIsItsOwnKind() {
+        assertEquals(DisconnectKind.CONSOLE_RP_CRASHED, DisconnectKind.fromNative(NativeBridge.QUIT_RP_CRASHED))
+        assertEquals(DisconnectKind.STOPPED, DisconnectKind.fromNative(NativeBridge.QUIT_STOPPED))
+        assertEquals(DisconnectKind.IN_USE, DisconnectKind.fromNative(NativeBridge.QUIT_IN_USE))
+        assertEquals(DisconnectKind.REFUSED, DisconnectKind.fromNative(NativeBridge.QUIT_REFUSED))
+        assertEquals(DisconnectKind.NETWORK, DisconnectKind.fromNative(NativeBridge.QUIT_NETWORK))
+        assertEquals(DisconnectKind.OTHER, DisconnectKind.fromNative(NativeBridge.QUIT_OTHER))
+        // 720p'ye düşürme nedeni değildir.
+        assertFalse(QualityFallback.countsAsDrop(DisconnectKind.CONSOLE_RP_CRASHED))
+    }
+
+    /** GitHub #519: PS5 çöktü dedikçe sonsuza kadar yeniden bağlanmak yerine iki denemeden sonra durulur. */
+    @Test
+    fun consoleRemotePlayCrashStopsAfterTwoRetries() {
+        val limit = CrashRetryLimit()
+        assertEquals(2, CrashRetryLimit.MAX_RETRIES)
+        assertTrue(limit.crashed())
+        assertTrue(limit.crashed())
+        assertFalse(limit.crashed())
+        assertFalse(limit.crashed())
+        assertEquals(4, limit.crashes)
+        // Çeviri yeniden başlatılınca, ağ değişince ya da bağlanınca sayaç baştan.
+        limit.reset()
+        assertEquals(0, limit.crashes)
+        assertTrue(limit.crashed())
+    }
 }

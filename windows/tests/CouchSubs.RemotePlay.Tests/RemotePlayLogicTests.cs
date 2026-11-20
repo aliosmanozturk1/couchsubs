@@ -159,6 +159,7 @@ public class QualityFallbackTests
     [InlineData(DisconnectKind.InUse, false)]
     [InlineData(DisconnectKind.Rejected, false)]
     [InlineData(DisconnectKind.RegistrationInvalid, false)]
+    [InlineData(DisconnectKind.ConsoleRemotePlayCrashed, false)]
     [InlineData(DisconnectKind.Stopped, false)]
     public void OnlyNetworkLikeDropsCount(DisconnectKind kind, bool counts) => Assert.Equal(counts, QualityFallback.CountsAsDrop(kind));
 }
@@ -277,6 +278,19 @@ public class DisconnectReasonTests
         Assert.Equal(new DisconnectReason(DisconnectKind.Network), DisconnectReasons.FromNative(NativeMethods.QuitNetwork, null));
         Assert.Equal(new DisconnectReason(DisconnectKind.Other, "Version Mismatch"),
                      DisconnectReasons.FromNative(NativeMethods.QuitOther, "Version Mismatch"));
+    }
+
+    /// <summary>GitHub #519: PS5'teki Uzaktan Oynatma çöktüyse İngilizce libchiaki metni değil, ayrı bir neden.</summary>
+    [Fact]
+    public void ConsoleRemotePlayCrashIsItsOwnKind()
+    {
+        Assert.Equal(new DisconnectReason(DisconnectKind.ConsoleRemotePlayCrashed),
+                     DisconnectReasons.FromNative(NativeMethods.QuitRpCrashed, "Remote Play on Console has crashed"));
+        Assert.Equal(new DisconnectReason(DisconnectKind.ConsoleRemotePlayCrashed),
+                     DisconnectReasons.FromNative(NativeMethods.QuitRpCrashed, null, new DisconnectReason(DisconnectKind.Rejected, "0x80108b10")));
+        // Ağ bulunamadı sayılmaz: PS5 aramaya yanıt vermese de neden çökmedir.
+        Assert.Equal(DisconnectKind.ConsoleRemotePlayCrashed,
+                     StreamSession.Classify(new DisconnectReason(DisconnectKind.ConsoleRemotePlayCrashed), searchAnswered: false, "192.168.1.70").Kind);
     }
 
     /// "Unknown Session Request Error"ın asıl nedeni libchiaki'nin günlük satırındadır (satırlar session.c'deki gibi).
@@ -450,5 +464,34 @@ public class NativeHelperTests
         var bytes = "PS5-123\0garbage"u8.ToArray();
         fixed (byte* pointer = bytes)
             Assert.Equal("PS5-123", NativeMethods.FixedString(pointer, bytes.Length));
+    }
+}
+
+public class CrashRetryLimitTests
+{
+    /// <summary>GitHub #519: PS5 çöktü dedikçe sonsuza kadar "Yeniden bağlanılıyor…" yerine iki denemeden sonra durulur.</summary>
+    [Fact]
+    public void StopsAfterTwoRetries()
+    {
+        var limit = new CrashRetryLimit();
+        Assert.Equal(2, CrashRetryLimit.MaxRetries);
+        Assert.True(limit.Crashed());
+        Assert.True(limit.Crashed());
+        Assert.False(limit.Crashed());
+        Assert.False(limit.Crashed());
+        Assert.Equal(4, limit.Crashes);
+    }
+
+    /// <summary>Çeviri yeniden başlatılınca, ağ değişince ya da bağlanınca sayaç baştan.</summary>
+    [Fact]
+    public void ResetAllowsRetriesAgain()
+    {
+        var limit = new CrashRetryLimit();
+        limit.Crashed();
+        limit.Crashed();
+        limit.Crashed();
+        limit.Reset();
+        Assert.Equal(0, limit.Crashes);
+        Assert.True(limit.Crashed());
     }
 }

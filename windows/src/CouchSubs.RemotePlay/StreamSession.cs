@@ -75,6 +75,26 @@ internal sealed class ReconnectPolicy
 }
 
 /// <summary>
+/// PS5'teki Uzaktan Oynatma çöktüyse (<see cref="DisconnectKind.ConsoleRemotePlayCrashed"/>) kaç kez yeniden denenir
+/// (Mac/iPhone ve Android'deki CrashRetryLimit ile aynı kural). PS5 tamamen kapatılıp açılmadan her oturum isteği aynı
+/// yanıtı alır; eskiden sonsuza kadar "Yeniden bağlanılıyor…" deneniyordu (GitHub #519). Art arda
+/// <see cref="MaxRetries"/> denemeden sonra durulur ve kullanıcıya PS5'i tamamen kapatıp açması söylenir. Sayaç çeviri
+/// başlayınca, ağ değişince ve bağlanınca sıfırlanır.
+/// </summary>
+internal sealed class CrashRetryLimit
+{
+    public const int MaxRetries = 2;
+
+    /// <summary>Art arda bildirilen çökme sayısı.</summary>
+    public int Crashes { get; private set; }
+
+    public void Reset() => Crashes = 0;
+
+    /// <summary>PS5 çöktü dedi: yeniden denenecekse true, durulacaksa false.</summary>
+    public bool Crashed() => ++Crashes <= MaxRetries;
+}
+
+/// <summary>
 /// Bağlantı sık kopuyorsa görüntü 720p'ye düşürülür (Mac ve Android'deki QualityFallback ile aynı kural).
 /// 1080p akış ~15 Mbit/sn, 720p ~10 Mbit/sn ister. Kablosuz ağda PS5 akışı birkaç dakikada bir kopuyor ya da görüntü
 /// takılıyordu (GitHub #388, #401); altyazı okumak için 720p yeterlidir. <see cref="Window"/> içinde
@@ -163,6 +183,7 @@ internal static class DisconnectReasons
         NativeMethods.QuitInUse => new(DisconnectKind.InUse),
         NativeMethods.QuitRefused => new(DisconnectKind.Refused),
         NativeMethods.QuitNetwork => new(DisconnectKind.Network),
+        NativeMethods.QuitRpCrashed => new(DisconnectKind.ConsoleRemotePlayCrashed),
         _ => new(DisconnectKind.Other, text),
     };
 
@@ -281,6 +302,8 @@ public sealed class StreamSession : IStreamSession
     private bool streaming;
     /// <summary>Bağlıyken görüntü gelmezse oturum yeniden kurulur (kare iş parçacığından da yazılır, kendi kilidi var).</summary>
     private readonly PictureWatchdog watchdog = new();
+    /// <summary>PS5'teki Uzaktan Oynatma çöktüyse en çok iki kez yeniden denenir (yalnız kuyrukta).</summary>
+    private readonly CrashRetryLimit crashLimit = new();
     /// <summary>Yalnız kuyrukta okunup yazılır.</summary>
     private SessionBox? box;
 
@@ -307,6 +330,7 @@ public sealed class StreamSession : IStreamSession
         {
             policy.Reset();
             wakePolicy.Reset();
+            crashLimit.Reset();
             Connect(current);
         });
     }
@@ -327,6 +351,7 @@ public sealed class StreamSession : IStreamSession
         {
             CloseBox();
             policy.Reset();
+            crashLimit.Reset();
             Connect(current);
         });
     }
@@ -478,6 +503,7 @@ public sealed class StreamSession : IStreamSession
                     if (box?.Generation != eventGeneration || !IsCurrent(eventGeneration)) return;
                     policy.Connected(Environment.TickCount64);
                     wakePolicy.Streamed();
+                    crashLimit.Reset();
                     streaming = true;
                     watchdog.Connected(Environment.TickCount64);
                     Emit(SessionState.Streaming);
@@ -519,6 +545,19 @@ public sealed class StreamSession : IStreamSession
                         Bump(running: false);
                         Emit(new SessionState(SessionPhase.Disconnected, reason));
                         return;
+                    }
+                    if (reason.Kind == DisconnectKind.ConsoleRemotePlayCrashed)
+                    {
+                        var retry = crashLimit.Crashed();
+                        RemotePlayLog.Note($"PS5'teki Uzaktan Oynatma çöktü (art arda {crashLimit.Crashes}); " +
+                                           (retry ? "yeniden deneniyor" : "yeniden bağlanma bırakıldı, PS5 tamamen kapatılıp açılmalı"));
+                        if (!retry)
+                        {
+                            // PS5 kapatılıp açılmadan her deneme aynı yanıtı alır (eskiden sonsuz "Yeniden bağlanılıyor…").
+                            Bump(running: false);
+                            Emit(new SessionState(SessionPhase.Disconnected, reason));
+                            return;
+                        }
                     }
                     ScheduleReconnect(eventGeneration, reason);
                 });

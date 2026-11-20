@@ -72,7 +72,8 @@ enum {
     CS_QUIT_IN_USE = 1,           /* Remote Play başka cihazda kullanılıyor */
     CS_QUIT_REFUSED = 2,          /* bağlantı reddedildi / kayıt geçersiz */
     CS_QUIT_NETWORK = 3,          /* bağlantı koptu */
-    CS_QUIT_OTHER = 4             /* reason_text açıklar */
+    CS_QUIT_OTHER = 4,            /* reason_text açıklar */
+    CS_QUIT_RP_CRASHED = 5        /* PS5'teki Uzaktan Oynatma çöktü (CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH, GitHub #519) */
 };
 typedef void (*cs_event_cb)(int event, int quit_reason, const char *reason_text, void *user);
 

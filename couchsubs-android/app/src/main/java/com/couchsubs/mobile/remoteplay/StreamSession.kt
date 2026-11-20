@@ -31,9 +31,25 @@ enum class DisconnectKind {
      * günlükte kod yoksa null).
      */
     REJECTED,
+    /**
+     * PS5'teki Uzaktan Oynatma çöktü (libchiaki CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH, "Remote Play on Console has
+     * crashed"). PS5 tamamen kapatılıp açılana kadar her oturum isteği aynı yanıtı alır; eskiden İngilizce metinle sonsuza
+     * kadar "yeniden bağlanılıyor" deneniyordu (GitHub #519). [CrashRetryLimit.MAX_RETRIES] denemeden sonra durulur.
+     */
+    CONSOLE_RP_CRASHED,
     OTHER;
 
     companion object {
+        /** Yerel köprünün CS_QUIT_* değeri (Mac/iPhone: DisconnectReason(quit:), Windows: DisconnectReasons.FromNative). */
+        fun fromNative(reason: Int): DisconnectKind = when (reason) {
+            NativeBridge.QUIT_STOPPED -> STOPPED
+            NativeBridge.QUIT_IN_USE -> IN_USE
+            NativeBridge.QUIT_REFUSED -> REFUSED
+            NativeBridge.QUIT_NETWORK -> NETWORK
+            NativeBridge.QUIT_RP_CRASHED -> CONSOLE_RP_CRASHED
+            else -> OTHER
+        }
+
         /**
          * CHIAKI_RP_APPLICATION_REASON_REGIST_FAILED, _INVALID_PSN_ID ve 0x80108b26. 0x80108b26'yı libchiaki tanımaz: PS5
          * gönderilen kayıt anahtarını (RP-Registkey) kendi eşli cihaz listesinde bulamadı (eşleme PS5'te silinmiş ya da PS5
@@ -111,6 +127,29 @@ sealed class SessionState {
     data object Connecting : SessionState()
     data object Streaming : SessionState()
     data class Disconnected(val kind: DisconnectKind, val detail: String? = null) : SessionState()
+}
+
+/**
+ * PS5'teki Uzaktan Oynatma çöktüyse ([DisconnectKind.CONSOLE_RP_CRASHED]) kaç kez yeniden denenir (Mac/iPhone ve
+ * Windows'taki CrashRetryLimit ile aynı kural). PS5 tamamen kapatılıp açılmadan her oturum isteği aynı yanıtı alır; eskiden
+ * sonsuza kadar "yeniden bağlanılıyor" deneniyordu (GitHub #519). Art arda [MAX_RETRIES] denemeden sonra durulur ve
+ * kullanıcıya PS5'i tamamen kapatıp açması söylenir. Sayaç çeviri başlayınca, ağ değişince ve bağlanınca sıfırlanır.
+ */
+class CrashRetryLimit {
+    companion object {
+        const val MAX_RETRIES = 2
+    }
+
+    /** Art arda bildirilen çökme sayısı. */
+    var crashes = 0
+        private set
+
+    fun reset() {
+        crashes = 0
+    }
+
+    /** PS5 çöktü dedi: yeniden denenecekse true, durulacaksa false. */
+    fun crashed(): Boolean = ++crashes <= MAX_RETRIES
 }
 
 /**
@@ -345,6 +384,8 @@ class StreamSession(
     private var streaming = false
     /** Bağlıyken görüntü gelmezse oturum yeniden kurulur. */
     private val watchdog = PictureWatchdog()
+    /** PS5'teki Uzaktan Oynatma çöktüyse en çok iki kez yeniden denenir (yalnız kuyrukta). */
+    private val crashLimit = CrashRetryLimit()
     private val stateLock = Any()
     private var running = false
     private var generation = 0
@@ -361,6 +402,7 @@ class StreamSession(
             policy.reset()
             wakePolicy.reset()
             watchdog.reset()
+            crashLimit.reset()
             connect(current)
         }
     }
@@ -384,6 +426,7 @@ class StreamSession(
             closeNative()
             policy.reset()
             watchdog.reset()
+            crashLimit.reset()
             connect(current)
         }
     }
@@ -517,6 +560,7 @@ class StreamSession(
                 if (nativeGeneration != eventGeneration || native == 0L) return@execute
                 policy.connected(SystemClock.elapsedRealtime())
                 wakePolicy.streamed()
+                crashLimit.reset()
                 streaming = true
                 watchdog.connected(SystemClock.elapsedRealtime())
                 emit(SessionState.Streaming)
@@ -542,13 +586,7 @@ class StreamSession(
                 }
             }
             NativeBridge.EVENT_QUIT -> {
-                val general = when (reason) {
-                    NativeBridge.QUIT_STOPPED -> DisconnectKind.STOPPED
-                    NativeBridge.QUIT_IN_USE -> DisconnectKind.IN_USE
-                    NativeBridge.QUIT_REFUSED -> DisconnectKind.REFUSED
-                    NativeBridge.QUIT_NETWORK -> DisconnectKind.NETWORK
-                    else -> DisconnectKind.OTHER
-                }
+                val general = DisconnectKind.fromNative(reason)
                 queue.execute {
                     if (nativeGeneration != eventGeneration || native == 0L) return@execute
                     // "Unknown Session Request Error": asıl neden libchiaki'nin hata satırlarındadır (iPhone ve Mac ile aynı).
@@ -571,6 +609,19 @@ class StreamSession(
                         bump(false)
                         emit(SessionState.Disconnected(kind, text))
                         return@execute
+                    }
+                    if (kind == DisconnectKind.CONSOLE_RP_CRASHED) {
+                        val retry = crashLimit.crashed()
+                        val note = "PS5'teki Uzaktan Oynatma çöktü (art arda ${crashLimit.crashes}); " +
+                            if (retry) "yeniden deneniyor" else "yeniden bağlanma bırakıldı, PS5 tamamen kapatılıp açılmalı"
+                        Log.w(TAG, note)
+                        Backend.breadcrumb(note)
+                        if (!retry) {
+                            // PS5 kapatılıp açılmadan her deneme aynı yanıtı alır (eskiden sonsuz "yeniden bağlanılıyor").
+                            bump(false)
+                            emit(SessionState.Disconnected(kind))
+                            return@execute
+                        }
                     }
                     scheduleReconnect(eventGeneration, state)
                 }

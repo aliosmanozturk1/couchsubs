@@ -21,6 +21,8 @@ internal static unsafe partial class NativeMethods
     internal const int QuitRefused = 2;
     internal const int QuitNetwork = 3;
     internal const int QuitOther = 4;
+    /// <summary>PS5'teki Uzaktan Oynatma çöktü (CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH).</summary>
+    internal const int QuitRpCrashed = 5;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct RegisteredConsoleNative

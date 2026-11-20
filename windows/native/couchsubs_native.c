@@ -573,6 +573,8 @@ static int cs_quit_reason(ChiakiQuitReason reason)
 		case CHIAKI_QUIT_REASON_CTRL_CONNECT_FAILED:
 		case CHIAKI_QUIT_REASON_STREAM_CONNECTION_UNKNOWN:
 			return CS_QUIT_NETWORK;
+		case CHIAKI_QUIT_REASON_SESSION_REQUEST_RP_CRASH:
+			return CS_QUIT_RP_CRASHED;
 		default:
 			return CS_QUIT_OTHER;
 	}
