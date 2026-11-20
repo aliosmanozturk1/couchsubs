@@ -26,7 +26,10 @@ function load(innerWidth, innerHeight, opts = {}) {
     localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } } };
   if (opts.screen) window.screen = { width: opts.screen[0], height: opts.screen[1] };
   const area = opts.area === undefined ? [innerWidth, innerHeight] : opts.area;
-  const bounds = area || [innerWidth, innerHeight];
+  // opts.physical: TV koordinatı fiziksel pikselde okur (sınır ekranın ölçüsü), '100%' ise sayfanın CSS ölçüsünde çizilir
+  // (4K Samsung, scr 3840x2160, sayfa 1920x1080: görüntü sol üst çeyrekte).
+  const bounds = opts.physical ? opts.screen : area || [innerWidth, innerHeight];
+  const fullArea = area || [innerWidth, innerHeight];
   let current = null;
   const px = (rect) => rect.map((v) => (String(v).endsWith('%') ? null : parseFloat(v)));
   const outside = (rect) => {
@@ -37,16 +40,18 @@ function load(innerWidth, innerHeight, opts = {}) {
   const tvwindow = {
     setSource(source, ok) { ok(); },
     show(ok, fail, rect, type, z) {
-      shown.push({ rect: [...rect], type, z });
+      const entry = { rect: [...rect], type, z, ok: false };
+      shown.push(entry);
       if (outside(rect) || (opts.reject && opts.reject(rect))) {
         const error = new Error('outside'); error.name = 'NotSupportedError';
         return fail(error);
       }
-      current = String(rect[2]).endsWith('%') ? ['0px', '0px', bounds[0] + 'px', bounds[1] + 'px'] : [...rect];
+      entry.ok = true;
+      current = String(rect[2]).endsWith('%') ? ['0px', '0px', fullArea[0] + 'px', fullArea[1] + 'px'] : [...rect];
       ok([...rect]);
     },
   };
-  if (area) tvwindow.getRect = (ok) => ok(opts.lyingRect ? ['0px', '0px', bounds[0] + 'px', bounds[1] + 'px'] : current ? [...current] : null);
+  if (area) tvwindow.getRect = (ok) => ok(opts.lyingRect ? ['0px', '0px', fullArea[0] + 'px', fullArea[1] + 'px'] : current ? [...current] : null);
   // Çözünürlük değişikliği dinleyicisi ve zamanlayıcılar elle yürütülür.
   const listeners = [];
   tvwindow.addVideoResolutionChangeListener = (callback) => { listeners.push(callback); return listeners.length; };
@@ -60,7 +65,7 @@ function load(innerWidth, innerHeight, opts = {}) {
   const tick = () => { for (const t of intervals) t.fn(); };
   const resolution = (info) => { for (const l of listeners) l(info); };
   // Samsung pencereyi kendiliğinden '100%'e döndürür (PS5 sinyal değişimi).
-  const resetWindow = () => { current = ['0px', '0px', bounds[0] + 'px', bounds[1] + 'px']; };
+  const resetWindow = () => { current = ['0px', '0px', fullArea[0] + 'px', fullArea[1] + 'px']; };
   const tizen = {
     systeminfo: {
       getPropertyValue(name, ok) { ok({ connected: [{ type: 'HDMI', number: 1 }], disconnected: [] }); },
@@ -71,7 +76,9 @@ function load(innerWidth, innerHeight, opts = {}) {
   vm.runInNewContext(code, { window, document, tizen, setTimeout, clearTimeout, setInterval });
   const diagnostics = [];
   window.COUCHSUBS_PLATFORM.pictureDiagnostics((text) => diagnostics.push(text));
+  // accepted: Samsung'un kabul ettiği istekler (reddedilen denemeler hariç).
   return { platform: window.COUCHSUBS_PLATFORM, meta, shown, store, diagnostics, current: () => current,
+    accepted: () => shown.filter((s) => s.ok),
     runTimers, tick, resolution, resetWindow, listeners, pending: () => timers.filter((t) => t.fn).length, intervals: () => intervals.length };
 }
 
@@ -111,7 +118,7 @@ function playHdmi(loaded) {
   const statuses = [];
   loaded.platform.showHdmi(1, null, (s) => statuses.push(s));
   assert.deepEqual(statuses, ['loading', 'playing']);
-  return loaded.shown.map((s) => s.rect);
+  return loaded.accepted().map((s) => s.rect);
 }
 
 test('16:9 TV (1080p ve 4K): HDMI penceresi yüzeyin tamamı, sayfanın arkasında; tek show', () => {
@@ -170,7 +177,9 @@ test('"ekranı doldur" seçiliyse yalnız 100% penceresi (alanın tamamı), ek i
 
 test('Samsung 16:9 kutuyu reddederse 100% penceresi yeniden istenir, görüntü açılır, ret panelde yazar', () => {
   const loaded = load(2580, 1080, { screen: [3440, 1440], reject: (rect) => !String(rect[2]).endsWith('%') });
-  assert.deepEqual(playHdmi(loaded), [FULL, ['330px', '0px', '1920px', '1080px'], FULL]);
+  assert.deepEqual(playHdmi(loaded), [FULL, FULL]);
+  assert.deepEqual(loaded.shown.map((s) => s.rect),
+    [FULL, ['440px', '0px', '2560px', '1440px'], ['330px', '0px', '1920px', '1080px'], FULL]);
   assert.deepEqual(loaded.current(), ['0px', '0px', '2580px', '1080px']);
   assert.match(loaded.diagnostics.at(-1), /330,0,1920,1080 fail NotSupportedError/);
 });
@@ -181,7 +190,8 @@ test('Tanı satırı: bildirilen ölçüler, alan, seçim, istek ve sonucu', () 
   const line = loaded.diagnostics.at(-1);
   assert.match(line, /scr 3440x1440/);
   assert.match(line, /page 2580x1080/);
-  assert.match(line, /100% ok · area 0,0,2580,1080 · fit 330,0,1920,1080 ok · now 330,0,1920,1080/);
+  // Önce ekranın fiziksel ölçüsü denenir; bu TV sayfa koordinatı kullandığı için reddedilir, kutu alanda istenir.
+  assert.match(line, /100% ok · area 0,0,2580,1080 · fit 440,0,2560,1440 fail NotSupportedError 330,0,1920,1080 ok · now 330,0,1920,1080/);
   // getRect yoksa alanın sayfadan alındığı yazılır.
   const noRect = load(2580, 1080, { area: null });
   playHdmi(noRect);
@@ -209,7 +219,9 @@ test('Sarı tuş (togglePicture): seçim kaydedilir, açık pencere yeni ölçü
   assert.deepEqual(loaded.current(), ['0px', '0px', '2580px', '1080px']);
   assert.equal(loaded.platform.togglePicture(), 'fit');
   assert.deepEqual(loaded.shown.at(-1).rect, ['330px', '0px', '1920px', '1080px']);
-  assertInside(loaded.shown.map((s) => s.rect), [2580, 1080]);
+  assertInside(loaded.accepted().map((s) => s.rect), [2580, 1080]);
+  // Fiziksel ölçü bir kez reddedildi; sonraki çizimlerde yeniden denenmez.
+  assert.equal(loaded.shown.filter((s) => s.rect[2] === '2560px').length, 1);
 });
 
 test('32:9 (Odyssey G9 5120x1440): 16:9 kutu alanın ortasında ya da alanın tamamı', () => {
@@ -388,7 +400,42 @@ test('Ekranı doldur seçiliyken ve 16:9 TV\'de sınama/yeniden isteme yok', () 
   assert.equal(fill.shown.length, before);
   const tv = load(1920, 1080);
   playHdmi(tv);
-  assert.equal(tv.intervals(), 0);
+  const shownBefore = tv.shown.length;
+  tv.tick();
+  assert.equal(tv.shown.length, shownBefore);
   tv.resolution({ width: 3840, height: 2160, frequency: 60, type: 'HDMI' });
   assert.equal(tv.pending(), 0);
+});
+
+// X'te bildirilen 4K Samsung TV: Pencere satırı 'scr 3840x2160 dpr 1 page 1920x1080 vv 2 · 100% ok · area 0,0,1920,1080 ·
+// fit'. '100%' penceresi sayfanın CSS ölçüsünde (1920x1080) çiziliyor, TV koordinatı fiziksel pikselde okuyor: PS5
+// görüntüsü sol üst çeyrekte küçük kalıyordu. Pencere ekranın fiziksel ölçüsünde istenir.
+test('4K Samsung (scr 3840x2160, sayfa 1920x1080): görüntü ekranın tamamına istenir, çeyrekte kalmaz', () => {
+  const loaded = load(1920, 1080, { screen: [3840, 2160], physical: true });
+  assert.equal(loaded.meta.content, 'width=1920');
+  assert.deepEqual(playHdmi(loaded), [FULL, ['0px', '0px', '3840px', '2160px']]);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '3840px', '2160px']);
+  assert.match(loaded.diagnostics.at(-1), /scr 3840x2160 .*area 0,0,1920,1080 · fit 0,0,3840,2160 ok/);
+  // Sinyal değişince yine ekranın tamamı istenir.
+  loaded.resetWindow();
+  loaded.resolution({ width: 3840, height: 2160, frequency: 60, type: 'HDMI' });
+  loaded.runTimers();
+  assert.deepEqual(loaded.current(), ['0px', '0px', '3840px', '2160px']);
+});
+
+test('4K Samsung sayfa koordinatı kullanıyorsa fiziksel istek reddedilir, 100% kalır; bir daha denenmez', () => {
+  const loaded = load(1920, 1080, { screen: [3840, 2160] });
+  assert.deepEqual(playHdmi(loaded), [FULL]);
+  assert.deepEqual(loaded.shown.map((s) => s.rect), [FULL, ['0px', '0px', '3840px', '2160px']]);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '1920px', '1080px']);
+  loaded.platform.showHdmi(1, null, () => {});
+  assert.deepEqual(loaded.shown.at(-1).rect, FULL);
+  assert.equal(loaded.shown.filter((s) => s.rect[2] === '3840px').length, 1);
+});
+
+test('Ultra geniş monitör fiziksel koordinat kullanıyorsa 16:9 kutu fiziksel ölçüde ortada', () => {
+  const loaded = load(2580, 1080, { screen: [3440, 1440], physical: true });
+  assert.deepEqual(playHdmi(loaded), [FULL, ['440px', '0px', '2560px', '1440px']]);
+  const fill = load(2580, 1080, { screen: [3440, 1440], physical: true, picture: 'fill' });
+  assert.deepEqual(playHdmi(fill), [FULL, ['0px', '0px', '3440px', '1440px']]);
 });

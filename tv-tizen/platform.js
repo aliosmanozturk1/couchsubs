@@ -66,6 +66,8 @@
   var rectTrusted = true;
   // Son çözünürlük bildirimi; aynısı yeniden gelirse pencere yenilenmez.
   var lastResolution = null;
+  // Ekranın fiziksel ölçüsündeki istek bir kez reddedildiyse bu TV sayfa koordinatı kullanıyor; yeniden denenmez.
+  var physicalRejected = false;
 
   function pictureMode() {
     try { return window.localStorage.getItem(PICTURE_KEY) === 'fill' ? 'fill' : 'fit'; } catch (e) { return 'fit'; }
@@ -161,16 +163,21 @@
     return true;
   }
 
-  // Geniş ekranda HDMI açıkken pencere yeniden istenir (sinyal değişti ya da Samsung ölçüyü bozdu).
+  // '100%'ten başka bir pencere gerekiyor mu: geniş ekran ya da ekranın fiziksel ölçüsünde kabul edilmiş pencere (4K).
+  function customWindow() {
+    return isWide() || acceptedRect !== null;
+  }
+
+  // HDMI açıkken pencere yeniden istenir (sinyal değişti ya da Samsung ölçüyü bozdu).
   function rewindow(why) {
-    if (shownPort === null || !isWide()) return;
+    if (shownPort === null || !customWindow()) return;
     try {
       showWindow(function () {}, function () {}, why);
     } catch (e) {}
   }
 
   function scheduleRewindow(why) {
-    if (shownPort === null || !isWide()) return;
+    if (shownPort === null || !customWindow()) return;
     for (var i = 0; i < rewindowTimers.length; i++) cancel(rewindowTimers[i]);
     rewindowTimers = [];
     for (var j = 0; j < REWINDOW_DELAYS.length; j++) {
@@ -180,7 +187,7 @@
 
   // Kabul edilen 16:9 kutu hâlâ duruyor mu? Samsung '100%'e döndürdüyse yeniden istenir.
   function checkWindow() {
-    if (shownPort === null || !acceptedRect || !rectTrusted || !isWide() || pictureMode() !== 'fit') return;
+    if (shownPort === null || !acceptedRect || !rectTrusted) return;
     readRect(function (now) {
       var rect = parseRect(now);
       if (rect && acceptedRect && !sameRect(rect, acceptedRect)) rewindow('reset ' + rectText(now));
@@ -188,7 +195,7 @@
   }
 
   function watchWindow() {
-    if (watchTimer !== null || !isWide()) return;
+    if (watchTimer !== null) return;
     try {
       watchTimer = setInterval(checkWindow, WATCH_INTERVAL);
     } catch (e) {
@@ -220,7 +227,27 @@
     }
   }
 
-  // Pencereyi '100%' açar; geniş alanda seçime göre 16:9 kutuya küçültür. Samsung reddederse '100%' kalır.
+  // Ekranın fiziksel ölçüsü '100%' penceresinin alanından belirgin büyükse (4K Samsung: scr 3840x2160, sayfa ve alan
+  // 1920x1080, visualViewport 2) o ölçü; değilse null. Böyle TV'lerde '100%' penceresi sayfanın CSS ölçüsüne göre
+  // çiziliyor, TV ise koordinatı fiziksel pikselde okuyor: PS5 görüntüsü sol üst çeyrekte küçük kalıyordu.
+  function screenArea(area) {
+    try {
+      var width = window.screen && window.screen.width;
+      var height = window.screen && window.screen.height;
+      if (!(width > 0) || !(height > 0)) return null;
+      return width > area[2] * 1.05 && height > area[3] * 1.05 ? [0, 0, width, height] : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function wholeRect(area) {
+    return [Math.round(area[0]) + 'px', Math.round(area[1]) + 'px', Math.floor(area[2]) + 'px', Math.floor(area[3]) + 'px'];
+  }
+
+  // Pencereyi '100%' açar; geniş alanda seçime göre 16:9 kutuya küçültür. Ekran '100%' alanından büyükse önce ekranın
+  // fiziksel ölçüsünde istenir (Samsung sınır dışını reddeder; reddederse alan ölçüsüne düşülür). Hepsi reddedilirse
+  // '100%' kalır.
   // why: yeniden istemenin nedeni (tanı satırının başına yazılır; ilk açılışta yok).
   function showWindow(done, failed, why) {
     var mode = pictureMode();
@@ -229,35 +256,56 @@
       readRect(function (full) {
         var area = parseRect(full) || [0, 0, window.innerWidth, window.innerHeight];
         var line = prefix + reportedSizes() + ' · 100% ok · area ' + (parseRect(full) ? '' : 'page ') + rectText(area) + ' · ' + mode;
-        var target = pictureRect(area, mode);
-        if (!target) {
+        var targets = [];
+        var physical = physicalRejected ? null : screenArea(area);
+        if (physical) targets.push(pictureRect(physical, mode) || wholeRect(physical));
+        var boxed = pictureRect(area, mode);
+        if (boxed) targets.push(boxed);
+        if (!targets.length) {
           acceptedRect = null;
           notePicture(line);
           return done();
         }
-        var finish = function (result) {
+        var tried = [];
+        var finish = function (target, result) {
           acceptedRect = result === 'ok' ? parseRect(target) : null;
           readRect(function (now) {
             var reported = parseRect(now);
             if (result === 'ok' && reported) rectTrusted = sameRect(reported, parseRect(target));
-            notePicture(line + ' ' + rectText(target) + ' ' + result + (now ? ' · now ' + rectText(now) : ''));
+            notePicture(line + ' ' + tried.join(' ') + (now ? ' · now ' + rectText(now) : ''));
             done();
           });
         };
-        var fallBack = function (e) {
-          // Reddedilen kutudan sonra pencere '100%' kalsın (Samsung son başarılı ölçüyü korur; yine de yeniden iste).
+        var attempt = function (index, lastError) {
+          if (index >= targets.length) {
+            // Yalnız fiziksel ölçü reddedildiyse pencere zaten '100%'.
+            if (physical && targets.length === 1) return finish(null, 'fail ' + errorText(lastError));
+            // Reddedilen kutudan sonra pencere '100%' kalsın (Samsung son başarılı ölçüyü korur; yine de yeniden iste).
+            var fail = 'fail ' + errorText(lastError);
+            try {
+              tizen.tvwindow.show(function () { finish(null, fail); }, function () { finish(null, fail); },
+                FULL_SCREEN, 'MAIN', 'BEHIND');
+            } catch (e2) {
+              finish(null, fail);
+            }
+            return;
+          }
+          var target = targets[index];
+          var rejected = function (e) {
+            if (physical && index === 0) physicalRejected = true;
+            tried.push(rectText(target) + ' fail ' + errorText(e));
+            attempt(index + 1, e);
+          };
           try {
-            tizen.tvwindow.show(function () { finish('fail ' + errorText(e)); },
-              function () { finish('fail ' + errorText(e)); }, FULL_SCREEN, 'MAIN', 'BEHIND');
-          } catch (e2) {
-            finish('fail ' + errorText(e));
+            tizen.tvwindow.show(function () {
+              tried.push(rectText(target) + ' ok');
+              finish(target, 'ok');
+            }, rejected, target, 'MAIN', 'BEHIND');
+          } catch (e) {
+            rejected(e);
           }
         };
-        try {
-          tizen.tvwindow.show(function () { finish('ok'); }, fallBack, target, 'MAIN', 'BEHIND');
-        } catch (e) {
-          fallBack(e);
-        }
+        attempt(0, null);
       });
     }, function (e) {
       notePicture(prefix + reportedSizes() + ' · 100% fail ' + errorText(e));

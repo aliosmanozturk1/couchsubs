@@ -123,7 +123,9 @@ test('Samsung paketi: ultrawide ve 16:9 ekranda sayfa ekranın tamamına çizili
       assert.ok(Math.abs((r.subtitle.left + r.subtitle.right) / 2 - 1290) < 2, JSON.stringify(r));
       // HDMI penceresi: 16:9 kutu sayfa (2580x1080) koordinatında, sınırlar içinde ve ortada istenir; 0.9.32'deki
       // ['10px','-180px','2560px','1440px'] alanın dışına taştığı için Samsung reddediyordu.
-      assert.deepEqual(r.rects, [['0', '0', '100%', '100%'], ['330px', '0px', '1920px', '1080px']]);
+      // Ekran (3440x1440) sayfadan büyük: önce fiziksel ölçüde 16:9 kutu istenir. Bu sahte pencere her isteği kabul
+      // ettiği için orada kalır; sayfa koordinatı kullanan TV bunu reddeder, kutu sayfada istenir (tv-tizen.test.js).
+      assert.deepEqual(r.rects, [['0', '0', '100%', '100%'], ['440px', '0px', '2560px', '1440px']]);
     });
 
     await t.test('1920x1080 (16:9 TV): görünüm eskisi gibi 1920', async () => {
