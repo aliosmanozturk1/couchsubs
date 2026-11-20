@@ -1,21 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Xbox ev yayını (Beta): Windows'taki XboxStreamSession + player.html'in iPhone karşılığı (Android: XboxStreamSession.kt).
+// Xbox ev yayını (Beta): Windows'taki XboxStreamSession + player.html'in iPhone ve Mac karşılığı (Android:
+// XboxStreamSession.kt). iPhone ve Mac uygulamalarının ortak oturumu; protokol katmanı CouchSubsCore/Xbox'ta.
 // Görüntü yerel WebRTC'yle (stasel/WebRTC) alınır; VideoToolbox'ın verdiği kare CGImage olarak okuma hattına gider.
-// Oyun sesi ayar açıksa ("Play Xbox sound on this device", varsayılan açık) telefonda çalınır: Xbox uzaktan oynatma
-// sürerken sesi istemciye verip TV'yi susturabilir. Yerel ses parçası eklenmez, Xbox'a ses gönderilmez. Ayar kapalıyken
-// eski davranış: WebRTC ses birimi hiç başlatılmaz. Kumanda girdisi gönderilmez.
+// Oyun sesi ayar açıksa (varsayılan açık) bu cihazda çalınır: Xbox uzaktan oynatma sürerken sesi istemciye verip TV'yi
+// susturabilir. Yerel ses parçası eklenmez, Xbox'a ses gönderilmez. Ayar kapalıyken iPhone'da WebRTC ses birimi hiç
+// başlatılmaz, Mac'te ses parçası kapatılır. Kumanda girdisi gönderilmez.
 
+#if os(iOS)
 import AVFoundation
+#endif
 import CoreGraphics
+import CouchSubsCore
 import Foundation
 import RemotePlay
 import VideoToolbox
 import WebRTC
 
-final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable {
-    var onFrame: ((CGImage) -> Void)?
-    var onState: ((SessionState) -> Void)?
-    var onConsoleMoved: ((RegisteredConsole) -> Void)?
+public final class XboxStreamSession: NSObject, @unchecked Sendable {
+    public var onFrame: ((CGImage) -> Void)?
+    public var onState: ((SessionState) -> Void)?
+    /// Xbox'ta kullanılmaz (uygulamaların `StreamControlling` protokolü ister).
+    public var onConsoleMoved: ((RegisteredConsole) -> Void)?
 
     private static let iceGatherMs = 5000
     private static let keepaliveSeconds: UInt64 = 30
@@ -29,6 +34,7 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
     private let console: XboxConsole
     private let home: XboxHome
     private let describe: (XboxErrorKind) -> String
+    private let lost: (String) -> String
     private let lock = NSLock()
     private var machine = XboxSessionMachine()
     private var task: Task<Void, Never>?
@@ -41,7 +47,7 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
     private var endReason: String?
     private var sessionId: String?
     private var lastConverted: TimeInterval = 0
-    private(set) var framesReceived = 0
+    public private(set) var framesReceived = 0
     /// Kare onayı (Windows'taki xbox-xcloud-player her gösterilen karede yapar): Xbox onay gelmeyen yayını kısa sürede
     /// kapatır (Greenlight wiki, WebRTC: "Without sending any data back the stream will only last for +- 40 seconds").
     private var pendingAcks: [XboxFrameAck] = []
@@ -53,23 +59,29 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
     private var clockStart: TimeInterval = 0
     private var firstFrameAt: TimeInterval = 0
 
-    /// Oyun sesi bu telefonda çalınır (Android'deki `playAudio` ile aynı).
+    /// Oyun sesi bu cihazda çalınır (Android'deki `playAudio` ile aynı).
     private let playAudio: Bool
 
-    init(auth: XboxAuth, console: XboxConsole, playAudio: Bool = true, describe: @escaping (XboxErrorKind) -> String) {
+    /// Ekran metinleri uygulamanın kataloğundan gelir. `describe`: yeniden denenirken gösterilen durum; `lost`: yayın
+    /// durunca (denemeler bitti ya da konsol reddetti) ham nedenle gösterilen metin.
+    public init(auth: XboxAuth, console: XboxConsole, playAudio: Bool = true, describe: @escaping (XboxErrorKind) -> String,
+                lost: @escaping (String) -> String) {
         self.auth = auth
         self.console = console
         self.home = XboxHome(auth: auth)
         self.playAudio = playAudio
         self.describe = describe
+        self.lost = lost
     }
 
     private static let factory: RTCPeerConnectionFactory = {
         RTCInitializeSSL()
+        #if os(iOS)
         // Ses birimi elle açılır: ayar kapalıyken hiç başlatılmaz (bkz. `setAudio`).
         let audio = RTCAudioSession.sharedInstance()
         audio.useManualAudio = true
         audio.isAudioEnabled = false
+        #endif
         return RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
     }()
 
@@ -77,6 +89,8 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
     /// varsayılan görüşme ayarı (voiceChat) sesi kulaklık hoparlörüne verirdi. Yerel ses parçası olmadığından
     /// mikrofondan Xbox'a hiçbir şey gönderilmez.
     private static func setAudio(_ enabled: Bool) {
+        // Mac'te ses oturumu yoktur: ses sistemin çıkışından çalınır, kapalıyken ses parçası kapatılır.
+        #if os(iOS)
         let session = RTCAudioSession.sharedInstance()
         if enabled {
             let config = RTCAudioSessionConfiguration.webRTC()
@@ -86,6 +100,7 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
             RTCAudioSessionConfiguration.setWebRTC(config)
         }
         session.isAudioEnabled = enabled
+        #endif
     }
 
     private func locked<T>(_ body: () -> T) -> T {
@@ -96,12 +111,12 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
 
     private func log(_ text: String) { RemotePlayLog.write("Xbox: \(text)") }
 
-    func start() {
+    public func start() {
         guard task == nil else { return }
         task = Task.detached(priority: .userInitiated) { [weak self] in await self?.run() }
     }
 
-    func stop() {
+    public func stop() {
         locked { machine.stop() }
         task?.cancel()
         task = nil
@@ -112,7 +127,7 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
     }
 
     /// Uygulama öne gelince: süren el sıkışma ya da bağlantı kapatılıp baştan açılır.
-    func reconnectNow() {
+    public func reconnectNow() {
         locked { if endReason == nil { endReason = "Yeniden bağlanılıyor" } }
     }
 
@@ -191,7 +206,7 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
             // Denemeler bitti ya da konsol yayını reddetti: yayın durur, yeniden denenmez.
             log("yeniden denenmiyor, yayın durdu")
             let reason = detail.trimmingCharacters(in: .whitespaces).isEmpty ? kind.rawValue : detail
-            onState?(.disconnected(.other(String(format: String(localized: "The Xbox connection was lost: %@. Restart the Xbox to reconnect."), reason))))
+            onState?(.disconnected(.other(lost(reason))))
             return
         }
         onState?(.disconnected(.other(describe(kind))))
@@ -266,7 +281,7 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
         let video = connection.addTransceiver(of: .video, init: videoInit)
         audio?.receiver.track?.isEnabled = playAudio
         Self.setAudio(playAudio)
-        log(playAudio ? "oyun sesi bu telefonda çalınır" : "oyun sesi kapalı (ayar)")
+        log(playAudio ? "oyun sesi bu cihazda çalınır" : "oyun sesi kapalı (ayar)")
         guard let track = video?.receiver.track as? RTCVideoTrack else { throw XboxError(.service, "Görüntü alıcısı kurulamadı") }
         track.add(self)
 
@@ -401,9 +416,9 @@ final class XboxStreamSession: NSObject, StreamControlling, @unchecked Sendable 
 // MARK: - Kareler
 
 extension XboxStreamSession: RTCVideoRenderer {
-    func setSize(_ size: CGSize) {}
+    public func setSize(_ size: CGSize) {}
 
-    func renderFrame(_ frame: RTCVideoFrame?) {
+    public func renderFrame(_ frame: RTCVideoFrame?) {
         guard let frame else { return }
         let now = ProcessInfo.processInfo.systemUptime
         let (count, due) = locked { () -> (Int, Bool) in
@@ -428,7 +443,7 @@ extension XboxStreamSession: RTCVideoRenderer {
     }
 
     /// VideoToolbox karesi doğrudan CGImage olur; yazılım çözücüsünün I420 karesinden gri (Y düzlemi) resim.
-    static func image(from buffer: RTCVideoFrameBuffer) -> CGImage? {
+    public static func image(from buffer: RTCVideoFrameBuffer) -> CGImage? {
         if let pixel = buffer as? RTCCVPixelBuffer {
             var image: CGImage?
             VTCreateCGImageFromCVPixelBuffer(pixel.pixelBuffer, options: nil, imageOut: &image)
@@ -447,22 +462,22 @@ extension XboxStreamSession: RTCVideoRenderer {
 // MARK: - Bağlantı olayları
 
 extension XboxStreamSession: RTCPeerConnectionDelegate {
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
-    func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
-    func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
-    func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}
+    public func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
         log("ICE: \(newState.rawValue)")
     }
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {
         if newState == .complete { locked { gatheringComplete = true } }
     }
-    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
         locked { localCandidates.append(XboxIceCandidate(candidate: candidate.sdp, sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex)) }
     }
-    func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
-    func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
+    public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
         log("bağlantı: \(newState.rawValue)")
         if newState == .failed || newState == .closed {
             locked { if endReason == nil { endReason = "Xbox WebRTC bağlantısı kesildi" } }

@@ -5,7 +5,7 @@
 import Foundation
 
 /// Xbox hatasının kullanıcıya anlatılabilecek türü.
-enum XboxErrorKind: String, Sendable {
+public enum XboxErrorKind: String, Sendable {
     /// Microsoft girişi yok ya da yenileme jetonu geçersiz.
     case signInRequired
     case codeExpired
@@ -20,10 +20,10 @@ enum XboxErrorKind: String, Sendable {
     case service
 }
 
-struct XboxError: Error, Sendable {
-    let kind: XboxErrorKind
-    let message: String
-    init(_ kind: XboxErrorKind, _ message: String) {
+public struct XboxError: Error, Sendable {
+    public let kind: XboxErrorKind
+    public let message: String
+    public init(_ kind: XboxErrorKind, _ message: String) {
         self.kind = kind
         self.message = message
     }
@@ -61,14 +61,14 @@ func parseInstant(_ text: String?) -> Date? {
 }
 
 /// Microsoft kullanıcı jetonu: kalıcı saklanan tek jeton (Anahtar Zinciri).
-struct XboxUserToken {
+public struct XboxUserToken {
     let json: JSON
-    var accessToken: String { json["access_token"] as? String ?? "" }
-    var refreshToken: String { json["refresh_token"] as? String ?? "" }
-    var expiresOn: Date { parseInstant(json["expires_on"] as? String) ?? .distantPast }
+    public var accessToken: String { json["access_token"] as? String ?? "" }
+    public var refreshToken: String { json["refresh_token"] as? String ?? "" }
+    public var expiresOn: Date { parseInstant(json["expires_on"] as? String) ?? .distantPast }
 
-    func secondsValid(now: Date) -> Int { Int(floor(expiresOn.timeIntervalSince(now))) }
-    func serialize() -> String { jsonText(json) }
+    public func secondsValid(now: Date) -> Int { Int(floor(expiresOn.timeIntervalSince(now))) }
+    public func serialize() -> String { jsonText(json) }
 
     /// xal-node `TokenStore.setUserToken` gibi `expires_on = şimdi + expires_in`; yenileme jetonu yoksa öncekisi korunur.
     static func fromResponse(_ body: JSON, now: Date, previous: XboxUserToken? = nil) throws -> XboxUserToken {
@@ -85,7 +85,7 @@ struct XboxUserToken {
     }
 
     /// Saklanan metinden; bozuksa ya da yenileme jetonu yoksa nil.
-    static func parse(_ text: String?) -> XboxUserToken? {
+    public static func parse(_ text: String?) -> XboxUserToken? {
         guard let text, let json = try? parseJSON(text) else { return nil }
         let token = XboxUserToken(json: json)
         return token.refreshToken.isEmpty ? nil : token
@@ -125,12 +125,20 @@ struct XboxHomeEndpoint {
 }
 
 /// Microsoft cihaz kodu.
-struct XboxDeviceCode: Equatable {
-    let userCode: String
-    let deviceCode: String
-    let verificationURI: String
-    let expiresIn: Int
-    let interval: Int
+public struct XboxDeviceCode: Equatable {
+    public let userCode: String
+    public let deviceCode: String
+    public let verificationURI: String
+    public let expiresIn: Int
+    public let interval: Int
+
+    public init(userCode: String, deviceCode: String, verificationURI: String, expiresIn: Int, interval: Int) {
+        self.userCode = userCode
+        self.deviceCode = deviceCode
+        self.verificationURI = verificationURI
+        self.expiresIn = expiresIn
+        self.interval = interval
+    }
 
     static func parse(_ body: JSON) throws -> XboxDeviceCode {
         guard let user = body["user_code"] as? String, !user.isEmpty, let device = body["device_code"] as? String, !device.isEmpty else {
@@ -144,12 +152,20 @@ struct XboxDeviceCode: Equatable {
 }
 
 /// Hesaptaki bir Xbox (smartglass `/lists/devices`).
-struct XboxConsole: Codable, Equatable, Identifiable, Sendable {
-    let id: String
-    let name: String
-    let model: String
-    let streamingEnabled: Bool
-    var powerState: String = ""
+public struct XboxConsole: Codable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let model: String
+    public let streamingEnabled: Bool
+    public var powerState: String = ""
+
+    public init(id: String, name: String, model: String, streamingEnabled: Bool, powerState: String = "") {
+        self.id = id
+        self.name = name
+        self.model = model
+        self.streamingEnabled = streamingEnabled
+        self.powerState = powerState
+    }
 
     /// Windows köprüsündeki gibi: yayın için `consoleStreamingEnabled` ve `remoteManagementEnabled` açık olmalı.
     static func parseList(_ body: JSON) -> [XboxConsole] {
@@ -163,21 +179,22 @@ struct XboxConsole: Codable, Equatable, Identifiable, Sendable {
 }
 
 /// Okunan konsol türü.
-enum ConsolePlatform: String, Codable, Sendable {
+public enum ConsolePlatform: String, Codable, Sendable {
     case playstation, xbox
 }
 
-enum XboxStoreKey {
+public enum XboxStoreKey {
     /// UserDefaults: konsol türü.
-    static let platform = "platform"
+    public static let platform = "platform"
     /// Anahtar Zinciri: Microsoft kullanıcı jetonu (Windows'taki userToken JSON'u) ve seçilen Xbox.
-    static let userToken = "xboxUserToken"
-    static let console = "xboxConsole"
+    public static let userToken = "xboxUserToken"
+    public static let console = "xboxConsole"
 }
 
 /// Jeton değişikliğini (XboxAuth içinden) modele ileten kutu.
-final class XboxTokenSink: @unchecked Sendable {
-    var handler: ((XboxUserToken?) -> Void)?
+public final class XboxTokenSink: @unchecked Sendable {
+    public var handler: ((XboxUserToken?) -> Void)?
+    public init() {}
 }
 
 /// Cihaz kodu beklerken gelen hata yanıtı (RFC 8628).

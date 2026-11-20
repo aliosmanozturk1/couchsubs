@@ -104,7 +104,7 @@ Android (`couchsubs-android/app/src/main/java/com/couchsubs/mobile/xbox/`):
 - `XboxChannels.kt`: veri kanalı iletileri (Handshake, yapılandırma, ClientMetadata paketi).
 - `XboxStreamSession.kt`: `FrameSource`; WebRTC, kare sayacı ve günlük.
 
-iPhone (`couchsubs-ios/CouchSubs/Xbox/`): aynı adlarla Swift dosyaları; `XboxStreamSession` `StreamControlling`'i uygular.
+iPhone ve Mac (ortak Swift kodu): protokol katmanı `core/Sources/CouchSubsCore/Xbox/` içinde aynı adlarla Swift dosyaları; WebRTC oturumu `remoteplay/Sources/XboxStream/XboxStreamSession.swift`. Uygulamalar `XboxStreamSession`'ı kendi `StreamControlling` protokollerine uydurur.
 
 ## 4. Oturum durum makinesi
 

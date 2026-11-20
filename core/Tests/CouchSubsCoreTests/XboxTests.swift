@@ -3,7 +3,7 @@
 // Android'deki XboxTest.kt ile aynı durumlar.
 
 import XCTest
-@testable import CouchSubs
+@testable import CouchSubsCore
 
 private final class FakeHTTP: XboxHTTP, @unchecked Sendable {
     struct Call { let method: String; let url: String; let headers: [String: String]; let body: String? }

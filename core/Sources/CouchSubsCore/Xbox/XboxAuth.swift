@@ -4,20 +4,25 @@
 
 import Foundation
 
-struct XboxHTTPResponse {
-    let status: Int
-    let body: Data
-    var ok: Bool { (200...299).contains(status) }
-    var text: String { String(decoding: body, as: UTF8.self) }
+public struct XboxHTTPResponse {
+    public let status: Int
+    public let body: Data
+    public init(status: Int, body: Data) {
+        self.status = status
+        self.body = body
+    }
+    public var ok: Bool { (200...299).contains(status) }
+    public var text: String { String(decoding: body, as: UTF8.self) }
 }
 
 /// Xbox ve Microsoft uçlarına HTTPS isteği (testlerde sahtesi verilir).
-protocol XboxHTTP: Sendable {
+public protocol XboxHTTP: Sendable {
     func request(_ method: String, _ url: String, headers: [String: String], body: String?) async throws -> XboxHTTPResponse
 }
 
-struct URLSessionXboxHTTP: XboxHTTP {
-    func request(_ method: String, _ url: String, headers: [String: String], body: String?) async throws -> XboxHTTPResponse {
+public struct URLSessionXboxHTTP: XboxHTTP {
+    public init() {}
+    public func request(_ method: String, _ url: String, headers: [String: String], body: String?) async throws -> XboxHTTPResponse {
         guard let address = URL(string: url) else { throw XboxError(.service, "Geçersiz adres: \(url)") }
         var request = URLRequest(url: address, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
         request.httpMethod = method
@@ -45,12 +50,12 @@ func formBody(_ pairs: [(String, String)]) -> String {
 
 /// Jetonlar bellekte tutulur, süresi dolmadan (60 sn pay) yenilenir; kalıcı olan yalnız kullanıcı jetonudur, her
 /// değiştiğinde `onUserToken` çağrılır (çağıran Anahtar Zinciri'ne yazar).
-actor XboxAuth {
-    static let clientId = "1f907974-e22b-4810-a9de-d9647380c97e"
-    static let scope = "xboxlive.signin openid profile offline_access"
-    static let transferScope = "service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN"
-    static let rpXboxLive = "http://xboxlive.com"
-    static let rpGssv = "http://gssv.xboxlive.com/"
+public actor XboxAuth {
+    public static let clientId = "1f907974-e22b-4810-a9de-d9647380c97e"
+    public static let scope = "xboxlive.signin openid profile offline_access"
+    public static let transferScope = "service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN"
+    public static let rpXboxLive = "http://xboxlive.com"
+    public static let rpGssv = "http://gssv.xboxlive.com/"
     private static let margin = 60
     private static let login = "https://login.microsoftonline.com/consumers/oauth2/v2.0"
     private static let form = "application/x-www-form-urlencoded"
@@ -62,12 +67,12 @@ actor XboxAuth {
     private let clock: @Sendable () -> Date
     private let sleep: @Sendable (Int) async throws -> Void
     private let onUserToken: @Sendable (XboxUserToken?) -> Void
-    private(set) var userToken: XboxUserToken?
+    public private(set) var userToken: XboxUserToken?
     private var xblUser: XboxXstsToken?
     private var xsts: [String: XboxXstsToken] = [:]
     private var home: XboxHomeEndpoint?
 
-    init(http: XboxHTTP = URLSessionXboxHTTP(), clock: @escaping @Sendable () -> Date = { Date() },
+    public init(http: XboxHTTP = URLSessionXboxHTTP(), clock: @escaping @Sendable () -> Date = { Date() },
          sleep: @escaping @Sendable (Int) async throws -> Void = { try await Task.sleep(nanoseconds: UInt64($0) * 1_000_000) },
          userToken: XboxUserToken? = nil, onUserToken: @escaping @Sendable (XboxUserToken?) -> Void = { _ in }) {
         self.http = http
@@ -77,16 +82,16 @@ actor XboxAuth {
         self.onUserToken = onUserToken
     }
 
-    var signedIn: Bool { userToken != nil }
+    public var signedIn: Bool { userToken != nil }
 
-    func startDeviceCode() async throws -> XboxDeviceCode {
+    public func startDeviceCode() async throws -> XboxDeviceCode {
         let response = try await http.request("POST", "\(Self.login)/devicecode", headers: ["Content-Type": Self.form],
                                               body: formBody([("client_id", Self.clientId), ("scope", Self.scope)]))
         return try XboxDeviceCode.parse(json(response, "Microsoft cihaz kodu"))
     }
 
     /// Kullanıcı kodu onaylayana kadar bekler; görev iptal edilirse CancellationError.
-    func pollDeviceCode(_ code: XboxDeviceCode) async throws -> XboxUserToken {
+    public func pollDeviceCode(_ code: XboxDeviceCode) async throws -> XboxUserToken {
         let deadline = clock().addingTimeInterval(TimeInterval(code.expiresIn))
         var interval = code.interval * 1000
         while true {
@@ -120,7 +125,7 @@ actor XboxAuth {
         }
     }
 
-    func signOut() {
+    public func signOut() {
         reset()
         userToken = nil
         onUserToken(nil)
@@ -133,7 +138,7 @@ actor XboxAuth {
     }
 
     /// Microsoft erişim jetonu; 60 sn'den az kaldıysa yenilenir.
-    func userAccessToken() async throws -> String {
+    public func userAccessToken() async throws -> String {
         guard let current = userToken else { throw XboxError(.signInRequired, "Microsoft girişi gerekiyor") }
         if current.secondsValid(now: clock()) > Self.margin { return current.accessToken }
         guard !current.refreshToken.isEmpty else { throw XboxError(.signInRequired, "Microsoft girişi gerekiyor") }
@@ -192,7 +197,7 @@ actor XboxAuth {
     }
 
     /// Konsola aktarım jetonu (`connect` için).
-    func transferToken() async throws -> String {
+    public func transferToken() async throws -> String {
         _ = try await userAccessToken()
         guard let refresh = userToken?.refreshToken else { throw XboxError(.signInRequired, "Microsoft girişi gerekiyor") }
         let response = try await http.request("POST", "https://login.live.com/oauth20_token.srf", headers: ["Content-Type": Self.form], body: formBody([

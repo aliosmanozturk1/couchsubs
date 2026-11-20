@@ -36,10 +36,6 @@ packages:
   Facebook:
     url: https://github.com/facebook/facebook-ios-sdk
     from: 18.0.0
-  # Xbox ev yayını (Beta): Google libwebrtc'nin hazır iOS derlemesi (BSD-3). Görüntü VideoToolbox'la çözülür.
-  WebRTC:
-    url: https://github.com/stasel/WebRTC
-    exactVersion: 150.0.0
 targets:
   CouchSubs:
     type: application
@@ -62,6 +58,7 @@ targets:
     dependencies:
       - package: CouchSubsCore
       - package: RemotePlay
+        product: RemotePlay
       # Reklam kimliği (IDFA) desteği ve reklam dönüşüm kitaplığı olmayan sürüm (GoogleAppMeasurementCore).
       - package: Firebase
         product: FirebaseAnalyticsCore
@@ -69,8 +66,10 @@ targets:
         product: FirebaseCrashlytics
       - package: Facebook
         product: FacebookCore
-      - package: WebRTC
-        product: WebRTC
+      # Xbox ev yayını (Beta): Mac uygulamasıyla ortak oturum (remoteplay/Sources/XboxStream); Google libwebrtc'nin
+      # hazır derlemesini (stasel/WebRTC, BSD-3) o paket getirir. Protokol katmanı CouchSubsCore/Xbox'ta.
+      - package: RemotePlay
+        product: XboxStream
     postBuildScripts:
       # Telefondan TV kurulumu: Samsung paketi kaynaktan, Android TV ve LG paketleri son GitHub sürümünden
       # (scripts/ios-tv-packages.sh; indirilemezse önceki indirilen kullanılır).

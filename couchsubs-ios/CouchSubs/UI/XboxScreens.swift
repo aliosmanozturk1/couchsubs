@@ -2,6 +2,7 @@
 // Konsol seçimi (PlayStation varsayılan, Xbox Beta) ve Xbox kurulumu: Microsoft girişi (cihaz kodu) → Xbox seçimi.
 // Xbox'ta "İkinci hesap" (PSN) adımı yoktur. Android: ui/XboxScreens.kt.
 
+import CouchSubsCore
 import SwiftUI
 import UIKit
 
@@ -243,6 +244,11 @@ enum XboxText {
         case .network: return String(localized: "Couldn't connect to the internet. Check your connection and try again.")
         default: return String(format: String(localized: "The Xbox service sent an unexpected reply (%@)."), error.message)
         }
+    }
+
+    /// Yayın durdu (denemeler bitti ya da konsol reddetti); `reason`: ham neden.
+    static func lost(_ reason: String) -> String {
+        String(format: String(localized: "The Xbox connection was lost: %@. Restart the Xbox to reconnect."), reason)
     }
 
     /// Çeviri sürerken oturum durumu.

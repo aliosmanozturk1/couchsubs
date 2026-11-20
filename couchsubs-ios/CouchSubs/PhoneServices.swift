@@ -4,6 +4,7 @@ import CoreGraphics
 import CouchSubsCore
 import Foundation
 import RemotePlay
+import XboxStream
 
 /// PS5 bağlantısı (gerçekte `StreamSession`).
 protocol StreamControlling: AnyObject {
@@ -23,6 +24,8 @@ protocol KeeperControlling: AnyObject {
 }
 
 extension StreamSession: StreamControlling {}
+/// Xbox ev yayını (Beta): Mac uygulamasıyla ortak oturum (remoteplay/Sources/XboxStream).
+extension XboxStreamSession: StreamControlling {}
 extension TVKeeper: KeeperControlling {}
 
 /// Deneme modunun "konsolu": uygulamadaki örnek kareleri (`DemoFrameSource`) akış gibi verir; ağ kullanmaz.

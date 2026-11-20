@@ -7,8 +7,8 @@
 
 import Foundation
 
-struct XboxSessionMachine {
-    enum Phase: Equatable {
+public struct XboxSessionMachine {
+    public enum Phase: Equatable {
         case idle, starting
         case provisioning(polls: Int, connectSent: Bool)
         case negotiating, streaming
@@ -17,7 +17,7 @@ struct XboxSessionMachine {
         case stopped
     }
 
-    enum Action: Equatable {
+    public enum Action: Equatable {
         case play
         case pollState(delayMs: Int)
         case connect
@@ -27,19 +27,19 @@ struct XboxSessionMachine {
         case nothing
     }
 
-    static let fatal: Set<XboxErrorKind> = [.signInRequired, .noXboxAccount]
+    public static let fatal: Set<XboxErrorKind> = [.signInRequired, .noXboxAccount]
 
-    let maxPolls: Int
-    let pollIntervalMs: Int
-    let retryDelaysMs: [Int]
-    let healthyStreamMs: Int
+    public let maxPolls: Int
+    public let pollIntervalMs: Int
+    public let retryDelaysMs: [Int]
+    public let healthyStreamMs: Int
     private let clock: () -> Double
-    private(set) var phase: Phase = .idle
+    public private(set) var phase: Phase = .idle
     /// Ardışık başarısız deneme sayısı.
     private var failures = 0
     private var streamingSince: Double = 0
 
-    init(maxPolls: Int = 90, pollIntervalMs: Int = 1000, retryDelaysMs: [Int] = [5000, 15000, 45000], healthyStreamMs: Int = 60_000,
+    public init(maxPolls: Int = 90, pollIntervalMs: Int = 1000, retryDelaysMs: [Int] = [5000, 15000, 45000], healthyStreamMs: Int = 60_000,
          clock: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime * 1000 }) {
         self.maxPolls = maxPolls
         self.pollIntervalMs = pollIntervalMs
@@ -48,19 +48,19 @@ struct XboxSessionMachine {
         self.clock = clock
     }
 
-    mutating func start() -> Action {
+    public mutating func start() -> Action {
         guard phase != .stopped else { return .nothing }
         phase = .starting
         return .play
     }
 
-    mutating func played() -> Action {
+    public mutating func played() -> Action {
         guard phase == .starting else { return .nothing }
         phase = .provisioning(polls: 0, connectSent: false)
         return .pollState(delayMs: 0)
     }
 
-    mutating func status(_ state: String, errorDetails: String?) -> Action {
+    public mutating func status(_ state: String, errorDetails: String?) -> Action {
         guard case let .provisioning(polls, connectSent) = phase else { return .nothing }
         // Konsol yayını kendisi reddetti: yeniden denemek konsolu yeniden tetikler, denenmez.
         if state == "Failed" || (state != "Provisioned" && Self.hasErrorDetails(errorDetails)) {
@@ -78,7 +78,7 @@ struct XboxSessionMachine {
         }
     }
 
-    mutating func connected() -> Action {
+    public mutating func connected() -> Action {
         guard case let .provisioning(polls, connectSent) = phase else { return .nothing }
         return poll(polls: polls, connectSent: connectSent)
     }
@@ -90,7 +90,7 @@ struct XboxSessionMachine {
         return .pollState(delayMs: pollIntervalMs)
     }
 
-    mutating func streaming() -> Bool {
+    public mutating func streaming() -> Bool {
         guard phase == .negotiating else { return false }
         phase = .streaming
         streamingSince = clock()
@@ -98,7 +98,7 @@ struct XboxSessionMachine {
     }
 
     /// `permanent`: konsol yayını reddetti (`Failed` ya da `errorDetails`); yeniden denenmez.
-    mutating func fail(_ kind: XboxErrorKind, _ message: String, permanent: Bool = false) -> Action {
+    public mutating func fail(_ kind: XboxErrorKind, _ message: String, permanent: Bool = false) -> Action {
         guard phase != .stopped else { return .nothing }
         // Yayın en az `healthyStreamMs` sürdüyse bu kopma yeni bir dizinin ilkidir.
         if streamingSince > 0 && clock() - streamingSince >= Double(healthyStreamMs) { failures = 0 }
@@ -110,32 +110,32 @@ struct XboxSessionMachine {
     }
 
     /// `errorDetails` gerçek bir hata mı (boş nesne ya da tüm alanları null olan nesne sayılmaz).
-    static func hasErrorDetails(_ details: String?) -> Bool {
+    public static func hasErrorDetails(_ details: String?) -> Bool {
         let text = (details ?? "").replacingOccurrences(of: " ", with: "")
         if text.isEmpty || text == "{}" || text == "null" { return false }
         return text.range(of: #"^\{("[^"]*":(null|""),?)*\}$"#, options: .regularExpression) == nil
     }
 
-    mutating func stop() { phase = .stopped }
+    public mutating func stop() { phase = .stopped }
 
-    static func classifyFailure(_ details: String?) -> XboxErrorKind {
+    public static func classifyFailure(_ details: String?) -> XboxErrorKind {
         let text = (details ?? "").lowercased()
         if ["inuse", "busy", "alreadystreaming"].contains(where: text.contains) { return .busy }
         return .consoleUnavailable
     }
 }
 
-enum XboxChannels {
+public enum XboxChannels {
     /// Kanal adı → protokol; oluşturma sırası oynatıcıdaki gibi.
-    static let channels: [(name: String, protocol: String)] = [("input", "1.0"), ("chat", "chatV1"), ("control", "controlV1"), ("message", "messageV1")]
-    static let handshake = "{\"type\":\"Handshake\",\"version\":\"messageV1\",\"id\":\"f9c5f412-0e69-4ede-8e62-92c7f5358c56\",\"cv\":\"\"}"
-    static let authorization = "{\"message\":\"authorizationRequest\",\"accessKey\":\"4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E\"}"
-    static let gamepadAdded = "{\"message\":\"gamepadChanged\",\"gamepadIndex\":0,\"wasAdded\":true}"
+    public static let channels: [(name: String, protocol: String)] = [("input", "1.0"), ("chat", "chatV1"), ("control", "controlV1"), ("message", "messageV1")]
+    public static let handshake = "{\"type\":\"Handshake\",\"version\":\"messageV1\",\"id\":\"f9c5f412-0e69-4ede-8e62-92c7f5358c56\",\"cv\":\"\"}"
+    public static let authorization = "{\"message\":\"authorizationRequest\",\"accessKey\":\"4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E\"}"
+    public static let gamepadAdded = "{\"message\":\"gamepadChanged\",\"gamepadIndex\":0,\"wasAdded\":true}"
     private static let messageId = "41f93d5a-900f-4d33-b7a1-2d4ca6747072"
 
-    static func isHandshakeAck(_ text: String) -> Bool { (try? parseJSON(text))?["type"] as? String == "HandshakeAck" }
+    public static func isHandshakeAck(_ text: String) -> Bool { (try? parseJSON(text))?["type"] as? String == "HandshakeAck" }
 
-    static func configurationMessages(width: Int = 1920, height: Int = 1080) -> [String] {
+    public static func configurationMessages(width: Int = 1920, height: Int = 1080) -> [String] {
         func message(_ target: String, _ data: JSON) -> String {
             jsonText(["type": "Message", "content": jsonText(data), "id": messageId, "target": target, "cv": ""])
         }
@@ -152,7 +152,7 @@ enum XboxChannels {
     }
 
     /// `input` kanalının ilk paketi (ClientMetadata, 15 bayt, küçük sonlu).
-    static func clientMetadataPacket(sequence: UInt32 = 0, timestampMs: Double, maxTouchpoints: UInt8 = 2) -> Data {
+    public static func clientMetadataPacket(sequence: UInt32 = 0, timestampMs: Double, maxTouchpoints: UInt8 = 2) -> Data {
         var data = Data()
         withUnsafeBytes(of: UInt16(8).littleEndian) { data.append(contentsOf: $0) }
         withUnsafeBytes(of: sequence.littleEndian) { data.append(contentsOf: $0) }
@@ -162,12 +162,12 @@ enum XboxChannels {
     }
 
     /// Oynatıcı bir pakette en çok 29 kare onaylar (Input.ts `getMetadataQueue(30)` → `splice(0, 29)`).
-    static let maxFrameAcks = 29
+    public static let maxFrameAcks = 29
 
     /// `input` kanalının kare onayı paketi (Input/Packet.ts, rapor türü 1 = Metadata): tür (u16), sıra no (u32), zaman
     /// (f64, ms), kare sayısı (u8), her kare için yedi u32: serverDataKey (RTP zaman damgası), varış, gönderim, çözülme,
     /// gösterim, paket hazırlama ve gönderme anları (ms). Hepsi küçük sonlu; Android'deki `frameAckPacket` ile aynı.
-    static func frameAckPacket(sequence: UInt32, timestampMs: Double, frames: [XboxFrameAck]) -> Data {
+    public static func frameAckPacket(sequence: UInt32, timestampMs: Double, frames: [XboxFrameAck]) -> Data {
         var data = Data()
         func u32(_ value: UInt32) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
         func ms(_ value: Double) -> UInt32 { UInt32(truncatingIfNeeded: Int64(value)) }
@@ -188,15 +188,21 @@ enum XboxChannels {
     }
 
     /// Oynatıcının SDP düzeltmesi: stereo ses (ilk `useinbandfec=1`).
-    static func mungeOffer(_ sdp: String) -> String {
+    public static func mungeOffer(_ sdp: String) -> String {
         guard let range = sdp.range(of: "useinbandfec=1") else { return sdp }
         return sdp.replacingCharacters(in: range, with: "useinbandfec=1; stereo=1")
     }
 }
 
 /// Gösterilen bir görüntü karesinin onayı: [serverDataKey] karenin RTP zaman damgası, anlar oturum saatine göre ms.
-struct XboxFrameAck: Equatable {
-    let serverDataKey: UInt32
-    let arrivalMs: Double
-    let decodedMs: Double
+public struct XboxFrameAck: Equatable {
+    public let serverDataKey: UInt32
+    public let arrivalMs: Double
+    public let decodedMs: Double
+
+    public init(serverDataKey: UInt32, arrivalMs: Double, decodedMs: Double) {
+        self.serverDataKey = serverDataKey
+        self.arrivalMs = arrivalMs
+        self.decodedMs = decodedMs
+    }
 }

@@ -5,6 +5,7 @@ import CouchSubsCore
 import Foundation
 import Combine
 import RemotePlay
+import XboxStream
 
 /// Telefon uygulamasının bütün durumu: kurulum (PSN girişi, PS5 eşleştirme, altyazının yeri), çeviri (PS5 görüntüsü →
 /// yazı tanıma → çeviri → TV ya da telefon ekranı) ve ayarlar. Okuma hattı, çevirmenler, ayarlar ve TV denetimi Mac
@@ -540,7 +541,7 @@ final class PhoneModel: ObservableObject {
         } else if let xbox {
             RemotePlayLog.write("Çeviri başladı; Xbox'a bağlanılıyor (Beta): \(xbox.name)")
             session = XboxStreamSession(auth: xboxAuth, console: xbox, playAudio: settings.xboxAudioOnDevice,
-                                        describe: XboxText.session)
+                                        describe: XboxText.session, lost: XboxText.lost)
             consoleName = xbox.name.isEmpty ? "Xbox" : xbox.name
         } else if let console, let accountId {
             RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)")
