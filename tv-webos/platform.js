@@ -16,6 +16,267 @@
     return wired.ipAddress || wifi.ipAddress || null;
   }
 
+  // --- HDMI görüntüsünün gözcüsü ---
+  // HDMI girişi <video> ile (ext://hdmi) gösterilir. Görüntü oyunun ortasında kesilirse (ekran siyah, altyazı geliyor,
+  // oyun arkada sürüyor) ya da uygulama arka plandan dönünce <video> kendiliğinden toparlanmıyordu; görüntü oynamayınca TV
+  // de boşta sanıp ekran koruyucuya ve uykuya geçebiliyor. Gözcü <video>'yu izler, görüntü düşünce onu yeniden kurar.
+  // Çalışan görüntüye dokunulmaz: yalnız açık bir bozulma işareti varsa kurulur (hata, kare yok, duraklamış, önce ilerleyen
+  // sayaç durmuş) ve denemeler gittikçe seyrekleşir. Gerçek LG'de denenmedi; durum bilgi panelinde yazar (diagnostics).
+  var CHECK_MS = 5000;
+  // Yeni kurulan <video> bu süre "yükleniyor" sayılır.
+  var GRACE_MS = 8000;
+  // currentTime'ı ilerleten TV'de sayaç bu kadar durursa görüntü kesilmiştir.
+  var STALL_MS = 15000;
+  var BACKOFF_MS = [2000, 4000, 8000, 16000, 30000, 60000];
+  var MAX_PER_MINUTE = 4;
+  // Bu girişte görüntü hiç gelmediyse (yanlış giriş, konsol kapalı) birkaç denemeden sonra durulur.
+  var NEVER_PLAYED_MAX = 3;
+  var STEADY_MS = 30000;
+  var REBUILD_GAP_MS = 300;
+
+  var hdmi = {
+    port: 0, host: null, onStatus: null, video: null, builtAt: 0,
+    played: false, everPlayed: false,
+    rebuilds: 0, failures: 0, sincePort: 0, recent: [], reason: '', lastError: '', lastEvent: '',
+    lastTime: -1, lastAdvanceAt: 0, advances: 0, playTried: false, sawUnpaused: false,
+    pending: null, building: null, checkTimer: null, soonTimer: null, wasHidden: false
+  };
+
+  function nowMs() { return new Date().getTime(); }
+
+  function pageHidden() { return !!(document.hidden || document.webkitHidden); }
+
+  function describeError(error) {
+    if (!error) return '';
+    return 'code ' + error.code + (error.message ? ' ' + String(error.message).slice(0, 40) : '');
+  }
+
+  // hard: boru hattı da bırakılır (yeniden kurmadan önce). Giriş değiştirirken eskisi gibi yalnız sayfadan çıkarılır.
+  function releaseVideo(video, hard) {
+    if (!video) return;
+    if (hard) {
+      try {
+        video.pause();
+        while (video.firstChild) video.removeChild(video.firstChild);
+        video.removeAttribute('src');
+        video.load();
+      } catch (e) {}
+    }
+    try { if (video.parentNode) video.parentNode.removeChild(video); } catch (e2) {}
+  }
+
+  function buildVideo() {
+    var video = document.createElement('video');
+    video.autoplay = true;
+    var source = document.createElement('source');
+    source.setAttribute('type', 'service/webos-external');
+    source.setAttribute('src', 'ext://hdmi:' + hdmi.port);
+    video.appendChild(source);
+
+    hdmi.video = video;
+    hdmi.builtAt = nowMs();
+    hdmi.played = false;
+    hdmi.lastTime = -1;
+    hdmi.lastAdvanceAt = hdmi.builtAt;
+    hdmi.advances = 0;
+    hdmi.playTried = false;
+    hdmi.sawUnpaused = false;
+
+    function current() { return hdmi.video === video; }
+    function picture(kind) {
+      return function () {
+        if (!current()) return;
+        hdmi.played = true;
+        hdmi.everPlayed = true;
+        hdmi.onStatus(kind);
+      };
+    }
+    function suspect(name) {
+      return function () {
+        if (!current()) return;
+        hdmi.lastEvent = name;
+        checkSoon(1500, false);
+      };
+    }
+    video.addEventListener('loadeddata', picture('ready'));
+    video.addEventListener('playing', picture('playing'));
+    video.addEventListener('error', function () {
+      if (!current()) return;
+      hdmi.lastError = describeError(video.error) || 'error';
+      hdmi.onStatus('inputError');
+      schedule('error');
+    });
+    source.addEventListener('error', function () {
+      if (!current()) return;
+      hdmi.lastError = 'source';
+      hdmi.onStatus('sourceError');
+    });
+    // Bu olaylar çalışan görüntüde de gelebilir: tek başlarına yeniden kurdurmaz, yalnız denetimi öne çeker.
+    var events = ['stalled', 'emptied', 'abort', 'ended', 'pause'];
+    for (var i = 0; i < events.length; i++) video.addEventListener(events[i], suspect(events[i]));
+
+    hdmi.host.appendChild(video);
+  }
+
+  // Görüntü sağlamsa '', değilse neden.
+  function health(now) {
+    var video = hdmi.video;
+    if (!video) return 'gone';
+    if (!video.parentNode) return 'detached';
+    if (video.error) return 'error';
+    if (now - hdmi.builtAt < GRACE_MS) return '';
+    if (!(video.readyState >= 2 || video.videoWidth > 0)) return hdmi.played ? 'lost' : 'no picture';
+    if (video.paused || video.ended) {
+      // Bu <video> hiç "oynuyor" görünmediyse (TV görüntüyü duraklamış sayarak gösteriyor olabilir) işaret sayılmaz.
+      if (!hdmi.sawUnpaused) return '';
+      if (hdmi.playTried) return 'paused';
+      // Önce nazikçe: duraklamış görüntü yeniden oynatılır; bir sonraki denetimde hâlâ duruyorsa yeniden kurulur.
+      hdmi.playTried = true;
+      try {
+        var promise = video.play();
+        if (promise && typeof promise.then === 'function') promise.then(null, function () {});
+      } catch (e) {}
+      return '';
+    }
+    hdmi.playTried = false;
+    hdmi.sawUnpaused = true;
+    var time = Number(video.currentTime);
+    if (time > hdmi.lastTime) {
+      if (hdmi.lastTime >= 0) hdmi.advances++;
+      hdmi.lastTime = time;
+      hdmi.lastAdvanceAt = now;
+    } else if (hdmi.advances >= 3 && now - hdmi.lastAdvanceAt >= STALL_MS) {
+      // Sayaç bu <video>'da ilerliyordu, artık ilerlemiyor. Sayacı hiç ilerletmeyen TV'de bu işaret kullanılmaz.
+      return 'stalled';
+    }
+    return '';
+  }
+
+  function mayRebuild() {
+    return !!hdmi.host && (hdmi.everPlayed || hdmi.sincePort < NEVER_PLAYED_MAX);
+  }
+
+  function rebuild(reason) {
+    hdmi.rebuilds++;
+    hdmi.failures++;
+    hdmi.sincePort++;
+    hdmi.recent.push(nowMs());
+    hdmi.reason = reason;
+    var old = hdmi.video;
+    hdmi.video = null;
+    releaseVideo(old, true);
+    hdmi.onStatus('loading');
+    clearTimeout(hdmi.building);
+    hdmi.building = setTimeout(function () {
+      hdmi.building = null;
+      if (hdmi.host) buildVideo();
+    }, REBUILD_GAP_MS);
+  }
+
+  // Dakikadaki deneme sınırı dolduysa ne kadar beklenmeli (ms); dolmadıysa 0.
+  function rateWait(now) {
+    while (hdmi.recent.length && now - hdmi.recent[0] >= 60000) hdmi.recent.shift();
+    return hdmi.recent.length >= MAX_PER_MINUTE ? 60000 - (now - hdmi.recent[0]) : 0;
+  }
+
+  // Yeniden kurmayı sıraya koyar: gittikçe seyrekleşen aralıkla (2, 4, 8… sn; en çok dakikada bir). immediate: bir olayın
+  // ardından (öne gelme, ekran koruyucu sorusu) beklemeden; dakikadaki sınır yine geçerlidir.
+  function schedule(reason, immediate) {
+    if (hdmi.pending !== null || hdmi.building !== null || !mayRebuild()) return;
+    var delay = immediate ? 0 : BACKOFF_MS[Math.min(hdmi.failures, BACKOFF_MS.length - 1)];
+    delay = Math.max(delay, rateWait(nowMs()));
+    hdmi.pending = setTimeout(function () {
+      hdmi.pending = null;
+      // Arka plandayken kurulmaz; öne gelince yeniden bakılır.
+      if (pageHidden() || !hdmi.host) return;
+      // Beklerken kendiliğinden düzeldiyse dokunulmaz.
+      if (reason !== 'resume' && health(nowMs()) === '') return;
+      rebuild(reason);
+    }, delay);
+  }
+
+  function tick() {
+    hdmi.checkTimer = setTimeout(tick, CHECK_MS);
+    if (pageHidden()) {
+      hdmi.wasHidden = true;
+      return;
+    }
+    if (hdmi.pending !== null || hdmi.building !== null || !hdmi.host) return;
+    var now = nowMs();
+    var reason = health(now);
+    if (reason) schedule(reason);
+    else if (hdmi.played && hdmi.failures && now - hdmi.builtAt >= STEADY_MS) hdmi.failures = 0;
+  }
+
+  // Bir olaydan (öne gelme, yeniden başlatılma, odak, ekran koruyucu sorusu) kısa süre sonra görüntüye bakar.
+  // strict: uygulama gerçekten arka plandaydı. O zaman "bozuk görünmüyor" yetmez: sayaç ilerliyorsa görüntü vardır,
+  // ilerlemiyorsa <video> yeniden kurulur (giriş ekranı zaten yeniden açılırken; çalışan oyunun ortasında değil).
+  function checkSoon(delay, strict) {
+    if (!hdmi.host) return;
+    clearTimeout(hdmi.soonTimer);
+    hdmi.soonTimer = setTimeout(function () {
+      if (pageHidden() || hdmi.pending !== null || hdmi.building !== null || !hdmi.host) return;
+      var now = nowMs();
+      var reason = health(now);
+      if (reason) return schedule(reason, true);
+      if (!strict || now - hdmi.builtAt < GRACE_MS) return;
+      var video = hdmi.video;
+      var before = Number(video.currentTime);
+      hdmi.soonTimer = setTimeout(function () {
+        if (pageHidden() || hdmi.video !== video || hdmi.pending !== null || hdmi.building !== null) return;
+        if (Number(video.currentTime) > before) return;
+        schedule('resume', true);
+      }, 1500);
+    }, delay);
+  }
+
+  function onVisibility() {
+    if (pageHidden()) {
+      hdmi.wasHidden = true;
+      return;
+    }
+    var strict = hdmi.wasHidden;
+    hdmi.wasHidden = false;
+    checkSoon(1500, strict);
+  }
+
+  if (document.addEventListener) {
+    document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener('webkitvisibilitychange', onVisibility);
+    document.addEventListener('webOSRelaunch', function () { checkSoon(1500, false); });
+  }
+  if (window.addEventListener) window.addEventListener('focus', function () { checkSoon(1500, false); });
+
+  // TV'nin sürümü ve modeli (PalmSystem.deviceInfo; webOSTV.js'in okuduğu alanlar) ile tarayıcı sürümü.
+  function systemText() {
+    var text = 'webOS';
+    try {
+      var info = JSON.parse(window.PalmSystem.deviceInfo);
+      text += ' ' + (info.platformVersion || '?') + (info.modelName ? ' ' + info.modelName : '');
+    } catch (e) {}
+    var chrome = /Chrom(?:e|ium)\/(\d+)/.exec((window.navigator && window.navigator.userAgent) || '');
+    return text + (chrome ? ' cr' + chrome[1] : '');
+  }
+
+  function hdmiText() {
+    var video = hdmi.video;
+    var state;
+    if (!hdmi.host) state = 'idle';
+    else if (!video) state = 'rebuilding';
+    else if (video.error) state = 'error';
+    else if (video.readyState >= 2 || video.videoWidth > 0) state = video.paused ? 'paused' : 'playing';
+    else state = hdmi.played ? 'lost' : 'loading';
+    var text = 'hdmi ' + state;
+    if (video) {
+      text += ' rs' + video.readyState + ' ' + (video.videoWidth || 0) + 'x' + (video.videoHeight || 0) +
+        (hdmi.advances >= 3 ? ' t+' : ' t=');
+    }
+    if (hdmi.rebuilds) text += ' · rebuilt ' + hdmi.rebuilds + ' (' + hdmi.reason + ')';
+    if (hdmi.lastError) text += ' · last error ' + hdmi.lastError;
+    if (hdmi.lastEvent) text += ' · ev ' + hdmi.lastEvent;
+    return text;
+  }
+
   window.COUCHSUBS_PLATFORM = {
     backKey: 461,
 
@@ -40,49 +301,95 @@
     // Başlatma+ ile TV'yi kapatıp açmak, TV uygulamasının güncellenmesi) eski kayıt ölü kalır, aynı adla yeniden kayıt
     // "already registered" (-3) hatası alır. Eskiden ad hep 'com.couchsubs.tv' idi: TV'nin sorusu yanıt vermeyen eski
     // kayda gidiyor, ekran koruyucu yine açılıyordu (fişten çekince düzelip ertesi gün geri gelmesi buna uyuyor). Bu
-    // yüzden her açılışta yeni bir ad kullanılır; kayıt yine reddedilirse birkaç kez başka adla denenir.
+    // yüzden her açılışta yeni bir ad kullanılır.
+    //
+    // Yeni adla kayıt gerçek LG'de denenmedi; 0.9.40'tan sonra "TV uykuya geçmeye başladı" bildirimi geldi. Bu yüzden
+    // yeni ad reddedilirse ya da 4 sn içinde hiç yanıt gelmezse eski sabit adla, o da olmazsa başka yeni adlarla denenir.
+    // Kabul edilmiş kayıt sonradan düşerse (servis hata bildirir) yeniden kaydolunur; TV'nin sorusuna verilen yanıtın
+    // sonucu da izlenir. Durum panelde hangi adla olduğuyla yazar: "registered (new)", "deferred 3 (fixed)",
+    // "denied: … (new.2)", "no reply (new)", "reply failed: … @3 (new)".
     init: function () {
       var BASE = 'com.couchsubs.tv';
-      var MAX_ATTEMPTS = 4;
+      var NO_REPLY_MS = 4000;
+      var MAX_TOTAL = 10;
       var stamp = new Date().getTime().toString(36);
       var attempt = 0;
+      // Açılışta en çok dört ad denenir; kabul edilmiş kayıt her düştüğünde iki deneme hakkı daha verilir.
+      var limit = 4;
+      var count = 0;
       // Köprü nesneleri çöpe gitmesin; abonelik uygulama açık kaldıkça sürer.
       window.__screenSaverBridges = [];
 
+      // Deneme sırası: yeni ad, eski sabit ad, sonra başka yeni adlar.
+      function nameFor(index) {
+        if (index === 0) return [BASE + '.' + stamp, 'new'];
+        if (index === 1) return [BASE, 'fixed'];
+        return [BASE + '.' + stamp + '.' + (index - 1), 'new.' + (index - 1)];
+      }
+
       function register() {
-        var client = BASE + '.' + stamp + (attempt ? '.' + attempt : '');
+        if (attempt >= limit) return;
+        var name = nameFor(attempt);
+        var client = name[0];
+        var label = name[1];
         attempt++;
         var bridge = new PalmServiceBridge();
-        var failed = false;
+        var accepted = false;
+        var moved = false;
+
+        function status(text) { window.__screenSaverStatus = text + ' (' + label + ')'; }
+
+        // Bu ad işe yaramadı: nedeni yazılır, sıradaki adla denenir.
+        function next(why) {
+          if (moved) return;
+          moved = true;
+          status(why);
+          if (attempt < limit) setTimeout(function () { try { register(); } catch (e) {} }, 1000);
+        }
+
         bridge.onservicecallback = function (message) {
           var request;
           try { request = JSON.parse(message); } catch (e) { return; }
           if (!request) return;
-          // Panelin tanı satırı için: kayıt reddedildiyse sebebi, kabul edildiyse ertelenen istek sayısı.
           if (request.returnValue === false) {
-            window.__screenSaverStatus = 'denied: ' + (request.errorText || request.errorCode) +
-              (attempt < MAX_ATTEMPTS ? ' (retry)' : '');
-            if (!failed && attempt < MAX_ATTEMPTS) {
-              failed = true;
-              setTimeout(function () { try { register(); } catch (e) {} }, 1000);
+            if (accepted) {
+              // Kabul edilmiş kayıt düştü: yeniden kaydolunur.
+              accepted = false;
+              moved = false;
+              limit = Math.min(MAX_TOTAL, Math.max(limit, attempt + 2));
             }
+            next('denied: ' + (request.errorText || request.errorCode));
             return;
           }
+          accepted = true;
           if (request.timestamp === undefined) {
-            if (!window.__screenSaverCount) window.__screenSaverStatus = 'registered';
+            if (!count) status('registered');
             return;
           }
-          window.__screenSaverCount = (window.__screenSaverCount || 0) + 1;
-          window.__screenSaverStatus = 'deferred ' + window.__screenSaverCount;
+          // TV ekran koruyucuyu açmak üzere: ack:false erteler.
+          count++;
+          window.__screenSaverCount = count;
+          status('deferred ' + count);
+          var asked = count;
           var reply = new PalmServiceBridge();
+          reply.onservicecallback = function (answer) {
+            var result;
+            try { result = JSON.parse(answer); } catch (e) { return; }
+            if (result && result.returnValue === false) {
+              status('reply failed: ' + (result.errorText || result.errorCode) + ' @' + asked);
+            }
+          };
           reply.call('luna://com.webos.service.tvpower/power/responseScreenSaverRequest',
             JSON.stringify({ clientName: client, ack: false, timestamp: request.timestamp }));
           window.__screenSaverReply = reply;
+          // TV boşta saydı: görüntü gerçekten oynuyor mu, bakılır.
+          checkSoon(1500, false);
         };
         bridge.call('luna://com.webos.service.tvpower/power/registerScreenSaverRequest',
           JSON.stringify({ subscribe: true, clientName: client }));
         window.__screenSaverBridges.push(bridge);
         window.__screenSaverBridge = bridge;
+        setTimeout(function () { if (!accepted) next('no reply'); }, NO_REPLY_MS);
       }
 
       try { register(); } catch (e) {}
@@ -97,23 +404,34 @@
     },
 
     // onStatus: 'loading' | 'ready' | 'playing' | 'inputError' | 'sourceError'
+    // Giriş açıldıktan sonra görüntü gözcüsü çalışır (yukarıda): görüntü düşerse <video> yeniden kurulur.
     showHdmi: function (port, host, onStatus) {
+      clearTimeout(hdmi.pending);
+      clearTimeout(hdmi.building);
+      clearTimeout(hdmi.soonTimer);
+      hdmi.pending = null;
+      hdmi.building = null;
+      // Aynı giriş yeniden istendi (kullanıcı kumandada o girişin numarasına bastı): görüntü takıldıysa boru hattı da
+      // bırakılıp baştan kurulur. Başka girişe geçerken eskisi gibi yalnız sayfadan çıkarılır.
+      if (hdmi.video && port === hdmi.port && host === hdmi.host) releaseVideo(hdmi.video, true);
+      hdmi.video = null;
       host.innerHTML = '';
 
-      var video = document.createElement('video');
-      video.autoplay = true;
-      var source = document.createElement('source');
-      source.setAttribute('type', 'service/webos-external');
-      source.setAttribute('src', 'ext://hdmi:' + port);
-      video.appendChild(source);
+      hdmi.port = port;
+      hdmi.host = host;
+      hdmi.onStatus = onStatus;
+      hdmi.everPlayed = false;
+      hdmi.failures = 0;
+      hdmi.sincePort = 0;
 
       onStatus('loading');
-      video.addEventListener('loadeddata', function () { onStatus('ready'); });
-      video.addEventListener('playing', function () { onStatus('playing'); });
-      video.addEventListener('error', function () { onStatus('inputError'); });
-      source.addEventListener('error', function () { onStatus('sourceError'); });
+      buildVideo();
+      if (hdmi.checkTimer === null) hdmi.checkTimer = setTimeout(tick, CHECK_MS);
+    },
 
-      host.appendChild(video);
+    // Bilgi panelindeki ikinci tanı satırı: HDMI görüntüsünün durumu, yeniden kurma sayısı, son hata ve webOS sürümü.
+    diagnostics: function () {
+      return hdmiText() + ' · ' + systemText();
     },
 
     // TV'nin giriş listesinden oyun konsolunun bağlı olduğu HDMI portunu bulur.
@@ -190,8 +508,17 @@
       ask(NETWORK_STATUS, 0);
     },
 
-    exit: function () {
+    // user: kullanıcı kumandadan kendisi çıkıyor (Geri). O zaman uygulama arka planda açık kalmaz, tümüyle kapanır
+    // (window.close): HDMI girişi bırakılır, TV'nin kendi giriş ekranı serbest kalır. Çeviri durunca bilgisayarın
+    // istediği çıkışta eskisi gibi yalnız geri dönülür; uygulama yeniden çağrıldığında hemen açılır.
+    exit: function (user) {
+      if (user) {
+        hdmi.host = null;
+        releaseVideo(hdmi.video, true);
+        hdmi.video = null;
+      }
       if (window.PalmSystem && window.PalmSystem.platformBack) window.PalmSystem.platformBack();
+      if (user) setTimeout(function () { try { window.close(); } catch (e) {} }, 500);
     }
   };
 })();

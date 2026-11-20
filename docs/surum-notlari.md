@@ -6,6 +6,10 @@ CouchSubs'ın yeni deneme sürümü. Türkçe dil desteği olmayan PS5 oyunları
 
 **Bu sürümde yeni**
 
+- **LG TV'de oyun sırasında siyah ekran (TV uygulaması 0.9.44):** TV uygulaması HDMI görüntüsünü izliyor; görüntü düşerse kendiliğinden yeniden kuruyor. Kumandada açık HDMI girişinin numarasına basmak da görüntüyü baştan kurar. Bilgi panelinde (Tamam ya da Yeşil tuş) görüntünün durumu ve TV'nin sürümü yazıyor; sorun sürerse panelin fotoğrafı nedeni gösterir.
+- **LG ekran koruyucu (TV uygulaması 0.9.44):** Ekran koruyucuyu erteleyen kayıt kabul edilmezse eski yöntemle yeniden deneniyor, düşerse yenileniyor.
+- **Altyazı boyu (TV uygulaması 0.9.44):** Art arda gelen altyazılarda yazının gereksiz yere küçülmesi düzeltildi (0.9.42'de gelmişti).
+- **TV'de CouchSubs'tan çıkış (TV uygulaması 0.9.44):** Panel kapalıyken Geri tuşu uygulamayı tümüyle kapatır; tuş listesinde de yazıyor.
 - **Android TV'de siyah ekran (TV uygulaması 0.9.42, #643):** Katman modunda altyazı sayfası art arda kapanınca CouchSubs artık oyunun üstüne açılıp görüntüyü karartmıyor; katman kapanır, neden ekranda yazar, oyun görüntüsü yerinde kalır. Katman, sayfası yüklenene kadar hiçbir şey çizmez.
 - **Altyazı konuşana göre renkli (Windows, Mac, iPhone, Android):** "Ad: söz" biçimindeki altyazılarda konuşanın adı kendi renginde görünür; aynı kişi hep aynı renktedir. Ayarlardan kapatılabilir.
 - **Ekran yazıları kendiliğinden çevriliyor (Windows, deneysel):** Görev kutusu, yardım yazısı ve gelen mesaj gibi ekranda beliren yazılar bulunur, Türkçesi özgün yazının yerinde, onun rengi ve boyutuyla görünür. Ayarlar › "Ekran yazılarını otomatik çevir" ile kapatılabilir.

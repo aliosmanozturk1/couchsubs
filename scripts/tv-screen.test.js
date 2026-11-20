@@ -57,6 +57,7 @@ function render(width, height) {
       <div id="regions" class="hidden"></div><div id="screen"></div><pre id="result"></pre><script>
       function $(id) { return document.getElementById(id); }
       var hidden = []; function hideSubtitle(reason) { hidden.push(reason); }
+      var diag = { regions: 0, big: 0 };
       ${app.slice(validStart, validEnd)}
       ${app.slice(start, end)}
       ${app.slice(regionStart, regionEnd)}
