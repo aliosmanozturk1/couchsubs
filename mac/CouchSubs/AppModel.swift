@@ -5,6 +5,7 @@ import CouchSubsCore
 import Darwin
 import Combine
 import RemotePlay
+import XboxStream
 
 /// Dış dünyayla (PS5, PSN, TV) konuşan her şey; testlerde sahtesi kullanılır.
 extension AppServices {
@@ -25,6 +26,16 @@ extension AppServices {
     func runningGame(host: String) async -> RunningGame? {
         guard let info = await Console.discover(timeout: .seconds(2), host: host).first else { return nil }
         return RunningGame(titleId: info.runningAppTitleId, name: info.runningAppName)
+    }
+    /// Xbox (Beta): Microsoft girişi ve jeton zinciri (testlerde sahte HTTP'li bir `XboxAuth` verilir).
+    func makeXboxAuth(userToken: XboxUserToken?, onUserToken: @escaping @Sendable (XboxUserToken?) -> Void) -> XboxAuth {
+        XboxAuth(userToken: userToken, onUserToken: onUserToken)
+    }
+    /// Hesaptaki Xbox'lar (smartglass listesi).
+    func xboxConsoles(auth: XboxAuth) async throws -> [XboxConsole] { try await XboxHome(auth: auth).consoles() }
+    /// Xbox ev yayını oturumu (iPhone'la ortak `XboxStreamSession`); ekran metinleri `XboxText`'ten.
+    func makeXboxStream(auth: XboxAuth, console: XboxConsole, playAudio: Bool) -> StreamControlling {
+        XboxStreamSession(auth: auth, console: console, playAudio: playAudio, describe: XboxText.session, stopped: XboxText.stopped)
     }
     /// Samsung kurulumundan önce: TV'nin 8001 yanıtı ve TV'ye giden yolun bu Mac'teki adresi (#343).
     func checkSamsung(host: String) async -> SamsungPreflight {
@@ -55,6 +66,10 @@ protocol AppServices: AnyObject {
     func makeWindowStream(app: RemotePlayApp) -> StreamControlling
     /// Seçilen Remote Play uygulaması (PS Remote Play ya da chiaki-ng) bu Mac'te kurulu mu.
     func remotePlayInstalled(_ app: RemotePlayApp) -> Bool
+    /// Xbox (Beta): Microsoft girişi, hesaptaki Xbox'lar ve ev yayını oturumu (varsayılanları yukarıda; testlerde sahtesi).
+    func makeXboxAuth(userToken: XboxUserToken?, onUserToken: @escaping @Sendable (XboxUserToken?) -> Void) -> XboxAuth
+    func xboxConsoles(auth: XboxAuth) async throws -> [XboxConsole]
+    func makeXboxStream(auth: XboxAuth, console: XboxConsole, playAudio: Bool) -> StreamControlling
     /// `onMoved`: TV ağda yeni bir adreste bulununca çağrılır.
     /// `appConnected`: TV uygulaması bilgisayara bağlı mı (Samsung'da bağlıyken TV'ye dokunulmaz).
     /// `onKey`: TV bağlantıda yeni jeton verdi (Samsung); saklanır.
@@ -150,6 +165,8 @@ protocol KeeperControlling: AnyObject {
 }
 
 extension StreamSession: StreamControlling {}
+/// Xbox ev yayını (Beta): iPhone'la ortak oturum (remoteplay/Sources/XboxStream).
+extension XboxStreamSession: StreamControlling {}
 extension TVKeeper: KeeperControlling {}
 
 /// Deneme modunun "konsolu": uygulamadaki örnek kareleri (`DemoFrameSource`) akış gibi verir; ağ kullanmaz.
@@ -509,6 +526,15 @@ final class AppModel: ObservableObject {
     }
     @Published var accountId: Data?
     @Published var console: RegisteredConsole?
+    /// Okunan konsol: PlayStation (varsayılan) ya da Xbox (Beta); kurulumun ilk adımında ve Ayarlar'da seçilir.
+    @Published private(set) var platform: ConsolePlatform
+    /// Seçilen Xbox ve Microsoft girişi (jeton Anahtarlık'ta).
+    @Published private(set) var xboxConsole: XboxConsole?
+    @Published private(set) var xboxSignedIn: Bool
+    let xboxAuth: XboxAuth
+    private let xboxTokenSink = XboxTokenSink()
+    /// Xbox (Beta) bu Mac'te açık mı. Arayüzü tamamlanana kadar gizli: `defaults write com.couchsubs.mac xboxBeta -bool YES`.
+    let xboxAvailable: Bool
     /// İkinci hesabın PS5 giriş şifresi Anahtarlık'ta kayıtlı.
     @Published private(set) var hasLoginPasscode: Bool
     @Published var tv: LGTV?
@@ -543,8 +569,9 @@ final class AppModel: ObservableObject {
             if settings.autoScreenText != oldValue.autoScreenText { showsAutoScreenTextNotice = false }
             if settings.appearance != oldValue.appearance { settings.appearance.apply() }
             let windowAppChanged = settings.frameSource == .remotePlayWindow && settings.remotePlayApp != oldValue.remotePlayApp
-            if settings.frameSource != oldValue.frameSource || windowAppChanged, isRunning {
-                // Görüntü kaynağı (ya da okunan Remote Play uygulaması) değişti: çeviri yeni kaynakla yeniden başlar.
+            let xboxAudioChanged = isXbox && settings.xboxAudioOnDevice != oldValue.xboxAudioOnDevice
+            if settings.frameSource != oldValue.frameSource || windowAppChanged || xboxAudioChanged, isRunning {
+                // Görüntü kaynağı (ya da okunan Remote Play uygulaması, Xbox'ta ses çıkışı) değişti: çeviri yeniden başlar.
                 // TV uygulaması kapatılmaz; kapanıp yeniden açılsa TV girişi gidip gelirdi.
                 stop(closingTVApp: false)
                 Task { await start() }
@@ -719,8 +746,23 @@ final class AppModel: ObservableObject {
         let tvKeySaved = store.load(String.self, for: StoreKey.tvKey) != nil
         let paired = tv != nil && tvKeySaved
         let loaded = defaults.data(forKey: StoreKey.settings).flatMap { try? JSONDecoder().decode(UserSettings.self, from: $0) } ?? UserSettings()
-        let ready = Self.setupIsComplete(store: store, accountId: accountId, console: console, paired: paired,
-                                         readsWindow: loaded.frameSource == .remotePlayWindow)
+        // Xbox (Beta): konsol türü, Microsoft jetonu ve seçilen Xbox. Bayrak kapalıyken kayıtlı tür yok sayılır.
+        xboxAvailable = defaults.bool(forKey: Self.xboxFlagKey)
+        let savedPlatform = defaults.string(forKey: XboxStoreKey.platform).flatMap(ConsolePlatform.init(rawValue:)) ?? .playstation
+        let platform = xboxAvailable ? savedPlatform : .playstation
+        self.platform = platform
+        let xboxConsole = store.load(XboxConsole.self, for: XboxStoreKey.console)
+        let xboxToken = XboxUserToken.parse(store.load(String.self, for: XboxStoreKey.userToken))
+        self.xboxConsole = xboxConsole
+        xboxSignedIn = xboxToken != nil
+        let sink = xboxTokenSink
+        xboxAuth = services.makeXboxAuth(userToken: xboxToken, onUserToken: { token in sink.handler?(token) })
+        let xboxLinked = xboxToken != nil && xboxConsole != nil
+        // Xbox'ta kurulum yalnız sihirbazın sonuna gelindiyse bitmiştir (iPhone'daki kural).
+        let ready = platform == .xbox
+            ? xboxLinked && store.load(Bool.self, for: StoreKey.setupComplete) == true
+            : Self.setupIsComplete(store: store, accountId: accountId, console: console, paired: paired,
+                                   readsWindow: loaded.frameSource == .remotePlayWindow)
         self.tvKeySaved = tvKeySaved
         hasLoginPasscode = LoginPasscode.normalized(store.load(String.self, for: StoreKey.loginPasscode)) != nil
         self.accountId = accountId
@@ -759,7 +801,8 @@ final class AppModel: ObservableObject {
         // Listede olmayan model varsayılana döndüyse ayar hemen kaydedilir.
         if curated != loaded, let data = try? JSONEncoder().encode(curated) { defaults.set(data, forKey: StoreKey.settings) }
         // Yarım kalan kurulum (ör. TV uygulaması kurulurken kapatıldı) PS5 kayıtlıysa TV adımından sürer.
-        step = ready ? .done : (accountId != nil && console != nil ? .tv : .welcome)
+        let linked = platform == .xbox ? xboxLinked : accountId != nil && console != nil
+        step = ready ? .done : (linked ? .tv : .welcome)
         savedKeys = Set(TranslationEngine.allCases.filter { engine in
             engine.storeKey.flatMap { store.load(String.self, for: $0) }?.isEmpty == false
         })
@@ -778,6 +821,14 @@ final class AppModel: ObservableObject {
             if game != nil { self?.packsForGame() }
         }
         gameChoice.onPublish = { [weak self] game, source in self?.gameAreas.follow(game: game, source: source) }
+        // Jeton yenilenince (ya da çıkış yapılınca) Anahtarlık güncellenir.
+        xboxTokenSink.handler = { [weak self] token in
+            Task { @MainActor in
+                guard let self else { return }
+                if let token { self.store.save(token.serialize(), for: XboxStoreKey.userToken) } else { self.store.remove(XboxStoreKey.userToken) }
+                self.xboxSignedIn = token != nil
+            }
+        }
         gameChoice.packTitles = { [weak self] in GameCatalog.packGames(self?.installedPacks ?? []) }
         // Elle seçilen oyunda satırlar yalnız o oyunun paketinde aranır, paketi yoksa hiç aranmaz (#218).
         gameChoice.packs = packs
@@ -837,7 +888,8 @@ final class AppModel: ObservableObject {
     /// PS5'e bağlanınca çalışan oyun okunmaya başlar, bağlantı gidince bırakılır (havuz satırı oyunsuz gider).
     private func updateGameProbe(connected: Bool) {
         guard probesGame else { return }
-        guard connected, let host = console?.host else {
+        // Xbox'ta çalışan oyun sorulmaz (PS5 keşif sorusu); kayıtlı bir PS5 olsa da.
+        guard connected, !isXbox, let host = console?.host else {
             gameProbe?.cancel()
             gameProbe = nil
             gameChoice.consoleReported(nil)
@@ -994,8 +1046,8 @@ final class AppModel: ObservableObject {
     var canAdvance: Bool {
         switch step {
         case .welcome, .secondAccount, .test, .betterTranslation: true
-        case .psnLogin: accountId != nil
-        case .console: console != nil
+        case .psnLogin: isXbox ? xboxSignedIn : accountId != nil
+        case .console: isXbox ? xboxConsole != nil : console != nil
         case .tv: hasTV || settings.output == .computer
         case .done: false
         }
@@ -1003,12 +1055,108 @@ final class AppModel: ObservableObject {
 
     func advance() {
         guard canAdvance, let next = Step(rawValue: step.rawValue + 1) else { return }
-        step = next
+        // Xbox'ta "İkinci hesap" adımı yoktur: karşılamadan Microsoft girişine geçilir.
+        step = next == .secondAccount && isXbox ? .psnLogin : next
     }
 
     func back() {
         guard let previous = Step(rawValue: step.rawValue - 1) else { return }
-        step = previous
+        step = previous == .secondAccount && isXbox ? .welcome : previous
+    }
+
+    // MARK: - Xbox (Beta)
+
+    static let xboxFlagKey = "xboxBeta"
+
+    var isXbox: Bool { platform == .xbox }
+
+    /// Sihirbazda gösterilen adımlar: Xbox'ta "İkinci hesap" yoktur.
+    var wizardSteps: [Step] { Step.allCases.filter { $0 != .done && !(isXbox && $0 == .secondAccount) } }
+
+    /// Konsol türünü seçer (karşılama adımı ve Ayarlar › Konsol). Çeviri sürüyorsa yeni konsolla yeniden başlar.
+    func choosePlatform(_ value: ConsolePlatform) {
+        guard value != platform, value == .playstation || xboxAvailable else { return }
+        let wasRunning = isRunning && !demoMode
+        if wasRunning { stop(closingTVApp: false) }
+        platform = value
+        defaults.set(value.rawValue, forKey: XboxStoreKey.platform)
+        RemotePlayLog.write("Konsol türü: \(value == .xbox ? "Xbox (Beta)" : "PlayStation 5")")
+        if wasRunning { Task { await start() } }
+    }
+
+    /// Microsoft cihaz kodu ister (kullanıcı kodu microsoft.com/link'te yazar).
+    func beginXboxLogin() async throws -> XboxDeviceCode {
+        do {
+            let code = try await xboxAuth.startDeviceCode()
+            RemotePlayLog.write("Xbox: Microsoft cihaz kodu alındı")
+            return code
+        } catch let error as XboxError {
+            RemotePlayLog.write("Xbox: cihaz kodu alınamadı (\(error.kind.rawValue)): \(XboxStop.shorten(error.message, limit: 300))")
+            throw error
+        }
+    }
+
+    /// Kullanıcı kodu onaylayana kadar bekler; jeton Anahtarlık'a yazılır.
+    func completeXboxLogin(_ code: XboxDeviceCode) async throws {
+        do {
+            let token = try await xboxAuth.pollDeviceCode(code)
+            store.save(token.serialize(), for: XboxStoreKey.userToken)
+            xboxSignedIn = true
+            RemotePlayLog.write("Xbox: Microsoft girişi tamam")
+        } catch let error as XboxError {
+            RemotePlayLog.write("Xbox: Microsoft girişi başarısız (\(error.kind.rawValue)): \(XboxStop.shorten(error.message, limit: 300))")
+            throw error
+        }
+    }
+
+    /// Hesaptaki Xbox'lar. Kayıtlı Xbox'ın adı listedekiyle tazelenir.
+    func discoverXboxConsoles() async throws -> [XboxConsole] {
+        do {
+            let found = try await services.xboxConsoles(auth: xboxAuth)
+            let names = found.map { "\($0.name.isEmpty ? $0.model : $0.name)\($0.streamingEnabled ? "" : " (uzaktan oynatma kapalı)")" }
+            RemotePlayLog.write("Xbox araması: \(names.isEmpty ? "bulunamadı" : names.joined(separator: ", "))")
+            if let saved = xboxConsole, let current = found.first(where: { $0.id == saved.id }), current != saved { chooseXbox(current) }
+            return found
+        } catch let error as XboxError {
+            RemotePlayLog.write("Xbox araması başarısız (\(error.kind.rawValue)): \(XboxStop.shorten(error.message, limit: 300))")
+            throw error
+        }
+    }
+
+    func chooseXbox(_ console: XboxConsole) {
+        xboxConsole = console
+        store.save(console, for: XboxStoreKey.console)
+    }
+
+    /// Microsoft hesabından çıkar (jeton silinir); seçilen Xbox kalır.
+    func signOutXbox() {
+        if isXbox, isRunning, !demoMode { stop() }
+        let auth = xboxAuth
+        Task { await auth.signOut() }
+        store.remove(XboxStoreKey.userToken)
+        xboxSignedIn = false
+    }
+
+    /// Konsol Xbox ama Microsoft girişi ya da Xbox seçimi eksik: Ayarlar'da "Xbox'ı bağla" görünür.
+    var needsXboxLink: Bool { isXbox && (!xboxSignedIn || xboxConsole == nil) }
+
+    /// Ayarlar › Konsol › "Xbox'ı bağla": sihirbaz Microsoft girişinden (giriş varsa Xbox seçiminden) açılır.
+    func linkXbox() { step = xboxSignedIn ? .console : .psnLogin }
+
+    /// Ana ekrandaki Xbox durumu (Windows'taki XboxStatusText ile aynı kurallar). Oturum, kullanıcıya gösterilecek metni
+    /// `.other(detail)` içinde verir (`XboxText`).
+    static func xboxStatusText(_ state: SessionState, running: Bool, console: XboxConsole?, signedIn: Bool) -> String {
+        switch state {
+        case .streaming: return String(localized: "Connected")
+        case .connecting: return String(localized: "Connecting…")
+        case .disconnected(let reason):
+            guard running else {
+                guard let console, signedIn else { return String(localized: "Not connected") }
+                return String(format: String(localized: "%@ is ready. It connects when you start translating."), console.name.isEmpty ? "Xbox" : console.name)
+            }
+            if case .other(let detail) = reason, !detail.isEmpty { return detail }
+            return String(localized: "Retrying the Xbox connection…")
+        }
     }
 
     /// Ücretsiz Gemini anahtarı kayıtlı ve çeviri Gemini ile yapılıyor ("Daha iyi çeviri" adımı tamam).
@@ -1117,7 +1265,7 @@ final class AppModel: ObservableObject {
     }
 
     /// Görüntü PS5'ten (ikinci hesap) alınacak ama hesap ya da PS5 eşleşmesi yok: Ayarlar'da "Hesabı bağla" görünür.
-    var needsPS5Link: Bool { settings.frameSource == .ps5 && (accountId == nil || console == nil) }
+    var needsPS5Link: Bool { !isXbox && settings.frameSource == .ps5 && (accountId == nil || console == nil) }
 
     /// Ayarlar › Görüntü kaynağı › "Hesabı bağla": sihirbaz ikinci hesap adımından açılır (PSN girişi, PS5 eşleştirmesi).
     func linkPS5Account() { step = .secondAccount }
@@ -1126,7 +1274,7 @@ final class AppModel: ObservableObject {
     func remotePlayInstalled(_ app: RemotePlayApp) -> Bool { services.remotePlayInstalled(app) }
 
     /// Görüntü Remote Play penceresinden okunacak ama seçilen uygulama kurulu değil: ana ekran nereden indirileceğini söyler.
-    var remotePlayMissing: Bool { settings.frameSource == .remotePlayWindow && !services.remotePlayInstalled(settings.remotePlayApp) }
+    var remotePlayMissing: Bool { !isXbox && settings.frameSource == .remotePlayWindow && !services.remotePlayInstalled(settings.remotePlayApp) }
 
     /// "PS Remote Play'i indir" / "chiaki-ng'yi indir": resmi indirme sayfası tarayıcıda açılır.
     func openDownload(for app: RemotePlayApp) {
@@ -1568,6 +1716,11 @@ final class AppModel: ObservableObject {
         hasLoginPasscode = false
         accountId = nil
         console = nil
+        store.remove(XboxStoreKey.console)
+        xboxConsole = nil
+        signOutXbox()
+        defaults.removeObject(forKey: XboxStoreKey.platform)
+        platform = .playstation
         tv = nil
         tvKeySaved = false
         tvApp = .unknown
@@ -1598,8 +1751,10 @@ final class AppModel: ObservableObject {
         // Düğmeye iki kez basılması ya da beklerken tekrar çağrılması ikinci bir oturum açmaz.
         guard !isRunning, !isStarting, canStart || demoMode else { return }
         // PS5'e bağlanmak için eşleşmiş PS5 ve ikinci hesap gerekir; PS Remote Play penceresinden okumak için gerekmez.
-        let readsWindow = settings.frameSource == .remotePlayWindow && !demoMode
-        guard demoMode || readsWindow || (console != nil && accountId != nil) else { return }
+        // Xbox (Beta) için Microsoft girişi ve seçilmiş Xbox gerekir; görüntü kaynağı ayarı Xbox'ta geçerli değildir.
+        let xbox = isXbox && !demoMode && xboxSignedIn ? xboxConsole : nil
+        let readsWindow = !isXbox && settings.frameSource == .remotePlayWindow && !demoMode
+        guard demoMode || readsWindow || (isXbox ? xbox != nil : console != nil && accountId != nil) else { return }
         isStarting = true
         defer { isStarting = false }
 
@@ -1617,7 +1772,7 @@ final class AppModel: ObservableObject {
         if settings.dubbing.enabled, dubbingModelReady { makeDubber().prepare() }
         SubtitleLog.write("oturum başladı: CouchSubs \(AppIdentity.version), \(settings.sourceLanguage)→\(settings.targetLanguage), "
             + "motor: \(onlineTranslationActive ? settings.onlineEngine.rawValue : "ücretsiz"), paketler: \(settings.gamePacks ? "açık" : "kapalı"), "
-            + "görüntü: \(demoMode ? "deneme modu" : readsWindow ? "PS Remote Play penceresi" : "PS5")")
+            + "görüntü: \(demoMode ? "deneme modu" : xbox != nil ? "Xbox (Beta)" : readsWindow ? "PS Remote Play penceresi" : "PS5")")
 
         let session: StreamControlling
         if demoMode {
@@ -1626,6 +1781,9 @@ final class AppModel: ObservableObject {
         } else if readsWindow {
             RemotePlayLog.write("Çeviri başladı; görüntü bu Mac'teki Remote Play penceresinden (\(settings.remotePlayApp.rawValue))")
             session = services.makeWindowStream(app: settings.remotePlayApp)
+        } else if let xbox {
+            RemotePlayLog.write("Çeviri başladı; Xbox'a bağlanılıyor (Beta): \(xbox.name)")
+            session = services.makeXboxStream(auth: xboxAuth, console: xbox, playAudio: settings.xboxAudioOnDevice)
         } else if let console, let accountId {
             RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)")
             session = services.makeStream(console: console, accountId: accountId,
@@ -1648,7 +1806,8 @@ final class AppModel: ObservableObject {
         if !demoMode {
             gameAreas.start()
             // Remote Play penceresinden okurken PS5 eşleşmesi olmayabilir; son oyun o zaman PS5 adı olmadan hatırlanır.
-            gameChoice.start(console: console.map { $0.name.isEmpty ? $0.host : $0.name }) { [weak self] in
+            let consoleName = xbox.map { $0.name.isEmpty ? "Xbox" : $0.name } ?? console.map { $0.name.isEmpty ? $0.host : $0.name }
+            gameChoice.start(console: consoleName) { [weak self] in
                 guard let self else { return false }
                 return self.settings.askGame && self.settings.sharePool
             }
@@ -1672,7 +1831,7 @@ final class AppModel: ObservableObject {
     /// Çeviri başlatılabilir mi: görüntü kaynağı hazır (PS5 kurulu ya da PS Remote Play penceresi seçili) ve altyazının
     /// gideceği bir yer var (TV eşleşmiş ya da bilgisayar ekranı seçili).
     var canStart: Bool {
-        (settings.frameSource == .remotePlayWindow || (console != nil && accountId != nil))
+        (isXbox ? xboxSignedIn && xboxConsole != nil : settings.frameSource == .remotePlayWindow || (console != nil && accountId != nil))
             && (settings.output.showsOnComputer || hasTV)
     }
 
@@ -1697,7 +1856,7 @@ final class AppModel: ObservableObject {
     /// TV'de oynayıp Mac'e dokunmayınca ekran kendi ayarıyla (prizdeyken çoğu zaman 10 dakika) kapanıyor, altyazı
     /// kesiliyordu. PS5'ten doğrudan okunup yalnız TV'ye gönderiliyorsa ekran kendi ayarıyla kapanabilir.
     var keepsDisplayOn: Bool {
-        settings.frameSource == .remotePlayWindow || settings.output.showsOnComputer
+        (!isXbox && settings.frameSource == .remotePlayWindow) || settings.output.showsOnComputer
     }
 
     /// Mac'in boşta uyuması (ve gerekiyorsa ekranın kapanması) engellenir; çeviri sürerken ayar değişince yeniden kurulur.
@@ -2122,9 +2281,9 @@ final class AppModel: ObservableObject {
         // yazılmıyordu; yalnız altyazi.log gönderen kullanıcının kopmaları teşhis edilemiyordu (GitHub #456).
         if state != sessionState {
             switch state {
-            case .connecting: SubtitleLog.write("PS5: bağlanıyor")
-            case .streaming: SubtitleLog.write("PS5: bağlandı")
-            case .disconnected(let reason): SubtitleLog.write("PS5: bağlantı yok (\(reason.logName))")
+            case .connecting: SubtitleLog.write("\(isXbox ? "Xbox" : "PS5"): bağlanıyor")
+            case .streaming: SubtitleLog.write("\(isXbox ? "Xbox" : "PS5"): bağlandı")
+            case .disconnected(let reason): SubtitleLog.write("\(isXbox ? "Xbox" : "PS5"): bağlantı yok (\(reason.logName))")
             }
             // PS5'in kendi tarafındaki çökme ayrıca yazılır: kullanıcının günlüğünde nedeni görünsün (GitHub #519).
             if state == .disconnected(.consoleRemotePlayCrashed) {
@@ -2189,6 +2348,7 @@ final class AppModel: ObservableObject {
     /// Ana ekrandaki PS5 durumu (eşleşmiş PS5'in adıyla).
     var ps5StatusText: String {
         if demoMode { return String(localized: "Sample pictures") }
+        if isXbox { return Self.xboxStatusText(sessionState, running: isRunning, console: xboxConsole, signedIn: xboxSignedIn) }
         if settings.frameSource == .remotePlayWindow {
             return Self.windowStatusText(sessionState, running: isRunning, installed: !remotePlayMissing)
         }

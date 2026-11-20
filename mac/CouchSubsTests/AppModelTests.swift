@@ -17,6 +17,13 @@ extension UserDefaults {
     static func isolated() -> UserDefaults { UserDefaults(suiteName: "couchsubs-test-\(UUID())")! }
 }
 
+/// Testler gerçek Microsoft ve Xbox hizmetlerine gitmez: sahte verilmemişse her istek ağ hatasıdır.
+struct UnreachableXboxHTTP: XboxHTTP {
+    func request(_ method: String, _ url: String, headers: [String: String], body: String?) async throws -> XboxHTTPResponse {
+        throw XboxError(.network, "test: ağ yok")
+    }
+}
+
 final class FakeServices: AppServices {
     /// PS Remote Play / chiaki-ng bu Mac'te kurulu mu (Ayarlar'daki indirme satırları, ana ekran uyarısı).
     var remotePlayInstalledResult = true
@@ -48,6 +55,21 @@ final class FakeServices: AppServices {
     func testLocalAI(server: LocalAIServer, key: String) async -> Result<String, AIFailure> {
         localTests.append((server, key))
         return aiResult
+    }
+
+    // Xbox (Beta): Microsoft ve Xbox uçları sahte HTTP'den yanıtlanır; oturum sahte akıştır.
+    var xboxHTTP: XboxHTTP?
+    var xboxStreams: [(console: XboxConsole, playAudio: Bool, stream: FakeStream)] = []
+    func makeXboxAuth(userToken: XboxUserToken?, onUserToken: @escaping @Sendable (XboxUserToken?) -> Void) -> XboxAuth {
+        XboxAuth(http: xboxHTTP ?? UnreachableXboxHTTP(), sleep: { _ in }, userToken: userToken, onUserToken: onUserToken)
+    }
+    func xboxConsoles(auth: XboxAuth) async throws -> [XboxConsole] {
+        try await XboxHome(auth: auth, http: xboxHTTP ?? UnreachableXboxHTTP()).consoles()
+    }
+    func makeXboxStream(auth: XboxAuth, console: XboxConsole, playAudio: Bool) -> StreamControlling {
+        let stream = FakeStream()
+        xboxStreams.append((console, playAudio, stream))
+        return stream
     }
 
     func discoverConsoles() async -> [ConsoleInfo] { consoles }

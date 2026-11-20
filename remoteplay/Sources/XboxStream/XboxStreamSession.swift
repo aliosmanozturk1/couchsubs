@@ -5,6 +5,9 @@
 // Oyun sesi ayar açıksa (varsayılan açık) bu cihazda çalınır: Xbox uzaktan oynatma sürerken sesi istemciye verip TV'yi
 // susturabilir. Yerel ses parçası eklenmez, Xbox'a ses gönderilmez. Ayar kapalıyken iPhone'da WebRTC ses birimi hiç
 // başlatılmaz, Mac'te ses parçası kapatılır. Kumanda girdisi gönderilmez.
+// Sağlamlık kuralları Windows (#538, #611) ve Android ile aynı (CouchSubsCore XboxSessionHealth): ilk kare gelene kadar
+// anahtar kare istenir ve tanı satırı yazılır; tek başarısız canlı tutma isteği yayını bitirmez, ardışık üçü bitirir;
+// bağlantı bitince özet satırı yazılır; yayın durunca metin nedene göre seçilir.
 
 #if os(iOS)
 import AVFoundation
@@ -34,7 +37,7 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
     private let console: XboxConsole
     private let home: XboxHome
     private let describe: (XboxErrorKind) -> String
-    private let lost: (String) -> String
+    private let stopText: (XboxStopKind, String) -> String
     private let lock = NSLock()
     private var machine = XboxSessionMachine()
     private var task: Task<Void, Never>?
@@ -58,20 +61,26 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
     /// Onay paketlerindeki anların sıfırı (oynatıcıdaki performance.now() gibi).
     private var clockStart: TimeInterval = 0
     private var firstFrameAt: TimeInterval = 0
+    /// Görüntü başlayana kadar anahtar kare isteği ve tanı (input kanalı açılınca başlar, ilk karede durur).
+    private var watch: XboxFirstFrameWatch?
+    private var watchTask: Task<Void, Never>?
+    private var connectedAt: TimeInterval = 0
+    private var videoTrack: RTCVideoTrack?
 
     /// Oyun sesi bu cihazda çalınır (Android'deki `playAudio` ile aynı).
     private let playAudio: Bool
 
-    /// Ekran metinleri uygulamanın kataloğundan gelir. `describe`: yeniden denenirken gösterilen durum; `lost`: yayın
-    /// durunca (denemeler bitti ya da konsol reddetti) ham nedenle gösterilen metin.
-    public init(auth: XboxAuth, console: XboxConsole, playAudio: Bool = true, describe: @escaping (XboxErrorKind) -> String,
-                lost: @escaping (String) -> String) {
+    /// Ekran metinleri uygulamanın kataloğundan gelir. `describe`: yeniden denenirken gösterilen durum; `stopped`: yayın
+    /// durunca (denemeler bitti ya da konsol reddetti) nedenin türüne göre gösterilen metin (ikinci değer kısaltılmış neden).
+    /// `http`: ev yayını uçlarına giden istekler (testlerde sahtesi).
+    public init(auth: XboxAuth, console: XboxConsole, playAudio: Bool = true, http: XboxHTTP = URLSessionXboxHTTP(),
+                describe: @escaping (XboxErrorKind) -> String, stopped: @escaping (XboxStopKind, String) -> String) {
         self.auth = auth
         self.console = console
-        self.home = XboxHome(auth: auth)
+        self.home = XboxHome(auth: auth, http: http)
         self.playAudio = playAudio
         self.describe = describe
-        self.lost = lost
+        self.stopText = stopped
     }
 
     private static let factory: RTCPeerConnectionFactory = {
@@ -189,8 +198,8 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
     private func summarize() {
         let (frames, sent, first, reason, error) = locked { (framesReceived, acksSent, firstFrameAt, endReason, lastError) }
         guard frames > 0 || reason != nil || error != nil else { return }
-        let lived = first > 0 ? "\(Int(ProcessInfo.processInfo.systemUptime - first)) sn" : "ilk kare yok"
-        log("bağlantı bitti: \(reason ?? error ?? "durduruldu"); kare \(frames), onay \(sent), ilk kareden sonra \(lived)")
+        log(XboxStop.summary(reason: reason ?? error, frames: frames, acks: sent,
+                             secondsSinceFirstFrame: first > 0 ? Int(ProcessInfo.processInfo.systemUptime - first) : nil))
     }
 
     private var lastError: String?
@@ -205,8 +214,7 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         } else if case .failed = phase, !XboxSessionMachine.fatal.contains(kind) {
             // Denemeler bitti ya da konsol yayını reddetti: yayın durur, yeniden denenmez.
             log("yeniden denenmiyor, yayın durdu")
-            let reason = detail.trimmingCharacters(in: .whitespaces).isEmpty ? kind.rawValue : detail
-            onState?(.disconnected(.other(lost(reason))))
+            onState?(.disconnected(.other(stopText(XboxStop.classify(detail, kind: kind), XboxStop.shorten(detail, fallback: kind.rawValue)))))
             return
         }
         onState?(.disconnected(.other(describe(kind))))
@@ -214,11 +222,15 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
 
     private func teardown() async {
         keepaliveTask?.cancel()
+        watchTask?.cancel()
+        watchTask = nil
         ackTask?.cancel()
         ackTask = nil
         locked {
             acking = false
             pendingAcks = []
+            watch = nil
+            videoTrack = nil
         }
         let (peer, channels, id) = locked { () -> (RTCPeerConnection?, [RTCDataChannel], String?) in
             let result = (self.peer, Array(self.channels.values), self.sessionId)
@@ -249,6 +261,8 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
             ackSequence = 0
             acksSent = 0
             clockStart = ProcessInfo.processInfo.systemUptime
+            watch = nil
+            connectedAt = 0
         }
         let config = RTCConfiguration()
         config.iceServers = [RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]), RTCIceServer(urlStrings: ["stun:stun1.l.google.com:19302"])]
@@ -284,6 +298,7 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         log(playAudio ? "oyun sesi bu cihazda çalınır" : "oyun sesi kapalı (ayar)")
         guard let track = video?.receiver.track as? RTCVideoTrack else { throw XboxError(.service, "Görüntü alıcısı kurulamadı") }
         track.add(self)
+        locked { videoTrack = track }
 
         let offer: RTCSessionDescription = try await withCheckedThrowingContinuation { continuation in
             connection.offer(for: constraints) { description, error in
@@ -339,7 +354,9 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         log("kanal \(name): \(channel.readyState.rawValue)")
         switch (name, channel.readyState) {
         case ("message", .open): send("message", Data(XboxChannels.handshake.utf8), binary: false)
-        case ("input", .open): startKeepalive()
+        case ("input", .open):
+            startKeepalive()
+            startWatch()
         case ("input", .closed): locked { if endReason == nil { endReason = "Xbox görüntü bağlantısı kapandı" } }
         default: break
         }
@@ -401,14 +418,76 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         channel.sendData(RTCDataBuffer(data: data, isBinary: binary))
     }
 
+    /// Tek başarısız canlı tutma isteği yayını bitirmez (görüntü akarken ağ bir an takılabilir); ardışık
+    /// `XboxKeepalive.maxFailures` hata bitirir ve oturum baştan denenir.
     private func startKeepalive() {
         keepaliveTask?.cancel()
         keepaliveTask = Task.detached { [weak self] in
+            var keepalive = XboxKeepalive()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: Self.keepaliveSeconds * 1_000_000_000)
                 guard let self, !Task.isCancelled, let id = self.locked({ self.sessionId }) else { return }
-                do { try await self.home.keepalive(id) } catch { self.log("canlı tutma: \(error)") }
+                do {
+                    try await self.home.keepalive(id)
+                    if keepalive.failures > 0 { self.log("canlı tutma yeniden yanıt verdi") }
+                    keepalive.succeeded()
+                } catch is CancellationError {
+                    return
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    let end = keepalive.failed()
+                    let detail = (error as? XboxError)?.message ?? error.localizedDescription
+                    self.log("canlı tutma başarısız (\(keepalive.failures)/\(XboxKeepalive.maxFailures)): \(XboxStop.shorten(detail))")
+                    if end {
+                        self.locked { if self.endReason == nil { self.endReason = "Xbox canlı tutma isteklerine yanıt vermiyor" } }
+                        return
+                    }
+                }
             }
+        }
+    }
+
+    /// Bağlantıdan (input kanalı açıldı) ilk kareye kadar: 2,5 sn'de bir, en çok 20 sn Xbox'tan anahtar kare istenir;
+    /// 10 sn'den sonra 10 sn'de bir getStats tanısı yazılır. İlk kare gelince durur.
+    private func startWatch() {
+        watchTask?.cancel()
+        let started = ProcessInfo.processInfo.systemUptime
+        locked {
+            watch = XboxFirstFrameWatch()
+            connectedAt = started
+        }
+        watchTask = Task.detached { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let ready = self.locked { self.videoTrack != nil && self.channels["control"]?.readyState == .open }
+                let since = Int((ProcessInfo.processInfo.systemUptime - started) * 1000)
+                let (step, seen, requested) = self.locked { () -> (XboxWatchStep, Bool, Int) in
+                    guard self.connectedAt == started, var current = self.watch else { return (XboxWatchStep(), true, 0) }
+                    let step = current.tick(sinceConnectedMs: since, keyframeReady: ready)
+                    self.watch = current
+                    return (step, current.frameSeen, current.keyframesRequested)
+                }
+                if seen { return }
+                if step.requestKeyframe {
+                    if requested == 1 { self.log("ilk kare bekleniyor: Xbox'tan anahtar kare isteniyor") }
+                    self.send("control", Data(XboxFirstFrameWatch.keyframeRequest.utf8), binary: false)
+                }
+                if step.logStats { self.logStats(sinceMs: since, keyframes: requested) }
+                try? await Task.sleep(nanoseconds: UInt64(XboxFirstFrameWatch.tickMs) * 1_000_000)
+            }
+        }
+    }
+
+    private func logStats(sinceMs: Int, keyframes: Int) {
+        let (connection, track) = locked { (peer, videoTrack) }
+        guard let connection else { return }
+        let picture = XboxStreamStats.picture(trackState: track.map { $0.readyState == .live ? "LIVE" : "ENDED" } ?? "yok")
+        connection.statistics { [weak self] report in
+            guard let self else { return }
+            let stats = report.statistics.values.filter { XboxStreamStats.types.contains($0.type) }
+                .map { XboxStat(type: $0.type, id: $0.id, members: $0.values) }
+            let seen = self.locked { self.watch?.frameSeen ?? true }
+            self.log(XboxStreamStats.describe(sinceConnectedMs: sinceMs, frameSeen: seen, keyframes: keyframes, stats: stats, picture: picture))
         }
     }
 }
@@ -435,7 +514,14 @@ extension XboxStreamSession: RTCVideoRenderer {
             return (framesReceived, due)
         }
         if count == 1 {
-            log("ilk kare \(frame.width)x\(frame.height)")
+            let waited = locked { () -> String in
+                guard var current = watch else { return "" }
+                current.frameArrived()
+                watch = current
+                return String(format: ", bağlantıdan %.1f sn sonra, keyframe isteği %d", locale: Locale(identifier: "en_US_POSIX"),
+                              now - connectedAt, current.keyframesRequested)
+            }
+            log("ilk kare \(frame.width)x\(frame.height)\(waited)")
             if locked({ machine.streaming() }) { onState?(.streaming) }
         }
         guard due, let image = Self.image(from: frame.buffer) else { return }

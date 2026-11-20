@@ -356,7 +356,7 @@ private struct LiveSubtitlesTile: View {
             }
             // Çeviri PS5'ten (ikinci hesap) okunurken, ilk altyazıya kadar ve bağlantı koptuğunda: kolu açınca ana hesap
             // seçilmeli (GitHub #231, MainAccountTip).
-            if model.isRunning && MainAccountTip.isVisible(ps5: model.settings.frameSource == .ps5, demo: model.demoMode,
+            if model.isRunning && MainAccountTip.isVisible(ps5: !model.isXbox && model.settings.frameSource == .ps5, demo: model.demoMode,
                                                            hasSubtitle: !model.lastTranslation.isEmpty,
                                                            streaming: model.sessionState == .streaming) {
                 HintText(text: "When you turn on the controller to play, choose your MAIN account on the PS5. Don't play with the second account CouchSubs signs in with, or the controller will turn off by itself or won't work in the game.")

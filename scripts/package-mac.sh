@@ -97,6 +97,9 @@ if [[ -n "$DEVELOPER_ID" ]]; then
     [[ "$ITEM" == *Downloader.xpc ]] && EXTRA=(--preserve-metadata=entitlements)
     codesign --force --options runtime --timestamp "${EXTRA[@]}" -s "$DEVELOPER_ID" "$ITEM"
   done
+  # Xbox ev yayınının (Beta) WebRTC kitaplığı da bizim kimliğimizle imzalanır (onay için gömülü her kitaplık imzalı olmalı).
+  WEBRTC="$APP/Contents/Frameworks/WebRTC.framework"
+  if [[ -d "$WEBRTC" ]]; then codesign --force --options runtime --timestamp -s "$DEVELOPER_ID" "$WEBRTC"; fi
   codesign --force --options runtime --timestamp --entitlements mac/CouchSubs/CouchSubs.entitlements -s "$DEVELOPER_ID" "$APP"
   codesign --verify --deep --strict "$APP" || { echo "İmza doğrulanamadı."; exit 1; }
 fi
