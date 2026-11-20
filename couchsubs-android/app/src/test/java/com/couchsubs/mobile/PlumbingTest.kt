@@ -352,6 +352,25 @@ class OnlineTranslationTest {
         assertEquals("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent", url)
         assertEquals("LOW", JSONObject(body!!).getJSONObject("generationConfig").getJSONObject("thinkingConfig").getString("thinkingLevel"))
     }
+
+    /**
+     * Ayarlar'daki model seçimi OpenAI ve Claude'da da var (Mac ve Windows ile aynı liste): her hizmette en az iki model,
+     * kayıt yoksa ya da listede yoksa ilki (varsayılan), seçilen model kimliğiyle bulunur.
+     */
+    @Test
+    fun openAiAndClaudeModelsAreSelectableLikeOnTheDesktop() {
+        val file = File(System.getProperty("couchsubs.packs") ?: return, "../ai-models.json")
+        val all = AiModel.parse(file.readText())
+        for (provider in AiProvider.entries) {
+            val models = all.getValue(provider.id)
+            assertTrue(provider.id, models.size >= 2)
+            assertEquals(models.first().id, AiModel.selected(models, null)?.id)
+            assertEquals(models.first().id, AiModel.selected(models, "eski-model")?.id)
+            assertEquals(models.last().id, AiModel.selected(models, models.last().id)?.id)
+        }
+        assertEquals("gpt-6-luna", AiModel.selected(all.getValue("openai"), null)?.id)
+        assertEquals("claude-haiku-5-5", AiModel.selected(all.getValue("claude"), null)?.id)
+    }
 }
 
 class LinePoolTest {

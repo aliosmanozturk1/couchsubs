@@ -219,7 +219,8 @@ struct SettingsScreen: View {
                                                      set: { model.settings.translationEngine = $0 }))
                 }
                 let engine = model.settings.translationEngine
-                if engine == .gemini { GeminiModelChoice() }
+                // Model seçimi üç hizmette de var (Mac ve Windows ile aynı liste ve varsayılanlar).
+                if let provider = engine.aiProvider, provider != .local { AIModelChoice(provider: provider) }
                 if engine != .free {
                     HStack(spacing: Mobile.Space.inline) {
                         if model.hasKey(engine) {
@@ -468,17 +469,18 @@ private struct DeepLUsageRow: View {
     }
 }
 
-/// Gemini modeli (Mac ve Windows'taki Model seçimi, Android ile aynı): seçenekler ortak `ai-models.json`'dan gelir, ilki
-/// varsayılandır. Kayıt `UserSettings.geminiModel`; dakikalık istek hakkı seçilen modelin sınırıdır (`RequestBudget.shared`).
-private struct GeminiModelChoice: View {
+/// Yapay zekâ modeli: Gemini, OpenAI ve Claude (Mac ve Windows'taki Model seçimi, Android ile aynı). Seçenekler ortak
+/// `ai-models.json`'dan gelir, ilki varsayılandır. Kayıt `UserSettings.geminiModel` / `openAIModel` / `claudeModel`;
+/// Gemini'de dakikalık istek hakkı seçilen modelin sınırıdır (`RequestBudget.shared`).
+private struct AIModelChoice: View {
     @EnvironmentObject private var model: PhoneModel
+    let provider: AIProvider
 
     var body: some View {
-        let provider = AIProvider.gemini
-        let selected = provider.model(model.settings.geminiModel).id
+        let selected = provider.model(model.settings.model(for: provider)).id
         Text("Model").font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
         SegmentedTabs(options: provider.models.map { (key: $0.id, value: Self.label($0)) },
-                      selection: Binding(get: { selected }, set: { model.settings.geminiModel = $0 }))
+                      selection: Binding(get: { selected }, set: { model.settings.setModel($0, for: provider) }))
         Text(verbatim: selected).font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
     }
 

@@ -220,7 +220,8 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             if (segment == 3) Segmented(listOf("OpenAI", "Claude"), if (engine == EngineChoice.CLAUDE) 1 else 0) {
                 choose(if (it == 1) EngineChoice.CLAUDE else EngineChoice.OPENAI)
             }
-            if (engine == EngineChoice.GEMINI) GeminiModelChoice(settings)
+            // Model seçimi üç hizmette de var (Mac ve Windows ile aynı liste ve varsayılanlar).
+            engine.aiProvider?.let { provider -> androidx.compose.runtime.key(provider) { AiModelChoice(settings, provider) } }
             if (engine != EngineChoice.FREE) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TileLabel(stringResource(R.string.settings_key_for, engineName(context)))
@@ -406,19 +407,20 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
 }
 
 /**
- * Gemini modeli (Mac ve Windows'taki Model seçimi, iPhone ile aynı): seçenekler ortak ai-models.json'dan gelir, ilki
- * varsayılandır. Kayıt "geminiModel" adıyla tutulur; dakikalık istek hakkı seçilen modelin sınırıdır.
+ * Yapay zekâ modeli: Gemini, OpenAI ve Claude (Mac ve Windows'taki Model seçimi, iPhone ile aynı). Seçenekler ortak
+ * ai-models.json'dan gelir, ilki varsayılandır. Kayıt "geminiModel" / "openAIModel" / "claudeModel" adıyla tutulur;
+ * Gemini'de dakikalık istek hakkı seçilen modelin sınırıdır.
  */
 @Composable
-private fun GeminiModelChoice(settings: AppSettings) {
+private fun AiModelChoice(settings: AppSettings, provider: AiProvider) {
     val context = LocalContext.current
-    val models = remember { AiModel.load(context)[AiProvider.GEMINI.id].orEmpty() }
+    val models = remember(provider) { AiModel.load(context)[provider.id].orEmpty() }
     if (models.isEmpty()) return
-    var selected by remember { mutableStateOf(AiModel.selected(models, settings.aiModel(AiProvider.GEMINI))!!.id) }
+    var selected by remember(provider) { mutableStateOf(AiModel.selected(models, settings.aiModel(provider))!!.id) }
     TileLabel(stringResource(R.string.settings_model))
     Segmented(models.map { modelLabel(it) }, models.indexOfFirst { it.id == selected }.coerceAtLeast(0)) { index ->
         selected = models[index].id
-        settings.setAiModel(AiProvider.GEMINI, selected)
+        settings.setAiModel(provider, selected)
     }
     Text(selected, style = Tokens.Type.caption, color = Tokens.Color.secondary)
 }
