@@ -131,7 +131,7 @@ jobs:
             grep -aq "0xC0000005" "$txt" || { echo "istisna kodu yok"; exit 1; }
             grep -aq "lenmedi: evet" "$txt" || { echo "işlenmedi satırı yok"; exit 1; }
             grep -aq "m durumu: yaz" "$txt" || { echo "döküm yazılmadı"; exit 1; }
-            grep -aq "kernel32.dll" "$txt" || { echo "modül listesi yok"; exit 1; }
+            grep -aiq "kernel32.dll" "$txt" || { echo "modül listesi yok"; exit 1; }
             if [ "$kind" -eq 2 ]; then
               grep -aq "^Mod.*l yok" "$txt" || { echo "adres bir modüle düştü"; exit 1; }
             else
@@ -465,11 +465,45 @@ jobs:
             if ($code -ne 6) { throw "${kind}: kayıt ikinci kez bildirildi (çıkış kodu $code)" }
           }
 
+      # Okuma hattının yük testi (GitHub #587: uzun oturumda paralel yedek okumada erişim ihlali). Gerçek oturumdan çok
+      # daha yoğun: 2560x1440 kareler Windows görüntüsünden kopyalanır, birkaç okuma hattı aynı kareyi aynı anda bütün
+      # hazırlıklarla okur. Süreç kapanırsa çökme kaydı (özet ve döküm) yapıt olarak yüklenir.
+      - name: Okuma hattı yük testi
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'CouchSubs\cokme'
+          Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+          function Invoke-Stress($name, $seconds) {
+            $out = "$PWD\stress-$name.txt"
+            $p = Start-Process publish/CouchSubs/CouchSubs.exe -ArgumentList '--stress-okuma', $seconds, $out -PassThru
+            $null = $p.Handle
+            if (-not $p.WaitForExit(($seconds + 180) * 1000)) { $p.Kill(); throw "yük testi ($name) zamanında bitmedi" }
+            if (Test-Path $out) { Get-Content $out -Encoding UTF8 }
+            if ($p.ExitCode -ne 0) {
+              # Çökme kaydı tamamlanır ve dökümle birlikte yapıta konur.
+              $r = Start-Process publish/CouchSubs/CouchSubs.exe -ArgumentList '--crash-report', "$PWD\crash-stress-$name.txt" -PassThru
+              $null = $r.WaitForExit(120000)
+              if (Test-Path "$PWD\crash-stress-$name.txt") { Get-Content "$PWD\crash-stress-$name.txt" -Encoding UTF8 }
+              New-Item -ItemType Directory -Force stress-cokme | Out-Null
+              Copy-Item "$dir\*" stress-cokme -ErrorAction SilentlyContinue
+              throw "yük testi ($name) düştü (çıkış kodu $($p.ExitCode))"
+            }
+          }
+          # Yazı tanıma motoru olmadan: her okuma boş döner ve paralel yedek okumaya düşer (en yoğun yol).
+          $env:COUCHSUBS_STRESS_NO_OCR = '1'
+          Invoke-Stress 'motorsuz' 150
+          # Windows'un yazı tanımasıyla (CI makinesinde dil yüklü değilse yine motorsuz koşar).
+          $env:COUCHSUBS_STRESS_NO_OCR = '0'
+          Invoke-Stress 'motorlu' 60
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: couchsubs-cokme
-          path: crash-*.txt
+          path: |
+            crash-*.txt
+            stress-*.txt
+            stress-cokme
           if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4

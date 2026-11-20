@@ -34,6 +34,7 @@ struct CouchSubsApp: App {
                 .task {
                     overlay.attach(model)
                     stream.attach(model)
+                    CrashNotice.shared.checkOnce()
                     #if !APP_STORE
                     guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
                     updater.updater.checkForUpdatesInBackground()

@@ -110,6 +110,8 @@ struct MainControls: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.space("gap")) {
+            // Önceki çalışma çöktüyse macOS'un raporu bir kez bildirilir.
+            CrashReportCard()
             HStack(spacing: Theme.space("m")) {
                 StartStopButton()
                 TestSubtitleButton()

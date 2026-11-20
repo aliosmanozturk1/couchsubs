@@ -15,9 +15,16 @@ namespace CouchSubs.App.Services;
 /// </summary>
 public sealed class WindowsOcrReader : ITextReader
 {
-    private readonly OcrEngine engine;
+    private readonly OcrEngine? engine;
 
-    private WindowsOcrReader(OcrEngine engine) => this.engine = engine;
+    private WindowsOcrReader(OcrEngine? engine) => this.engine = engine;
+
+    /// <summary>
+    /// Yalnız yük testi (<see cref="ReadStress"/>): yazı tanıma motoru olmadan, okumanın geri kalanını (kare hazırlıkları,
+    /// Windows görüntüsüne kopyalama, paralel yedek okumalar) çalıştırır; her okuma boş döner. CI makinesinde yazı tanıma
+    /// dili yüklü olmasa da okuma hattının bellek kullanımı sınanabilsin.
+    /// </summary>
+    internal static WindowsOcrReader CreateWithoutEngine() => new(null);
 
     /// <summary>Hiçbir OCR dili yüklü değilse null.</summary>
     public static WindowsOcrReader? Create(string language)
@@ -289,6 +296,7 @@ public sealed class WindowsOcrReader : ITextReader
         bitmap.CopyFromBuffer(image.Pixels.AsBuffer());
         // Bir OcrEngine aynı anda iki okuma yapamaz ("Another RecognizeAsync operation is already running");
         // ReadingFallback iki büyütülmüş okumayı paralel başlatıyordu, biri hata verip okuma boş dönüyordu.
+        if (engine is null) return Reading.Empty;
         OcrResult result;
         lock (engineGate) result = engine.RecognizeAsync(bitmap).AsTask().GetAwaiter().GetResult();
         double width = image.Width, height = image.Height;
