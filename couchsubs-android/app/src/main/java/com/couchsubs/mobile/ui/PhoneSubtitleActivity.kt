@@ -2,6 +2,7 @@
 package com.couchsubs.mobile.ui
 
 import com.couchsubs.mobile.core.SubtitleWrap
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -24,13 +25,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.sp
 import com.couchsubs.mobile.service.LiveStatus
 import com.couchsubs.mobile.service.TranslationService
 import androidx.compose.material3.Text
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -42,13 +43,20 @@ import com.couchsubs.mobile.R
 import com.couchsubs.mobile.Services
 import com.couchsubs.mobile.core.SubtitleTextColor
 import com.couchsubs.mobile.service.LiveState
-import kotlinx.coroutines.delay
 
 /**
  * Altyazı bu telefonun ekranında (tuval Telefon-Altyazi): yatay, siyah zeminde büyük yazı; üstte durum hapı ve kapat.
- * Ekran açık kalır; bir süre sonra parlaklık kısılır (oyun çoğunlukla karanlık odada oynanır).
+ * Ekran açık kalır, parlaklığa dokunulmaz (eskiden 10 saniye sonra kısılıyordu, ekran karanlık kalıyordu: #559).
+ * "Ekranı döndür" yatayla dik arasında geçer (iPhone ile aynı).
  */
 class PhoneSubtitleActivity : ComponentActivity() {
+    companion object {
+        /** "Ekranı döndür": yataysa dike, değilse yataya (sensör yönüne göre iki yan da olur). */
+        fun nextOrientation(current: Int): Int =
+            if (current == ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Uygulama hep koyu; sistem açık temadayken de durum çubuğu simgeleri açık renk kalsın.
         enableEdgeToEdge(SystemBarStyle.dark(android.graphics.Color.TRANSPARENT), SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
@@ -63,10 +71,6 @@ class PhoneSubtitleActivity : ComponentActivity() {
             CouchSubsTheme {
                 val status by LiveState.status.collectAsState()
                 TvPairingDialog(status.pairing)
-                LaunchedEffect(Unit) {
-                    delay(10_000)
-                    window.attributes = window.attributes.apply { screenBrightness = 0.35f }
-                }
                 Box(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().padding(Tokens.Space.screen)) {
                     Row(Modifier.fillMaxWidth().align(Alignment.TopCenter), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
@@ -74,6 +78,9 @@ class PhoneSubtitleActivity : ComponentActivity() {
                         StatusLabel(stringResource(if (connected) R.string.subtitle_connected else R.string.subtitle_waiting), ok = connected, live = connected)
                         status.packInUse?.let { Pill(stringResource(R.string.running_pack, it), pro = true) }
                         Spacer(Modifier.weight(1f))
+                        IconAction(Icons.Filled.Refresh, stringResource(R.string.screen_rotate)) {
+                            requestedOrientation = nextOrientation(requestedOrientation)
+                        }
                         if (connected) IconAction(
                             if (status.screenState == LiveStatus.ScreenState.IDLE) Icons.Filled.Search else Icons.Filled.Delete,
                             stringResource(if (status.screenState == LiveStatus.ScreenState.IDLE) R.string.screen_translate else R.string.screen_remove),

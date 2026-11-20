@@ -340,7 +340,8 @@ struct RunningScreen: View {
 struct SubtitleScreen: View {
     @EnvironmentObject private var model: PhoneModel
     @Environment(\.dismiss) private var dismiss
-    @State private var savedBrightness: CGFloat?
+    /// Ekran yatay mı; "Ekranı döndür" düğmesi dikeye ve geri çevirir.
+    @State private var landscape = true
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -405,6 +406,11 @@ struct SubtitleScreen: View {
         }
         .overlay(alignment: .topTrailing) {
             HStack(spacing: Mobile.Space.inline) {
+                // Telefon kendiliğinden dönmezse (yön kilidi, iOS isteği geri çevirdi) elle döndürülür (#559).
+                IconButton(symbol: "rotate.right", label: "Rotate screen") {
+                    landscape.toggle()
+                    Orientation.request(Orientation.subtitleMask(landscape: landscape))
+                }
                 if model.sessionState == .streaming {
                     IconButton(symbol: model.screenState == .idle ? "text.viewfinder" : "xmark.circle",
                                label: model.screenState == .idle ? "Translate screen" : "Remove screen translations") {
@@ -418,12 +424,11 @@ struct SubtitleScreen: View {
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         .onAppear {
+            landscape = true
             Orientation.request(.landscape)
-            dim(true)
         }
         .onDisappear {
-            Orientation.request(.portrait)
-            dim(false)
+            Orientation.release()
         }
     }
 
@@ -446,24 +451,51 @@ struct SubtitleScreen: View {
         }
     }
 
-    /// Altyazı ekranı açıkken parlaklık kısılır (pil ve göz); kapanınca eski değer döner.
-    private func dim(_ on: Bool) {
-        guard let screen = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.screen }).first else { return }
-        if on {
-            savedBrightness = screen.brightness
-            screen.brightness = min(screen.brightness, 0.4)
-        } else if let savedBrightness {
-            screen.brightness = savedBrightness
-        }
-    }
+    // Parlaklık kısılmaz: altyazı ekranı açıkken parlaklık 0,4'e indiriliyordu, kullanıcı ekranı karanlık buluyordu (#559).
+    // Ekran çeviri sürerken zaten kararmaz (PhoneModel.keepScreenAwake).
 }
 
-/// Altyazı ekranı açılınca telefon yataya döner.
+/// Altyazı ekranı açılınca telefon yataya döner. Uygulamanın izin verdiği yönler (`allowed`, AppDelegate okur) önce
+/// isteğe daraltılır, sonra iOS'tan dönüş istenir: yalnız `requestGeometryUpdate` çağrısı ekran sunulurken bazı
+/// telefonlarda geri çevriliyor, ekran dik kalıyordu (#559).
+@MainActor
 enum Orientation {
-    @MainActor
+    /// Uygulamanın genelde izin verdiği yönler (Info.plist ile aynı: dik ve iki yatay).
+    static let standard: UIInterfaceOrientationMask = .allButUpsideDown
+    /// AppDelegate `supportedInterfaceOrientationsFor` ile bunu döner.
+    static var allowed: UIInterfaceOrientationMask = standard
+
+    /// "Ekranı döndür" düğmesinin istediği yön.
+    nonisolated static func subtitleMask(landscape: Bool) -> UIInterfaceOrientationMask { landscape ? .landscape : .portrait }
+
     static func request(_ mask: UIInterfaceOrientationMask) {
-        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
-        scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { _ in }
+        allowed = mask
+        apply(mask)
+        // Ekran sunulma animasyonu sürerken gelen istek yok sayılabiliyor: kısa süre sonra bir kez daha istenir.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            if allowed == mask { apply(mask) }
+        }
+    }
+
+    /// Altyazı ekranı kapandı: uygulama yine her yöne döner, telefon dike geçer.
+    static func release() {
+        allowed = standard
+        apply(.portrait)
+    }
+
+    private static func apply(_ mask: UIInterfaceOrientationMask) {
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+            for window in scene.windows {
+                var controller = window.rootViewController
+                while let current = controller {
+                    current.setNeedsUpdateOfSupportedInterfaceOrientations()
+                    controller = current.presentedViewController
+                }
+            }
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
+                RemotePlayLog.write("Ekran yönü değişmedi: \(error.localizedDescription)")
+            }
+        }
     }
 }
 

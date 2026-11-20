@@ -5550,6 +5550,22 @@
         }
       }
     },
+    "Rotate screen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rotate screen"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekranı döndür"
+          }
+        }
+      }
+    },
     "The free translation doesn't work on this phone.": {
       "localizations": {
         "en": {

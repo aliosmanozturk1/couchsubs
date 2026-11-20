@@ -43,6 +43,7 @@
     <string name="error_model_unavailable">Çeviri modeli hizmeti şu anda kullanılamıyor. Google Play Hizmetleri güncellemelerini kontrol edip yeniden dene.</string>
     <string name="error_model_timeout">Çeviri modeli indirmesi zaman aşımına uğradı. Bağlantını kontrol edip yeniden dene.</string>
     <string name="screen_translate">Ekranı çevir</string>
+    <string name="screen_rotate">Ekranı döndür</string>
     <string name="screen_working">Ekran çevriliyor…</string>
     <string name="screen_remove">Çevirileri kaldır</string>
     <string name="screen_translating">Ekran çevriliyor…</string>

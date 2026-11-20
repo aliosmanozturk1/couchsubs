@@ -43,6 +43,7 @@
     <string name="error_model_unavailable">The translation model service is temporarily unavailable. Check Google Play services updates and try again.</string>
     <string name="error_model_timeout">The translation model download timed out. Check your connection and try again.</string>
     <string name="screen_translate">Translate screen</string>
+    <string name="screen_rotate">Rotate screen</string>
     <string name="screen_working">Translating…</string>
     <string name="screen_remove">Remove translations</string>
     <string name="screen_translating">Translating the screen…</string>

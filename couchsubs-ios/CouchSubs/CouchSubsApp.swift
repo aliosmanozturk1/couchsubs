@@ -16,6 +16,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
         return true
     }
+
+    /// Altyazı ekranı açıkken yalnız yatay (ya da "Ekranı döndür" ile dik); başka yerde her yön (bkz. Orientation).
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        MainActor.assumeIsolated { Orientation.allowed }
+    }
 }
 
 /// CouchSubs tamamen ücretsizdir ve hesap istemez: ücretsiz çeviri, DeepL, kendi yapay zekâ anahtarı ve oyun paketleri
