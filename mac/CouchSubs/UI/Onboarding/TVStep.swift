@@ -46,6 +46,8 @@ struct TVStep: View {
                             .onSubmit { Task { await addManual() } }
                         Button("Add") { Task { await addManual() } }.buttonStyle(.secondary).disabled(adding)
                     }
+                    // Alanın hangi TV'ler için olduğu: yazılan adresin türü TV'ye sorulur, Android TV de tanınır.
+                    HintText(text: "For LG, Samsung and Android TV / Google TV: CouchSubs asks the TV at this address which kind it is.")
                 }
                 Card {
                     HStack {
@@ -101,8 +103,9 @@ struct TVStep: View {
         searching = false
     }
 
-    /// Elle yazılan adres listeye eklenir: Samsung 8001'de kendini tanıtırsa Samsung, değilse LG (webOS 3 cihaz tanımını
-    /// her zaman vermiyor; adres yanlışsa Bağlan "TV yanıt vermedi" der).
+    /// Elle yazılan adres listeye eklenir; TV'nin türü (LG, Samsung, Android TV) TV'ye sorulur (`ManualTV`). Android TV'de
+    /// "Bağlan" Android TV akışını o adresle başlatır; önceden adres LG sayılıyor, LG eşleştirmesi "TV yanıt vermedi"
+    /// diyordu. Hiçbir yoklamaya yanıt gelmezse TV LG sayılır (webOS 3 cihaz tanımını her zaman vermiyor) ve bu söylenir.
     private func addManual() async {
         error = nil
         guard let host = ManualAddress.normalize(manualHost) else {
@@ -111,13 +114,11 @@ struct TVStep: View {
         }
         guard !tvs.contains(where: { $0.host == host }) else { return }
         adding = true
-        let tv: LGTV
-        if let samsung = await SamsungDiscovery.tv(at: host) {
-            tv = samsung
-        } else {
-            tv = await LGDiscovery.tv(at: host) ?? LGTV(name: "LG TV", host: host)
+        let manual = await ManualTV.tv(at: host)
+        tvs.append(manual.tv)
+        if !manual.recognised {
+            error = String(format: String(localized: "No TV at %@ answered as an LG, Samsung or Android TV, so it was added as an LG TV. If it is an Android TV / Google TV, press Select under Android TV / Google TV below."), host)
         }
-        tvs.append(tv)
         manualHost = ""
         adding = false
     }

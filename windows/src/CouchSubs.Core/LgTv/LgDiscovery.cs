@@ -17,6 +17,9 @@ public enum TvBrand
 /// <param name="Brand">Eski kayıtlarda marka yoktur; hepsi LG'dir.</param>
 public sealed record LgTv(string Name, string Host, TvBrand Brand = TvBrand.Lg);
 
+/// <summary>Elle yazılan adresteki TV. <c>Recognised</c>: türünü TV kendisi söyledi; değilse LG sayıldı ve kullanıcıya söylenir.</summary>
+public sealed record ManualTv(LgTv Tv, bool Recognised);
+
 /// <summary>Yerel ağdaki LG webOS TV'leri SSDP ile bulur.</summary>
 public static class LgDiscovery
 {
@@ -41,15 +44,55 @@ public static class LgDiscovery
         return tvs;
     }
 
+    /// <summary>Elle yazılan adresteki TV (türü TV'ye sorulur; bkz. <see cref="ManualTvAsync"/>).</summary>
+    public static async Task<LgTv> TvAtAsync(string host, CancellationToken cancellationToken = default) =>
+        (await ManualTvAsync(host, cancellationToken)).Tv;
+
     /// <summary>
-    /// Elle yazılan adresteki TV: Samsung 8001'de kendini tanıtırsa Samsung, değilse LG sayılır (webOS 3 cihaz tanımını
-    /// her zaman vermiyor; adres yanlışsa Bağlan "TV yanıt vermedi" der).
+    /// Android TV / Google TV'nin açık tuttuğu portlar: ADB (5555, hata ayıklama açıksa), Google Cast (8008, 8009) ve
+    /// Android TV uzaktan kumanda hizmeti (6466). Yeni LG'lerde de Google Cast olabildiği için LG'ye önce bakılır.
     /// </summary>
-    public static async Task<LgTv> TvAtAsync(string host, CancellationToken cancellationToken = default)
+    public static readonly int[] AndroidPorts = [5555, 6466, 8009, 8008];
+
+    /// <summary>
+    /// Elle yazılan adresteki TV'nin türü TV'ye sorulur (Mac'teki <c>ManualTV</c> ile aynı kural). Önceden Samsung değilse
+    /// LG sayılıyordu: adresini yazan Android TV kullanıcısında LG eşleştirmesi deneniyor, "TV yanıt vermedi" çıkıyordu.
+    /// </summary>
+    public static async Task<ManualTv> ManualTvAsync(string host, CancellationToken cancellationToken = default)
     {
-        if (await SamsungDiscovery.DeviceNameAsync(host, cancellationToken) is { } samsung)
-            return new LgTv(samsung, host, TvBrand.Samsung);
-        return new LgTv(await FriendlyName(host) ?? "LG TV", host);
+        var samsung = SamsungDiscovery.DeviceNameAsync(host, cancellationToken);
+        var lgName = FriendlyName(host);
+        var lgPort = IsPortOpenAsync(host, 3000);
+        var android = Task.WhenAll(AndroidPorts.Select(port => IsPortOpenAsync(host, port)));
+        return ClassifyManual(host, await samsung, await lgName, await lgPort, (await android).Any(open => open));
+    }
+
+    /// <summary>
+    /// Yoklama sonuçlarından TV: Samsung 8001'de kendini tanıtırsa Samsung; LG cihaz tanımı (1990) ya da ikinci ekran
+    /// sunucusu (3000) yanıt verirse LG; Android TV portlarından biri açıksa Android TV; hiçbiri değilse (tanınmadan) LG
+    /// (webOS 3 cihaz tanımını her zaman vermiyor).
+    /// </summary>
+    public static ManualTv ClassifyManual(string host, string? samsungName, string? lgName, bool lgPortOpen, bool androidPortOpen)
+    {
+        if (samsungName is not null) return new ManualTv(new LgTv(samsungName, host, TvBrand.Samsung), true);
+        if (lgName is not null || lgPortOpen) return new ManualTv(new LgTv(lgName ?? "LG TV", host), true);
+        if (androidPortOpen) return new ManualTv(new LgTv("Android TV", host, TvBrand.AndroidTv), true);
+        return new ManualTv(new LgTv("LG TV", host), false);
+    }
+
+    private static async Task<bool> IsPortOpenAsync(string host, int port)
+    {
+        using var client = new TcpClient();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
+        try
+        {
+            await client.ConnectAsync(host, port, cancellation.Token);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>

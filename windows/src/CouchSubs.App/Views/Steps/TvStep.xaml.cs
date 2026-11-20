@@ -54,7 +54,8 @@ public partial class TvStep : UserControl
         Tvs.Children.Add(row);
     }
 
-    /// <summary>Elle yazılan adres: TV listeye eklenir (Samsung 8001'de kendini tanıtırsa Samsung, değilse LG).</summary>
+    /// <summary>Elle yazılan adres: TV'nin türü (LG, Samsung, Android TV) TV'ye sorulur ve listeye eklenir. Android TV'de
+    /// "Bağlan" Android TV akışını o adresle başlatır; hiçbir yoklamaya yanıt gelmezse TV LG sayılır ve bu söylenir.</summary>
     private async Task AddManualAsync()
     {
         Error.Text = "";
@@ -65,12 +66,16 @@ public partial class TvStep : UserControl
         }
         if (Tvs.Children.OfType<Grid>().Any(row => Equals(row.Tag, host))) return;
         AddManual.IsEnabled = false;
-        var tv = await LgDiscovery.TvAtAsync(host);
-        AddRow(tv);
+        var manual = await LgDiscovery.ManualTvAsync(host);
+        AddRow(manual.Tv);
+        if (!manual.Recognised) Error.Text = Localizer.Current.Format(ManualTvNotRecognised, host);
         NotFound.Visibility = Visibility.Collapsed;
         ManualHost.Text = "";
         AddManual.IsEnabled = true;
     }
+
+    private const string ManualTvNotRecognised =
+        "No TV at %@ answered as an LG, Samsung or Android TV, so it was added as an LG TV. If it is an Android TV / Google TV, press Select under Android TV / Google TV below.";
 
     private async void OnAddManual(object sender, RoutedEventArgs e) => await AddManualAsync();
 

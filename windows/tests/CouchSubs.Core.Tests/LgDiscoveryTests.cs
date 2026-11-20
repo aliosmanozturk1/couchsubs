@@ -4,11 +4,28 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using CouchSubs.Core.LgTv;
+using Tv = CouchSubs.Core.LgTv.LgTv;
 
 namespace CouchSubs.Core.Tests;
 
 public class LgDiscoveryTests
 {
+    /// Elle yazılan adresteki TV'nin türü: Android TV artık LG sayılmıyor (Mac'teki ManualTVTests ile aynı vakalar).
+    [Fact]
+    public void ManualAddressIsClassifiedByWhatTheTvAnswers()
+    {
+        const string host = "192.168.1.60";
+        Assert.Equal(new ManualTv(new Tv("Samsung Q80", host, TvBrand.Samsung), true),
+            LgDiscovery.ClassifyManual(host, "Samsung Q80", null, false, true));
+        // Yeni LG'lerde Google Cast portu da açık olabilir: LG yanıt verdiyse LG'dir.
+        Assert.Equal(new ManualTv(new Tv("LG OLED", host), true), LgDiscovery.ClassifyManual(host, null, "LG OLED", false, true));
+        Assert.Equal(new ManualTv(new Tv("LG TV", host), true), LgDiscovery.ClassifyManual(host, null, null, true, true));
+        Assert.Equal(new ManualTv(new Tv("Android TV", host, TvBrand.AndroidTv), true), LgDiscovery.ClassifyManual(host, null, null, false, true));
+        // Hiçbir yoklamaya yanıt yok (ör. webOS 3): eskisi gibi LG sayılır ama tanınmadığı bilinir.
+        Assert.Equal(new ManualTv(new Tv("LG TV", host), false), LgDiscovery.ClassifyManual(host, null, null, false, false));
+        Assert.Equal(new[] { 5555, 6466, 8008, 8009 }, LgDiscovery.AndroidPorts.Order());
+    }
+
     private const string TvResponse =
         "HTTP/1.1 200 OK\r\nLOCATION: http://192.168.1.153:1990/abc/description.xml\r\nST: urn:lge-com:service:webos-second-screen:1\r\n\r\n";
 
