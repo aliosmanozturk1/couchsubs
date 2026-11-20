@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.34';
+  var APP_VERSION = '0.9.35';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -179,6 +179,18 @@
     var text = formatResolution(info);
     $('row-resolution').style.display = text ? '' : 'none';
     if (text) setStatus('st-resolution', text, 'muted');
+  }
+
+  // Samsung'da HDMI penceresinin istenen/kabul edilen ölçüsü ve TV'nin bildirdiği ekran ölçüleri (#304): ultrawide
+  // monitör fotoğrafında hangi denemenin reddedildiği görünsün. Platform bildirmezse satır gizli kalır.
+  function watchPictureWindow() {
+    if (typeof platform.pictureDiagnostics !== 'function') return;
+    try {
+      platform.pictureDiagnostics(function (text) {
+        $('row-window').style.display = text ? '' : 'none';
+        if (text) setStatus('st-window', text, 'muted');
+      });
+    } catch (e) {}
   }
 
   function watchResolution() {
@@ -2054,6 +2066,7 @@
   startHdmi();
 
   $('app-version').textContent = APP_VERSION;
+  watchPictureWindow();
   renderDiag();
   renderWaitingStatus();
   // Önceki açılışta TV kendiliğinden kaynağa geçtiyse ipucu şimdi gösterilir.

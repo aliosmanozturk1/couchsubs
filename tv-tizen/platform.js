@@ -38,36 +38,23 @@
   }
 
   // --- Geniş ekranda HDMI penceresi (#304) ---
-  // Odyssey G8'de (3440x1440) TVWindow '100%' penceresi ekranın ortasında 2580x1080 piksellik bir kutuya çiziliyordu
-  // (kullanıcı fotoğrafları: her iki yönde ekranın %75'i, ortalanmış; 0.9.22'de sayfa 16:9 kutudayken de aynı boy).
-  // Samsung pencere ölçüsünü uygulamanın 1080 satırlık mantıksal yüzeyinde (show'un bildirdiği dikdörtgen) alıyor,
-  // görüntü katmanında ise bunu fiziksel piksele büyütmeden ekranın ortasına koyuyor. Bu yüzden geniş ekranda pencere
-  // fiziksel ölçüde istenir ve aynı merkeze göre konur: kutu ekran boyuna büyür. 16:9 TV'lerde bir şey değişmez.
-  // PS5 16:9 verir: varsayılan 'fit' tam yükseklikte 16:9 (yanlarda siyah), 'fill' ekranın tamamı (görüntü gerilir).
+  // Samsung TVWindow belgesi: show() dikdörtgeni görüntü alanının sınırları içinde olmalıdır, dışına taşan dikdörtgen
+  // NotSupportedError ile reddedilir; başarı geri çağrısı da yalnız istenen dikdörtgeni aynen geri verir (gerçek ölçüyü
+  // söylemez). 0.9.32'deki düzeltme pencereyi sayfanın kökenine göre fiziksel ölçüde istiyordu (3440x1440'ta
+  // ['10px','-180px','2560px','1440px']): x ve y sayfa koordinatında, genişlik ve yükseklik fiziksel pikselde. Bu
+  // dikdörtgen görüntü alanının dışına taştığı için Samsung reddediyor, yedekler de ('0px','0px','2560px','1440px' yine
+  // taşıyor) sonunda eski '100%' penceresine düşüyordu: kullanıcının "değişen bir şey yok" demesinin nedeni.
+  // Artık dikdörtgen tek koordinat sisteminde, Samsung'un '100%' penceresi için bildirdiği alanın (getRect, 'px') ya da o
+  // yoksa sayfanın içinde istenir; hiçbir zaman eksi köken ya da alandan büyük ölçü istenmez.
+  // PS5 16:9 verir: varsayılan 'fit' alan yüksekliğinde 16:9 (yanlarda siyah), 'fill' alanın tamamı ('100%').
+  // Her denemenin sonucu ve bildirilen ölçüler bilgi panelindeki "Pencere" satırına yazılır (pictureDiagnostics).
   var PICTURE_KEY = 'couchsubs.picture';
   var shownPort = null;
+  var pictureLog = '';
+  var pictureListener = null;
 
   function pictureMode() {
     try { return window.localStorage.getItem(PICTURE_KEY) === 'fill' ? 'fill' : 'fit'; } catch (e) { return 'fit'; }
-  }
-
-  // Ekranın fiziksel ölçüsü: screen (cihaz pikseli) ya da sayfa yüzeyi x görünüm ölçeği.
-  function physicalSize() {
-    var candidates = [];
-    try {
-      var dpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
-      if (window.screen) candidates.push([window.screen.width * dpr, window.screen.height * dpr]);
-    } catch (e) {}
-    try {
-      var scale = window.visualViewport && window.visualViewport.scale > 0 ? window.visualViewport.scale : 1;
-      candidates.push([window.innerWidth * scale, window.innerHeight * scale]);
-    } catch (e) {}
-    var best = null;
-    for (var i = 0; i < candidates.length; i++) {
-      var c = candidates[i];
-      if (c[0] > 0 && c[1] > 0 && (!best || c[1] > best[1])) best = c;
-    }
-    return best ? [Math.round(best[0]), Math.round(best[1])] : null;
   }
 
   function parseRect(rect) {
@@ -80,41 +67,105 @@
       if (isNaN(value)) return null;
       out.push(value);
     }
-    return out[2] > 0 && out[3] > 0 ? out : null;
+    return out[0] >= 0 && out[1] >= 0 && out[2] > 0 && out[3] > 0 ? out : null;
   }
 
-  // shown: show('100%') sonrası pencerenin mantıksal dikdörtgeni [x, y, w, h]; screen: fiziksel [w, h].
-  // 16:9 (ve dar) ekranda ya da pencere zaten ekran boyundaysa null: '100%' penceresi kalır.
-  function pictureRect(shown, screen, mode) {
-    if (!shown || !screen || !(screen[0] > 0) || !(screen[1] > 0)) return null;
-    if (screen[0] / screen[1] < WIDE_RATIO) return null;
-    var width = mode === 'fill' ? screen[0] : Math.min(screen[0], Math.round(screen[1] * 16 / 9));
-    var height = screen[1];
-    if (Math.abs(width - shown[2]) < 2 && Math.abs(height - shown[3]) < 2) return null;
-    var x = Math.round(shown[0] + (shown[2] - width) / 2);
-    var y = Math.round(shown[1] + (shown[3] - height) / 2);
+  // area: '100%' penceresinin kapladığı alan [x, y, w, h] (Samsung'un koordinatında). Dönen dikdörtgen hep bu alanın
+  // içindedir. 16:9 (ve dar) alanda, 'fill' seçiminde ya da 16:9 kutu alanla aynıysa null: '100%' penceresi kalır.
+  function pictureRect(area, mode) {
+    if (!area || !(area[2] > 0) || !(area[3] > 0)) return null;
+    if (area[2] / area[3] < WIDE_RATIO || mode === 'fill') return null;
+    var height = Math.floor(area[3]);
+    var width = Math.min(Math.floor(area[2]), Math.round(height * 16 / 9));
+    if (area[2] - width < 2) return null;
+    var x = Math.max(0, Math.round(area[0] + (area[2] - width) / 2));
+    var y = Math.max(0, Math.round(area[1]));
     return [x + 'px', y + 'px', width + 'px', height + 'px'];
   }
 
-  // Pencereyi açar; geniş ekranda ölçüyü düzeltir. Samsung ekran dışına taşan (eksi) kökeni reddederse aynı ölçü
-  // sol üst kökenle denenir, o da olmazsa '100%' penceresi (eski davranış) kalır.
+  function rectText(rect) {
+    if (!rect) return '-';
+    var out = [];
+    for (var i = 0; i < rect.length; i++) out.push(String(rect[i]).replace('px', ''));
+    return out.join(',');
+  }
+
+  function errorText(e) {
+    return e ? String(e.name || e.code || e.message || e).slice(0, 40) : 'error';
+  }
+
+  function notePicture(text) {
+    pictureLog = text;
+    if (pictureListener) {
+      try { pictureListener(text); } catch (e) {}
+    }
+  }
+
+  // TV'nin bildirdiği ölçüler: hangi koordinat sisteminin geçerli olduğunu bir sonraki fotoğraftan okumak için.
+  function reportedSizes() {
+    var parts = [];
+    try {
+      if (window.screen) parts.push('scr ' + window.screen.width + 'x' + window.screen.height);
+    } catch (e) {}
+    try { if (window.devicePixelRatio) parts.push('dpr ' + window.devicePixelRatio); } catch (e) {}
+    try { parts.push('page ' + window.innerWidth + 'x' + window.innerHeight); } catch (e) {}
+    try {
+      if (window.visualViewport && window.visualViewport.scale) parts.push('vv ' + window.visualViewport.scale);
+    } catch (e) {}
+    return parts.join(' ');
+  }
+
+  // Samsung'un o an gösterdiği pencerenin piksel ölçüsü (getRect). API yoksa ya da hata verirse callback(null).
+  function readRect(callback) {
+    var called = false;
+    var once = function (value) { if (!called) { called = true; callback(value); } };
+    try {
+      if (!tizen.tvwindow.getRect) return once(null);
+      var result = tizen.tvwindow.getRect(function (rect) { once(rect); }, function () { once(null); }, 'px', 'MAIN');
+      // Eski sürümler sonucu doğrudan döndürür.
+      if (result && result.length === 4) once(result);
+    } catch (e) {
+      once(null);
+    }
+  }
+
+  // Pencereyi '100%' açar; geniş alanda seçime göre 16:9 kutuya küçültür. Samsung reddederse '100%' kalır.
   function showWindow(done, failed) {
-    tizen.tvwindow.show(function (rect) {
-      var target = pictureRect(parseRect(rect) || [0, 0, window.innerWidth, window.innerHeight], physicalSize(),
-        pictureMode());
-      if (!target) return done();
-      var attempts = [target, ['0px', '0px', target[2], target[3]], FULL_SCREEN];
-      var next = function (i) {
-        try {
-          tizen.tvwindow.show(function () { done(); }, function () {
-            if (i + 1 < attempts.length) next(i + 1); else done();
-          }, attempts[i], 'MAIN', 'BEHIND');
-        } catch (e) {
-          if (i + 1 < attempts.length) next(i + 1); else done();
+    var mode = pictureMode();
+    tizen.tvwindow.show(function () {
+      readRect(function (full) {
+        var area = parseRect(full) || [0, 0, window.innerWidth, window.innerHeight];
+        var line = reportedSizes() + ' · 100% ok · area ' + (parseRect(full) ? '' : 'page ') + rectText(area) + ' · ' + mode;
+        var target = pictureRect(area, mode);
+        if (!target) {
+          notePicture(line);
+          return done();
         }
-      };
-      next(0);
-    }, failed, FULL_SCREEN, 'MAIN', 'BEHIND');
+        var finish = function (result) {
+          readRect(function (now) {
+            notePicture(line + ' ' + rectText(target) + ' ' + result + (now ? ' · now ' + rectText(now) : ''));
+            done();
+          });
+        };
+        var fallBack = function (e) {
+          // Reddedilen kutudan sonra pencere '100%' kalsın (Samsung son başarılı ölçüyü korur; yine de yeniden iste).
+          try {
+            tizen.tvwindow.show(function () { finish('fail ' + errorText(e)); },
+              function () { finish('fail ' + errorText(e)); }, FULL_SCREEN, 'MAIN', 'BEHIND');
+          } catch (e2) {
+            finish('fail ' + errorText(e));
+          }
+        };
+        try {
+          tizen.tvwindow.show(function () { finish('ok'); }, fallBack, target, 'MAIN', 'BEHIND');
+        } catch (e) {
+          fallBack(e);
+        }
+      });
+    }, function (e) {
+      notePicture(reportedSizes() + ' · 100% fail ' + errorText(e));
+      failed(e);
+    }, FULL_SCREEN, 'MAIN', 'BEHIND');
   }
 
   // Samsung ağ API'sindeki IPv4 adresi (izin: network.public); API yoksa ya da adres boşsa null.
@@ -171,6 +222,12 @@
     viewportFor: viewportFor,
     samsungIp: samsungIp,
     pictureRect: pictureRect,
+
+    // HDMI penceresi denemelerinin sonucu ve TV'nin bildirdiği ölçüler (#304); app.js bilgi panelinde gösterir.
+    pictureDiagnostics: function (callback) {
+      pictureListener = callback;
+      if (pictureLog) callback(pictureLog);
+    },
 
     // Geniş ekranda (21:9, 32:9) HDMI görüntüsü: 'fit' 16:9 tam yükseklik, 'fill' ekranı doldurur (gerer). Sarı tuş
     // değiştirir (app.js); 16:9 TV'de yoktur.
