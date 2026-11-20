@@ -1064,6 +1064,7 @@ struct TranslationCard: View {
         case .modelRejected: String(format: String(localized: "%@ did not accept the request. Choose the other model or try again later."), name)
         case .unreachable: String(format: String(localized: "%@ could not be reached. Check your internet connection."), name)
         case .busy: String(format: String(localized: "%@ is busy or did not answer in time. Try again in a moment, or choose the faster model."), name)
+        case .keychainWriteFailed: String(localized: "The API key could not be saved to the Mac keychain.")
         }
     }
 
@@ -1073,6 +1074,8 @@ struct TranslationCard: View {
         switch state {
         case .valid:
             return String(localized: "It works.")
+        case .keychainWriteFailed:
+            return String(localized: "The API key could not be saved to the Mac keychain.")
         case .invalid:
             return String(localized: "The local model server did not accept the API key. Check the key, or remove it if the server does not need one.")
         case .quotaExceeded:
@@ -1227,8 +1230,8 @@ private struct AIKeySection: View {
             }
         } else {
             HStack(spacing: Theme.space("m")) {
-                SecureField("API key", text: $key).textFieldStyle(CSTextFieldStyle())
-                Button("Save and test") {
+                SecureField("API key", text: $key).textFieldStyle(CSTextFieldStyle()).disabled(checking)
+                Button(checking ? LocalizedStringKey("Testing…") : LocalizedStringKey("Save and test")) {
                     let typed = key
                     run {
                         let result = await model.setAIKey(typed, for: provider)

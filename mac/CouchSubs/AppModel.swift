@@ -1824,7 +1824,8 @@ final class AppModel: ObservableObject {
         updateSubtitleOffTip()
         if settings.dubbing.enabled, dubbingModelReady { makeDubber().prepare() }
         SubtitleLog.write("oturum başladı: CouchSubs \(AppIdentity.version), \(settings.sourceLanguage)→\(settings.targetLanguage), "
-            + "motor: \(onlineTranslationActive ? settings.onlineEngine.rawValue : "ücretsiz"), paketler: \(settings.gamePacks ? "açık" : "kapalı"), "
+            + "motor: \(onlineTranslationActive ? settings.onlineEngine.rawValue : "ücretsiz"), "
+            + "seçilen motor: \(settings.translationEngine.rawValue), paketler: \(settings.gamePacks ? "açık" : "kapalı"), "
             + "görüntü: \(demoMode ? "deneme modu" : xbox != nil ? "Xbox (Beta)" : readsWindow ? "PS Remote Play penceresi" : captureTarget != nil ? "seçilen pencere" : "PS5")")
 
         let session: StreamControlling
@@ -2202,7 +2203,9 @@ final class AppModel: ObservableObject {
     func setDeepLKey(_ key: String) async -> OnlineKeyCheck {
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         let check = await services.checkOnlineKey(key)
-        if check.state == .valid || check.state == .quotaExceeded { saveKey(key, for: .deepL) }
+        if check.state == .valid || check.state == .quotaExceeded {
+            guard saveKey(key, for: .deepL) else { return OnlineKeyCheck(state: .keychainWriteFailed) }
+        }
         return check
     }
 
@@ -2218,9 +2221,14 @@ final class AppModel: ObservableObject {
     /// da) Anahtarlık'a yazılır ve bu motor seçilir.
     func setAIKey(_ key: String, for provider: AIProvider) async -> Result<String, AIFailure> {
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        SubtitleLog.write("API anahtarı testi başladı: \(provider.rawValue)")
         let result = await services.testAIKey(provider: provider, key: key, model: settings.model(for: provider))
+        if case .failure(let error) = result {
+            SubtitleLog.write("API anahtarı testi sonucu: \(provider.rawValue) \(error)")
+        }
         switch result {
-        case .success, .failure(.quotaExceeded), .failure(.modelRejected), .failure(.busy): saveKey(key, for: TranslationEngine(provider))
+        case .success, .failure(.quotaExceeded), .failure(.modelRejected), .failure(.busy):
+            guard saveKey(key, for: TranslationEngine(provider)) else { return .failure(.keychainWriteFailed) }
         case .failure: break
         }
         return result
@@ -2244,7 +2252,8 @@ final class AppModel: ObservableObject {
         let result = await services.testLocalAI(server: server, key: key)
         if !typed.isEmpty {
             switch result {
-            case .success, .failure(.quotaExceeded), .failure(.modelRejected), .failure(.busy): saveKey(typed, for: .local)
+            case .success, .failure(.quotaExceeded), .failure(.modelRejected), .failure(.busy):
+                guard saveKey(typed, for: .local) else { return .failure(.keychainWriteFailed) }
             case .failure: break
             }
         }
@@ -2267,9 +2276,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func saveKey(_ key: String, for engine: TranslationEngine) {
-        guard let storeKey = engine.storeKey else { return }
+    private func saveKey(_ key: String, for engine: TranslationEngine) -> Bool {
+        guard let storeKey = engine.storeKey else { return false }
         store.save(key, for: storeKey)
+        guard store.load(String.self, for: storeKey) == key else {
+            SubtitleLog.write("API anahtarı Anahtar Zinciri'ne kaydedilemedi: \(engine.rawValue)")
+            return false
+        }
         savedKeys.insert(engine)
         if settings.translationEngine == engine {
             // Motor zaten seçiliydi, anahtar yeni geldi: hat yeni anahtarla kurulsun.
@@ -2278,6 +2291,7 @@ final class AppModel: ObservableObject {
         } else {
             settings.translationEngine = engine
         }
+        return true
     }
 
     // MARK: - PS5 giriş şifresi

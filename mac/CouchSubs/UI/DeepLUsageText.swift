@@ -16,6 +16,8 @@ enum DeepLUsageText {
             quotaUsedUp
         case .invalid:
             String(localized: "DeepL did not accept this key. Copy it again from your DeepL account page.")
+        case .keychainWriteFailed:
+            String(localized: "The API key could not be saved to the Mac keychain.")
         case .unreachable, .modelRejected, .busy:
             String(localized: "DeepL could not be reached. Check your internet connection.")
         }
