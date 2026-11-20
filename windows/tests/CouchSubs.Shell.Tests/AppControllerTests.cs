@@ -2417,20 +2417,104 @@ public class TvAppInstallTests
     }
 
     [Fact]
-    public async Task ReinstallIsOfferedOnlyForSamsungAndAndroidTv()
+    public async Task ReinstallIsOfferedForAllThreeBrandsWhileTheTvAppIsNotConnected()
     {
         var services = new FakeServices();
         services.Bundled[TvBrand.AndroidTv] = AndroidApp;
         var controller = Make(services);
         Assert.False(controller.CanReconnectTv);
+        Assert.False(controller.CanChangeTv);
         await controller.PairAsync(Tv);
-        Assert.False(controller.CanReinstallTvApp);
-        // LG eşleşmiş ama TV uygulaması bağlı değil: ana ekrandan TV adımına dönülebilir ("TV'ye bağlan").
-        Assert.True(controller.CanReconnectTv);
+        // LG'de de "yeniden kur" var (önceden yalnız Samsung ve Android TV); "TV'ye bağlan" onunla birlikte çıkmaz,
+        // TV adımına "TV'yi değiştir" götürür.
+        Assert.True(controller.CanReinstallTvApp);
+        Assert.False(controller.CanReconnectTv);
+        Assert.True(controller.CanChangeTv);
         await controller.PairAsync(new LgTv("Android TV", "", TvBrand.AndroidTv));
         Assert.True(controller.CanReinstallTvApp);
-        // Android TV'de aynı yerde "yeniden kur" var; iki düğme birden çıkmaz.
         Assert.False(controller.CanReconnectTv);
+        Assert.True(controller.CanChangeTv);
+    }
+
+    /// LG paketi uygulamayla gelmediyse yeniden kurulamaz; TV adımına "TV'ye bağlan" götürür (#662), iki düğme birden çıkmaz.
+    [Fact]
+    public async Task WithoutTheLgPackageConnectATvIsOfferedInstead()
+    {
+        var controller = Make(new FakeServices { BundledTvAppVersion = null });
+        await controller.PairAsync(Tv);
+        Assert.False(controller.CanReinstallTvApp);
+        Assert.True(controller.CanReconnectTv);
+        Assert.False(controller.CanChangeTv);
+    }
+
+    /// LG'de "yeniden kur": kayıtlı anahtar varsa Passphrase sorulmadan, TV'deki sürüm güncel olsa da yeniden kurulur.
+    [Fact]
+    public async Task LgReinstallWithASavedKeyInstallsAgainWithoutAskingThePassphrase()
+    {
+        var services = new FakeServices { DevMode = true };
+        var store = new MemoryStore();
+        store.Save(StoreKeys.TvDevKey, "dev-key");
+        var controller = Make(services, store);
+        await controller.PairAsync(Tv);
+        // TV'deki sürüm güncel: açılışta kurulmaz.
+        Assert.Equal(0, services.Installs);
+        await controller.ReinstallTvAppAsync();
+        Assert.Equal(1, services.Installs);
+        Assert.Equal(new TvAppState(TvAppKind.UpToDate, "0.6.1"), controller.TvApp);
+        // İstek bir kerelik: sonraki denetim güncel uygulamayı yeniden kurmaz.
+        await controller.RefreshTvAppAsync();
+        Assert.Equal(1, services.Installs);
+    }
+
+    /// Kayıtlı anahtar yoksa Passphrase adımı açılır; parola yazılınca güncel uygulama da yeniden kurulur.
+    [Fact]
+    public async Task LgReinstallWithoutAKeyAsksThePassphraseThenInstallsAgain()
+    {
+        var services = new FakeServices { DevMode = true };
+        var controller = Make(services);
+        await controller.PairAsync(Tv);
+        await controller.ReinstallTvAppAsync();
+        Assert.Equal(new TvAppState(TvAppKind.NeedsPassphrase), controller.TvApp);
+        Assert.Equal(0, services.Installs);
+        await controller.InstallTvAppAsync("ABC123");
+        Assert.Equal(1, services.Installs);
+        Assert.Equal(TvAppKind.UpToDate, controller.TvApp.Kind);
+    }
+
+    /// TV kayıtlı anahtarı reddederse (geliştirici modu yeniden açılmış) anahtar bırakılır ve Passphrase adımı açılır;
+    /// geliştirici modu kapalıysa adımları görünür.
+    [Fact]
+    public async Task LgReinstallFallsBackToThePassphraseOrDeveloperModeSteps()
+    {
+        var services = new FakeServices { DevMode = true, RefuseKey = true };
+        var store = new MemoryStore();
+        store.Save(StoreKeys.TvDevKey, "eski-anahtar");
+        var controller = Make(services, store);
+        await controller.PairAsync(Tv);
+        await controller.ReinstallTvAppAsync();
+        Assert.Equal(new TvAppState(TvAppKind.NeedsPassphrase), controller.TvApp);
+        Assert.Null(store.Load<string>(StoreKeys.TvDevKey));
+        services.RefuseKey = false;
+        await controller.InstallTvAppAsync("ABC123");
+        Assert.Equal(1, services.Installs);
+
+        services.DevMode = false;
+        await controller.ReinstallTvAppAsync();
+        Assert.Equal(new TvAppState(TvAppKind.DevModeOff), controller.TvApp);
+    }
+
+    /// "TV'yi değiştir" yalnız TV adımını açar; kayıtlı PS5, hesap ve TV silinmez ("Yeniden kur…" değil).
+    [Fact]
+    public async Task ChangeTvOpensOnlyTheTvStepAndKeepsTheSetup()
+    {
+        var store = new MemoryStore();
+        var controller = Make(new FakeServices(), store);
+        await controller.PairAsync(Tv);
+        Assert.True(controller.CanChangeTv);
+        controller.Step = OnboardingStep.Tv;
+        Assert.Equal(OnboardingStep.Tv, controller.Step);
+        Assert.Equal(Tv, controller.Tv);
+        Assert.NotNull(store.Load<LgTv>(StoreKeys.Tv));
     }
 
     [Fact]

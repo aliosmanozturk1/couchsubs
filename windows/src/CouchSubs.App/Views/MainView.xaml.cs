@@ -256,7 +256,7 @@ public partial class MainView : UserControl
         catch (Exception error) { StartupGuard.Log("Deneme altyazısı gönderilemedi", error); }
     }
 
-    /// <summary>TV'siz kurulmuş uygulamada TV'yi sonradan bağlamak için sihirbazın TV adımı açılır.</summary>
+    /// <summary>TV'siz kurulmuş uygulamada TV'yi sonradan bağlamak ya da TV'yi değiştirmek için sihirbazın TV adımı açılır.</summary>
     private void OnConnectTv(object sender, RoutedEventArgs e) => controller.Step = OnboardingStep.Tv;
 
     /// <summary>TV adımı açılır (kurulum kartı orada görünür) ve TV'ye yeniden bakılır.</summary>

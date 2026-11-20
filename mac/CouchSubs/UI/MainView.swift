@@ -208,6 +208,13 @@ private struct TestSubtitleButton: View {
 private struct TVStatusTile: View {
     @EnvironmentObject private var model: AppModel
 
+    /// TV eşleşmişken (TV uygulaması bağlı olsa da) yalnız TV adımı açılır: başka TV seçilir, "Yeniden kur…" gerekmez.
+    @ViewBuilder private var changeTV: some View {
+        if model.canChangeTV {
+            Button("Change TV") { model.step = .tv }.buttonStyle(.link)
+        }
+    }
+
     var body: some View {
         if model.hasTV {
             if model.canReinstallTVApp {
@@ -218,6 +225,7 @@ private struct TVStatusTile: View {
                         model.step = .tv
                         Task { await model.reinstallTVApp() }
                     }.buttonStyle(.secondary)
+                    changeTV
                 }
             } else if model.canReconnectTV {
                 // TV uygulaması bağlı değil (LG): TV adımı açılır; başka TV seçilir ya da kurulum adımları yeniden izlenir.
@@ -228,7 +236,9 @@ private struct TVStatusTile: View {
             } else {
                 StatusTile(symbol: "tv", title: "TV",
                            value: model.tvClients > 0 ? String(localized: "Connected") : String(localized: "Waiting for the TV app"),
-                           tone: AppModel.tvTone(clients: model.tvClients, running: model.isRunning))
+                           tone: AppModel.tvTone(clients: model.tvClients, running: model.isRunning)) {
+                    changeTV
+                }
             }
         } else {
             StatusTile(symbol: "tv", title: "TV", value: String(localized: "Not set up")) {

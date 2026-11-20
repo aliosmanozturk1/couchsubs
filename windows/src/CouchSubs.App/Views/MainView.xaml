@@ -140,6 +140,9 @@
                                 <!-- TV uygulaması bağlanmıyor (ör. TV'den kaldırıldı): TV adımı açılır, uygulama yeniden kurulur ya da açılır. -->
                                 <Button Content="{t:T 'Reinstall the TV app'}" HorizontalAlignment="Left" Margin="0,12,0,0" Padding="16,0" Click="OnReinstallTvApp"
                                         Visibility="{Binding CanReinstallTvApp, Converter={StaticResource VisibleIf}}" />
+                                <!-- TV eşleşmişken (TV uygulaması bağlı olsa da) yalnız TV adımı açılır: başka TV seçilir, "Yeniden kur…" gerekmez. -->
+                                <Button Style="{StaticResource GhostButton}" Content="{t:T 'Change TV'}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="OnConnectTv"
+                                        Visibility="{Binding CanChangeTv, Converter={StaticResource VisibleIf}}" />
                             </StackPanel>
                         </c:Card>
 

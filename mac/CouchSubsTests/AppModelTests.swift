@@ -1400,33 +1400,88 @@ final class TVAppInstallTests: XCTestCase {
         XCTAssertEqual(model.tvApp, .devModeOff)
     }
 
-    func testReinstallIsOfferedOnlyForSamsungAndAndroidTV() {
+    /// "Yeniden kur" üç markada da var (önceden yalnız Samsung ve Android TV); TV uygulaması bağlıyken çıkmaz.
+    func testReinstallIsOfferedForAllThreeBrandsWhileTheTVAppIsNotConnected() {
         let services = FakeServices()
         services.bundled[.androidTV] = BundledTVApp(url: URL(fileURLWithPath: "/tmp/a_0.7.0.apk"), version: "0.7.0")
         let model = model(services)
         model.tv = LGTV(name: "LG TV", host: "192.168.1.153")
-        XCTAssertFalse(model.canReinstallTVApp)
+        XCTAssertTrue(model.canReinstallTVApp)
         model.tv = LGTV(name: "Android TV", host: "", brand: .androidTV)
         XCTAssertTrue(model.canReinstallTVApp)
         model.tvClients = 1
         XCTAssertFalse(model.canReinstallTVApp)
     }
 
-    /// LG eşleşmiş ama TV uygulaması bağlı değil: ana ekrandan TV adımına dönülebilir (yeniden kur yalnız Samsung/Android).
-    func testConnectATVIsOfferedWhileThePairedLGAppIsNotConnected() async throws {
+    /// LG paketi uygulamayla gelmediyse yeniden kurulamaz; TV adımına "TV'ye bağlan" götürür (#662). Paket varken aynı
+    /// yere "TV'yi değiştir" götürür; iki düğme birden çıkmaz, TV uygulaması bağlıyken de "TV'yi değiştir" kalır.
+    func testChangeTVIsOfferedWheneverATVIsPaired() async throws {
         let services = FakeServices()
-        services.bundled[.androidTV] = BundledTVApp(url: URL(fileURLWithPath: "/tmp/a_0.7.0.apk"), version: "0.7.0")
         let model = model(services)
         XCTAssertFalse(model.canReconnectTV)
+        XCTAssertFalse(model.canChangeTV)
         try await model.pair(LGTV(name: "LG TV", host: "192.168.1.153"))
-        XCTAssertTrue(model.canReconnectTV)
-        model.tvClients = 1
-        XCTAssertFalse(model.canReconnectTV)
-        model.tvClients = 0
-        // Android TV'de aynı yerde "yeniden kur" var; iki düğme birden çıkmaz.
-        model.tv = LGTV(name: "Android TV", host: "", brand: .androidTV)
         XCTAssertTrue(model.canReinstallTVApp)
         XCTAssertFalse(model.canReconnectTV)
+        XCTAssertTrue(model.canChangeTV)
+        model.tvClients = 1
+        XCTAssertFalse(model.canReinstallTVApp)
+        XCTAssertTrue(model.canChangeTV, "TV uygulaması bağlıyken de TV değiştirilebilir")
+        model.tvClients = 0
+        services.bundledTVAppVersion = nil
+        XCTAssertFalse(model.canReinstallTVApp)
+        XCTAssertTrue(model.canReconnectTV)
+        XCTAssertFalse(model.canChangeTV)
+    }
+
+    /// LG'de "yeniden kur": kayıtlı anahtar varsa Passphrase sorulmadan, TV'deki sürüm güncel olsa da yeniden kurulur.
+    func testLGReinstallWithASavedKeyInstallsAgainWithoutAskingThePassphrase() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        let store = MemoryStore()
+        store.save("dev-key", for: StoreKey.tvDevKey)
+        let model = model(services, store: store)
+        try await model.pair(LGTV(name: "LG TV", host: "192.168.1.153"))
+        XCTAssertEqual(services.installs, 0, "TV'deki sürüm güncel: açılışta kurulmaz")
+        await model.reinstallTVApp()
+        XCTAssertEqual(services.installs, 1)
+        XCTAssertEqual(model.tvApp, .upToDate("0.6.1"))
+        // İstek bir kerelik: sonraki denetim güncel uygulamayı yeniden kurmaz.
+        await model.refreshTVApp()
+        XCTAssertEqual(services.installs, 1)
+    }
+
+    /// Kayıtlı anahtar yoksa Passphrase adımı açılır; parola yazılınca güncel uygulama da yeniden kurulur. Geliştirici
+    /// modu kapalıysa adımları görünür.
+    func testLGReinstallWithoutAKeyAsksThePassphraseThenInstallsAgain() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        let model = model(services)
+        try await model.pair(LGTV(name: "LG TV", host: "192.168.1.153"))
+        await model.reinstallTVApp()
+        XCTAssertEqual(model.tvApp, .needsPassphrase(error: nil))
+        XCTAssertEqual(services.installs, 0)
+        await model.installTVApp(passphrase: "ABC123")
+        XCTAssertEqual(services.installs, 1)
+        XCTAssertEqual(model.tvApp, .upToDate("0.6.1"))
+
+        services.devMode = false
+        await model.reinstallTVApp()
+        XCTAssertEqual(model.tvApp, .devModeOff)
+    }
+
+    /// TV kayıtlı anahtarı reddederse (geliştirici modu yeniden açılmış) anahtar bırakılır ve Passphrase adımı açılır.
+    func testLGReinstallWithARefusedKeyFallsBackToThePassphraseStep() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        services.refuseKey = true
+        let store = MemoryStore()
+        store.save("eski-anahtar", for: StoreKey.tvDevKey)
+        let model = model(services, store: store)
+        try await model.pair(LGTV(name: "LG TV", host: "192.168.1.153"))
+        await model.reinstallTVApp()
+        XCTAssertEqual(model.tvApp, .needsPassphrase(error: nil))
+        XCTAssertNil(store.load(String.self, for: StoreKey.tvDevKey))
     }
 
     func testInstalledAndroidAppNeedsNothingWhenDebuggingIsOff() async {

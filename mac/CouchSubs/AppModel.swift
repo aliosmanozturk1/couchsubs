@@ -519,6 +519,8 @@ final class AppModel: ObservableObject {
     @Published var devModeHoursLeft: Int?
     /// Son eşleşmede TV uygulaması açılamadı.
     @Published private var tvAppMissing = false
+    /// LG'de "yeniden kur" istendi: TV'deki sürüm güncel olsa da paket yeniden kurulur. İstek bir kerelik.
+    private var lgReinstallRequested = false
     /// TV uygulaması denetimi sürüyor (bekleme ekranı ve çeviri başlangıcı aynı anda çağırabilir).
     @Published private var refreshingTVApp = false
     /// "TV uygulamasını yeniden kur"a basıldı: Android TV'de uygulama kuruluysa da TV'de açılır.
@@ -1329,10 +1331,11 @@ final class AppModel: ObservableObject {
         await refreshTVApp()
     }
 
-    /// Samsung ve Android TV'de TV uygulaması bağlı değilken "TV uygulamasını yeniden kur" görünür (ana ekran ve TV kartı).
-    /// TV'den kaldırılan uygulama bu Mac'in kaydında "kurulu" kalıyordu (#352, #389).
+    /// TV uygulaması bağlı değilken üç markada da "TV uygulamasını yeniden kur" görünür (ana ekran ve TV kartı). TV'den
+    /// kaldırılan uygulama bu Mac'in kaydında "kurulu" kalıyordu (#352, #389). LG'de önceden yoktu: kayıtlı anahtar varsa
+    /// Passphrase sorulmadan, yoksa Passphrase adımıyla yeniden kurulur.
     var canReinstallTVApp: Bool {
-        guard let tv, tv.brand == .samsung || tv.brand == .androidTV else { return false }
+        guard tv != nil else { return false }
         return canInstallTVApp && tvClients == 0
     }
 
@@ -1341,14 +1344,42 @@ final class AppModel: ObservableObject {
     /// sonra LG'de TV adımına dönmenin görünür bir yolu yoktu (yalnız Hakkında › Yeniden kur).
     var canReconnectTV: Bool { hasTV && !canReinstallTVApp && tvClients == 0 }
 
+    /// TV eşleşmişken (TV uygulaması bağlı olsa da) ana ekranda "TV'yi değiştir" görünür: yalnız TV adımı açılır, başka TV
+    /// seçilir; "Yeniden kur…" ile bütün kurulumu baştan yapmak gerekmez. "TV'ye bağlan" aynı yere gittiği için ikisi
+    /// birden çıkmaz.
+    var canChangeTV: Bool { hasTV && !canReconnectTV }
+
     /// Kurulan sürüm kaydını unutur ve TV'ye yeniden bakar: uygulama TV'de yoksa kurulur, Android TV'de varsa açılır.
     /// TV'ye ulaşılamazsa kart geliştirici modu / hata ayıklama adımlarını gösterir.
     func reinstallTVApp() async {
-        guard tv != nil else { return }
+        guard let tv else { return }
+        if tv.brand == .lg {
+            await reinstallLGApp(tv)
+            return
+        }
         store.remove(StoreKey.tvAppVersion)
         openTVAppAfterCheck = true
         tvApp = .unknown
         await refreshTVApp()
+    }
+
+    /// LG'de TV uygulamasını yeniden kurar: kayıtlı anahtar varsa Passphrase sorulmadan paket yeniden kurulur ve açılır;
+    /// anahtar yoksa (ya da TV reddederse) Passphrase adımı, geliştirici modu kapalıysa adımları görünür.
+    private func reinstallLGApp(_ tv: LGTV) async {
+        guard let bundled = services.bundledTVAppVersion else { return }
+        lgReinstallRequested = true
+        // Kurulum adımları görünsün: TV uygulaması bağlı değil, kullanıcı yeniden kurmak istiyor.
+        tvAppMissing = true
+        tvApp = .working
+        guard await services.isDevModeOn(host: tv.host) else {
+            tvApp = .devModeOff
+            return
+        }
+        guard let devKey = store.load(String.self, for: StoreKey.tvDevKey) else {
+            tvApp = .needsPassphrase(error: nil)
+            return
+        }
+        await install(tv: tv, devKey: devKey, bundled: bundled)
     }
 
     /// Seçili TV'ye uygulamayı CouchSubs kurabilir mi (paket uygulamayla geldi mi)?
@@ -1404,7 +1435,12 @@ final class AppModel: ObservableObject {
         do {
             let installed = try await services.installedTVAppVersion(host: tv.host, devKey: devKey)
             TVInstallLog.write("TV'deki CouchSubs: \(installed ?? "yok")")
-            if let installed, !DevModeInstaller.isNewer(bundled, than: installed) {
+            // "Yeniden kur": TV'deki sürüm güncel görünse de paket yeniden kurulur (anahtar reddedilirse istek sürer,
+            // Passphrase yazılınca kurulur).
+            let force = lgReinstallRequested
+            lgReinstallRequested = false
+            if force { TVInstallLog.write("Yeniden kurulum istendi; TV'deki sürüme bakılmadan kuruluyor.") }
+            if !force, let installed, !DevModeInstaller.isNewer(bundled, than: installed) {
                 tvApp = .upToDate(installed)
                 await renewDevSessionIfDue(tv: tv, devKey: devKey)
                 return
