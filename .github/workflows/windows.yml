@@ -352,6 +352,30 @@ jobs:
           $text
           if ($text -notmatch "CouchSubs\.RemotePlay\.dll") { throw "hata metni eksik dosyayı söylemiyor" }
 
+      # Kurulum, CouchSubs.exe'yi --veloapp-install ile çağırır; 30 saniyede 0 ile dönmezse "Yükleme Kısmen Başarılı"
+      # uyarısı çıkar (#676). Kanca, güvenlik yazılımının engelleyebileceği DLL'ler (Velopack, uygulamanın kendi
+      # DLL'leri) yokken de 0 ile dönmeli; normal açılış da sessizce kapanmak yerine eksik dosyayı söylemeli.
+      - name: Kurulum kancası DLL'ler eksikken de 0 ile döner
+        shell: pwsh
+        run: |
+          function Invoke-Hook($folder, $hook) {
+            $p = Start-Process "$folder/CouchSubs.exe" -ArgumentList $hook, "0.1.0-dev" -PassThru
+            $null = $p.Handle
+            if (-not $p.WaitForExit(30000)) { $p.Kill(); throw "$hook kancası 30 saniyede bitmedi ($folder)" }
+            if ($p.ExitCode -ne 0) { throw "$hook kancası $($p.ExitCode) ile döndü ($folder)" }
+          }
+          $hooks = "--veloapp-install", "--veloapp-updated", "--veloapp-obsolete", "--veloapp-uninstall"
+          foreach ($hook in $hooks) { Invoke-Hook publish/CouchSubs $hook }
+          Copy-Item publish/CouchSubs hook-broken -Recurse
+          Remove-Item hook-broken/Velopack.dll, hook-broken/CouchSubs.Shell.dll, hook-broken/CouchSubs.Core.dll
+          foreach ($hook in $hooks) { Invoke-Hook hook-broken $hook }
+          $p = Start-Process hook-broken/CouchSubs.exe -ArgumentList "--render-screens", "$PWD/hook-broken-out" -PassThru
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); throw "uygulama eksik DLL ile takıldı" }
+          if (-not (Test-Path hook-broken-out/errors.txt)) { throw "eksik DLL bildirilmedi" }
+          $text = Get-Content hook-broken-out/errors.txt -Raw
+          $text
+          if ($text -notmatch "Velopack|CouchSubs\.(Shell|Core)") { throw "hata metni eksik dosyayı söylemiyor" }
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:

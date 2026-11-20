@@ -30,7 +30,7 @@ public partial class App : Application
         }
         catch (Exception error)
         {
-            StartupGuard.Fail(this, StartupGuard.ErrorMessage(error), error, renderFolder);
+            StartupGuard.Fail(this, StartupGuard.LaunchMessage(error), error, renderFolder);
         }
     }
 
