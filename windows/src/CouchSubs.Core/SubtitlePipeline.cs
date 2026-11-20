@@ -90,6 +90,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     private StabilizerNote? lastNote;
     /// <summary>Son gerçek okumanın süresi (ms); kare değişmediği için yeniden okunmayınca bu kullanılır.</summary>
     private int? lastReadMs;
+    /// <summary>Son altyazı okumasının süresi (ms); ek alan okumaları buna göre kendini kısar (<see cref="ReadPressure"/>).</summary>
+    public int? LastReadMs { get { lock (gate) return lastReadMs; } }
     /// <summary>Son işlenen karenin okuma bilgisi; o karede doğrulanan satırın isteğine eklenir (ölçümler için).</summary>
     private ReadInfo? currentRead;
 

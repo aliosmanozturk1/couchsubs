@@ -27,6 +27,9 @@ public sealed class FrameGate(int stuckAfterMs = FrameGate.DefaultStuckAfterMs)
 
     public bool IsBusy { get { lock (gate) return current is not null; } }
 
+    /// <summary>Süren okuma kaç milisaniyedir sürüyor (okuma yoksa 0).</summary>
+    public long BusyMs(long now) { lock (gate) return current is { } busy ? Math.Max(0, now - busy.Since) : 0; }
+
     /// <param name="now">Milisaniye saati (<see cref="Environment.TickCount64"/>).</param>
     public Entry TryEnter(long now)
     {

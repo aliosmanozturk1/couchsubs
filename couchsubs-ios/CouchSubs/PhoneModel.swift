@@ -98,6 +98,9 @@ final class PhoneModel: ObservableObject {
     private var historyFile: URL?
     private let historyQueue = DispatchQueue(label: "history.json", qos: .utility)
     @Published private(set) var translatorStatus: TranslatorStatus = .ready
+    /// Yazı tanıma (Vision) takıldı (#679); takılan okuma bitince kendiliğinden düzelir. iPhone'da ayrı süreçte yedek
+    /// okuyucu açılamaz; takılıyken yeni okuma verilmez, ana ekranda not görünür.
+    @Published private(set) var readingStuck = false
     @Published private(set) var onlineIssue: OnlineKeyState?
     /// Son altyazı oyun paketinden mi geldi (ana ekrandaki "paket kullanılıyor" göstergesi).
     @Published private(set) var lastFromPack = false
@@ -836,6 +839,23 @@ final class PhoneModel: ObservableObject {
             self?.noteLine(source: source, translation: translation, fromPack: fromPack)
         }
         pipeline.onMetrics = { [weak self] metrics in self?.lastMetrics = metrics }
+        pipeline.onReadResult = { [weak self] error in
+            let stuck = ReadQueue.shared.stalledMs != nil
+            if self?.readingStuck != stuck { self?.readingStuck = stuck }
+        }
+        ReadQueue.shared.onEvent = { [weak self] event in
+            switch event {
+            case .stalled(let stall, _): SubtitleLog.write("okuma takıldı: \(stall.logText); takılan okuma bekleniyor")
+            case .recovered(let ms): SubtitleLog.write("okuma düzeldi: takılan okuma \(ms) ms sonra bitti")
+            case .rescueFailed: break
+            case .degraded(let stalls):
+                SubtitleLog.write("okuma \(stalls) kez takıldı; bu oturumda hızlı düzeyde okunacak (Neural Engine yolu bırakıldı)")
+            }
+            Task { @MainActor in
+                let stuck = ReadQueue.shared.stalledMs != nil
+                if self?.readingStuck != stuck { self?.readingStuck = stuck }
+            }
+        }
         pipeline.onTranslationResult = { [weak self] error in
             let status: TranslatorStatus = switch error {
             case nil: .ready
@@ -1195,7 +1215,9 @@ final class PhoneModel: ObservableObject {
         let server = self.server
         screenTask = Task { [weak self] in
             do {
-                let reading = try await ReadQueue.shared.run { try reader.readLines(frame, deep: false) }
+                let reading = try await ReadQueue.shared.run(priority: .background, detail: ReadQueue.detail("ekranı çevir", frame)) {
+                    try reader.readLines(frame, deep: false)
+                }
                 let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame) { shown in
                     guard !Task.isCancelled else { return }
                     let milliseconds = ScreenTranslation.displayMilliseconds(shown)

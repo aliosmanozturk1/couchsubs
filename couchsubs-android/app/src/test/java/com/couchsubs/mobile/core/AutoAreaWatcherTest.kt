@@ -105,4 +105,31 @@ class AutoAreaWatcherTest {
         time = 2000
         assertFalse(watcher.offer(listOf(user), crop, run))
     }
+
+    /** Altyazı okuması yavaşken ek alan turları seyrekleşir; hızlanınca eski aralığa döner. */
+    @Test
+    fun passesSlowDownWhileSubtitleReadsAreSlow() {
+        var time = 0L
+        var factor = 4
+        val watcher = RegionWatcher({ Reading.Empty }, { it }, Recorder(), clock = { time }).apply { slowdown = { factor } }
+        val run: (Runnable) -> Unit = { it.run() }
+        val crop: (CropRegion) -> RegionWatcher.Crop? = { RegionWatcher.Crop(Unit, signature(1), null) }
+        assertTrue(watcher.offer(listOf(auto), crop, run))
+        time = 500
+        assertFalse(watcher.offer(listOf(auto), crop, run))
+        time = 2000
+        assertTrue(watcher.offer(listOf(auto), crop, run))
+        factor = 1
+        time = 2500
+        assertTrue(watcher.offer(listOf(auto), crop, run))
+    }
+
+    @Test
+    fun readPressureFollowsSubtitleReadTime() {
+        assertEquals(1, ReadPressure.slowdown(null, 0))
+        assertEquals(1, ReadPressure.slowdown(120, 80))
+        assertEquals(2, ReadPressure.slowdown(ReadPressure.SLOW_READ_MS.toInt(), 0))
+        assertEquals(4, ReadPressure.slowdown(100, ReadPressure.VERY_SLOW_READ_MS))
+        assertEquals(4, ReadPressure.slowdown(null, 9000))
+    }
 }

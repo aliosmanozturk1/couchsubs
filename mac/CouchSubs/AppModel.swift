@@ -635,9 +635,11 @@ final class AppModel: ObservableObject {
     /// Yazı tanıma art arda hata veriyor; değeri diskteki boş yer (GB). macOS, diskte yer kalmayınca okuma modelini
     /// diske yazamaz ve her okumayı hata ile bitirir; altyazı sessizce hiç gelmez.
     @Published var readingFailedFreeGB: Double?
-    /// Yazı tanıma (Vision) art arda takıldı ve takılan okumalar bitmiyor (#507); altyazı gelmez, uygulamayı kapatıp
-    /// açmak gerekir. Çeviriyi durdurup başlatmak artık çalışır, ama Vision'ın kendi kilidi ancak süreç kapanınca çözülür.
+    /// Yazı tanıma (Vision) takıldı ve yedek okuyucu da okuyamıyor (#507, #679); altyazı gelmez. Takılan okuma bitince
+    /// kendiliğinden düzelir (macOS modeli hazırlıyorsa bir iki dakika); düzelmezse uygulama yeniden başlatılır.
     @Published var readingStuck = false
+    /// Yazı tanıma takıldı, altyazılar yedek okuyucudan (ayrı süreç) geliyor.
+    @Published var readingRescued = false
     private var readFailures = 0
     /// Son PS5 karesi (Ayarlar'daki bölge önizlemesi). Her karede değiştiği için modelin kendi yayınına girmez; yalnız
     /// önizlemeyi gösteren görünüm `framePreview`'u izler, öbür ekranlar her karede yeniden çizilmez.
@@ -1926,7 +1928,9 @@ final class AppModel: ObservableObject {
         let server = self.server
         screenTask = Task { [weak self] in
             do {
-                let reading = try await ReadQueue.shared.run { try reader.readLines(frame, deep: false) }
+                let reading = try await ReadQueue.shared.run(priority: .background, detail: ReadQueue.detail("ekranı çevir", frame)) {
+                    try reader.readLines(frame, deep: false)
+                }
                 // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AITranslationCore.translateAll). Yazının
                 // içindeki kumanda simgeleri okunan kareden kesilip TV'de çevirinin içine konur (ButtonIcons).
                 let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame) { shown in
@@ -2018,9 +2022,7 @@ final class AppModel: ObservableObject {
         pipeline.onReadResult = { [weak self] error in self?.noteRead(error) }
         pipeline.onSpeech = { [weak self] lines in self?.speak(lines) }
         pipeline.onLog = { SubtitleLog.write($0) }
-        ReadQueue.shared.onRebuild = { stuck in
-            SubtitleLog.write("okuma takıldı; okuyucu yeniden kuruldu (bitmeyen okuma: \(stuck))")
-        }
+        watchReadQueue()
         onlineIssue = nil
         pipeline.warmUp()
         self.pipeline = pipeline
@@ -2310,11 +2312,51 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func noteRead(_ error: Error?) {
-        if case ReadQueueError.stuck? = error {
-            if !readingStuck { readingStuck = true }
-            return
+    /// Okuma sırasının olayları günlüğe yazılır; takılınca okumalar yedek okuyucuya (uygulamanın `--ocr-helper` ile
+    /// açılan ikinci süreci) geçer. Süreç boyunca bir kez kurulur.
+    private func watchReadQueue() {
+        let queue = ReadQueue.shared
+        if queue.rescuer == nil, let executable = Bundle.main.executableURL {
+            let rescuer = OcrHelperRescuer(executable: executable)
+            rescuer.onLog = { SubtitleLog.write($0) }
+            queue.rescuer = rescuer
         }
+        queue.onEvent = { [weak self] event in
+            switch event {
+            case .stalled(let stall, let rescued):
+                SubtitleLog.write("okuma takıldı: \(stall.logText); \(rescued ? "okumalar yedek okuyucuya geçti" : "yedek okuyucu yok, takılan okuma bekleniyor")")
+            case .recovered(let ms):
+                SubtitleLog.write("okuma düzeldi: takılan okuma \(ms) ms sonra bitti; asıl okuyucuya dönüldü")
+            case .rescueFailed(let stall, let failures):
+                SubtitleLog.write("yedek okuyucu da takıldı (\(failures). kez): \(stall.logText); yeniden kuruluyor")
+            case .degraded(let stalls):
+                SubtitleLog.write("okuma \(stalls) kez takıldı; bu oturumda hızlı düzeyde okunacak (Neural Engine yolu bırakıldı)")
+            }
+            Task { @MainActor in self?.readQueueChanged() }
+        }
+    }
+
+    private func readQueueChanged() {
+        let rescued = ReadQueue.shared.isRescuing
+        if readingRescued != rescued { readingRescued = rescued }
+        if ReadQueue.shared.stalledMs == nil, readingStuck { readingStuck = false }
+    }
+
+    /// Uygulamayı kapatıp yeniden açar (okuma düzelmediğinde tek tuşla).
+    func relaunch() {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
+    }
+
+    private func noteRead(_ error: Error?) {
+        let rescued = ReadQueue.shared.isRescuing
+        if readingRescued != rescued { readingRescued = rescued }
+        // Yedek okuyucunun kapanması da takılmadır; disk uyarısına sayılmaz.
+        if case ReadQueueError.stuck? = error { if !readingStuck { readingStuck = true }; return }
+        if error is OcrHelper.Failure { if !readingStuck { readingStuck = true }; return }
         if readingStuck { readingStuck = false }
         guard error != nil else {
             readFailures = 0

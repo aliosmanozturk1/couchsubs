@@ -261,6 +261,9 @@ class RegionWatcher(
     private val prefetchWork: Executor = Executor { it.run() },
     private val prefetchTranslator: TextTranslator = translator,
 ) {
+    /** Tur aralığının çarpanı ([ReadPressure.slowdown]): altyazı okuması yavaşken ek alanlar seyrek okunur. */
+    @Volatile var slowdown: () -> Int = { 1 }
+
     companion object {
         /** İki tur arasındaki en kısa süre; iPhone ve Mac ile aynı (saniyede en çok bir tur, pil ve ısı için). */
         const val DEFAULT_INTERVAL_MS = 1000L
@@ -601,7 +604,8 @@ class RegionWatcher(
             if (busy || (areas.isEmpty() && states.values.none { it.shown.isNotEmpty() })) return false
             val time = clock()
             // Otomatik ekran yazısı varken yazı ~1 sn içinde görünsün: tur aralığı en çok 500 ms.
-            val interval = if (areas.any { it.auto }) minOf(intervalMs, AUTO_INTERVAL_MS) else intervalMs
+            // Altyazı okuması yavaşladıysa ek alanlar seyrek okunur: altyazı her zaman önce.
+            val interval = (if (areas.any { it.auto }) minOf(intervalMs, AUTO_INTERVAL_MS) else intervalMs) * maxOf(1, slowdown())
             lastPass?.let { if (time - it < interval) return false }
             lastPass = time
             busy = true

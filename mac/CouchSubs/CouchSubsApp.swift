@@ -7,7 +7,15 @@ import Sparkle
 #endif
 import SwiftUI
 
+/// Uygulama `--ocr-helper` ile açıldıysa pencere açmaz: yedek okuyucu olarak çalışır (`OcrHelper`, #679).
 @main
+enum Launcher {
+    static func main() {
+        if CommandLine.arguments.contains(OcrHelper.argument) { OcrHelper.runAsHelper() }
+        CouchSubsApp.main()
+    }
+}
+
 struct CouchSubsApp: App {
     @StateObject private var model = Self.makeModel()
     /// Bilgisayar ekranındaki altyazı penceresi.

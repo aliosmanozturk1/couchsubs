@@ -155,6 +155,9 @@ public final class RegionWatcher {
     public private(set) var passes = 0
     public private(set) var reads = 0
 
+    /// Tur aralığının çarpanı (`ReadQueue.backgroundSlowdown`); testler değiştirir.
+    public var slowdown: () -> Int = { ReadQueue.shared.backgroundSlowdown }
+
     public init(reader: TextReader, translator: TextTranslator, server: RegionSending,
                 intervalMs: Int = RegionWatcher.defaultIntervalMs, clock: @escaping () -> Int = SubtitleStabilizer.uptimeMs) {
         self.reader = reader
@@ -177,7 +180,8 @@ public final class RegionWatcher {
         }
         guard running == nil else { return }
         let time = now()
-        let interval = areas.contains(where: \.auto) ? min(intervalMs, Self.autoIntervalMs) : intervalMs
+        // Altyazı okuması sırada bekliyorsa (ya da okuyucu takılıysa) ek alanlar seyrek okunur: altyazı her zaman önce.
+        let interval = (areas.contains(where: \.auto) ? min(intervalMs, Self.autoIntervalMs) : intervalMs) * slowdown()
         let manualDue = (!areas.isEmpty || states.values.contains { !$0.shown.isEmpty })
             && (lastPass.map { time - $0 >= interval } ?? true)
         let phone = phoneSession
@@ -238,7 +242,9 @@ public final class RegionWatcher {
         }
         let started = now()
         let reader = self.reader
-        let reading = try? await ReadQueue.shared.run { try reader.readLines(crop, deep: false) }
+        let reading = try? await ReadQueue.shared.run(priority: .background, detail: ReadQueue.detail(area.auto ? "ekran yazısı" : "ek alan", crop)) {
+            try reader.readLines(crop, deep: false)
+        }
         guard session == self.session else { return }
         guard let reading else {
             // OCR hatası boş alan değildir. Eski kutuyu koru; aynı kareyi sonraki normal turda yeniden oku.

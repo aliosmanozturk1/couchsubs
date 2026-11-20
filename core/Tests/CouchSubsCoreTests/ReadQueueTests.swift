@@ -32,6 +32,17 @@ private final class FirstHangsReader: TextReader, @unchecked Sendable {
     }
 }
 
+/// Bağımsız bağlam yerine geçen sahte yedek: kaç kez bırakıldığını ve kapatıldığını sayar.
+private final class FakeRescuer: ReadRescuer, @unchecked Sendable {
+    let abandons = Counter(), standDowns = Counter(), reads = Counter()
+    func recognize(_ image: CGImage, language: String) throws -> Reading {
+        reads.add()
+        return Reading(text: "yedekten")
+    }
+    func abandon() { abandons.add() }
+    func standDown() { standDowns.add() }
+}
+
 private final class NullSender: SubtitleSending {
     func sendSubtitle(_ text: String, durationMs: Int, box: TextBox?, replaces: Bool) {}
     func clear() {}
@@ -41,31 +52,155 @@ private final class EchoTranslator: TextTranslator {
     func translate(_ text: String) async throws -> String { "Çeviri: " + text }
 }
 
-/// #507: takılan Vision okuması Swift havuzunu doldurup "Çeviriyi başlat"ı kilitliyordu.
+private final class Events: @unchecked Sendable {
+    private let lock = NSLock()
+    private var list: [ReadQueue.Event] = []
+    func add(_ event: ReadQueue.Event) { lock.withLock { list.append(event) } }
+    var all: [ReadQueue.Event] { lock.withLock { list } }
+}
+
+/// #507, #679: takılan Vision okuması altyazıyı kalıcı olarak durduruyordu.
 final class ReadQueueTests: XCTestCase {
-    func testTimedOutReadIsSkippedAndNextReadRunsOnRebuiltQueue() async throws {
+    private func image(_ width: Int = 64, _ height: Int = 64) -> CGImage {
+        CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
+    }
+
+    /// Yedek yokken: takılan okumanın yanına yenisi verilmez (Vision'da o da aynı kilidi bekler); okuma hemen `stuck`
+    /// döner, takılan bitince okuyucu kendiliğinden düzelir.
+    func testStalledReaderWithoutRescueFailsFastAndRecovers() async throws {
         let hang = Hang()
         defer { hang.release() }
         let queue = ReadQueue(label: "test.timeout", timeoutMs: 150)
-        let rebuilds = Counter()
-        queue.onRebuild = { _ in rebuilds.add() }
+        let events = Events()
+        queue.onEvent = { events.add($0) }
+        let ran = Counter()
 
         do {
-            _ = try await queue.run { hang.wait(); return 1 }
+            _ = try await queue.run(detail: "altyazı 64x64") { hang.wait(); return 1 }
             XCTFail("takılan okuma dönmemeliydi")
         } catch {
             XCTAssertEqual(error as? ReadQueueError, .timedOut(ms: 150))
         }
-        let next = try await queue.run { 2 }
-        XCTAssertEqual(next, 2)
-        XCTAssertEqual(rebuilds.value, 1)
-        XCTAssertEqual(queue.stuckCount, 1)
+        XCTAssertNotNil(queue.stalledMs)
+        XCTAssertFalse(queue.isRescuing)
+        XCTAssertEqual(queue.backgroundSlowdown, 4)
+        do {
+            _ = try await queue.run { ran.add(); return 2 }
+            XCTFail("takılıyken okuma verilmemeliydi")
+        } catch {
+            XCTAssertEqual(error as? ReadQueueError, .stuck)
+        }
+        XCTAssertEqual(ran.value, 0, "takılan okumanın yanına ikinci okuma verilmemeli")
+        guard case .stalled(let stall, rescued: false)? = events.all.first else { return XCTFail("takılma bildirilmedi") }
+        XCTAssertEqual(stall.detail, "altyazı 64x64")
+        XCTAssertGreaterThanOrEqual(stall.ms, 140)
+        XCTAssertEqual(stall.running, 1)
+        XCTAssertTrue(stall.logText.contains("ısı: "))
+
+        hang.release()
+        var value: Int?
+        for _ in 0..<100 where value == nil {
+            value = try? await queue.run { 3 }
+            if value == nil { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        XCTAssertEqual(value, 3)
+        XCTAssertNil(queue.stalledMs)
+        XCTAssertTrue(events.all.contains { if case .recovered = $0 { return true } else { return false } })
+    }
+
+    /// Asla dönmeyen okuma + yedek: okumalar bağımsız bağlamda sürer; asıl okuyucu düzelince ona dönülür.
+    func testNeverReturningReadIsRescuedInIndependentContext() async throws {
+        let hang = Hang()
+        defer { hang.release() }
+        let queue = ReadQueue(label: "test.rescue", timeoutMs: 150)
+        let rescuer = FakeRescuer()
+        queue.rescuer = rescuer
+        let events = Events()
+        queue.onEvent = { events.add($0) }
+
+        _ = try? await queue.run { hang.wait(); return Reading.empty }
+        XCTAssertTrue(queue.isRescuing)
+        // Sonraki okumalar yedek bağlamda çalışır: `VisionReader` oradayken okumayı yedeğe verir.
+        for _ in 0..<5 {
+            let reading = try await queue.run { () throws -> Reading in
+                guard let active = ReadQueue.activeRescuer else { return Reading(text: "asıl") }
+                return try active.recognize(CGContext(data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!, language: "en")
+            }
+            XCTAssertEqual(reading.text, "yedekten")
+        }
+        XCTAssertEqual(rescuer.reads.value, 5)
+        guard case .stalled(_, rescued: true)? = events.all.first else { return XCTFail("yedeğe geçiş bildirilmedi") }
+
+        hang.release()
+        var text = ""
+        for _ in 0..<100 where text != "asıl" {
+            text = (try? await queue.run { ReadQueue.activeRescuer == nil ? "asıl" : "yedek" }) ?? ""
+            if text != "asıl" { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        XCTAssertEqual(text, "asıl")
+        XCTAssertEqual(rescuer.standDowns.value, 1)
+        XCTAssertFalse(queue.isRescuing)
+    }
+
+    /// Yedek de takılırsa bağlamı bırakılır, yenisinde okunur; art arda sınır kadar takılırsa okuma `stuck` döner.
+    func testHungRescueIsAbandonedAndRebuiltThenGivesUp() async throws {
+        let hang = Hang()
+        defer { hang.release() }
+        let queue = ReadQueue(label: "test.rescue.hang", timeoutMs: 100, maxRescueFailures: 2)
+        let rescuer = FakeRescuer()
+        queue.rescuer = rescuer
+        let events = Events()
+        queue.onEvent = { events.add($0) }
+
+        _ = try? await queue.run { hang.wait() }
+        // Yedekteki ilk okuma da takılır: bağlam bırakılır.
+        do {
+            _ = try await queue.run { hang.wait() }
+            XCTFail("yedekte takılan okuma dönmemeliydi")
+        } catch {
+            XCTAssertEqual(error as? ReadQueueError, .timedOut(ms: 100))
+        }
+        XCTAssertEqual(rescuer.abandons.value, 1)
+        // Yeni yedek bağlam çalışır.
+        let value = try await queue.run { 7 }
+        XCTAssertEqual(value, 7)
+        // Art arda iki kez takılınca yedek bırakılır.
+        _ = try? await queue.run { hang.wait() }
+        _ = try? await queue.run { hang.wait() }
+        XCTAssertEqual(rescuer.abandons.value, 3)
+        do {
+            _ = try await queue.run { 1 }
+            XCTFail("yedek tükenince okuma verilmemeliydi")
+        } catch {
+            XCTAssertEqual(error as? ReadQueueError, .stuck)
+        }
+        XCTAssertTrue(events.all.contains { if case .rescueFailed(_, failures: 2) = $0 { return true } else { return false } })
+    }
+
+    /// Takılma yinelenirse okuma yolu değişir: hızlı düzey (Neural Engine'siz) bu oturumda kalıcı olur.
+    func testRepeatedStallsSwitchToFastLevel() async throws {
+        XCTAssertFalse(VisionReader.useFastLevel)
+        defer { VisionReader.useFastLevel = false }
+        let queue = ReadQueue(label: "test.degrade", timeoutMs: 100, degradeAfterStalls: 2)
+        let events = Events()
+        queue.onEvent = { events.add($0) }
+        for round in 1...2 {
+            let hang = DispatchSemaphore(value: 0)
+            _ = try? await queue.run { hang.wait() }
+            XCTAssertEqual(VisionReader.useFastLevel, false, "takılıyken yol değişmez (tur \(round))")
+            hang.signal()
+            for _ in 0..<100 where queue.stalledMs != nil { try await Task.sleep(for: .milliseconds(10)) }
+        }
+        XCTAssertTrue(VisionReader.useFastLevel)
+        XCTAssertTrue(events.all.contains(.degraded(stalls: 2)))
     }
 
     func testStuckReadsDoNotStarveSwiftPool() async throws {
         let hang = Hang()
         defer { hang.release() }
-        let queue = ReadQueue(label: "test.pool", timeoutMs: 100, maxStuck: 2)
+        let queue = ReadQueue(label: "test.pool", timeoutMs: 100)
         // Çekirdek sayısının üç katı takılan okuma: eskiden her biri havuzdan bir thread tutardı.
         let count = ProcessInfo.processInfo.activeProcessorCount * 3
         await withTaskGroup(of: Void.self) { group in
@@ -77,31 +212,53 @@ final class ReadQueueTests: XCTestCase {
         let pool = expectation(description: "Swift havuzu cevap veriyor")
         Task.detached { _ = await Task.detached { 42 }.value; pool.fulfill() }
         await fulfillment(of: [pool], timeout: 5)
+    }
 
-        // Her yeni kuyruk da takılırsa sınırda durulur: takılanlar bitene kadar okuma hemen döner, bekletmez.
-        for _ in 0..<4 { _ = try? await queue.run { hang.wait() } }
-        XCTAssertEqual(queue.stuckCount, 3)
-        do {
-            _ = try await queue.run { 1 }
-            XCTFail("sınırda okuma verilmemeliydi")
-        } catch {
-            XCTAssertEqual(error as? ReadQueueError, .stuck)
-        }
-        // Takılan okumalar bitince okuyucu yeniden çalışır.
-        hang.release()
-        var value: Int?
-        for _ in 0..<100 where value == nil {
-            value = try? await queue.run { 3 }
-            if value == nil { try await Task.sleep(for: .milliseconds(20)) }
-        }
-        XCTAssertEqual(value, 3)
+    /// Altyazı okuması, sırada bekleyen arka plan okumalarının (ek alan, ekran yazısı) önüne geçer.
+    func testSubtitleReadsGoBeforeWaitingBackgroundReads() async throws {
+        let queue = ReadQueue(label: "test.priority", timeoutMs: 5000)
+        let order = Order()
+        let gate = DispatchSemaphore(value: 0)
+        async let first: Void = try queue.run(priority: .background) { gate.wait(); order.add("ilk") }
+        try await Task.sleep(for: .milliseconds(50))
+        async let b1: Void = try queue.run(priority: .background) { order.add("ek alan 1") }
+        try await Task.sleep(for: .milliseconds(20))
+        async let b2: Void = try queue.run(priority: .background) { order.add("ek alan 2") }
+        try await Task.sleep(for: .milliseconds(20))
+        async let subtitle: Void = try queue.run(priority: .subtitle) { Thread.sleep(forTimeInterval: 0.01); order.add("altyazı") }
+        try await Task.sleep(for: .milliseconds(Self.waitMs))
+        gate.signal()
+        _ = try await (first, b1, b2, subtitle)
+        XCTAssertEqual(order.all, ["ilk", "altyazı", "ek alan 1", "ek alan 2"])
+        // Altyazı okuması sırada bekledi: arka plan okumaları kendini kısar.
+        XCTAssertGreaterThan(queue.backgroundSlowdown, 1)
+        // Beklemeyen bir altyazı okumasından sonra kısma kalkar.
+        try await queue.run(priority: .subtitle) {}
+        XCTAssertEqual(queue.backgroundSlowdown, 1)
+    }
+
+    private static let waitMs = ReadQueue.subtitleWaitLimitMs + 100
+
+    /// Yavaş okumanın arkasında sırada beklemek takılma sayılmaz (süre, okuma başlayınca işler).
+    func testWaitingBehindSlowReadIsNotAStall() async throws {
+        let queue = ReadQueue(label: "test.wait", timeoutMs: 200)
+        let gate = DispatchSemaphore(value: 0)
+        let ran = Counter()
+        async let first: Int = try queue.run { gate.wait(); return 1 }
+        try await Task.sleep(for: .milliseconds(120))
+        async let second: Int = try queue.run { ran.add(); return 2 }
+        try await Task.sleep(for: .milliseconds(50))
+        gate.signal()
+        let one = try await first
+        let two = try await second
+        XCTAssertEqual(one, 1)
+        XCTAssertEqual(two, 2)
+        XCTAssertNil(queue.stalledMs)
     }
 
     func testFallbackReadsRunOneAtATime() throws {
-        let image = CGContext(data: nil, width: 200, height: 50, bitsPerComponent: 8, bytesPerRow: 0,
-                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
         let tracker = Concurrency()
-        let reading = try VisionReader.firstLines(of: image) { _ in
+        let reading = try VisionReader.firstLines(of: image(200, 50)) { _ in
             tracker.enter()
             Thread.sleep(forTimeInterval: 0.05)
             tracker.leave()
@@ -112,25 +269,40 @@ final class ReadQueueTests: XCTestCase {
         XCTAssertEqual(tracker.maxAtOnce, 1)
     }
 
+    /// Takılan okumadan sonra hat okumayı sürdürür: yedek bağlamda (Mac) hemen, asıl okuyucu düzelince yeniden asılda.
     @MainActor
     func testPipelineKeepsReadingAfterHungRead() async {
         let reader = FirstHangsReader()
         defer { reader.hang.release() }
-        let pipeline = SubtitlePipeline(reader: reader, translator: EchoTranslator(), server: NullSender(),
-                                        readQueue: ReadQueue(label: "test.pipeline", timeoutMs: 150))
+        let queue = ReadQueue(label: "test.pipeline", timeoutMs: 150)
+        queue.rescuer = FakeRescuer()
+        let pipeline = SubtitlePipeline(reader: reader, translator: EchoTranslator(), server: NullSender(), readQueue: queue)
         var results: [Error?] = []
         pipeline.onReadResult = { results.append($0) }
-        let image = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0,
-                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
 
-        await pipeline.process(image, region: CropRegion())
-        await pipeline.process(image, region: CropRegion())
-        await pipeline.process(image, region: CropRegion())
+        await pipeline.process(image(), region: CropRegion())
+        await pipeline.process(image(), region: CropRegion())
+        await pipeline.process(image(), region: CropRegion())
 
         XCTAssertEqual(results.count, 3)
         XCTAssertEqual(results.first.flatMap { $0 as? ReadQueueError }, .timedOut(ms: 150))
         XCTAssertNil(results.last ?? nil)
         XCTAssertEqual(reader.callCount, 3)
+    }
+
+    /// Yedek yokken (iPhone) takılan okuma hattı kilitlemez: kareler beklemeden `stuck` alır.
+    @MainActor
+    func testPipelineWithoutRescueReportsStuck() async {
+        let reader = FirstHangsReader()
+        defer { reader.hang.release() }
+        let pipeline = SubtitlePipeline(reader: reader, translator: EchoTranslator(), server: NullSender(),
+                                        readQueue: ReadQueue(label: "test.pipeline.norescue", timeoutMs: 150))
+        var results: [Error?] = []
+        pipeline.onReadResult = { results.append($0) }
+        await pipeline.process(image(), region: CropRegion())
+        await pipeline.process(image(), region: CropRegion())
+        XCTAssertEqual(results.last.flatMap { $0 as? ReadQueueError }, .stuck)
+        XCTAssertEqual(reader.callCount, 1)
     }
 }
 
@@ -139,6 +311,13 @@ private final class Counter: @unchecked Sendable {
     private var count = 0
     func add() { lock.withLock { count += 1 } }
     var value: Int { lock.withLock { count } }
+}
+
+private final class Order: @unchecked Sendable {
+    private let lock = NSLock()
+    private var list: [String] = []
+    func add(_ name: String) { lock.withLock { list.append(name) } }
+    var all: [String] { lock.withLock { list } }
 }
 
 private final class Concurrency: @unchecked Sendable {

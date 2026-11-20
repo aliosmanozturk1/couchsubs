@@ -73,8 +73,31 @@ public struct VisionReader: TextReader {
     static let maxFallbackDimension = 1920
 
     private func recognize(_ image: CGImage) throws -> Reading {
+        // Asıl okuyucu takılıyken (`ReadQueue`) okuma bu süreçteki Vision'a verilmez: o da aynı kilidi beklerdi (#679).
+        if let rescuer = ReadQueue.activeRescuer { return try rescuer.recognize(image, language: language) }
+        return try Self.recognize(image, language: language, fast: Self.useFastLevel)
+    }
+
+    /// Okuyucu bu oturumda yinelenerek takıldıysa (`ReadQueue`) okumalar hızlı düzeyde yapılır; uygulama yeniden
+    /// açılınca isabetli düzeye dönülür.
+    public static var useFastLevel: Bool {
+        get { fastLevel.withLock { $0 } }
+        set { fastLevel.withLock { $0 = newValue } }
+    }
+    private static let fastLevel = Locked(false)
+
+    private final class Locked: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: Bool
+        init(_ value: Bool) { self.value = value }
+        func withLock<T>(_ body: (inout Bool) -> T) -> T { lock.withLock { body(&value) } }
+    }
+
+    /// Tek Vision isteği. `fast`: hızlı düzey; Neural Engine modelini kullanmaz, soğuk açılışta da hemen döner
+    /// (yedek okuyucu bununla okur), isabeti biraz düşüktür.
+    public static func recognize(_ image: CGImage, language: String, fast: Bool) throws -> Reading {
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
+        request.recognitionLevel = fast ? .fast : .accurate
         request.recognitionLanguages = [language]
         request.usesLanguageCorrection = true
         try VNImageRequestHandler(cgImage: image).perform([request])

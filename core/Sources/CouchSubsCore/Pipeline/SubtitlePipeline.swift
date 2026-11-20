@@ -231,7 +231,7 @@ public final class SubtitlePipeline {
             // Okuma kendi sırasında (`ReadQueue`) yapılır, Swift havuzunu tutmaz; takılırsa süre dolunca kare atlanır (#507).
             let result: Result<(ocr: Reading, visible: Reading), Error>
             do {
-                result = .success(try await readQueue.run {
+                result = .success(try await readQueue.run(priority: .subtitle, detail: ReadQueue.detail("altyazı", area, deep: deep)) {
                     let ocr = try reader.readLines(area, deep: deep)
                     return (ocr, watchSubtitleBackground ? SubtitleBackground.filter(ocr, in: area) : ocr)
                 })
@@ -689,7 +689,9 @@ public final class SubtitlePipeline {
         Task.detached(priority: .utility) {
             let context = CGContext(data: nil, width: 64, height: 32, bitsPerComponent: 8, bytesPerRow: 0,
                                     space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-            if let image = context?.makeImage() { _ = try? await readQueue.run { try reader.read(image) } }
+            if let image = context?.makeImage() {
+                _ = try? await readQueue.run(priority: .background, detail: "ısınma (ilk okuma, model yükleniyor)") { try reader.read(image) }
+            }
         }
         let translator = self.translator
         Task { await translator.warmUp() }

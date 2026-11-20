@@ -1372,6 +1372,31 @@ public class RegionWatcherTests
         Assert.Equal(1, user.Passes);
     }
 
+    /// <summary>Altyazı okuması yavaşken (ReadPressure) ek alan turları seyrekleşir; hızlanınca eski aralığa döner.</summary>
+    [Fact]
+    public async Task PassesSlowDownWhileSubtitleReadsAreSlow()
+    {
+        long clock = 0;
+        var slowdown = 4;
+        var reader = new Reader { Lines = [Line("Follow Paulie to the car.")] };
+        var watcher = new RegionWatcher(reader, new Translator(), new Server(), clock: () => clock) { Slowdown = () => slowdown };
+        watcher.Offer(Shade(10), [AutoArea]);
+        await WaitForPass(watcher);
+        clock = RegionWatcher.AutoIntervalMs;
+        watcher.Offer(Shade(20), [AutoArea]);
+        await WaitForPass(watcher);
+        Assert.Equal(1, watcher.Passes);
+        clock = RegionWatcher.AutoIntervalMs * 4;
+        watcher.Offer(Shade(30), [AutoArea]);
+        await WaitForPass(watcher);
+        Assert.Equal(2, watcher.Passes);
+        slowdown = 1;
+        clock += RegionWatcher.AutoIntervalMs;
+        watcher.Offer(Shade(40), [AutoArea]);
+        await WaitForPass(watcher);
+        Assert.Equal(3, watcher.Passes);
+    }
+
     private static readonly WatchedArea MenuLabel = new("auto-2", ScreenTextDetector.AreaName, new CropRegion(0.2, 0.3, 0.2, 0.3)) { Auto = true, Menu = true };
 
     [Fact]

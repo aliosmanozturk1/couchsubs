@@ -79,7 +79,7 @@ final class PhoneRegionSession {
 
     private func read(_ capture: Capture, signature: [UInt8]) async throws -> Page {
         let reader = self.reader
-        return try await ReadQueue.shared.run {
+        return try await ReadQueue.shared.run(priority: .background, detail: ReadQueue.detail("telefon", capture.frame)) {
             let region = capture.region
             let reading = GamePhoneText.forTranslation(try GamePhoneReader.read(capture.frame, region: region,
                                                                                 pose: capture.pose, reader: reader))

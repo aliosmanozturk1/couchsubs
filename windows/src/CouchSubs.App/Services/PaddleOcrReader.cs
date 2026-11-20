@@ -20,6 +20,9 @@ public sealed class PaddleOcrReader : ITextReader
     private static readonly object CacheGate = new();
     private static (string Directory, Engine Engine)? cache;
 
+    /// <summary>Paylaşılan oturumun kilidi en çok bu kadar beklenir.</summary>
+    private const int LockTimeoutMs = 10_000;
+
     private readonly Engine engine;
     /// <summary>Oyun dili Latin alfabeliyse Çince/Japonca/Korece karakterler atılır (<see cref="PaddleOcr.LatinOnly"/>).</summary>
     private readonly bool latin;
@@ -80,7 +83,13 @@ public sealed class PaddleOcrReader : ITextReader
     {
         if (image.Width < 8 || image.Height < 8) return Reading.Empty;
         Reading reading;
-        lock (engine) reading = engine.Read(image);
+        // Oturum paylaşılır; içinde takılan bir okuma kilidi bırakmazsa yeni kurulan hat da sonsuza dek beklerdi (#679).
+        // Kilit süresinde alınamazsa hata verilir: sarmalayıcı (FallbackTextReader) kareyi Windows'un yazı tanımasıyla okur,
+        // üç kez üst üste olursa ona kalıcı geçer.
+        if (!System.Threading.Monitor.TryEnter(engine, LockTimeoutMs))
+            throw new TimeoutException($"gelişmiş yazı tanıma {LockTimeoutMs} ms'dir meşgul (önceki okuma bitmedi)");
+        try { reading = engine.Read(image); }
+        finally { System.Threading.Monitor.Exit(engine); }
         if (!latin) return reading;
         return new Reading(reading.Lines.Select(line => line with
         {

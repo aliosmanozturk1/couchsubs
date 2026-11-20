@@ -178,7 +178,9 @@ class TranslationService : Service() {
     private var lastRead = 0L
     private var lastSignature = 0L
     private var lastReading = com.couchsubs.mobile.core.Reading.Empty
-    private var lastOcrMs: Int? = null
+    @Volatile private var lastOcrMs: Int? = null
+    /** Süren altyazı okumasının başladığı an (hattın saatiyle); okuma yokken 0. */
+    @Volatile private var readStartedAt = 0L
     private var reusedReads = 0
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLocks: List<WifiManager.WifiLock> = emptyList()
@@ -467,6 +469,12 @@ class TranslationService : Service() {
             prefetchWork = regionPrefetch,
             prefetchTranslator = earlyTranslator ?: areaTranslator).apply {
             prefetchesTranslations = earlyTranslator != null
+            // Altyazı okuması yavaşsa ya da uzun süredir bitmediyse ek alanlar seyrek okunur (Mac, iPhone ve Windows ile aynı).
+            slowdown = {
+                val since = readStartedAt
+                com.couchsubs.mobile.core.ReadPressure.slowdown(lastOcrMs,
+                    if (since == 0L) 0L else com.couchsubs.mobile.core.monotonicClock() - since)
+            }
             // Okunup yazı bulunamayan ya da gürültü çıkan otomatik alan: bulucu o görüntüyü bir daha önermez.
             onAutoRejected = { id ->
                 detector.rejected(id)
@@ -740,6 +748,7 @@ class TranslationService : Service() {
             val reused = pixels.signature == lastSignature && reusedReads < maxReuse
             reusedReads = if (reused) reusedReads + 1 else 0
             val started = com.couchsubs.mobile.core.monotonicClock()
+            if (!reused) readStartedAt = started
             val result = if (reused) lastReading else reader?.read(pixels) ?: return
             val ocrMs = if (reused) lastOcrMs else (com.couchsubs.mobile.core.monotonicClock() - started).toInt()
             lastSignature = pixels.signature
@@ -747,9 +756,19 @@ class TranslationService : Service() {
             lastOcrMs = ocrMs
             current.process(result, area.box, com.couchsubs.mobile.core.RegionSignature.of(pixels.nv21, pixels.width, pixels.height),
                 capturedAt, ocrMs)
+        } catch (error: java.util.concurrent.TimeoutException) {
+            // Okuma süresinde bitmedi: takılan tanıyıcı bırakılır, sonraki kare yenisiyle okunur (yoksa yeni okuma da
+            // aynı tanıyıcının arkasında beklerdi; #679).
+            Log.w(TAG, "OCR: okuma süresinde bitmedi; okuyucu yeniden kuruldu", error)
+            val stuck = reader
+            if (stuck != null && pipeline != null) {
+                reader = SubtitleReader()
+                runCatching { stuck.close() }
+            }
         } catch (error: Exception) {
             Log.w(TAG, "OCR", error)
         } finally {
+            readStartedAt = 0L
             reading.set(false)
         }
     }

@@ -838,15 +838,15 @@ final class SubtitlePipelineTests: XCTestCase {
         XCTAssertEqual(calls.value, 1)
     }
 
-    /// Bölge boşken iki yedek okuma art arda değil aynı anda yapılır; yeni satır daha erken fark edilir.
-    func testFallbackReadingsRunAtTheSameTime() throws {
+    /// Bölge boşken iki yedek okuma aynı anda değil sırayla yapılır (#507: aynı anda verilen Vision istekleri kilitleniyordu).
+    func testFallbackReadingsRunOneAfterAnother() throws {
         let image = frame
         let start = Date()
         _ = try VisionReader.firstReading(of: image) { candidate in
             if candidate.width != image.width { Thread.sleep(forTimeInterval: 0.2) }
             return ""
         }
-        XCTAssertLessThan(Date().timeIntervalSince(start), 0.35)
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(start), 0.38)
     }
 
     func testVisionReadsSubtitleButNotHud() throws {

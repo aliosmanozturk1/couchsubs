@@ -314,7 +314,16 @@ private struct MainWarnings: View {
                 Label("macOS can't read the text on the screen.", systemImage: "exclamationmark.triangle")
                     .font(.csBody.weight(.semibold))
                     .foregroundStyle(Color.csWarning)
-                HintText(text: "Text reading got stuck. Quit CouchSubs (⌘Q), open it again and start the translation.")
+                HintText(text: "Text reading got stuck. It usually recovers within a minute or two: macOS prepares its text model after the first launch or an update. Don't quit while waiting. If it doesn't recover, restart CouchSubs.")
+                Button("Restart CouchSubs") { model.relaunch() }.buttonStyle(.secondary)
+            }
+        } else if model.readingRescued {
+            Card {
+                Label("macOS text reading isn't responding. Subtitles continue with the backup reader.", systemImage: "exclamationmark.triangle")
+                    .font(.csBody.weight(.semibold))
+                    .foregroundStyle(Color.csWarning)
+                HintText(text: "This usually clears up within a minute or two: macOS prepares its text model after the first launch or an update. Reading may be a little less accurate until then. If it doesn't clear up, restart CouchSubs.")
+                Button("Restart CouchSubs") { model.relaunch() }.buttonStyle(.secondary)
             }
         } else if let free = model.readingFailedFreeGB {
             Card {

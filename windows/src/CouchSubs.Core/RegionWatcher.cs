@@ -197,6 +197,9 @@ public sealed partial class RegionWatcher
         now = clock ?? (() => Environment.TickCount64);
     }
 
+    /// <summary>Tur aralığının çarpanı (<see cref="ReadPressure.Slowdown"/>); verilmezse 1.</summary>
+    public Func<int>? Slowdown { get; set; }
+
     /// <summary>Her karede çağrılır; tur zamanı geldiyse ve önceki tur bittiyse turu arka planda başlatır, hemen döner.</summary>
     public void Offer(Frame frame, IReadOnlyList<WatchedArea> areas)
     {
@@ -213,7 +216,9 @@ public sealed partial class RegionWatcher
             if (areas.Count == 0 && !AnyShown()) return;
             var hasPhone = areas.Any(area => area.PanelLifetime.HasValue);
             var hasRegular = !hasPhone || areas.Any(area => !area.PanelLifetime.HasValue);
-            var interval = areas.Any(area => area.Auto) ? Math.Min(intervalMs, AutoIntervalMs) : intervalMs;
+            // Altyazı okuması yavaşladıysa ek alanlar seyrek okunur: altyazı her zaman önce (ReadPressure).
+            var interval = (areas.Any(area => area.Auto) ? Math.Min(intervalMs, AutoIntervalMs) : intervalMs)
+                * Math.Max(1, Slowdown?.Invoke() ?? 1);
             regularDue = hasRegular && (lastPass is null || time - lastPass.Value >= interval);
             phoneDue = hasPhone
                 && (lastPhonePass is null || time - lastPhonePass.Value >= Math.Min(450, intervalMs));
