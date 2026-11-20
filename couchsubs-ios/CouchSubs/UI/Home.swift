@@ -338,9 +338,6 @@ struct RunningScreen: View {
                         Button { model.sendTestSubtitle() } label: { Label("Test on TV", systemImage: "tv") }
                             .buttonStyle(MobileButtonStyle(kind: .secondary, compact: true))
                     }
-                    if model.sessionState == .streaming {
-                        ScreenTranslateButton()
-                    }
                 }
             }
             Button {
@@ -449,12 +446,6 @@ struct SubtitleScreen: View {
                 IconButton(symbol: "rotate.right", label: "Rotate screen") {
                     landscape.toggle()
                     Orientation.request(Orientation.subtitleMask(landscape: landscape))
-                }
-                if model.sessionState == .streaming {
-                    IconButton(symbol: model.screenState == .idle ? "text.viewfinder" : "xmark.circle",
-                               label: model.screenState == .idle ? "Translate screen" : "Remove screen translations") {
-                        model.translateScreen()
-                    }
                 }
                 IconButton(symbol: "xmark", label: "Close") { dismiss() }
             }

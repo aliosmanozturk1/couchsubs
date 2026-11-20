@@ -154,7 +154,7 @@ struct MainControls: View {
                 InfoDivider()
                 InfoRow("Translation", value: engineName, action: { model.openSettings(.translation) })
                 InfoDivider()
-                InfoRow("Translate screen") { Keycap("⌥⌘T") }
+                InfoRow("On-screen text on / off") { Keycap("⌥⌘T") }
             }
             MainWarnings()
         }

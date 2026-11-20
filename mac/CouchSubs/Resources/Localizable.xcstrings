@@ -1,6 +1,70 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "On-screen text is now translated automatically.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On-screen text is now translated automatically."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artık ekran yazıları kendiliğinden çevriliyor."
+          }
+        }
+      }
+    },
+    "On-screen text on / off": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On-screen text on / off"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran yazıları açık / kapalı"
+          }
+        }
+      }
+    },
+    "On-screen text translation is off.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On-screen text translation is off."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran yazısı çevirisi kapalı."
+          }
+        }
+      }
+    },
+    "On-screen text translation is on.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On-screen text translation is on."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekran yazısı çevirisi açık."
+          }
+        }
+      }
+    },
     "The TV's Key Server is on, but its developer connection is closed. After Dev Mode Status is turned on the TV has to restart: press RESTART in the Developer Mode app (or unplug the TV and plug it back in), then open the app again, turn on Key Server and try again.": {
       "localizations": {
         "en": {

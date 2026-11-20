@@ -1824,7 +1824,7 @@ final class AppModel: ObservableObject {
         keepAwake()
         server.pairing.setSession(true)
         isRunning = true
-        if screenHotkey == nil { screenHotkey = GlobalHotkey(.translateScreen) { [weak self] in self?.translateScreen() } }
+        if screenHotkey == nil { screenHotkey = GlobalHotkey(.translateScreen) { [weak self] in self?.screenKeyPressed() } }
         screenHotkey?.enabled = true
         updateClickThroughHotkey()
     }
@@ -1900,6 +1900,25 @@ final class AppModel: ObservableObject {
     /// TV'deki ekran çevirilerinin kalkacağı an; bu andan önce yeniden basmak onları kaldırır.
     private var screenShownUntil = Date.distantPast
 
+    /// ⌥⌘T ("Ekranı çevir" kaldırıldı; Windows'taki Num 9 gibi): otomatik çeviri açıkken ilk basışta bir kez "Artık ekran
+    /// yazıları kendiliğinden çevriliyor" gösterilir; sonraki basışlarda (ya da otomatik çeviri kapalıyken) tuş otomatik ekran
+    /// yazısı çevirisini açıp kapatır ve durumu söyler. Bilgi TV'de ve bilgisayar ekranında 4 sn görünür.
+    func screenKeyPressed() {
+        guard isRunning else { return }
+        let toldKey = "screenKeyToldAutomatic"
+        let message: String
+        if settings.autoScreenText, !defaults.bool(forKey: toldKey) {
+            defaults.set(true, forKey: toldKey)
+            message = String(localized: "On-screen text is now translated automatically.")
+        } else {
+            settings.autoScreenText.toggle()
+            message = settings.autoScreenText ? String(localized: "On-screen text translation is on.")
+                : String(localized: "On-screen text translation is off.")
+        }
+        server.sendSubtitle(message, durationMs: 4000)
+    }
+
+    /// Eski "Ekranı çevir" (taslak: artık hiçbir yerden çağrılmıyor; karar verilince silinebilir).
     /// ⌥⌘T: oyunun şu anki karesinin tamamını bir kez okur, her yazı grubunu ayrı çevirip TV'de kendi yerine koyar.
     /// Çeviriler hazırlandıkça TV'ye gider. Çeviri sürerken ya da çeviriler TV'deyken yeniden basmak onları kaldırır.
     func translateScreen() {
