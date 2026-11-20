@@ -31,6 +31,8 @@ class AndroidTvInstaller(
     private val playListed: () -> Boolean = { false },
     private val playWaitMs: Long = 4 * 60 * 1000L,
     private val playPollMs: Long = 3_000L,
+    /** Uygulama açılırken verilecek başlatma parametreleri (`{"server":"http://…"}`); TV telefonu ağda aramadan bağlanır. */
+    private val launchParams: String? = null,
 ) {
     data class Pairing(val port: Int, val code: String)
     data class Result(val version: String, val installed: Boolean)
@@ -124,6 +126,21 @@ class AndroidTvInstaller(
             return if (address.isEmpty()) null else address to port
         }
 
+        /** Uygulamayı açan ADB komutu; [launchParams] varsa `--es params '…'` ile (Windows'taki StartCommand ile aynı kural). */
+        fun startCommand(launchParams: String?): String {
+            val command = "shell:am start -n $PACKAGE_NAME/.MainActivity"
+            // TV'de sh çalıştırır: değer tek tırnak içinde gider; tek tırnak ve satır sonu içeren değer hiç gönderilmez.
+            if (launchParams.isNullOrEmpty() || launchParams.any { it == '\'' || it == '\n' || it == '\r' || it == '\u0000' }) return command
+            return "$command --es params '$launchParams'"
+        }
+
+        /**
+         * Yalnız sunucu adresi gider; erişim anahtarı gitmez (Android TV kullanıcı onaylı eşleştirmeyle bağlanır). Adres
+         * tırnak ya da ters bölü içeriyorsa null.
+         */
+        fun launchParams(server: String): String? =
+            if (server.isEmpty() || server.any { it == '"' || it == '\\' || it < ' ' }) null else "{\"server\":\"$server\"}"
+
         /** TV'de ADB açık mı (port yanıt veriyor mu)? */
         fun isReachable(host: String, port: Int = AdbConnection.DEFAULT_PORT, timeoutMs: Int = 700): Boolean = try {
             Socket().use { it.connect(InetSocketAddress(host, port), timeoutMs) }
@@ -173,6 +190,17 @@ class AndroidTvInstaller(
         val key = adbKey()
         return connector(key) { throw AndroidInstallException(AndroidInstallError.NOT_APPROVED, "denetimde onay beklenmez") }.use { adb ->
             installedVersionFromDumpsys(adb.run("shell:dumpsys package $PACKAGE_NAME"))
+        }
+    }
+
+    /**
+     * Kurulu uygulamayı telefonun adresiyle açar (kurmadan, sessizce): TV telefonu ağda aramadan bağlanır. TV bu telefonu
+     * onaylamamışsa onay beklenmez, NOT_APPROVED ile vazgeçilir.
+     */
+    fun open(params: String? = launchParams): String {
+        val key = adbKey()
+        return connector(key) { throw AndroidInstallException(AndroidInstallError.NOT_APPROVED, "açılışta onay beklenmez") }.use { adb ->
+            adb.run(startCommand(params)).trim()
         }
     }
 
@@ -282,7 +310,7 @@ class AndroidTvInstaller(
     private fun launch(adb: AdbConnection) {
         progress(InstallStep.LAUNCHING)
         try {
-            log.write("Uygulama açılıyor: ${adb.run("shell:am start -n $PACKAGE_NAME/.MainActivity").trim()}")
+            log.write("Uygulama açılıyor: ${adb.run(startCommand(launchParams)).trim()}")
         } catch (error: IOException) {
             log.write("Uygulama açılamadı (kurulum yine tamam): ${error.message}")
         }

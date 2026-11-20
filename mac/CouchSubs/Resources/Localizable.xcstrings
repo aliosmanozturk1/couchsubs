@@ -1,6 +1,54 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "The TV's Key Server is on, but its developer connection is closed. After Dev Mode Status is turned on the TV has to restart: press RESTART in the Developer Mode app (or unplug the TV and plug it back in), then open the app again, turn on Key Server and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TV's Key Server is on, but its developer connection is closed. After Dev Mode Status is turned on the TV has to restart: press RESTART in the Developer Mode app (or unplug the TV and plug it back in), then open the app again, turn on Key Server and try again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV'de Key Server açık ama geliştirici bağlantısı kapalı. Dev Mode Status açıldıktan sonra TV yeniden başlamalı: Developer Mode uygulamasında RESTART'a basın (ya da TV'yi fişten çekip takın), sonra uygulamayı yeniden açıp Key Server'ı açın ve tekrar deneyin."
+          }
+        }
+      }
+    },
+    "The TV is on at this address, but developer mode is off. Open the Developer Mode app on the TV: Dev Mode Status must be on (it turns off by itself when its time runs out; turn it on again and the TV restarts). Then turn on Key Server and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The TV is on at this address, but developer mode is off. Open the Developer Mode app on the TV: Dev Mode Status must be on (it turns off by itself when its time runs out; turn it on again and the TV restarts). Then turn on Key Server and try again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV bu adreste açık ama geliştirici modu kapalı. TV'de Developer Mode uygulamasını açın: Dev Mode Status açık olmalı (süresi dolunca kendiliğinden kapanır; yeniden açın, TV yeniden başlar). Sonra Key Server'ı açıp tekrar deneyin."
+          }
+        }
+      }
+    },
+    "No TV responds at this address. The TV may be off, on another Wi-Fi, or its address may have changed. Turn the TV on, check its IP address in the TV's Settings › Network, and pick the right TV from the list above.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No TV responds at this address. The TV may be off, on another Wi-Fi, or its address may have changed. Turn the TV on, check its IP address in the TV's Settings › Network, and pick the right TV from the list above."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu adreste TV yanıt vermiyor. TV kapalı, başka bir Wi-Fi'da ya da adresi değişmiş olabilir. TV'yi açın, TV'de Ayarlar › Ağ'dan IP adresine bakın ve yukarıdaki listeden doğru TV'yi seçin."
+          }
+        }
+      }
+    },
     "Turn on the game's own subtitles: CouchSubs reads the English subtitles on screen, not the audio.": {
       "localizations": {
         "en": {
@@ -65,18 +113,18 @@
         }
       }
     },
-    "The TV app has not connected. Open CouchSubs on the TV and keep the phone and the TV on the same Wi-Fi. If it still waits, check that CouchSubs is allowed in Settings › Privacy & Security › Local Network on this iPhone, then stop and start translating again.": {
+    "The TV app has not connected. Open CouchSubs on the TV and keep the phone and the TV on the same Wi-Fi (not a guest network). If the TV shows a 6-digit code, approve it in the window that opens on this phone. If it still waits, check that CouchSubs is allowed in Settings › Privacy & Security › Local Network on this iPhone, then stop and start translating again.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The TV app has not connected. Open CouchSubs on the TV and keep the phone and the TV on the same Wi-Fi. If it still waits, check that CouchSubs is allowed in Settings › Privacy & Security › Local Network on this iPhone, then stop and start translating again."
+            "value": "The TV app has not connected. Open CouchSubs on the TV and keep the phone and the TV on the same Wi-Fi (not a guest network). If the TV shows a 6-digit code, approve it in the window that opens on this phone. If it still waits, check that CouchSubs is allowed in Settings › Privacy & Security › Local Network on this iPhone, then stop and start translating again."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "TV uygulaması bağlanmadı. TV'de CouchSubs'ı açın; telefon ve TV aynı Wi-Fi'da olsun. Yine bekliyorsa bu iPhone'da Ayarlar › Gizlilik ve Güvenlik › Yerel Ağ'da CouchSubs'a izin verildiğini kontrol edin, sonra çeviriyi durdurup yeniden başlatın."
+            "value": "TV uygulaması bağlanmadı. TV'de CouchSubs'ı açın; telefon ve TV aynı Wi-Fi'da olsun (misafir ağı olmasın). TV'de 6 haneli kod çıkarsa bu telefonda açılan pencerede onaylayın. Yine bekliyorsa bu iPhone'da Ayarlar › Gizlilik ve Güvenlik › Yerel Ağ'da CouchSubs'a izin verildiğini kontrol edin, sonra çeviriyi durdurup yeniden başlatın."
           }
         }
       }

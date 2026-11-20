@@ -420,4 +420,17 @@ class AndroidTvTest {
         assertFalse(adbd.approvalAsked)
         adbd.join()
     }
+
+    @Test
+    fun startCommandCarriesOnlySafeLaunchParams() {
+        val plain = "shell:am start -n com.couchsubs.tv/.MainActivity"
+        val params = AndroidTvInstaller.launchParams("http://192.168.1.124:8787")
+        assertEquals("""{"server":"http://192.168.1.124:8787"}""", params)
+        assertEquals("""$plain --es params '{"server":"http://192.168.1.124:8787"}'""", AndroidTvInstaller.startCommand(params))
+        assertEquals(plain, AndroidTvInstaller.startCommand(null))
+        assertEquals(plain, AndroidTvInstaller.startCommand(""))
+        assertEquals(plain, AndroidTvInstaller.startCommand("""{"server":"x'; reboot; '"}"""))
+        assertEquals(plain, AndroidTvInstaller.startCommand("{\"a\":\"b\"}\nreboot"))
+        assertEquals(null, AndroidTvInstaller.launchParams("http://x\"y"))
+    }
 }

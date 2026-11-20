@@ -58,6 +58,13 @@ struct InstalledTVApp: Codable, Equatable {
     /// Android TV'nin ADB portu (kablosuz hata ayıklamada değişir).
     var port: UInt16?
     var version: String
+
+    /// Bu Android TV'ye en son hangi ADB portundan ulaşıldı (kablosuz hata ayıklamada değişir); bilinmiyorsa 5555.
+    static func adbPort(for host: String, defaults: UserDefaults = .standard) -> UInt16 {
+        let saved = defaults.data(forKey: StoreKey.tvAppInstalled).flatMap { try? JSONDecoder().decode(InstalledTVApp.self, from: $0) }
+        guard let saved, saved.brand == .androidTV, saved.host == host, let port = saved.port else { return AdbConnection.defaultPort }
+        return port
+    }
 }
 
 extension StoreKey {

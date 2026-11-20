@@ -471,8 +471,108 @@ final class AndroidTvInstaller {
 
     private func launch(_ adb: AdbConnection) {
         progress(.launching)
-        log.write("Uygulama açılıyor: \(((try? adb.run("shell:am start -n \(Self.packageName)/.MainActivity")) ?? "açılamadı").trimmingCharacters(in: .whitespacesAndNewlines))")
+        log.write("Uygulama açılıyor: \(((try? adb.run(Self.startCommand(launchParams))) ?? "açılamadı").trimmingCharacters(in: .whitespacesAndNewlines))")
     }
+
+    /// Uygulama açılırken verilecek başlatma parametreleri (`{"server":"http://…"}`); TV telefonu ağda aramadan bağlanır.
+    var launchParams: String?
+
+    /// Uygulamayı açan ADB komutu; `launchParams` varsa `--es params '…'` ile (Windows'taki StartCommand ile aynı kural).
+    static func startCommand(_ launchParams: String?) -> String {
+        let command = "shell:am start -n \(packageName)/.MainActivity"
+        // TV'de sh çalıştırır: değer tek tırnak içinde gider; tek tırnak ve satır sonu içeren değer hiç gönderilmez.
+        guard let launchParams, !launchParams.isEmpty,
+              !launchParams.contains(where: { $0 == "'" || $0.isNewline || $0 == "\0" }) else { return command }
+        return "\(command) --es params '\(launchParams)'"
+    }
+
+    /// Yalnız sunucu adresi gider; erişim anahtarı gitmez (Android TV kullanıcı onaylı eşleştirmeyle bağlanır).
+    static func launchParams(server: String) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: ["server": server], options: [.withoutEscapingSlashes]) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Kurulu uygulamayı telefonun adresiyle açar (kurmadan, sessizce): TV onay sorarsa vazgeçilir. Bloklar.
+    func open(launchParams: String?, connectTimeout: TimeInterval = 3) throws -> String {
+        let adb = try AdbConnection.connect(host: host, port: port, key: try adbKey(),
+                                            onApprovalNeeded: { throw AndroidInstallFailure(error: .notApproved, detail: "onay gerekiyor") },
+                                            connectTimeout: connectTimeout)
+        defer { adb.close() }
+        return try adb.run(Self.startCommand(launchParams)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Android TV'de CouchSubs TV'yi telefonun adresiyle açar ve bağlı değilken arada bir yeniden açar (ADB açıksa).
+///
+/// Eskiden telefon Android TV'ye hiç dokunmuyor, TV uygulaması telefonu ağı (yalnız 8787 portunu) tarayarak bulmak
+/// zorunda kalıyordu: TV başka alt ağdaysa, tarama telefonu kaçırırsa ya da telefonun portu değiştiyse "Ağda CouchSubs
+/// aranıyor…"da kalıyordu (TestFlight, 20 Kas). Adres verilince TV doğrudan bağlanır ve adresi saklar; ADB kapalıysa
+/// (Play'den kurulan TV) sessizce vazgeçilir, tarama yolu sürer.
+final class AndroidTVKeeper: KeeperControlling, @unchecked Sendable {
+    private let host: String
+    private let port: UInt16
+    private let launchParams: String?
+    private let appConnected: @Sendable () -> Bool
+    private let relaunchInterval: TimeInterval
+    private let open: @Sendable (String, UInt16, String?) throws -> String
+    private let log: @Sendable (String) -> Void
+    private let lock = NSLock()
+    private var loop: Task<Void, Never>?
+    private var lastLaunch: Date?
+    private var lastResult: String?
+
+    init(host: String, port: UInt16, server: String, appConnected: @escaping @Sendable () -> Bool, relaunchInterval: TimeInterval = 30,
+         open: @escaping @Sendable (String, UInt16, String?) throws -> String = { host, port, params in
+             try AndroidTvInstaller(host: host, port: port).open(launchParams: params)
+         }, log: @escaping @Sendable (String) -> Void = { InstallLog.shared.write($0) }) {
+        self.host = host
+        self.port = port
+        launchParams = AndroidTvInstaller.launchParams(server: server)
+        self.appConnected = appConnected
+        self.relaunchInterval = relaunchInterval
+        self.open = open
+        self.log = log
+    }
+
+    /// Bir kontrol: TV uygulaması bağlı değilse ve son açılıştan `relaunchInterval` geçtiyse açar. Bloklar.
+    func tick(now: Date = Date()) {
+        guard !host.isEmpty, !appConnected() else { return }
+        lock.lock()
+        if let lastLaunch, now.timeIntervalSince(lastLaunch) < relaunchInterval { lock.unlock(); return }
+        lastLaunch = now
+        lock.unlock()
+        let result: String
+        do { result = "açıldı: \(try open(host, port, launchParams))" } catch { result = "açılamadı: \(error)" }
+        // Aynı sonuç her denemede yeniden yazılmaz.
+        lock.lock()
+        let changed = lastResult != result
+        lastResult = result
+        lock.unlock()
+        if changed { log("Android TV (\(host):\(port)) telefonun adresiyle \(result)") }
+    }
+
+    func start(interval: Duration) {
+        stop()
+        loop = Task.detached(priority: .utility) { [weak self] in
+            while !Task.isCancelled {
+                self?.tick()
+                try? await Task.sleep(for: interval)
+            }
+        }
+    }
+
+    func stop() {
+        loop?.cancel()
+        loop = nil
+    }
+
+    func reconnect() {
+        lock.lock()
+        lastLaunch = nil
+        lock.unlock()
+    }
+
+    deinit { loop?.cancel() }
 }
 
 /// Android TV kurulumunda hangi bağlantı yolunun seçileceği (Android'deki AdbMode ile aynı kural, GitHub #478).

@@ -30,6 +30,35 @@ enum class LgInstallError {
     PACKAGE_MISSING,
 }
 
+/**
+ * Geliştirici modunun SSH'si (9922) yanıt vermediğinde TV'nin durumu: diğer portlara bakılarak ayrılır (iPhone'daki
+ * LGUnreachableReason). Eskiden hep "TV yanıt vermedi" deniyordu; oysa TV açık ve Key Server'ı da açık olabiliyordu.
+ */
+enum class LgUnreachableReason {
+    /** Key Server (9991) açık ama SSH kapalı: Dev Mode Status açıldıktan sonra TV yeniden başlamamış. */
+    RESTART_NEEDED,
+    /** TV bu adreste (3000/3001 yanıt veriyor) ama geliştirici modu kapalı ya da süresi dolmuş. */
+    DEV_MODE_OFF,
+    /** Bu adreste hiçbir port yanıt vermiyor: TV kapalı, başka ağda ya da adresi değişmiş. */
+    TV_NOT_FOUND;
+
+    companion object {
+        fun classify(keyServer: Boolean, ssap: Boolean) = when {
+            keyServer -> RESTART_NEEDED
+            ssap -> DEV_MODE_OFF
+            else -> TV_NOT_FOUND
+        }
+
+        /** TV'nin Key Server (9991) ve kumanda (3000/3001) portlarına bakar. Bloklar. */
+        fun probe(host: String, timeoutMs: Int = 1_500, isOpen: (Int) -> Boolean = { port ->
+            try { java.net.Socket().use { it.connect(java.net.InetSocketAddress(host, port), timeoutMs) }; true } catch (error: java.io.IOException) { false }
+        }): LgUnreachableReason {
+            val keyServer = isOpen(LgInstaller.KEY_SERVER_PORT)
+            return classify(keyServer, keyServer || isOpen(3001) || isOpen(3000))
+        }
+    }
+}
+
 class LgInstallException(val error: LgInstallError, val detail: String? = null) :
     IOException(if (detail == null) error.name else "${error.name}: $detail")
 

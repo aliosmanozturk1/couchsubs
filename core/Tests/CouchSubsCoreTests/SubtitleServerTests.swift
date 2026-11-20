@@ -83,6 +83,27 @@ final class SubtitleServerTests: XCTestCase {
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
     }
 
+    /// Sabit portta (TV'nin ağda aradığı 8787) kapatılıp hemen yeniden açılan sunucu aynı portu geri alır. Eskiden
+    /// kapanan dinleyici portu henüz bırakmadan yenisi "Address already in use" alıyor, telefon rastgele bir porta
+    /// düşüyor, ağı yalnız 8787'de tarayan TV uygulaması telefonu bir daha bulamıyordu.
+    func testRestartOnFixedPortKeepsThePort() async throws {
+        let probe = SubtitleServer(port: 0)
+        let port = try await probe.start()
+        probe.stop()
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let server = SubtitleServer(port: port)
+        defer { server.stop() }
+        for _ in 0..<5 {
+            let started = try await server.start()
+            XCTAssertEqual(started, port)
+            server.stop()
+        }
+        let again = try await server.start()
+        XCTAssertEqual(again, port)
+        let (_, response) = try await URLSession.shared.data(from: URL(string: "http://127.0.0.1:\(port)/hello")!)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+    }
+
     /// TV yarı açık bağlantıyı adlı "ping" olayının gelmemesinden anlar; yorum satırını EventSource görmez.
     func testPingIsSentAsNamedEvent() async throws {
         let server = SubtitleServer(port: 0, pingInterval: 0.05)

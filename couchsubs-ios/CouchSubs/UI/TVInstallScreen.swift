@@ -558,8 +558,12 @@ struct AndroidTVInstallSection: View {
             }
             do {
                 guard TVPackages.androidVersion != nil else { throw AndroidInstallFailure(error: .packageMissing) }
+                // Uygulama telefonun adresiyle açılır: TV telefonu ağda aramadan bağlanır.
+                let launchParams = await model.androidLaunchParams(host: target.0)
                 let result = try await runInstall({ progress in
-                    try AndroidTvInstaller(host: target.0, port: target.1, pairing: selectedPairing, progress: progress)
+                    let installer = AndroidTvInstaller(host: target.0, port: target.1, pairing: selectedPairing, progress: progress)
+                    installer.launchParams = launchParams
+                    return try installer
                         .ensureInstalled(apk: { try TVPackages.androidPackage() }, version: TVPackages.androidVersion, allowReplace: allowReplace)
                 }, progress: { step in if phase.isWorking { phase = .working(step) } })
                 phase = .done(version: result.version, installed: result.installed)

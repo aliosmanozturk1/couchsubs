@@ -244,4 +244,13 @@ class LgTest {
         val error = expect<LgInstallException> { JschShell("127.0.0.1", key, port = closed, connectTimeoutMs = 1000).run("true", null) }
         assertEquals(LgInstallError.UNREACHABLE, error.error)
     }
+
+    /** 9922 kapalıyken TV'nin diğer portlarına göre ne yapılacağı ayrılır (TestFlight: 14 denemede hep "Connection refused"). */
+    @Test
+    fun closedDeveloperSshIsExplainedByTheOtherPorts() {
+        assertEquals(LgUnreachableReason.RESTART_NEEDED, LgUnreachableReason.probe("tv") { it == 9991 })
+        assertEquals(LgUnreachableReason.DEV_MODE_OFF, LgUnreachableReason.probe("tv") { it == 3001 })
+        assertEquals(LgUnreachableReason.DEV_MODE_OFF, LgUnreachableReason.probe("tv") { it == 3000 })
+        assertEquals(LgUnreachableReason.TV_NOT_FOUND, LgUnreachableReason.probe("tv") { false })
+    }
 }

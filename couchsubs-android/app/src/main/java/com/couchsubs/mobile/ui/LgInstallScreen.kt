@@ -39,6 +39,7 @@ import com.couchsubs.mobile.tv.lg.LgInstallError
 import com.couchsubs.mobile.tv.lg.LgInstallException
 import com.couchsubs.mobile.tv.lg.LgInstaller
 import com.couchsubs.mobile.tv.lg.LgKeys
+import com.couchsubs.mobile.tv.lg.LgUnreachableReason
 import com.couchsubs.mobile.tv.samsung.InstallLog
 import com.couchsubs.mobile.tv.samsung.InstallStep
 import com.couchsubs.mobile.core.ManualAddress
@@ -58,7 +59,7 @@ private sealed interface LgState {
     data object Idle : LgState
     data class Working(val step: InstallStep) : LgState
     data class Done(val version: String, val installed: Boolean) : LgState
-    data class Failed(val error: LgInstallError?, val detail: String?) : LgState
+    data class Failed(val error: LgInstallError?, val detail: String?, val reason: LgUnreachableReason? = null) : LgState
 }
 
 @Composable
@@ -133,7 +134,12 @@ internal fun LgInstallScreen(onBack: () -> Unit, onDone: () -> Unit, brandPicker
                 TvAppUpdate.installed(InstalledTv(TvBrand.LG, target, version = result.version))
                 LgState.Done(result.version, result.installed)
             } catch (error: LgInstallException) {
-                LgState.Failed(error.error, error.detail)
+                // 9922 yanıt vermediyse neden: TV bu adreste mi, geliştirici modu mu kapalı (diğer portlara bakılır).
+                val reason = if (error.error != LgInstallError.UNREACHABLE) null else withContext(Dispatchers.IO) {
+                    runCatching { LgUnreachableReason.probe(target) }.getOrNull()
+                        ?.also { InstallLog(logFile).write("9922 yanıt vermedi; TV'nin durumu: $it") }
+                }
+                LgState.Failed(error.error, error.detail, reason)
             } catch (error: Exception) {
                 Log.w(TAG, "LG kurulumu başarısız", error)
                 LgState.Failed(null, error.message ?: error.javaClass.simpleName)
@@ -218,7 +224,12 @@ internal fun LgInstallScreen(onBack: () -> Unit, onDone: () -> Unit, brandPicker
 private fun lgFailureText(failure: LgState.Failed): String {
     val context = LocalContext.current
     val advice = when (failure.error) {
-        LgInstallError.UNREACHABLE -> context.getString(R.string.tvinstall_lg_err_unreachable)
+        LgInstallError.UNREACHABLE -> context.getString(when (failure.reason) {
+            LgUnreachableReason.RESTART_NEEDED -> R.string.tvinstall_lg_err_restart_needed
+            LgUnreachableReason.DEV_MODE_OFF -> R.string.tvinstall_lg_err_dev_mode_off
+            LgUnreachableReason.TV_NOT_FOUND -> R.string.tvinstall_lg_err_tv_not_found
+            null -> R.string.tvinstall_lg_err_unreachable
+        })
         LgInstallError.KEY_SERVER_OFF -> context.getString(R.string.tvinstall_lg_err_key_server)
         LgInstallError.WRONG_PASSPHRASE -> context.getString(R.string.tvinstall_lg_err_passphrase)
         LgInstallError.KEY_REFUSED -> context.getString(R.string.tvinstall_lg_err_key_refused)

@@ -226,7 +226,27 @@ public final class SubtitleServer: @unchecked Sendable {
     }()
 
     /// Sunucuyu başlatır ve dinlenen portu döner (`port: 0` ise rastgele seçilen port).
+    ///
+    /// Sabit portta "Address already in use" gelirse kısa aralıklarla yeniden denenir: az önce kapatılan dinleyici portu
+    /// birkaç milisaniye sonra bırakır. Eskiden `stop()` ardından `start()` hep bu hatayı veriyor, çağıran rastgele bir
+    /// porta düşüyordu; ağı yalnız 8787'de tarayan TV uygulaması (Android TV) telefonu bir daha bulamıyordu.
     public func start() async throws -> UInt16 {
+        var attempt = 0
+        while true {
+            do {
+                return try await startOnce()
+            } catch PortBusy.busy(let reason) {
+                attempt += 1
+                guard requestedPort != 0, attempt < Self.busyRetries else { throw ServerError.failedToStart(reason) }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
+    }
+
+    private enum PortBusy: Error { case busy(String) }
+    static let busyRetries = 10
+
+    private func startOnce() async throws -> UInt16 {
         let port: NWEndpoint.Port = requestedPort == 0 ? .any : NWEndpoint.Port(rawValue: requestedPort)!
         // Sessizce kaybolan TV'ler (fişten çekme, Wi-Fi kopması) TCP canlılık denetimiyle fark edilir.
         let tcp = NWProtocolTCP.Options()
@@ -267,7 +287,11 @@ public final class SubtitleServer: @unchecked Sendable {
                     // .waiting: port ya da ağ şu an kullanılamıyor; beklemek yerine hata ver ki çağıran başka port denesin.
                     self.startContinuation = nil
                     listener.cancel()
-                    continuation.resume(throwing: ServerError.failedToStart(error.localizedDescription))
+                    if case .posix(.EADDRINUSE) = error {
+                        continuation.resume(throwing: PortBusy.busy(error.localizedDescription))
+                    } else {
+                        continuation.resume(throwing: ServerError.failedToStart(error.localizedDescription))
+                    }
                 default:
                     break
                 }

@@ -79,6 +79,9 @@ enum TVText {
     static var lgStep4: String { String(localized: "4. Type the Passphrase above and press Install and open. The passphrase is only needed for the first install.") }
     static func lgTvSays(_ a0: String) -> String { String(format: String(localized: "TV says: %@"), a0) }
     static var lgErrUnreachable: String { String(localized: "The TV did not respond. Make sure the TV is on and on the same Wi-Fi as this phone, and that Dev Mode Status is on in the Developer Mode app.") }
+    static var lgErrRestartNeeded: String { String(localized: "The TV's Key Server is on, but its developer connection is closed. After Dev Mode Status is turned on the TV has to restart: press RESTART in the Developer Mode app (or unplug the TV and plug it back in), then open the app again, turn on Key Server and try again.") }
+    static var lgErrDevModeOff: String { String(localized: "The TV is on at this address, but developer mode is off. Open the Developer Mode app on the TV: Dev Mode Status must be on (it turns off by itself when its time runs out; turn it on again and the TV restarts). Then turn on Key Server and try again.") }
+    static var lgErrTvNotFound: String { String(localized: "No TV responds at this address. The TV may be off, on another Wi-Fi, or its address may have changed. Turn the TV on, check its IP address in the TV's Settings › Network, and pick the right TV from the list above.") }
     static var lgErrKeyServer: String { String(localized: "Key Server is off. Turn it on in the Developer Mode app and keep the app on screen.") }
     static var lgErrPassphrase: String { String(localized: "The passphrase is not correct. Check it on the TV screen.") }
     static var lgErrKeyRefused: String { String(localized: "The TV refused the key. Open Key Server and type the passphrase again.") }

@@ -550,8 +550,12 @@ struct TargetScreen: View {
             Spacer()
             if working == tv {
                 ProgressView().tint(Mobile.Palette.accent)
+            } else if selected, model.tvClients > 0 {
+                // "Bağlı" yalnız TV uygulaması gerçekten bağlıyken görünür. Eskiden uygulama kuruluysa "Hazır" yazıyordu;
+                // TV uygulaması telefona hiç bağlanmamışken de (TestFlight, #672) her şey yolunda sanılıyordu.
+                MobilePill(text: String(localized: "Connected"), dot: true)
             } else if ready == true {
-                MobilePill(text: String(localized: "Ready"), dot: true)
+                MobilePill(text: String(localized: "Installed"))
             } else if ready == false {
                 MobilePill(text: String(localized: "Not installed"))
             }

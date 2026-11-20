@@ -86,13 +86,52 @@ object TvSessionLauncher {
         if (!key.isNullOrEmpty()) payload.put("client-key", key)
         return JSONObject().put("type", "register").put("id", "register_0").put("payload", payload).toString()
     }
-    fun launch(settings: AppSettings, port: Int, key: String, active: () -> Boolean) {
+    /** Android TV uygulaması bağlı değilken en çok bu aralıkla yeniden açılır. */
+    const val ANDROID_RELAUNCH_MS = 30_000L
+
+    /**
+     * Android TV: ADB açıksa (uygulama bu telefondan kurulduysa) CouchSubs TV telefonun adresiyle açılır ve bağlanana kadar
+     * arada bir yeniden açılır. Yalnız adres gider; TV yine ekrandaki kodun onayıyla (/pair) eşleşir. Eskiden telefon
+     * Android TV'ye hiç dokunmuyor, TV uygulaması telefonu ağ taramasıyla bulamazsa "Ağda CouchSubs aranıyor…"da kalıyordu
+     * (iPhone'daki AndroidTVKeeper ile aynı). ADB kapalıysa sessizce vazgeçilir; tarama yolu sürer.
+     *
+     * @param open (adres, ADB portu, başlatma parametreleri) → `am start` çıktısı; testlerde sahtesi verilir.
+     */
+    internal fun keepAndroidTvOpen(
+        tv: InstalledTv, server: String, active: () -> Boolean, connected: () -> Boolean,
+        open: (String, Int, String?) -> String, log: (String) -> Unit = {}, sleep: (Long) -> Unit = { Thread.sleep(it) },
+    ) {
+        val adbPort = tv.port.takeIf { it > 0 } ?: com.couchsubs.mobile.tv.android.AdbConnection.DEFAULT_PORT
+        val params = com.couchsubs.mobile.tv.android.AndroidTvInstaller.launchParams(server)
+        var last: String? = null
+        while (active()) {
+            if (!connected()) {
+                val result = try { "açıldı: " + open(tv.host, adbPort, params) } catch (error: Exception) { "açılamadı: ${error.message ?: error.javaClass.simpleName}" }
+                // Aynı sonuç her denemede yeniden yazılmaz.
+                if (result != last) log("Android TV (${tv.host}:$adbPort) telefonun adresiyle $result")
+                last = result
+            }
+            sleep(ANDROID_RELAUNCH_MS)
+        }
+    }
+
+    fun launch(settings: AppSettings, port: Int, key: String, adbKeyFile: java.io.File? = null, connected: () -> Boolean = { false },
+               log: (String) -> Unit = {}, active: () -> Boolean) {
         val tv = settings.installedTv ?: return
-        if (tv.brand == TvBrand.ANDROID_TV || !active()) return
+        if (!active()) return
         val remote = InetAddress.getByName(tv.host)
         if (!SubtitleAccess.isLocalPeer(remote)) return
         val own = DatagramSocket().use { it.connect(InetSocketAddress(remote, 9)); it.localAddress.hostAddress } ?: return
         val server = "http://${if (own.contains(':')) "[$own]" else own}:$port"
+        if (tv.brand == TvBrand.ANDROID_TV) {
+            if (adbKeyFile == null) return
+            keepAndroidTvOpen(tv, server, active, connected, open = { host, adbPort, params ->
+                if (!com.couchsubs.mobile.tv.android.AndroidTvInstaller.isReachable(host, adbPort)) throw java.io.IOException("ADB kapalı")
+                com.couchsubs.mobile.tv.android.AndroidTvInstaller(host, adbPort,
+                    adbKey = { com.couchsubs.mobile.tv.samsung.AdbKey.loadOrCreate(adbKeyFile) }).open(params)
+            }, log = log)
+            return
+        }
         val tokenKey = "tv.control.${tv.brand}.${tv.host}"
         val pinKey = "$tokenKey.certificate"
         val storedPin = settings.secrets.get(pinKey)

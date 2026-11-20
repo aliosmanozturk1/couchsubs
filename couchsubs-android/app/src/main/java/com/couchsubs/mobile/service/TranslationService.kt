@@ -159,7 +159,9 @@ class TranslationService : Service() {
     private fun launchTv(key: String) {
         if (settings.target != SubtitleTarget.TV) return
         Thread({ runCatching {
-            com.couchsubs.mobile.tv.TvSessionLauncher.launch(settings, subtitlePort, key) { !destroyed && server?.accessKey == key }
+            com.couchsubs.mobile.tv.TvSessionLauncher.launch(settings, subtitlePort, key,
+                adbKeyFile = java.io.File(noBackupFilesDir, "adb/adbkey"), connected = { (server?.connectedClients ?: 0) > 0 },
+                log = { Log.i(TAG, it) }) { !destroyed && server?.accessKey == key }
         } }, "CouchSubs TV launch").apply { isDaemon = true }.start()
     }
     private lateinit var settings: AppSettings

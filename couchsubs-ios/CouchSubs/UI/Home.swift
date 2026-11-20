@@ -314,7 +314,7 @@ struct RunningScreen: View {
             }
             // TV uygulaması 30 saniyede bağlanmadıysa ne yapılacağı (tanı satırı günlüklere yazılır).
             if model.settings.output.showsOnTV, model.tvWaitingLong, model.tvClients == 0 {
-                MobileNote(text: String(localized: "The TV app has not connected. Open CouchSubs on the TV and keep the phone and the TV on the same Wi-Fi. If it still waits, check that CouchSubs is allowed in Settings › Privacy & Security › Local Network on this iPhone, then stop and start translating again."))
+                MobileNote(text: String(localized: "The TV app has not connected. Open CouchSubs on the TV and keep the phone and the TV on the same Wi-Fi (not a guest network). If the TV shows a 6-digit code, approve it in the window that opens on this phone. If it still waits, check that CouchSubs is allowed in Settings › Privacy & Security › Local Network on this iPhone, then stop and start translating again."))
             } else if model.settings.output.showsOnTV, model.testTVNotConnected, model.tvClients == 0 {
                 // "Test on TV" TV'ye gitmedi: TV'deki 6 haneli kod bir yere yazılmaz, bu telefonda onaylanır.
                 MobileNote(text: String(localized: "The test subtitle did not reach the TV because the TV app is not connected. Open CouchSubs on the TV. If the TV shows a 6-digit code, don't type it anywhere: approve it in the “Pair this TV?” window that opens on this phone, then test again."))

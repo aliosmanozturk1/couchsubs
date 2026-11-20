@@ -491,6 +491,32 @@ enum LGPhoneInstall {
     }
 }
 
+/// Geliştirici modunun SSH'si (9922) yanıt vermediğinde TV'nin durumu: diğer portlara bakılarak ayrılır.
+///
+/// TestFlight (19–20 Kas): bir kullanıcı 14 denemede hep "192.168.1.123:9922: Connection refused" aldı; ekranda yalnız
+/// "TV yanıt vermedi… Dev Mode Status açık olsun" yazıyordu, oysa TV açıktı ve Key Server'ı da açmıştı. TV'nin başka
+/// portları yanıt veriyorsa sorun adres ya da Wi-Fi değil, geliştirici modunun SSH'sidir; ne yapılacağı ona göre söylenir.
+enum LGUnreachableReason: Equatable {
+    /// Key Server (9991) açık ama SSH kapalı: Dev Mode Status açıldıktan sonra TV yeniden başlamamış.
+    case restartNeeded
+    /// TV bu adreste (3000/3001 yanıt veriyor) ama geliştirici modu kapalı ya da süresi dolmuş.
+    case devModeOff
+    /// Bu adreste hiçbir port yanıt vermiyor: TV kapalı, başka ağda ya da adresi değişmiş.
+    case tvNotFound
+
+    static func classify(keyServer: Bool, ssap: Bool) -> LGUnreachableReason {
+        if keyServer { return .restartNeeded }
+        return ssap ? .devModeOff : .tvNotFound
+    }
+
+    /// TV'nin Key Server (9991) ve kumanda (3000/3001) portlarına bakar. Bloklar.
+    static func probe(_ host: String, timeout: TimeInterval = 1.5) -> LGUnreachableReason {
+        let keyServer = PosixSocket.isOpen(host: host, port: LGInstaller.keyServerPort, timeout: timeout)
+        let ssap = keyServer || PosixSocket.isOpen(host: host, port: 3001, timeout: timeout) || PosixSocket.isOpen(host: host, port: 3000, timeout: timeout)
+        return classify(keyServer: keyServer, ssap: ssap)
+    }
+}
+
 // MARK: - Ekran
 
 struct LGInstallSection: View {
@@ -630,7 +656,20 @@ struct LGInstallSection: View {
                 phase = .done(version: result.version, installed: result.installed)
                 await model.tvAppInstalled(brand: .lg, host: target, port: nil, version: result.version)
             } catch let failure as LGInstallFailure {
-                phase = .failed(text: failureText(failure))
+                // 9922 yanıt vermediyse neden: TV bu adreste mi, geliştirici modu mu kapalı (diğer portlara bakılır).
+                var reason: LGUnreachableReason?
+                if failure.error == .unreachable {
+                    let found = await Task.detached(priority: .userInitiated) { LGUnreachableReason.probe(target) }.value
+                    InstallLog.shared.write("9922 yanıt vermedi; TV'nin durumu: \(found)")
+                    reason = found
+                }
+                phase = .failed(text: failureText(failure, reason: reason))
+                // TV bu adreste yoksa adresi değişmiş olabilir: liste yeniden aranır.
+                if reason == .tvNotFound {
+                    candidates = nil
+                    manual = false
+                    await search()
+                }
             } catch {
                 phase = .failed(text: TVText.errFailed + "\n\n" + TVText.lgTvSays("\(error)"))
             }
@@ -638,9 +677,15 @@ struct LGInstallSection: View {
     }
 
     /// Ne yapılacağı (Android'deki lgFailureText) ve TV'nin verdiği ayrıntı.
-    private func failureText(_ failure: LGInstallFailure) -> String {
+    private func failureText(_ failure: LGInstallFailure, reason: LGUnreachableReason? = nil) -> String {
         let advice: String = switch failure.error {
-        case .unreachable: TVText.lgErrUnreachable
+        case .unreachable:
+            switch reason {
+            case .restartNeeded: TVText.lgErrRestartNeeded
+            case .devModeOff: TVText.lgErrDevModeOff
+            case .tvNotFound: TVText.lgErrTvNotFound
+            case nil: TVText.lgErrUnreachable
+            }
         case .keyServerOff: TVText.lgErrKeyServer
         case .wrongPassphrase: TVText.lgErrPassphrase
         case .keyRefused: TVText.lgErrKeyRefused

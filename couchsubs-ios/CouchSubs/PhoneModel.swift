@@ -632,7 +632,9 @@ final class PhoneModel: ObservableObject {
     func becameActive(afterBackground: Bool = true) {
         if afterBackground { onResumedFromBackground() }
         // iOS askıdayken altyazı sunucusunun dinleyicisini kapatabiliyor; dönüşte açık değilse yeniden açılır.
-        if afterBackground, isRunning || serverStarted, !server.isListening { Task { await ensureServer() } }
+        // Dinleyici "açık" görünse de askıdan sonra bağlantı kabul etmeyebilir: kendi adresinden sorulur, yanıt yoksa
+        // yeniden açılır (TV uygulaması telefonu bulamıyor, telefon "TV uygulaması bekleniyor"da kalıyordu).
+        if afterBackground, isRunning || serverStarted { Task { await reviveServerIfSilent() } }
         guard isRunning else { return }
         if afterBackground { markBackground(false) }
         if afterBackground || !Self.isLive(sessionState) { session?.reconnectNow() }
@@ -1362,8 +1364,8 @@ final class PhoneModel: ObservableObject {
 
     /// Sunucu açık değilse açar (ilk kez ya da iOS dinleyiciyi kapattıktan sonra); port değiştiyse TV'yi açık tutan
     /// görev yeni adresle yeniden kurulur. Hata günlüklere yazılır.
-    private func ensureServer() async {
-        if serverStarted, server.isListening { return }
+    private func ensureServer(force: Bool = false) async {
+        if !force, serverStarted, server.isListening { return }
         // Düşme bildirimi ve öne gelme aynı anda yeniden açmaya kalkmasın.
         guard !serverRestarting else { return }
         serverRestarting = true
@@ -1372,6 +1374,11 @@ final class PhoneModel: ObservableObject {
         if serverStarted {
             serverStarted = false
             server.stop()
+        }
+        // Önceki açılışta 8787 alınamayıp rastgele porta düşüldüyse yeniden 8787 denenir: TV uygulaması ağı o portta tarar.
+        if serverPort != AppIdentity.serverPort {
+            server = SubtitleServer(port: AppIdentity.serverPort, key: server.accessKey)
+            attachServer()
         }
         do {
             try await startServer()
@@ -1390,6 +1397,28 @@ final class PhoneModel: ObservableObject {
         }
     }
 
+    /// Sunucu kendi adresinden `/hello` isteğine yanıt veriyor mu (dinleyici gerçekten bağlantı kabul ediyor mu).
+    func serverAnswers() async -> Bool {
+        guard serverStarted, server.isListening, let url = URL(string: "http://127.0.0.1:\(serverPort)/hello") else { return false }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (data, response) = try? await URLSession.shared.data(for: request) else { return false }
+        return (response as? HTTPURLResponse)?.statusCode == 200 && String(decoding: data, as: UTF8.self).contains("couchsubs")
+    }
+
+    /// Sunucu yanıt vermiyorsa yeniden açar; yanıt verip vermediğini döner (yeniden açmadan önceki durum).
+    @discardableResult
+    private func reviveServerIfSilent() async -> Bool {
+        // TV bağlıyken sunucuya dokunulmaz (yeniden açmak bağlı TV'yi düşürür).
+        if serverStarted, server.isListening, tvClients > 0 { return true }
+        if await serverAnswers() { return true }
+        RemotePlayLog.write("Altyazı sunucusu yanıt vermiyor; yeniden açılıyor")
+        SubtitleLog.write("Altyazı sunucusu yanıt vermiyor; yeniden açılıyor")
+        await ensureServer(force: true)
+        return false
+    }
+
     private func serverDropped(_ reason: String) {
         RemotePlayLog.write("Altyazı sunucusu kapandı (\(reason)); yeniden açılıyor")
         SubtitleLog.write("Altyazı sunucusu kapandı (\(reason)); yeniden açılıyor")
@@ -1406,7 +1435,9 @@ final class PhoneModel: ObservableObject {
             try? await Task.sleep(for: Self.tvWaitLimit)
             guard !Task.isCancelled, let self, self.isRunning, self.tvClients == 0 else { return }
             self.tvWaitingLong = true
-            let line = self.tvConnectionDiagnostic()
+            // Sunucu yanıt vermiyorsa yeniden açılır; TV uygulaması bir sonraki denemesinde bağlanır.
+            let answered = await self.reviveServerIfSilent()
+            let line = self.tvConnectionDiagnostic() + " yanıt=\(answered ? 1 : 0) port=\(self.serverPort)"
             RemotePlayLog.write(line)
             SubtitleLog.write(line)
             InstallLog.shared.write(line)
@@ -1430,11 +1461,19 @@ final class PhoneModel: ObservableObject {
         do {
             serverPort = try await server.start()
         } catch {
+            RemotePlayLog.write("Altyazı sunucusu \(AppIdentity.serverPort) portunu alamadı (\(error)); rastgele port deneniyor")
             server = SubtitleServer(port: 0, key: server.accessKey)
             attachServer()
             serverPort = try await server.start()
         }
         serverStarted = true
+    }
+
+    /// Android TV kurulumunda uygulama açılırken verilecek başlatma parametreleri (sunucu açılamazsa nil).
+    func androidLaunchParams(host: String) async -> String? {
+        try? await startServer()
+        guard serverStarted else { return nil }
+        return AndroidTvInstaller.launchParams(server: serverAddress(for: LGTV(name: "", host: host, brand: .androidTV)))
     }
 
     /// TV ile aynı ağdaki telefon adresi.

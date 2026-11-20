@@ -54,4 +54,25 @@ class TvSessionLauncherTest {
         assertEquals("PROMPT", payload.getString("pairingType"))
         assertFalse(JSONObject(TvSessionLauncher.registerMessage(null)).getJSONObject("payload").has("client-key"))
     }
+
+    /** Android TV: uygulama telefonun adresiyle açılır, bağlanana kadar arada bir yeniden; anahtar gitmez (iPhone'daki gibi). */
+    @Test fun androidTvIsOpenedWithThePhoneAddressUntilItConnects() {
+        val opened = mutableListOf<String>()
+        val logged = mutableListOf<String>()
+        var rounds = 0
+        TvSessionLauncher.keepAndroidTvOpen(InstalledTv(TvBrand.ANDROID_TV, "192.168.1.120", 41235), "http://192.168.1.124:8787",
+            active = { rounds < 4 }, connected = { rounds >= 2 },
+            open = { host, port, params -> opened += "$host:$port $params"; "Starting" }, log = { logged += it }, sleep = { rounds++ })
+        assertEquals(List(2) { """192.168.1.120:41235 {"server":"http://192.168.1.124:8787"}""" }, opened)
+        assertEquals(1, logged.size)
+    }
+
+    @Test fun closedAdbOnAndroidTvIsSilentAndLoggedOnce() {
+        val logged = mutableListOf<String>()
+        var rounds = 0
+        TvSessionLauncher.keepAndroidTvOpen(InstalledTv(TvBrand.ANDROID_TV, "192.168.1.120"), "http://192.168.1.124:8787",
+            active = { rounds < 3 }, connected = { false },
+            open = { _, port, _ -> assertEquals(5555, port); throw java.io.IOException("ADB kapalı") }, log = { logged += it }, sleep = { rounds++ })
+        assertEquals(listOf("Android TV (192.168.1.120:5555) telefonun adresiyle açılamadı: ADB kapalı"), logged)
+    }
 }

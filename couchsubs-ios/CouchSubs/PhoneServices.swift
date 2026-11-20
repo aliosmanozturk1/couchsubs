@@ -43,7 +43,7 @@ final class DemoStream: StreamControlling {
     func reconnectNow() {}
 }
 
-/// Denetlenemeyen TV'ler (Android TV) için: TV uygulaması telefonu ağda kendisi bulur.
+/// Adresi bilinmeyen TV için: TV uygulaması telefonu ağda kendisi bulur.
 final class IdleKeeper: KeeperControlling {
     func start(interval: Duration) {}
     func stop() {}
@@ -106,7 +106,13 @@ final class LivePhoneServices: PhoneServices {
     func pairTV(_ tv: LGTV, key: String?, server: String, accessKey: String) async throws -> TVPairing {
         switch tv.brand {
         case .androidTV:
-            // Telefon bu TV'yi denetlemez; TV uygulaması altyazı sunucusunu ağda kendisi bulur.
+            // ADB açıksa (uygulama bu telefondan kurulduysa) TV uygulaması telefonun adresiyle açılır; değilse TV
+            // uygulaması altyazı sunucusunu ağda kendisi bulur. İkisinde de TV, ekrandaki kodun onayıyla eşleşir.
+            guard !tv.host.isEmpty else { return TVPairing(key: "", launched: true) }
+            let port = InstalledTVApp.adbPort(for: tv.host)
+            _ = await Task.detached(priority: .utility) {
+                try? AndroidTvInstaller(host: tv.host, port: port).open(launchParams: AndroidTvInstaller.launchParams(server: server))
+            }.value
             return TVPairing(key: "", launched: true)
         case .samsung:
             let client = SamsungClient(tv: tv, token: key)
@@ -131,7 +137,8 @@ final class LivePhoneServices: PhoneServices {
                     onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void) -> KeeperControlling {
         switch tv.brand {
         case .androidTV:
-            return IdleKeeper()
+            guard let server = params["server"] as? String, !tv.host.isEmpty else { return IdleKeeper() }
+            return AndroidTVKeeper(host: tv.host, port: InstalledTVApp.adbPort(for: tv.host), server: server, appConnected: appConnected)
         case .samsung:
             let token = SamsungTokenHolder(token: key, onChange: onKey)
             let locator = TVLocator(tv: tv, connect: { tv in
