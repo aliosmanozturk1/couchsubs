@@ -15279,7 +15279,8 @@
     "The packs on this computer are still used.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The packs on this computer are still used."}}, "tr": {"stringUnit": {"state": "translated", "value": "Bu bilgisayardaki paketler kullanılmaya devam ediyor."}}}},
     "This month's DeepL limit is used up. Until it renews, the free translation on this phone translates.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "This month's DeepL limit is used up. Until it renews, the free translation on this phone translates."}}, "tr": {"stringUnit": {"state": "translated", "value": "Bu ayın DeepL sınırı doldu. Sınır yenilenene kadar bu telefondaki ücretsiz çeviri çevirir."}}}},
     "On the TV and on this phone": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "On the TV and on this phone"}}, "tr": {"stringUnit": {"state": "translated", "value": "TV'de ve bu telefonda"}}}},
-    "%@ and this phone": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "%@ and this phone"}}, "tr": {"stringUnit": {"state": "translated", "value": "%@ ve bu telefon"}}}}
+    "%@ and this phone": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "%@ and this phone"}}, "tr": {"stringUnit": {"state": "translated", "value": "%@ ve bu telefon"}}}},
+    "Share": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Share"}}, "tr": {"stringUnit": {"state": "translated", "value": "Paylaş"}}}}
   },
   "version": "1.0"
 }

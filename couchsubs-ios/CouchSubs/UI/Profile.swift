@@ -175,6 +175,7 @@ struct SettingsScreen: View {
     @State private var key = ""
     @State private var checking = false
     @State private var keyResult: String?
+    @State private var addressCopied = false
 
     /// Segmentteki seçim: Ücretsiz, DeepL, Gemini, Diğer (OpenAI, Claude).
     private enum Choice: Hashable { case free, deepL, gemini, other }
@@ -186,7 +187,27 @@ struct SettingsScreen: View {
         } content: {
             Tile {
                 Button("Pair TV") { Task { await model.openTVPairing() } }
-                ShareLink("Copy or share subtitle address", item: model.subtitleViewerAddress)
+                // OBS katmanı adresi (Mac ve Windows'taki gibi adres görünür ve kopyalanır; telefonda ayrıca paylaşılır).
+                Text("OBS overlay").font(Mobile.TypeScale.headline)
+                Text(verbatim: model.subtitleViewerAddress)
+                    .font(Mobile.TypeScale.caption.monospaced())
+                    .textSelection(.enabled)
+                    .padding(.horizontal, Mobile.Space.tile)
+                    .frame(maxWidth: .infinity, minHeight: Mobile.Control.field, alignment: .leading)
+                    .background(Mobile.Palette.surface2, in: RoundedRectangle(cornerRadius: Mobile.Radius.control))
+                    .overlay(RoundedRectangle(cornerRadius: Mobile.Radius.control).strokeBorder(Mobile.Palette.border))
+                HStack(spacing: Mobile.Space.gap) {
+                    Button {
+                        UIPasteboard.general.string = model.subtitleViewerAddress
+                        addressCopied = true
+                    } label: {
+                        Label(addressCopied ? "Copied" : "Copy", systemImage: addressCopied ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(MobileButtonStyle(kind: .secondary, compact: true))
+                    .resetsAfterDelay($addressCopied)
+                    ShareLink(item: model.subtitleViewerAddress) { Label("Share", systemImage: "square.and.arrow.up") }
+                        .buttonStyle(MobileButtonStyle(kind: .secondary, compact: true))
+                }
                 Button("Renew access key") { model.rotateSubtitleKey() }
                 if model.legacyTVWarning { Text("The TV app is old. Update it.") }
                 Text("Translation engine").font(Mobile.TypeScale.headline)

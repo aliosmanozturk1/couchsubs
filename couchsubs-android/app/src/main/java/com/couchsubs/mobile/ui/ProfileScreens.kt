@@ -177,12 +177,36 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
     }
     ScreenScaffold(top = { TopBar(stringResource(R.string.settings), onBack = onBack) }) {
         Tile(Modifier.fillMaxWidth()) {
-            androidx.compose.material3.TextButton(onClick = {
-                com.couchsubs.mobile.service.TranslationService.viewerAddress()?.let { address ->
-                    context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("CouchSubs", address))
+            // OBS katmanı adresi (Mac ve Windows'taki gibi adres görünür ve kopyalanır; telefonda ayrıca paylaşılır).
+            var address by remember { mutableStateOf(TranslationService.viewerAddress()) }
+            var addressCopied by remember { mutableStateOf(false) }
+            LaunchedEffect(addressCopied) {
+                if (addressCopied) {
+                    kotlinx.coroutines.delay(1500)
+                    addressCopied = false
                 }
-            }) { Text(stringResource(R.string.tv_copy_address)) }
-            androidx.compose.material3.TextButton(onClick = { com.couchsubs.mobile.service.TranslationService.renewAccessKey() }) { Text(stringResource(R.string.tv_key_renew)) }
+            }
+            address?.let { shown ->
+                TileLabel(stringResource(R.string.obs_overlay))
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(shown, style = Tokens.Type.caption.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace), color = Tokens.Color.text)
+                }
+                Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(Tokens.Space.gap)) {
+                    SecondaryButton(stringResource(if (addressCopied) R.string.history_copied else R.string.history_copy), Modifier.weight(1f)) {
+                        context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("CouchSubs", shown))
+                        addressCopied = true
+                    }
+                    SecondaryButton(stringResource(R.string.share), Modifier.weight(1f)) {
+                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(android.content.Intent.EXTRA_TEXT, shown)
+                        runCatching { context.startActivity(android.content.Intent.createChooser(send, null)) }
+                    }
+                }
+            }
+            androidx.compose.material3.TextButton(onClick = {
+                TranslationService.renewAccessKey()
+                address = TranslationService.viewerAddress()
+            }) { Text(stringResource(R.string.tv_key_renew)) }
             if (com.couchsubs.mobile.service.LiveState.status.collectAsState().value.legacyTv) Text(stringResource(R.string.tv_legacy_warning))
             TileLabel(stringResource(R.string.settings_engine))
             Segmented(listOf(stringResource(R.string.engine_free_short), "DeepL", "Gemini", stringResource(R.string.engine_other)), segment) { index ->

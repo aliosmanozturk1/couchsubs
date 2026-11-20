@@ -617,6 +617,7 @@
     <string name="tv_pair_reject">Reddet</string>
     <string name="tv_key_renew">Erişim anahtarını yenile</string>
     <string name="tv_legacy_warning">TV uygulaması eski. Güncelleyin.</string>
-    <string name="tv_copy_address">Altyazı adresini kopyala</string>
+    <string name="obs_overlay">OBS katmanı</string>
+    <string name="share">Paylaş</string>
     <string name="tv_pair_expired">Eşleştirme isteğinin süresi doldu. TV’den yeniden deneyin.</string>
 </resources>

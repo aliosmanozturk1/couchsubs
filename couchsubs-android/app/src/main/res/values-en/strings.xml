@@ -608,6 +608,7 @@
     <string name="tv_pair_reject">Reject</string>
     <string name="tv_key_renew">Renew access key</string>
     <string name="tv_legacy_warning">The TV app is old. Update it.</string>
-    <string name="tv_copy_address">Copy subtitle address</string>
+    <string name="obs_overlay">OBS overlay</string>
+    <string name="share">Share</string>
     <string name="tv_pair_expired">The pairing request expired. Try again on the TV.</string>
 </resources>
