@@ -209,6 +209,8 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
                         settings.setApiKey(engine, null)
                         saved = false
                     }
+                    // Mac ve Windows'taki kullanım satırı (#625): kayıtlı DeepL anahtarının bu ayki karakter kullanımı.
+                    if (engine == EngineChoice.DEEPL) DeepLUsageNote(settings)
                 } else {
                     Field(key, { key = it; keyRejected = false }, stringResource(R.string.settings_key), secret = true)
                     SecondaryButton(stringResource(if (checking) R.string.settings_key_checking else R.string.settings_key_save),
@@ -454,4 +456,26 @@ private fun ColorSwatch(option: SubtitleTextColor, selected: Boolean, onSelect: 
         Box(Modifier.size(32.dp).background(if (yellow) Tokens.Color.accent else Tokens.Color.text, CircleShape)
             .border(1.dp, Tokens.Color.borderStrong, CircleShape))
     }
+}
+
+/**
+ * DeepL anahtarının bu ayki kullanımı: "Bu ay: 500.000 karakterin 12.345 kadarı kullanıldı." (Mac, Windows ve iPhone ile
+ * aynı metin). Ayarlar açılınca ve anahtar kaydedilince sorulur; sorgu karakter kotasından yemez.
+ */
+@Composable
+private fun DeepLUsageNote(settings: AppSettings) {
+    var usage by remember { mutableStateOf<KeyCheck.DeepLUsage?>(null) }
+    LaunchedEffect(Unit) {
+        val key = settings.apiKey(EngineChoice.DEEPL)
+        usage = if (key.isNullOrBlank()) null else withContext(Dispatchers.IO) { KeyCheck.deepLUsage(key) }
+    }
+    usage?.let { Text(deepLUsageText(it), style = Tokens.Type.caption, color = Tokens.Color.secondary) }
+}
+
+@Composable
+private fun deepLUsageText(usage: KeyCheck.DeepLUsage): String = when (usage.state) {
+    OnlineKeyState.VALID -> stringResource(R.string.deepl_usage, "%,d".format(usage.used), "%,d".format(usage.limit))
+    OnlineKeyState.QUOTA_EXCEEDED -> stringResource(R.string.deepl_quota_used_up)
+    OnlineKeyState.INVALID -> stringResource(R.string.deepl_key_not_accepted)
+    else -> stringResource(R.string.deepl_unreachable)
 }

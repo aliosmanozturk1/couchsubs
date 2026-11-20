@@ -543,6 +543,10 @@
     <string name="settings_key_checking">Deneniyor…</string>
     <string name="settings_key_remove">Anahtarı kaldır</string>
     <string name="settings_key_rejected">Anahtar çalışmadı. Kontrol edip yeniden deneyin.</string>
+    <string name="deepl_usage">Bu ay: %2$s karakterin %1$s kadarı kullanıldı.</string>
+    <string name="deepl_quota_used_up">Bu ayın DeepL sınırı doldu. Sınır yenilenene kadar bu telefondaki ücretsiz çeviri çevirir.</string>
+    <string name="deepl_key_not_accepted">DeepL bu anahtarı kabul etmedi. Anahtarı DeepL hesap sayfanızdan yeniden kopyalayın.</string>
+    <string name="deepl_unreachable">DeepL\'e ulaşılamadı. İnternet bağlantınızı kontrol edin.</string>
     <string name="metrics_ocr">OCR %1$d ms</string>
     <string name="metrics_pack">Hazır paket</string>
     <string name="metrics_translation">Çeviri %1$d ms</string>

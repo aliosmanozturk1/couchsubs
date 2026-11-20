@@ -1155,7 +1155,7 @@ private struct DeepLKeySection: View {
         }
         Group {
             if let status {
-                Text(Self.describe(status))
+                Text(DeepLUsageText.describe(status, quotaUsedUp: String(localized: "This month's DeepL limit is used up. Until it renews, the translation model on this computer translates.")))
                     .font(.csCallout)
                     .foregroundStyle(Color.csSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1166,19 +1166,6 @@ private struct DeepLKeySection: View {
         }
     }
 
-    private static func describe(_ check: OnlineKeyCheck) -> String {
-        switch check.state {
-        case .valid:
-            String(format: String(localized: "This month: %1$@ of %2$@ characters used."),
-                   check.used.formatted(), check.limit.formatted())
-        case .quotaExceeded:
-            String(localized: "This month's DeepL limit is used up. Until it renews, the translation model on this computer translates.")
-        case .invalid:
-            String(localized: "DeepL did not accept this key. Copy it again from your DeepL account page.")
-        case .unreachable, .modelRejected, .busy:
-            String(localized: "DeepL could not be reached. Check your internet connection.")
-        }
-    }
 }
 
 /// Yapay zekâ modeli (yalnız listedekiler), anahtar ve örnek satırla deneme.

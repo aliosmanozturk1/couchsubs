@@ -534,6 +534,10 @@
     <string name="settings_key_checking">Testing…</string>
     <string name="settings_key_remove">Remove key</string>
     <string name="settings_key_rejected">The key did not work. Check it and try again.</string>
+    <string name="deepl_usage">This month: %1$s of %2$s characters used.</string>
+    <string name="deepl_quota_used_up">This month\'s DeepL limit is used up. Until it renews, the free translation on this phone translates.</string>
+    <string name="deepl_key_not_accepted">DeepL did not accept this key. Copy it again from your DeepL account page.</string>
+    <string name="deepl_unreachable">DeepL could not be reached. Check your internet connection.</string>
     <string name="metrics_ocr">OCR %1$d ms</string>
     <string name="metrics_pack">Ready pack</string>
     <string name="metrics_translation">Translation %1$d ms</string>

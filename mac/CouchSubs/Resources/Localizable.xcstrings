@@ -15272,7 +15272,8 @@
     "The pack server did not respond (HTTP %lld).": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The pack server did not respond (HTTP %lld)."}}, "tr": {"stringUnit": {"state": "translated", "value": "Paket sunucusu yanıt vermedi (HTTP %lld)."}}}},
     "A downloaded pack could not be verified; it may have arrived incomplete.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "A downloaded pack could not be verified; it may have arrived incomplete."}}, "tr": {"stringUnit": {"state": "translated", "value": "İndirilen bir paket doğrulanamadı; eksik inmiş olabilir."}}}},
     "The response from the pack server could not be read.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The response from the pack server could not be read."}}, "tr": {"stringUnit": {"state": "translated", "value": "Paket sunucusundan gelen yanıt okunamadı."}}}},
-    "The packs on this computer are still used.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The packs on this computer are still used."}}, "tr": {"stringUnit": {"state": "translated", "value": "Bu bilgisayardaki paketler kullanılmaya devam ediyor."}}}}
+    "The packs on this computer are still used.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The packs on this computer are still used."}}, "tr": {"stringUnit": {"state": "translated", "value": "Bu bilgisayardaki paketler kullanılmaya devam ediyor."}}}},
+    "This month's DeepL limit is used up. Until it renews, the free translation on this phone translates.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "This month's DeepL limit is used up. Until it renews, the free translation on this phone translates."}}, "tr": {"stringUnit": {"state": "translated", "value": "Bu ayın DeepL sınırı doldu. Sınır yenilenene kadar bu telefondaki ücretsiz çeviri çevirir."}}}}
   },
   "version": "1.0"
 }

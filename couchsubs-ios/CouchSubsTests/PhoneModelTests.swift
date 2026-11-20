@@ -35,7 +35,9 @@ private final class FakeServices: PhoneServices {
     }
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
                     onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void) -> KeeperControlling { IdleKeeper() }
-    func checkDeepLKey(_ key: String) async -> OnlineKeyCheck { OnlineKeyCheck(state: key == "good" ? .valid : .invalid) }
+    func checkDeepLKey(_ key: String) async -> OnlineKeyCheck {
+        key == "good" ? OnlineKeyCheck(state: .valid, used: 12_345, limit: 500_000) : OnlineKeyCheck(state: .invalid)
+    }
     func testAIKey(provider: AIProvider, key: String, model: String?) async -> Result<String, AIFailure> {
         key == "good" ? .success("Merhaba") : .failure(.invalidKey)
     }
@@ -205,5 +207,19 @@ final class PhoneModelTests: XCTestCase {
         XCTAssertEqual(model.settings.translationEngine, .gemini)
         model.removeKey(.gemini)
         XCTAssertEqual(model.settings.translationEngine, .free)
+    }
+
+    /// Ayarlar'daki DeepL kullanım satırı: kayıtlı anahtarın bu ayki kullanımı; anahtar yoksa satır çıkmaz.
+    func testDeepLUsageNeedsASavedKey() async {
+        let model = makeModel()
+        let none = await model.deepLUsage()
+        XCTAssertNil(none)
+        let accepted = await model.saveKey("good", for: .deepL)
+        XCTAssertTrue(accepted)
+        let usage = await model.deepLUsage()
+        XCTAssertEqual(usage, OnlineKeyCheck(state: .valid, used: 12_345, limit: 500_000))
+        model.removeKey(.deepL)
+        let removed = await model.deepLUsage()
+        XCTAssertNil(removed)
     }
 }

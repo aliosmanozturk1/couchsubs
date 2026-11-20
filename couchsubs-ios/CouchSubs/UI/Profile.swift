@@ -220,6 +220,8 @@ struct SettingsScreen: View {
                     .overlay(RoundedRectangle(cornerRadius: Mobile.Radius.control).strokeBorder(Mobile.Palette.border))
                     if checking { ProgressView().tint(Mobile.Palette.accent) }
                     if let keyResult { MobileNote(text: keyResult) }
+                    // Mac ve Windows'taki kullanım satırı (#625): kayıtlı DeepL anahtarının bu ayki karakter kullanımı.
+                    if engine == .deepL, model.hasKey(.deepL) { DeepLUsageRow() }
                 }
                 // Ek talimat (#306) yalnız yapay zekâ motorlarında; DeepL'de yoktur (Android ile aynı).
                 if engine.aiProvider != nil { AIInstructionField() }
@@ -412,6 +414,24 @@ struct SettingsScreen: View {
         keyResult = accepted ? nil : String(localized: "The key did not work. Check it and try again.")
         if accepted { key = "" }
         checking = false
+    }
+}
+
+/// DeepL anahtarının bu ayki kullanımı: "Bu ay: 500.000 karakterin 12.345 kadarı kullanıldı." (Mac, Windows ve Android
+/// ile aynı metin). Ayarlar açılınca ve anahtar kaydedilince sorulur; sorgu karakter kotasından yemez.
+private struct DeepLUsageRow: View {
+    @EnvironmentObject private var model: PhoneModel
+    @State private var usage: OnlineKeyCheck?
+
+    var body: some View {
+        Group {
+            if let usage {
+                Text(DeepLUsageText.describe(usage, quotaUsedUp: String(localized: "This month's DeepL limit is used up. Until it renews, the free translation on this phone translates.")))
+                    .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .task { usage = await model.deepLUsage() }
     }
 }
 

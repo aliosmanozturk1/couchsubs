@@ -118,22 +118,28 @@ object KeyCheck {
         state == OnlineKeyState.VALID || state == OnlineKeyState.QUOTA_EXCEEDED || state == OnlineKeyState.MODEL_REJECTED ||
             state == OnlineKeyState.BUSY
 
+    /** DeepL anahtarının bu ayki kullanımı (Mac/iPhone: OnlineKeyCheck): durum ve kullanılan / toplam karakter. */
+    data class DeepLUsage(val state: OnlineKeyState, val used: Long = 0, val limit: Long = 0)
+
     /** DeepL: /usage; bu ay kota dolduysa QUOTA_EXCEEDED. Bloklar. */
-    fun deepL(key: String, http: Http = Http.Default): OnlineKeyState {
+    fun deepL(key: String, http: Http = Http.Default): OnlineKeyState = deepLUsage(key, http).state
+
+    /** DeepL: /usage (karakter kotasından yemez); Ayarlar'daki "Bu ay: …" satırı bunu gösterir. Bloklar. */
+    fun deepLUsage(key: String, http: Http = Http.Default): DeepLUsage {
         val trimmed = key.trim()
-        if (trimmed.isEmpty()) return OnlineKeyState.INVALID
+        if (trimmed.isEmpty()) return DeepLUsage(OnlineKeyState.INVALID)
         return try {
             val (status, body) = http.send("GET", DeepLTranslator.baseUrl(trimmed) + "usage",
                 mapOf("Authorization" to "DeepL-Auth-Key $trimmed"), null, 6000)
-            if (status !in 200..299) return DeepLTranslator.failure(status)
+            if (status !in 200..299) return DeepLUsage(DeepLTranslator.failure(status))
             val usage = JSONObject(body)
             val count = usage.optLong("character_count", 0)
             val limit = usage.optLong("character_limit", 0)
-            if (limit > 0 && count >= limit) OnlineKeyState.QUOTA_EXCEEDED else OnlineKeyState.VALID
+            DeepLUsage(if (limit > 0 && count >= limit) OnlineKeyState.QUOTA_EXCEEDED else OnlineKeyState.VALID, count, limit)
         } catch (error: IOException) {
-            OnlineKeyState.UNREACHABLE
+            DeepLUsage(OnlineKeyState.UNREACHABLE)
         } catch (error: JSONException) {
-            OnlineKeyState.UNREACHABLE
+            DeepLUsage(OnlineKeyState.UNREACHABLE)
         }
     }
 

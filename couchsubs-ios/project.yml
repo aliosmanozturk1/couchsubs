@@ -50,6 +50,8 @@ targets:
       - path: ../mac/CouchSubs/UI/XboxText.swift
       # "Paketleri şimdi güncelle"nin sonuç metni Mac uygulamasıyla ortak.
       - path: ../mac/CouchSubs/UI/PackUpdateText.swift
+      # DeepL anahtarının bu ayki kullanım satırı Mac uygulamasıyla ortak.
+      - path: ../mac/CouchSubs/UI/DeepLUsageText.swift
       # Altyazı bölgesinin canlı önizlemesi (sürüklenen çerçeve).
       - path: ../mac/CouchSubs/UI/RegionPreview.swift
       # Ekran metinleri Mac uygulamasıyla aynı katalogda (Türkçe).

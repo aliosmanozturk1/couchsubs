@@ -1103,6 +1103,13 @@ final class PhoneModel: ObservableObject {
         return true
     }
 
+    /// Kayıtlı DeepL anahtarının bu ayki kullanımı (Mac'teki `deepLUsage` ile aynı sorgu; karakter kotasından yemez).
+    /// Anahtar yoksa nil.
+    func deepLUsage() async -> OnlineKeyCheck? {
+        guard let storeKey = TranslationEngine.deepL.storeKey, let key = store.load(String.self, for: storeKey), !key.isEmpty else { return nil }
+        return await services.checkDeepLKey(key)
+    }
+
     func removeKey(_ engine: TranslationEngine) {
         guard let storeKey = engine.storeKey else { return }
         store.remove(storeKey)
