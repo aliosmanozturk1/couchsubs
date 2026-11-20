@@ -293,7 +293,7 @@ public sealed class WindowsOcrReader : ITextReader
         if (image.Width < 40 || image.Height < 40 || image.Width > OcrEngine.MaxImageDimension || image.Height > OcrEngine.MaxImageDimension)
             return Reading.Empty;
         using var bitmap = new SoftwareBitmap(BitmapPixelFormat.Bgra8, image.Width, image.Height, BitmapAlphaMode.Premultiplied);
-        bitmap.CopyFromBuffer(image.Pixels.AsBuffer());
+        BitmapPixels.Write(image, bitmap);
         // Bir OcrEngine aynı anda iki okuma yapamaz ("Another RecognizeAsync operation is already running");
         // ReadingFallback iki büyütülmüş okumayı paralel başlatıyordu, biri hata verip okuma boş dönüyordu.
         if (engine is null) return Reading.Empty;

@@ -551,12 +551,11 @@ public sealed class RemotePlayWindowStream : IStreamSession
                 using var bitmap = SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface, BitmapAlphaMode.Premultiplied).AsTask().GetAwaiter().GetResult();
                 var (width, height) = (bitmap.PixelWidth, bitmap.PixelHeight);
                 if (width < 2 || height < 2) return;
-                var pixels = new byte[width * height * 4];
-                bitmap.CopyToBuffer(pixels.AsBuffer());
+                var captured = BitmapPixels.Read(bitmap);
                 watch.CopyEnded();
-                CheckBlack(pixels);
+                CheckBlack(captured.Pixels);
                 if (watch.FrameDelivered()) SubtitleLog.Write($"pencereden ilk kare: {width}x{height}");
-                owner.Deliver(new Frame(pixels, width, height, width * 4));
+                owner.Deliver(captured);
             }
             catch (Exception error)
             {

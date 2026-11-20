@@ -51,12 +51,10 @@ internal static class ReadStress
                 // Karanlık sahne: en parlak yer 235'in altında kalır, AutoLevel kareyi yeniden yazar.
                 for (var i = 0; i < source.Length; i++) source[i] = (byte)random.Next(20, 200);
                 using var bitmap = new SoftwareBitmap(BitmapPixelFormat.Bgra8, Width, Height, BitmapAlphaMode.Premultiplied);
-                bitmap.CopyFromBuffer(source.AsBuffer());
+                BitmapPixels.Write(new Frame(source, Width, Height, Width * 4), bitmap);
                 while (clock.Elapsed < deadline && failure is null)
                 {
-                    var pixels = new byte[Width * Height * 4];
-                    bitmap.CopyToBuffer(pixels.AsBuffer());
-                    Volatile.Write(ref latest, new Frame(pixels, Width, Height, Width * 4));
+                    Volatile.Write(ref latest, BitmapPixels.Read(bitmap));
                     Interlocked.Increment(ref captured);
                     Thread.Sleep(15);
                 }
@@ -93,9 +91,16 @@ internal static class ReadStress
 
         var summary = $"süre: {clock.Elapsed.TotalSeconds:0} sn, yazı tanıma: {(withEngine ? "var" : "yok")}, okuma hattı: {readers.Count}, " +
                       $"kare: {captured}, okuma: {read}, GC: {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, " +
-                      $"bellek: {GC.GetTotalMemory(false) >> 20} MB" + (failure is null ? "" : $"\nhata: {failure}");
+                      $"bellek: {GC.GetTotalMemory(false) >> 20} MB, en yüksek çalışma kümesi: {PeakWorkingSet() >> 20} MB" +
+                      (failure is null ? "" : $"\nhata: {failure}");
         File.WriteAllText(output, summary + "\n");
         CrashRecords.EndSession(CrashHandler.Folder, Environment.ProcessId);
         return failure is null && read > 0 ? 0 : 1;
+    }
+
+    private static long PeakWorkingSet()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.PeakWorkingSet64;
     }
 }
