@@ -260,7 +260,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public GameConsoleKind ConsoleKind => consoleKind;
     public bool ConsoleKindLocked => consoleKindLocked;
     public bool IsXbox => consoleKind == GameConsoleKind.Xbox;
-    public string ConsoleTitle => IsXbox ? "Xbox" : settings.FrameSource == FrameSource.CaptureWindow ? text["Selected window"] : "PS5";
+    public string ConsoleTitle => demoMode ? text["Demo mode"] : IsXbox ? "Xbox" : settings.FrameSource == FrameSource.CaptureWindow ? text["Selected window"] : "PS5";
     /// <summary>
     /// Ana ekrandaki "Görüntü kaynağı" satırının değeri: görüntünün nereden okunduğu, dokununca Ayarlar › Görüntü kaynağı
     /// açılır. DM'de bildirildi: ayar yalnız Ayarlar'ın alt sıralarında olduğu için bulunamıyordu. Xbox'ta seçim yok, null.
@@ -373,8 +373,14 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public LgTv? Tv => tv;
     public bool IsRunning { get => isRunning; private set => Set(ref isRunning, value, [nameof(Ps5StatusText), nameof(Ps5Tone), nameof(TvTone), nameof(ShowsMainAccountTip)]); }
     public bool IsStarting { get => isStarting; private set => Set(ref isStarting, value); }
+    /// <summary>
+    /// Deneme modu (Mac/iPhone demoMode, Android ile aynı): konsol, hesap ve TV olmadan uygulamadaki örnek karelerle çeviri.
+    /// Açıkken kurulum bitmemiş olsa da ana ekran gösterilir.
+    /// </summary>
+    public bool DemoMode { get => demoMode; private set => Set(ref demoMode, value, [nameof(ConsoleTitle), nameof(Ps5StatusText), nameof(ShowsMainAccountTip)]); }
+    private bool demoMode;
     public SessionState SessionState { get => sessionState; private set => Set(ref sessionState, value, [nameof(Ps5StatusText), nameof(Ps5Tone), nameof(ShowsMainAccountTip)]); }
-    public string Ps5StatusText => IsXbox ? XboxStatusText()
+    public string Ps5StatusText => demoMode ? text["Sample pictures"] : IsXbox ? XboxStatusText()
         : settings.FrameSource == FrameSource.RemotePlayWindow
             ? WindowStatusText(sessionState, isRunning, text, installed: !RemotePlayMissing)
             : settings.FrameSource == FrameSource.CaptureWindow
@@ -423,7 +429,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public string LastTranslation { get => lastTranslation; private set => Set(ref lastTranslation, value, [nameof(ShowsMainAccountTip)]); }
     /// <summary>PS5'ten (ikinci hesap) çeviri sürüyor, ilk altyazı gelmedi ya da bağlantı koptu: "kolu açınca ana hesabı seçin"
     /// ipucu görünür (GitHub #231, <see cref="MainAccountTipVisible"/>).</summary>
-    public bool ShowsMainAccountTip => isRunning && MainAccountTipVisible(!IsXbox && settings.FrameSource == FrameSource.Ps5,
+    public bool ShowsMainAccountTip => isRunning && !demoMode && MainAccountTipVisible(!IsXbox && settings.FrameSource == FrameSource.Ps5,
         lastTranslation.Length > 0, sessionState.Phase == SessionPhase.Streaming);
 
     /// <summary>
@@ -456,7 +462,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private void UpdateSubtitleOffTip(bool frameArrived = false)
     {
         if (frameArrived && isRunning && sessionState.Phase == SessionPhase.Streaming) framesSince ??= Clock();
-        ShowsSubtitleOffTip = isRunning && !subtitlesPaused && SubtitleOffTip.IsVisible(sessionState.Phase == SessionPhase.Streaming,
+        ShowsSubtitleOffTip = isRunning && !demoMode && !subtitlesPaused && SubtitleOffTip.IsVisible(sessionState.Phase == SessionPhase.Streaming,
             sawLineThisRun, framesSince is { } since ? Clock() - since : null);
     }
     /// <summary>TV'ye giden son satırın ölçümleri tek satırda ("OCR 40 ms · Çeviri 300 ms · Gecikme 520 ms"); satır gelene kadar boş.</summary>
@@ -1598,11 +1604,11 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public async Task StartAsync()
     {
         // Düğmeye iki kez basılması ya da beklerken tekrar çağrılması ikinci bir oturum açmaz.
-        if (isRunning || isStarting || !CanStart) return;
-        // PS5 için hesap gerekir; Remote Play, açıkça seçilen OBS/oyun penceresi ve Xbox için gerekmez.
-        var readsWindow = !IsXbox && settings.FrameSource == FrameSource.RemotePlayWindow;
-        var readsCapture = !IsXbox && settings.FrameSource == FrameSource.CaptureWindow;
-        if (!IsXbox && !readsWindow && !readsCapture && (console is null || accountId is null)) return;
+        if (isRunning || isStarting || (!CanStart && !demoMode)) return;
+        // PS5 için hesap gerekir; Remote Play, açıkça seçilen OBS/oyun penceresi ve Xbox için gerekmez. Deneme modu hiçbirini istemez.
+        var readsWindow = !demoMode && !IsXbox && settings.FrameSource == FrameSource.RemotePlayWindow;
+        var readsCapture = !demoMode && !IsXbox && settings.FrameSource == FrameSource.CaptureWindow;
+        if (!demoMode && !IsXbox && !readsWindow && !readsCapture && (console is null || accountId is null)) return;
         IsStarting = true;
         try
         {
@@ -1622,10 +1628,15 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             if (settings.Dubbing.Enabled && DubbingInstalled) MakeDubber()?.Prepare();
             SubtitleLog.Write($"oturum başladı: {settings.SourceLanguage}→{settings.TargetLanguage}, "
                 + $"motor: {(OnlineTranslationActive ? settings.OnlineEngine.ToString() : "ücretsiz")}, paketler: {(settings.GamePacks ? "açık" : "kapalı")}, "
-                + $"görüntü: {(IsXbox ? "Xbox" : readsWindow ? "Remote Play penceresi" : readsCapture ? "seçilen pencere" : "PS5")}");
+                + $"görüntü: {(demoMode ? "deneme modu" : IsXbox ? "Xbox" : readsWindow ? "Remote Play penceresi" : readsCapture ? "seçilen pencere" : "PS5")}");
 
             IStreamSession stream;
-            if (IsXbox)
+            if (demoMode)
+            {
+                RemotePlayLog.Note("Deneme modu başladı (örnek kareler)");
+                stream = services.MakeDemoStream();
+            }
+            else if (IsXbox)
             {
                 RemotePlayLog.Note($"Çeviri başladı; {ConsoleTitle} bağlantısı açılıyor.");
                 stream = (services.Xbox ?? throw new InvalidOperationException(text["Xbox streaming isn't available in this version."]))
@@ -1656,7 +1667,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
             server.Pairing.SetSession(true);
             StartKeeper();
-            StartGameSense();
+            // Deneme karelerinde oyun yoktur: oyun sorulmaz, oyuna göre alan uygulanmaz.
+            if (demoMode) gameSense.StartSession();
+            else StartGameSense();
 
             sleep.Begin(KeepsDisplayOn);
             IsRunning = true;
@@ -1783,8 +1796,34 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Bilgisayarın ağ adresiyle OBS sayfası; localhost'u kabul etmeyen yayın programları (TikTok LIVE Studio) için.</summary>
     public string? NetworkObsAddress => LocalAddress(null) is { } address ? $"http://{address}:{ServerPort}/obs?k={server.AccessKey}" : null;
 
-    /// <summary>Kullanıcı çeviriyi durdurdu: oturum biter, TV uygulaması da kapanır (#268).</summary>
-    public void Stop() => _ = StopSession(closeTvApp: true);
+    /// <summary>
+    /// Deneme modunu açar: konsol, hesap ve TV olmadan örnek karelerle çeviri başlar (altyazı ana pencerede ve seçiliyse
+    /// bilgisayar ekranında ya da TV'de). Çalışan çeviri önce durdurulur. Başlatılamazsa deneme modu kapanır.
+    /// </summary>
+    public async Task StartDemoAsync()
+    {
+        if (isStarting) return;
+        if (isRunning) Stop();
+        DemoMode = true;
+        try
+        {
+            await StartAsync();
+        }
+        finally
+        {
+            if (!isRunning) DemoMode = false;
+        }
+    }
+
+    /// <summary>Deneme modundan çıkar; uygulama kaldığı yere (kurulum ya da ana ekran) döner.</summary>
+    public void ExitDemo() => Stop();
+
+    /// <summary>Kullanıcı çeviriyi durdurdu: oturum biter, TV uygulaması da kapanır (#268). Deneme modu da kapanır.</summary>
+    public void Stop()
+    {
+        _ = StopSession(closeTvApp: true);
+        DemoMode = false;
+    }
 
     /// <summary>
     /// Ayar değişikliği gibi iç yeniden başlatmalarda kullanılır: oturum biter ama TV uygulaması açık kalır; hemen
@@ -2281,6 +2320,13 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     private void ConnectPacks(SubtitlePipeline target)
     {
+        // Deneme satırları paketlerde aranmaz (havuza da önerilmez, bkz. OfferToPool).
+        if (demoMode)
+        {
+            target.PackLookup = null;
+            target.PartialPackLookup = null;
+            return;
+        }
         target.PackLookup = PacksActive ? services.FindInPacks : null;
         // Kısmi eşleşme yalnız GTA'da denendi; öteki oyunlarda okumanın tamamı eskisi gibi motora gider.
         target.PartialPackLookup = PacksActive ? text => ScreenText.IsGta(gameSense.Current?.Name) ? services.FindPartialInPacks(text) : null : null;
@@ -2296,7 +2342,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Pakette olmayan İngilizce satır havuza önerilir (paketler kapalıysa da yalnız hiçbir pakette olmayanlar).</summary>
     private void OfferToPool(string text)
     {
-        if (settings.SourceLanguage != "en" || services.Pool is not { } pool) return;
+        if (demoMode || settings.SourceLanguage != "en" || services.Pool is not { } pool) return;
         if (!PacksActive && services.FindInPacks(text) is not null) return;
         pool.Offer(text);
     }
@@ -2329,7 +2375,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             ShowSpeakerNames = settings.ShowSpeakerNames,
             SkipsTurkish = settings.TargetLanguage == "tr",
             WatchSubtitleBackground = settings.WatchSubtitleBackground,
-            DropsScreenText = () => ScreenText.IsGta(gameSense.Current?.Name),
+            DropsScreenText = () => !demoMode && ScreenText.IsGta(gameSense.Current?.Name),
         };
         built.MetricsReady += metrics => post(() => MetricsText = metrics.Summary(text));
         built.PairShown += (source, translation) =>
@@ -2466,7 +2512,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             // Okunup yazısız ya da gürültülü çıkan otomatik alan dedektöre bildirilir (o görüntüde yeniden önerilmez).
             var detector = screenText;
             regionWatcher.Rejected = detector is null ? null : detector.Reject;
-            regionWatcher.PackLookup = PacksActive ? services.FindInPacks : null;
+            regionWatcher.PackLookup = PacksActive && !demoMode ? services.FindInPacks : null;
             regionWatcher.SkipsTurkish = settings.TargetLanguage == "tr";
             regionWatcher.TranslatesUiCommands = settings.SourceLanguage == "en" && settings.TargetLanguage == "tr";
             regionWatcher.EnglishPhoneMessages = settings.SourceLanguage == "en";
@@ -2601,7 +2647,14 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
     }
 
+    /// <summary>Deneme modunda seçili motor çeviremezse (model inmemiş, ağ ya da anahtar yok) örnek satırların hazır çevirisi.</summary>
     private ITextTranslator MakeTranslator()
+    {
+        var translator = MakeEngineTranslator();
+        return demoMode ? new DemoTranslator(translator) : translator;
+    }
+
+    private ITextTranslator MakeEngineTranslator()
     {
         var local = MakeLocalTranslator();
         // Açılamayan ücretsiz motor yedek olamaz; çevrimiçi motor çeviremeyince satır yeniden denenir.
@@ -2794,7 +2847,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (state.Phase != SessionPhase.Streaming) framesSince = null;
         UpdateSubtitleOffTip();
         UpdateTroubleClocks();
-        if (!IsXbox) UpdateGameProbe(state.Phase == SessionPhase.Streaming);
+        if (demoMode) { /* deneme karelerinde konsol yok: oyun ve Xbox adı sorulmaz */ }
+        else if (!IsXbox) UpdateGameProbe(state.Phase == SessionPhase.Streaming);
         else if (state.Phase == SessionPhase.Streaming && !xboxNameChecked)
         {
             xboxNameChecked = true;

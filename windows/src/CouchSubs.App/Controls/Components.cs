@@ -83,6 +83,8 @@ public static class Glyphs
     public const string Settings = "";
     public const string Check = "";
     public const string Warning = "";
+    /// <summary>Segoe Fluent Icons "Cancel" (U+E711); "Deneme modundan çık".</summary>
+    public const string Cancel = "\uE711";
     /// <summary>Segoe Fluent Icons "Globe" (U+E774); çeviri motoru karosu.</summary>
     public const string Globe = "\uE774";
     /// <summary>Segoe Fluent Icons "KeyboardClassic" (U+E765); kısayol karosu.</summary>

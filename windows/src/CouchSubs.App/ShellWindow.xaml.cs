@@ -70,7 +70,7 @@ public partial class ShellWindow : Window
 
     private void OnChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AppController.Step)) ShowScreen();
+        if (e.PropertyName is nameof(AppController.Step) or nameof(AppController.DemoMode)) ShowScreen();
         if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.HotkeysPaused) or nameof(AppController.Settings))
             ApplyHotkeys();
     }
@@ -100,7 +100,8 @@ public partial class ShellWindow : Window
 
     private void ShowScreen(bool force = false)
     {
-        var main = controller.Step == OnboardingStep.Done;
+        // Deneme modunda kurulum bitmemiş olsa da ana ekran gösterilir; çıkınca kalınan adıma dönülür.
+        var main = controller.Step == OnboardingStep.Done || controller.DemoMode;
         if (!force && main == showingMain) return;
         showingMain = main;
         Host.Content = main ? new MainView(controller) : new OnboardingView(controller);

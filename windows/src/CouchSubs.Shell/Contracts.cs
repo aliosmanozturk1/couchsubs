@@ -629,6 +629,11 @@ public interface IAppServices
     IStreamSession MakeWindowStream(RemotePlayApp app) => throw new NotSupportedException();
     /// <summary>Açıkça seçilen pencereyi okumak için aynı Windows Graphics Capture hattını kullanır.</summary>
     IStreamSession MakeCaptureWindowStream(WindowCaptureTarget target) => throw new NotSupportedException();
+    /// <summary>
+    /// Deneme modunun "konsolu": uygulamadaki örnek kareleri akış gibi verir, ağ kullanmaz. Uygulama katmanı kareleri
+    /// çizer (WPF); varsayılanı yazısız düz karedir.
+    /// </summary>
+    IStreamSession MakeDemoStream() => new DemoStream(DemoFrames.Plain);
     /// <summary>Kullanıcının seçebileceği görünür pencereler. PSN veya ekran paylaşım izni gerekmez.</summary>
     IReadOnlyList<WindowCaptureTarget> CaptureWindows() => [];
     /// <summary>Seçilen Remote Play uygulaması (PS Remote Play ya da chiaki-ng) bu bilgisayarda kurulu mu.</summary>

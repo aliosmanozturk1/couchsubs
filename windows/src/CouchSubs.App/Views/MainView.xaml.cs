@@ -53,11 +53,12 @@ public partial class MainView : UserControl
     private void OnChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.TranslatorStatus) or nameof(AppController.ModelInstalled)
-            or nameof(AppController.OnlineIssue) or nameof(AppController.CanStart) or nameof(AppController.IsStarting))
+            or nameof(AppController.OnlineIssue) or nameof(AppController.CanStart) or nameof(AppController.IsStarting)
+            or nameof(AppController.DemoMode))
             Refresh();
         if (e.PropertyName is nameof(AppController.Settings) or nameof(AppController.InstalledPacks))
             ShowTiles();
-        if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.PlayedGame) or nameof(AppController.AskingGame)
+        if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.DemoMode) or nameof(AppController.PlayedGame) or nameof(AppController.AskingGame)
             or nameof(AppController.AreaProfileGame) or nameof(AppController.OfferedAreaProfileGame))
             ShowGame();
         if (e.PropertyName is nameof(AppController.IsRunning) && controller.IsRunning)
@@ -172,11 +173,15 @@ public partial class MainView : UserControl
     private void Refresh()
     {
         var running = controller.IsRunning;
-        Toggle.Style = (Style)FindResource(running ? "DangerButton" : "PrimaryButton");
-        ToggleGlyph.Text = running ? Glyphs.Stop : Glyphs.Play;
-        ToggleText.Text = Localizer.Current[running ? "Stop translating" : "Start translating"];
+        // Deneme modunda düğme "Deneme modundan çık" olur; durum karosu "Deneme modu · Örnek görüntüler" yazar.
+        var demo = controller.DemoMode;
+        Toggle.Style = (Style)FindResource(running || demo ? "DangerButton" : "PrimaryButton");
+        ToggleGlyph.Text = demo ? Glyphs.Cancel : running ? Glyphs.Stop : Glyphs.Play;
+        ToggleText.Text = Localizer.Current[demo ? "Exit demo mode" : running ? "Stop translating" : "Start translating"];
         // Altyazının gideceği bir yer yoksa (TV seçili ama bağlı değil) çeviri başlatılamaz.
-        Toggle.IsEnabled = !controller.IsStarting && (running || controller.CanStart);
+        Toggle.IsEnabled = !controller.IsStarting && (running || demo || controller.CanStart);
+        ConsoleStatus.Glyph = demo ? Glyphs.Play : Glyphs.Controller;
+        DemoButton.Visibility = !controller.CanStart && !running && !demo ? Visibility.Visible : Visibility.Collapsed;
         ModelCard.Visibility = controller.ModelInstalled ? Visibility.Collapsed : Visibility.Visible;
         EngineCard.Visibility = controller.TranslatorStatus == TranslatorStatus.EngineFailed ? Visibility.Visible : Visibility.Collapsed;
         // Çevrimiçi motor çeviremiyor; satırlar bu arada cihaz üstü modelle geliyor.
@@ -199,7 +204,8 @@ public partial class MainView : UserControl
         var starting = !controller.IsRunning;
         try
         {
-            if (starting) await controller.StartAsync(); else controller.Stop();
+            if (controller.DemoMode) controller.ExitDemo();
+            else if (starting) await controller.StartAsync(); else controller.Stop();
         }
         catch (Exception error)
         {
@@ -304,7 +310,8 @@ public partial class MainView : UserControl
     private void ShowGame()
     {
         var text = Localizer.Current;
-        GameCard.Visibility = controller.IsRunning ? Visibility.Visible : Visibility.Collapsed;
+        // Deneme karelerinde oyun yoktur: oyun karosu gösterilmez.
+        GameCard.Visibility = controller.IsRunning && !controller.DemoMode ? Visibility.Visible : Visibility.Collapsed;
         var asking = controller.AskingGame;
         GameRow.Visibility = asking ? Visibility.Collapsed : Visibility.Visible;
         GameAsk.Visibility = asking ? Visibility.Visible : Visibility.Collapsed;

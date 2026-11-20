@@ -67,7 +67,7 @@ public partial class OnboardingView : UserControl
         Counter.Text = Localizer.Current.Format("Step %lld of %lld", controller.StepNumber, controller.StepCount);
         Progress.Value = (double)controller.StepNumber / controller.StepCount;
         ShowSteps();
-        BackButton.Visibility = controller.Step == OnboardingStep.Welcome ? Visibility.Hidden : Visibility.Visible;
+        BackButton.Visibility = controller.Step == OnboardingStep.Welcome ? Visibility.Collapsed : Visibility.Visible;
         ContinueButton.Visibility = controller.Step == OnboardingStep.Test ? Visibility.Hidden : Visibility.Visible;
         ShowContinue();
     }

@@ -116,7 +116,7 @@
                                     </Style.Triggers>
                                 </Style>
                             </c:Card.Style>
-                            <c:StatusRow Title="{Binding ConsoleTitle}" Glyph="{x:Static c:Glyphs.Controller}" Value="{Binding Ps5StatusText}" Tone="{Binding Ps5Tone}" />
+                            <c:StatusRow x:Name="ConsoleStatus" Title="{Binding ConsoleTitle}" Glyph="{x:Static c:Glyphs.Controller}" Value="{Binding Ps5StatusText}" Tone="{Binding Ps5Tone}" />
                         </c:Card>
 
                         <!-- Altyazı yalnız bilgisayar ekranındaysa TV durumu gösterilmez. -->
@@ -147,7 +147,12 @@
                         </c:Card>
 
                         <!-- Altyazının yeri: TV, bilgisayar ekranı ya da ikisi -->
-                        <local:SubtitleOutputCard x:Name="OutputCard" Grid.Row="2" Grid.ColumnSpan="3" />
+                        <StackPanel Grid.Row="2" Grid.ColumnSpan="3">
+                            <!-- Kurulum bitmeden de uygulama örnek görüntülerle denenebilir. -->
+                            <local:DemoModeButton x:Name="DemoButton" ButtonStyle="GhostButton" Large="True" HorizontalAlignment="Left"
+                                                  Margin="0,0,0,12" Visibility="Collapsed" />
+                            <local:SubtitleOutputCard x:Name="OutputCard" />
+                        </StackPanel>
 
                         <!-- Bilgi karosu: çeviri motoru (Ayarlar › Çeviri'yi açar) ve ekranı çevirme kısayolu. Canlı durum değil, ayar
                              bilgisi olduğu için durum karoları gibi simgeli ve büyük değil (docs/TASARIM.md › InfoCard). -->
@@ -272,6 +277,8 @@
 
             <!-- Sağ: oyun paketi ve canlı altyazı -->
             <DockPanel Grid.Column="1">
+                <!-- Deneme modunda: rozet, "Çık" düğmesi ve okunan örnek oyun görüntüsü. -->
+                <local:DemoFrameTile DockPanel.Dock="Top" Margin="0,0,0,12" />
                 <c:Card x:Name="PackTile" DockPanel.Dock="Top" Margin="0,0,0,12" Visibility="Collapsed">
                     <DockPanel>
                         <Border Style="{StaticResource ProIcon}" Margin="0,0,12,0" VerticalAlignment="Center">

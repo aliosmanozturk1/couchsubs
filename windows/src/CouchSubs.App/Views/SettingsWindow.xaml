@@ -671,6 +671,8 @@
                                        Text="{t:T 'On: read an Xbox frame every 200 ms to use less CPU. Off (default): every 66 ms for faster subtitles.'}" />
                         </StackPanel>
                     </c:Card>
+                    <!-- Deneme modu: konsol olmadan örnek görüntülerle çeviri (Mac'teki DemoModeCard). -->
+                    <local:DemoModeCard Margin="0,12,0,0" />
                 </StackPanel>
             </TabItem>
             <!-- İkinci hesabın PS5 giriş şifresi (isteğe bağlı, 4 hane, şifreli depoda). PS5 isterse oturum açılırken gönderilir. -->
