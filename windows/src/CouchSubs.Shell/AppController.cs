@@ -2179,6 +2179,52 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         }, null, TimeSpan.Zero, PackUpdater.RefreshInterval);
     }
 
+    /// <summary>Paket sunucusu yapılandırılmış ("Paketleri şimdi güncelle" düğmesi açık).</summary>
+    public bool CanUpdatePacks => services.PackUpdates is not null && services.GamePacks is not null;
+
+    /// <summary>
+    /// Elle güncelleme (Ayarlar > Oyun paketleri; telefonlardaki "Paketleri şimdi güncelle" ile aynı): süresine bakmadan
+    /// listeyi sunucudan alır, değişen paketleri indirir ve neyin geldiğini özetler. Paket sunucusu yapılandırılmamışsa null.
+    /// </summary>
+    public async Task<PackUpdateOutcome?> UpdatePacksNowAsync()
+    {
+        if (services.PackUpdates is not { } updater || services.GamePacks is not { } packs) return null;
+        var text = Localizer.Current;
+        var unreachable = text["No internet connection, or the pack server could not be reached."];
+        return await Task.Run(async () =>
+        {
+            var before = packs.Packs.Select(pack => (pack.Id, pack.Entries)).ToList();
+            PackUpdater.Refresh result;
+            try
+            {
+                result = await updater.RefreshAsync(force: true).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or HttpRequestException)
+            {
+                return new PackUpdateOutcome(PackUpdateOutcome.Kind.Failed, new PackUpdateSummary(before, []), unreachable);
+            }
+            if (result.Changed)
+            {
+                packs.Reload();
+                post(() => InstalledPacks = packs.Packs);
+                SubtitleLog.Write("paketler güncellendi: " + string.Join(", ", result.Downloaded.Concat(result.Removed)));
+            }
+            var after = packs.Packs;
+            var titles = updater.InstalledPacks.GroupBy(pack => pack.Id).ToDictionary(group => group.Key, group => group.Last().Title);
+            var summary = new PackUpdateSummary(before, result.Downloaded.Select(id =>
+            {
+                // Satır sayısı yeniden okunan kitaplıktan (gerçekte yüklenen).
+                var pack = after.LastOrDefault(pack => pack.Id == id);
+                return new PackUpdateSummary.Downloaded(id, pack?.Title ?? titles.GetValueOrDefault(id, id), pack?.Entries ?? 0);
+            }));
+            if (result.Failed) return new PackUpdateOutcome(PackUpdateOutcome.Kind.Failed, summary, unreachable);
+            if (result.Incomplete)
+                return new PackUpdateOutcome(PackUpdateOutcome.Kind.Failed, summary,
+                    text["A downloaded pack could not be verified; it may have arrived incomplete."]);
+            return new PackUpdateOutcome(summary.IsEmpty ? PackUpdateOutcome.Kind.UpToDate : PackUpdateOutcome.Kind.Updated, summary);
+        }).ConfigureAwait(true);
+    }
+
     private async Task RefreshPacksAsync(PackUpdater updater, bool force = false, TimeSpan? maxAge = null)
     {
         try

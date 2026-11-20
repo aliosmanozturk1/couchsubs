@@ -122,10 +122,13 @@ final class PackUpdaterTests: XCTestCase {
         clock.advance(PackUpdater.refreshInterval + 1)
         let failed = await updater.refresh()
         XCTAssertEqual(failed.downloaded, [])
+        // "Paketleri şimdi güncelle" bunu hata olarak gösterir.
+        XCTAssertTrue(failed.incomplete)
 
         server.files["rdr-2"] = good
         clock.advance(60)
         let retried = await updater.refresh(maxAge: PackUpdater.gameCheckInterval)
+        XCTAssertFalse(retried.incomplete)
         XCTAssertFalse(retried.skipped)
         XCTAssertEqual(retried.downloaded, ["rdr-2"])
         XCTAssertEqual(content("gta-6"), Data("one".utf8))

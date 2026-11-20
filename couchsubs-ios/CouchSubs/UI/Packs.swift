@@ -9,7 +9,7 @@ struct PacksScreen: View {
     @EnvironmentObject private var app: AppModel
     /// "Paketleri şimdi güncelle"ye basıldı, sonuç bekleniyor: sayfa bulanıklaşır, ortada gösterge döner.
     @State private var updating = false
-    @State private var result: UpdateAlert?
+    @State private var result: PackUpdateAlert?
     @State private var showResult = false
 
     var body: some View {
@@ -104,64 +104,8 @@ struct PacksScreen: View {
             let outcome = await app.updatePacksNow()
             updating = false
             guard let outcome else { return }
-            result = UpdateAlert(outcome)
+            result = PackUpdateAlert(outcome, stillUsed: String(localized: "The packs on this phone are still used."))
             showResult = true
-        }
-    }
-
-    /// Güncellemenin sonucu: başlık, metin ve (hatada) "Yeniden dene".
-    struct UpdateAlert {
-        let title: String
-        let message: String
-        let retry: Bool
-
-        init(_ outcome: AppModel.PackUpdateOutcome) {
-            switch outcome {
-            case .upToDate:
-                title = String(localized: "Packs are up to date")
-                message = String(localized: "The packs are already up to date.")
-                retry = false
-            case let .updated(summary):
-                title = String(localized: "Packs updated")
-                message = Self.describe(summary)
-                retry = false
-            case let .failed(reason, summary):
-                title = String(localized: "The packs could not be updated")
-                message = ([reason, String(localized: "The packs on this phone are still used.")]
-                           + (summary.isEmpty ? [] : [Self.describe(summary)])).joined(separator: "\n\n")
-                retry = true
-            }
-        }
-
-        /// "2 paket güncellendi: Grand Theft Auto VI (+12.300 satır), Red Dead Redemption 2 (+800 satır)."
-        static func describe(_ summary: PackUpdateSummary) -> String {
-            var parts: [String] = []
-            let updated = summary.updated, added = summary.added
-            if !updated.isEmpty {
-                let list = updated.map(Self.updatedItem).joined(separator: ", ")
-                parts.append(updated.count == 1 ? String(format: String(localized: "1 pack updated: %@."), list)
-                             : String(format: String(localized: "%lld packs updated: %@."), updated.count, list))
-            }
-            if !added.isEmpty {
-                let list = added.map { String(format: String(localized: "%1$@ (%2$@ lines)"), $0.title, $0.lines.formatted()) }
-                    .joined(separator: ", ")
-                parts.append(added.count == 1 ? String(format: String(localized: "1 pack added: %@."), list)
-                             : String(format: String(localized: "%lld packs added: %@."), added.count, list))
-            }
-            if summary.newLines > 0 {
-                parts.append(String(format: String(localized: "%@ new lines in total."), summary.newLines.formatted()))
-            }
-            return parts.joined(separator: "\n")
-        }
-
-        private static func updatedItem(_ change: PackUpdateSummary.Change) -> String {
-            if change.lineDelta > 0 {
-                return String(format: String(localized: "%1$@ (+%2$@ lines)"), change.title, change.lineDelta.formatted())
-            }
-            if change.lineDelta < 0 {
-                return String(format: String(localized: "%1$@ (%2$@ fewer lines)"), change.title, (-change.lineDelta).formatted())
-            }
-            return String(format: String(localized: "%@ (translations revised)"), change.title)
         }
     }
 

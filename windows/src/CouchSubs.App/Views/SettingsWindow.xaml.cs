@@ -346,6 +346,7 @@ public partial class SettingsWindow : Window
         var packs = controller.InstalledPacks;
         PacksPill.Visibility = packs.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         PacksPillText.Text = text.Format("Free · %lld games", packs.Count);
+        if (UpdatePacksProgress.Visibility != Visibility.Visible) UpdatePacks.IsEnabled = controller.CanUpdatePacks;
         if (packs.Count == 0)
         {
             PackList.Items.Add(new TextBlock
@@ -493,6 +494,41 @@ public partial class SettingsWindow : Window
         var words = title.Split([' ', ':', '-', '(', ')'], StringSplitOptions.RemoveEmptyEntries);
         var letters = words.Where(word => char.IsLetterOrDigit(word[0])).Take(3).Select(word => char.ToUpperInvariant(word[0]));
         return string.Concat(letters);
+    }
+
+    /// <summary>
+    /// "Paketleri şimdi güncelle": beklerken düğme "Güncelleniyor…" olur; sonuç ("Paketler zaten güncel." ya da neyin
+    /// geldiği) iletide gösterilir, hatada "Yeniden dene" sorulur.
+    /// </summary>
+    private async void OnUpdatePacks(object sender, RoutedEventArgs e)
+    {
+        var text = Localizer.Current;
+        while (true)
+        {
+            UpdatePacks.IsEnabled = false;
+            UpdatePacks.Content = text["Updating…"];
+            UpdatePacksProgress.Visibility = UpdatePacksStatus.Visibility = Visibility.Visible;
+            PackUpdateOutcome? outcome;
+            try
+            {
+                outcome = await controller.UpdatePacksNowAsync();
+            }
+            finally
+            {
+                UpdatePacks.Content = text["Update the packs now"];
+                UpdatePacks.IsEnabled = controller.CanUpdatePacks;
+                UpdatePacksProgress.Visibility = UpdatePacksStatus.Visibility = Visibility.Collapsed;
+            }
+            if (outcome is null || !IsLoaded) return;
+            if (outcome.Result != PackUpdateOutcome.Kind.Failed)
+            {
+                MessageBox.Show(this, outcome.Message(text), outcome.Title(text), MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var again = MessageBox.Show(this, outcome.Message(text) + "\n\n" + text["Try again"] + "?", outcome.Title(text),
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (again != MessageBoxResult.Yes) return;
+        }
     }
 
     private async void OnImportPack(object sender, RoutedEventArgs e)

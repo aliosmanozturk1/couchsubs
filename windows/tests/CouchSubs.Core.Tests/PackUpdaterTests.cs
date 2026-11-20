@@ -141,11 +141,15 @@ public sealed class PackUpdaterTests : IDisposable
         var good = server.Files["rdr-2"];
         server.Files.Remove("rdr-2");
         now += PackUpdater.RefreshInterval + TimeSpan.FromSeconds(1);
-        Assert.Empty((await updater.RefreshAsync()).Downloaded);
+        var failed = await updater.RefreshAsync();
+        Assert.Empty(failed.Downloaded);
+        // "Paketleri şimdi güncelle" bunu hata olarak gösterir.
+        Assert.True(failed.Incomplete);
 
         server.Files["rdr-2"] = good;
         now += TimeSpan.FromSeconds(60);
         var retried = await updater.RefreshAsync(maxAge: TimeSpan.FromMinutes(10));
+        Assert.False(retried.Incomplete);
         Assert.False(retried.Skipped);
         Assert.Equal(["rdr-2"], retried.Downloaded);
         Assert.Equal("one", Content("gta-6"));

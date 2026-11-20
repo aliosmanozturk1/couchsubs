@@ -877,6 +877,35 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Paket sunucusu yapılandırılmış ("Paketleri şimdi güncelle" düğmesi açık).
+    var canUpdatePacks: Bool { packUpdater != nil }
+
+    /// Elle güncelleme (Ayarlar > Oyun paketleri; iPhone'daki `updatePacksNow` ile aynı): süresine bakmadan listeyi
+    /// sunucudan alır, değişen paketleri indirir ve neyin geldiğini özetler. Paket sunucusu yapılandırılmamışsa nil.
+    func updatePacksNow() async -> PackUpdateOutcome? {
+        guard let updater = packUpdater else { return nil }
+        let packs = self.packs
+        let (result, before, after, titles) = await Task.detached(priority: .userInitiated) { [weak self] in
+            let before = packs.packs
+            let result = await updater.refresh(force: true)
+            await Self.applyPackRefresh(result, packs: packs, model: self)
+            let titles = Dictionary(await updater.installed.map { ($0.id, $0.title) }, uniquingKeysWith: { _, last in last })
+            return (result, before, packs.packs, titles)
+        }.value
+        let downloaded = result.downloaded.map { id in
+            let pack = after.last { $0.id == id }
+            return PackUpdateSummary.Downloaded(id: id, title: pack?.title ?? titles[id] ?? id, lines: pack?.entries ?? 0)
+        }
+        let summary = PackUpdateSummary(before: before.map { (id: $0.id, lines: $0.entries) }, downloaded: downloaded)
+        if result.failed {
+            return .failed(String(localized: "No internet connection, or the pack server could not be reached."), summary)
+        }
+        if result.incomplete {
+            return .failed(String(localized: "A downloaded pack could not be verified; it may have arrived incomplete."), summary)
+        }
+        return summary.isEmpty ? .upToDate : .updated(summary)
+    }
+
     private nonisolated static func applyPackRefresh(_ result: PackUpdater.Refresh, packs: GamePackLibrary, model: AppModel?) async {
         guard result.changed else { return }
         packs.reload()

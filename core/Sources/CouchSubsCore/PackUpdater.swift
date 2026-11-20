@@ -61,6 +61,8 @@ public actor PackUpdater {
         public var skipped = false
         /// Liste alınamadı (ağ yok, sunucu kapalı); elde olanlar kaldı.
         public var failed = false
+        /// Liste alındı ama en az bir paket inemedi ya da doğrulanamadı (sonraki bakışta yeniden denenir).
+        public var incomplete = false
 
         public var changed: Bool { !downloaded.isEmpty || !removed.isEmpty }
     }
@@ -187,6 +189,7 @@ public actor PackUpdater {
             if Self.sha256(ofFile: file) == old.sha256 { try? FileManager.default.removeItem(at: file) }
             result.removed.append(old.id)
         }
+        result.incomplete = retry
         // Yeni bir paket inemediyse kontrol zamanı ilerletilmez: sonraki açılışta yeniden denenir.
         save(State(checked: retry ? state.checked : now.timeIntervalSince1970, packs: kept))
         return result

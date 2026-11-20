@@ -663,6 +663,10 @@ private struct GamePacksPage: View {
     @State private var readingImport = false
     @State private var importSelection: GamePackImportSelection?
     @State private var importError: String?
+    /// "Paketleri şimdi güncelle"ye basıldı, sonuç bekleniyor.
+    @State private var updating = false
+    @State private var updateResult: PackUpdateAlert?
+    @State private var showUpdateResult = false
     private let columns = [GridItem(.flexible(), spacing: Theme.space("gap"), alignment: .top),
                            GridItem(.flexible(), spacing: Theme.space("gap"), alignment: .top)]
     private let importTypes: [UTType] = [.json, .plainText] + [UTType(filenameExtension: "srt")].compactMap { $0 }
@@ -674,6 +678,28 @@ private struct GamePacksPage: View {
         .fileImporter(isPresented: $choosingImport, allowedContentTypes: importTypes, onCompletion: readImport)
         .sheet(item: $importSelection) { selection in
             GamePackImportSheet(selection: selection)
+        }
+        .alert(updateResult?.title ?? "", isPresented: $showUpdateResult, presenting: updateResult) { alert in
+            if alert.retry {
+                Button("Try again", action: updateNow)
+                Button("Close", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { alert in
+            Text(verbatim: alert.message)
+        }
+    }
+
+    private func updateNow() {
+        guard !updating else { return }
+        updating = true
+        Task {
+            let outcome = await model.updatePacksNow()
+            updating = false
+            guard let outcome else { return }
+            updateResult = PackUpdateAlert(outcome, stillUsed: String(localized: "The packs on this computer are still used."))
+            showUpdateResult = true
         }
     }
 
@@ -689,12 +715,24 @@ private struct GamePacksPage: View {
             .font(.csBody)
             .foregroundStyle(Color.csSecondary)
             .fixedSize(horizontal: false, vertical: true)
-        Button("Import pack…") {
-            importError = nil
-            choosingImport = true
+        HStack(spacing: Theme.space("m")) {
+            Button("Import pack…") {
+                importError = nil
+                choosingImport = true
+            }
+            .buttonStyle(CSButtonStyle(kind: .secondary, height: "buttonLarge"))
+            .disabled(readingImport)
+            // Telefonlardaki "Paketleri şimdi güncelle" (Packs.swift): beklerken düğme "Güncelleniyor…", sonuç uyarıda.
+            Button(action: updateNow) {
+                if updating { Text("Updating…") } else { Text("Update the packs now") }
+            }
+            .buttonStyle(CSButtonStyle(kind: .secondary, height: "buttonLarge"))
+            .disabled(updating || !model.canUpdatePacks)
+            if updating {
+                ProgressView().controlSize(.small)
+                Text("Updating the packs…").font(.csCallout).foregroundStyle(Color.csSecondary)
+            }
         }
-        .buttonStyle(CSButtonStyle(kind: .secondary, height: "buttonLarge"))
-        .disabled(readingImport)
         ErrorText(error: importError)
         if model.installedPacks.isEmpty {
             Card { HintText(text: "No game pack is installed.") }

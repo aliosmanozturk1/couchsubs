@@ -71,14 +71,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// "Paketleri şimdi güncelle"nin sonucu (ekranda uyarı olarak gösterilir).
-    enum PackUpdateOutcome: Equatable {
-        case upToDate
-        case updated(PackUpdateSummary)
-        /// Neden ve hataya rağmen inen paketler.
-        case failed(String, PackUpdateSummary)
-    }
-
     /// Elle güncelleme: süresine bakmadan listeyi sunucudan (yerel önbelleği atlayarak, gerekirse yedek adresten) alır,
     /// değişen paketleri indirir ve neyin geldiğini özetler. Paket sunucusu yapılandırılmamışsa nil.
     func updatePacksNow() async -> PackUpdateOutcome? {

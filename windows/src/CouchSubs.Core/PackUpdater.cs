@@ -50,8 +50,12 @@ public sealed partial class PackUpdater : IDisposable
         [property: JsonPropertyName("version")] long Version,
         [property: JsonPropertyName("sha256")] string Sha256);
 
-    /// <summary>Yenilemenin sonucu; <c>Skipped</c>: süresi gelmedi, <c>Failed</c>: liste alınamadı (elde olanlar kaldı).</summary>
-    public sealed record Refresh(IReadOnlyList<string> Downloaded, IReadOnlyList<string> Removed, bool Skipped = false, bool Failed = false)
+    /// <summary>
+    /// Yenilemenin sonucu; <c>Skipped</c>: süresi gelmedi, <c>Failed</c>: liste alınamadı (elde olanlar kaldı),
+    /// <c>Incomplete</c>: liste alındı ama en az bir paket inemedi ya da doğrulanamadı.
+    /// </summary>
+    public sealed record Refresh(IReadOnlyList<string> Downloaded, IReadOnlyList<string> Removed, bool Skipped = false, bool Failed = false,
+        bool Incomplete = false)
     {
         public bool Changed => Downloaded.Count > 0 || Removed.Count > 0;
     }
@@ -197,7 +201,7 @@ public sealed partial class PackUpdater : IDisposable
             }
             // Yeni bir paket inemediyse kontrol zamanı ilerletilmez: sonraki açılışta yeniden denenir.
             Save(new State { Checked = retry ? state.Checked : nowSeconds, Packs = kept });
-            return new Refresh(downloaded, removed);
+            return new Refresh(downloaded, removed, Incomplete: retry);
         }
         finally
         {

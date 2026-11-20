@@ -48,6 +48,8 @@ targets:
       - path: ../mac/CouchSubs/UI/LoginWebView.swift
       # Xbox (Beta) hata metinleri Mac uygulamasıyla ortak.
       - path: ../mac/CouchSubs/UI/XboxText.swift
+      # "Paketleri şimdi güncelle"nin sonuç metni Mac uygulamasıyla ortak.
+      - path: ../mac/CouchSubs/UI/PackUpdateText.swift
       # Altyazı bölgesinin canlı önizlemesi (sürüklenen çerçeve).
       - path: ../mac/CouchSubs/UI/RegionPreview.swift
       # Ekran metinleri Mac uygulamasıyla aynı katalogda (Türkçe).

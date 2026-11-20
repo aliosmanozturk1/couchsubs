@@ -307,8 +307,15 @@
                     </Grid>
                     <TextBlock Style="{StaticResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,12"
                                Text="{t:T 'Ready-made Turkish translations for some games. A line found in a pack appears at once, without the translation engine.'}" />
-                    <Button x:Name="ImportPack" Content="{t:T 'Import pack…'}" Click="OnImportPack"
-                            HorizontalAlignment="Left" Margin="0,0,0,12" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <Button x:Name="ImportPack" Content="{t:T 'Import pack…'}" Click="OnImportPack" />
+                        <!-- Telefonlardaki "Paketleri şimdi güncelle": beklerken düğme "Güncelleniyor…", sonuç iletide. -->
+                        <Button x:Name="UpdatePacks" Content="{t:T 'Update the packs now'}" Click="OnUpdatePacks" Margin="12,0,0,0" />
+                        <ProgressBar x:Name="UpdatePacksProgress" IsIndeterminate="True" Width="96" Height="4" Margin="12,0,0,0"
+                                     VerticalAlignment="Center" Visibility="Collapsed" />
+                        <TextBlock x:Name="UpdatePacksStatus" Text="{t:T 'Updating the packs…'}" Style="{StaticResource HintText}"
+                                   Margin="12,0,0,0" VerticalAlignment="Center" Visibility="Collapsed" />
+                    </StackPanel>
                     <ItemsControl x:Name="PackList" Margin="-8,0,-8,8" Focusable="False">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
