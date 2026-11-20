@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -29,8 +30,6 @@ internal sealed partial class TopmostKeeper : IDisposable
     /// <summary>Bazı uygulamalar ön plana geçtikten biraz sonra kendini üste alır; bir kez daha denenir.</summary>
     private static readonly TimeSpan SecondTry = TimeSpan.FromMilliseconds(400);
 
-    private delegate void WinEventProc(IntPtr hook, uint eventType, IntPtr window, int objectId, int childId, uint threadId, uint time);
-
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
@@ -50,8 +49,13 @@ internal sealed partial class TopmostKeeper : IDisposable
     private readonly Window window;
     private readonly TopmostThrottle throttle = new();
     private readonly DispatcherTimer secondTry;
-    /// <summary>Yerel koda verilen geri çağırma; çöp toplayıcı kancanın ömrü boyunca toplamasın diye alanda tutulur.</summary>
-    private readonly WinEventProc callback;
+    /// <summary>
+    /// Kurulu kancalar. Windows'a verilen geri çağırma durağan bir işlevdir (<see cref="OnWinEvent"/>) ve hiç bırakılmaz.
+    /// Eskiden her pencere kendi temsilcisini (delegate) veriyordu: pencere kapanıp temsilci çöp toplayıcıya gittikten
+    /// sonra kuyrukta kalmış bir olay teslim edilirse Windows bırakılmış belleğe atlar, süreç hiçbir modüle düşmeyen bir
+    /// adreste erişim ihlaliyle kapanabilirdi. Şimdi geç gelen olay bu tabloda bulunamaz ve yok sayılır.
+    /// </summary>
+    private static readonly Dictionary<IntPtr, TopmostKeeper> Hooks = [];
     private IntPtr handle;
     private IntPtr hook;
     private bool disposed;
@@ -62,7 +66,6 @@ internal sealed partial class TopmostKeeper : IDisposable
     public TopmostKeeper(Window window)
     {
         this.window = window;
-        callback = OnWinEvent;
         secondTry = new DispatcherTimer(DispatcherPriority.Normal, window.Dispatcher) { Interval = SecondTry };
         secondTry.Tick += (_, _) =>
         {
@@ -100,6 +103,7 @@ internal sealed partial class TopmostKeeper : IDisposable
         secondTry.Stop();
         if (hook != IntPtr.Zero)
         {
+            lock (Hooks) Hooks.Remove(hook);
             UnhookWinEvent(hook);
             hook = IntPtr.Zero;
         }
@@ -107,20 +111,42 @@ internal sealed partial class TopmostKeeper : IDisposable
 
     private static TimeSpan Now => TimeSpan.FromMilliseconds(Environment.TickCount64);
 
-    private void Install()
+    private unsafe void Install()
     {
         if (disposed || hook != IntPtr.Zero) return;
         handle = new WindowInteropHelper(window).Handle;
         if (handle == IntPtr.Zero) return;
         // Kapsam dışı kanca, kuran iş parçacığının (arayüz) ileti döngüsünden çağrılır; kendi sürecimizin olayları gelmez.
+        delegate* unmanaged[Stdcall]<IntPtr, uint, IntPtr, int, int, uint, uint, void> callback = &OnWinEvent;
         hook = SetWinEventHook(EventSystemForeground, EventSystemForeground, IntPtr.Zero,
-            Marshal.GetFunctionPointerForDelegate(callback), 0, 0, WinEventOutOfContext | WinEventSkipOwnProcess);
-        if (hook == IntPtr.Zero) StartupGuard.Log("Ön plan kancası kurulamadı", new InvalidOperationException("SetWinEventHook"));
+            (IntPtr)callback, 0, 0, WinEventOutOfContext | WinEventSkipOwnProcess);
+        if (hook == IntPtr.Zero)
+        {
+            StartupGuard.Log("Ön plan kancası kurulamadı", new InvalidOperationException("SetWinEventHook"));
+            return;
+        }
+        lock (Hooks) Hooks[hook] = this;
     }
 
-    private void OnWinEvent(IntPtr hookHandle, uint eventType, IntPtr foreground, int objectId, int childId, uint threadId, uint time)
+    /// <summary>Windows'un çağırdığı tek geri çağırma: olay, kancayı kuran pencerenin yardımcısına iletilir.</summary>
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    private static void OnWinEvent(IntPtr hookHandle, uint eventType, IntPtr foreground, int objectId, int childId, uint threadId, uint time)
     {
         // Yerel koddan çağrılır: buradan istisna dışarı çıkmamalı.
+        try
+        {
+            TopmostKeeper? keeper;
+            lock (Hooks) Hooks.TryGetValue(hookHandle, out keeper);
+            keeper?.OnForeground(eventType, foreground);
+        }
+        catch (Exception error)
+        {
+            StartupGuard.Log("Ön plan olayı", error);
+        }
+    }
+
+    private void OnForeground(uint eventType, IntPtr foreground)
+    {
         try
         {
             if (disposed || eventType != EventSystemForeground || foreground == IntPtr.Zero || foreground == handle) return;

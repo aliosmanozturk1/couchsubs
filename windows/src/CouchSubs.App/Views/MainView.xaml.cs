@@ -37,11 +37,14 @@ public partial class MainView : UserControl
         controller.PropertyChanged += OnChanged;
         connectionWatch.Tick += async (_, _) => await controller.CheckConnectionsAsync();
         Loaded += (_, _) => connectionWatch.Start();
+        Services.CrashWatch.Changed += OnCrashChanged;
         Unloaded += (_, _) =>
         {
             controller.PropertyChanged -= OnChanged;
+            Services.CrashWatch.Changed -= OnCrashChanged;
             connectionWatch.Stop();
         };
+        ShowCrash();
         Refresh();
         ShowTiles();
         ShowUpdate();
@@ -69,6 +72,30 @@ public partial class MainView : UserControl
         if (e.PropertyName is nameof(AppController.UpdateVersion) or nameof(AppController.Updating)
             or nameof(AppController.UpdateProgress) or nameof(AppController.UpdateError))
             ShowUpdate();
+    }
+
+    /// <summary>Kayıt arka planda hazırlanır; hazır olunca arayüz iş parçacığında gösterilir.</summary>
+    private void OnCrashChanged() => Dispatcher.BeginInvoke(ShowCrash);
+
+    /// <summary>Önceki çalışma yerel bir hatayla kapandıysa bir kez bildirilir (sonraki açılışta yinelenmez).</summary>
+    private void ShowCrash()
+    {
+        var show = Services.CrashWatch.Pending is not null;
+        CrashCard.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show) Services.CrashWatch.MarkShown();
+    }
+
+    private void OnShowCrash(object sender, RoutedEventArgs e) => Services.CrashWatch.ShowInExplorer();
+
+    private void OnCopyCrash(object sender, RoutedEventArgs e)
+    {
+        if (Services.CrashWatch.CopySummary()) CrashCopyButton.Content = Localizer.Current["Copied"];
+    }
+
+    private void OnDismissCrash(object sender, RoutedEventArgs e)
+    {
+        Services.CrashWatch.Dismiss();
+        ShowCrash();
     }
 
     private void ShowUpdate()

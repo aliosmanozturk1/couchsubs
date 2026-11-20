@@ -44,6 +44,8 @@ public partial class App : Application
             return;
         }
         RemotePlayDiagnostics.Start();
+        // Önceki çalışma yerel bir hatayla kapandıysa ana ekran bir kez bildirir.
+        CrashWatch.Start();
         var controller = new AppController(new LiveServices(), new DpapiAppStore(), new FileSettingsStore(), new WindowsSleepGuard(),
             Localizer.Current, action => Dispatcher.BeginInvoke(action))
         {

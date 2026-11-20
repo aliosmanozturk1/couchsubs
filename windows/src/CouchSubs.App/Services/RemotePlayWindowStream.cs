@@ -359,7 +359,12 @@ public sealed class RemotePlayWindowStream : IStreamSession
         private int blackFrames;
         private bool warnedBlack;
         private Windows.Graphics.SizeInt32 size;
-        private bool disposed;
+        /// <summary>Kare ve zamanlayıcı iş parçacıklarından okunur.</summary>
+        private volatile bool disposed;
+        /// <summary>Bu iş parçacığı şu an bir kareyi kopyalıyor ya da dağıtıyor (kapatma kendi kendini beklemesin).</summary>
+        [ThreadStatic] private static bool deliveringFrame;
+        /// <summary>Kapatma sırasında PrintWindow çağrısı hâlâ sürüyordu: DIB'i çağrı bitince o bırakır.</summary>
+        private PrintWindowGrabber? abandonedGrabber;
         /// <summary>Kare gelmiyor ya da kopyalanamıyorsa nedeni altyazi.log'a yazılır (GitHub #566).</summary>
         private readonly WindowCaptureWatch watch = new();
         private readonly System.Threading.Timer watchTimer;
@@ -440,6 +445,7 @@ public sealed class RemotePlayWindowStream : IStreamSession
         private void GrabFallback()
         {
             if (disposed || Interlocked.Exchange(ref fallbackBusy, 1) == 1) return;
+            deliveringFrame = true;
             try
             {
                 if (!Native.IsWindow(window))
@@ -475,7 +481,10 @@ public sealed class RemotePlayWindowStream : IStreamSession
             }
             finally
             {
+                deliveringFrame = false;
                 Volatile.Write(ref fallbackBusy, 0);
+                // Kapatma bu çağrıyı bekleyemediyse DIB burada, artık kimse kullanmazken bırakılır.
+                Interlocked.Exchange(ref abandonedGrabber, null)?.Dispose();
             }
         }
 
@@ -518,6 +527,7 @@ public sealed class RemotePlayWindowStream : IStreamSession
 
         private void OnFrameArrived(Direct3D11CaptureFramePool sender, object args)
         {
+            if (disposed) return;
             using var frame = sender.TryGetNextFrame();
             // Yedek yakalamaya geçildiyse aynı kare iki yoldan verilmez.
             if (frame is null || disposed || fallback) return;
@@ -535,6 +545,7 @@ public sealed class RemotePlayWindowStream : IStreamSession
             if (Interlocked.Exchange(ref busy, 1) == 1) return;
             lastFrameMs = now;
             watch.CopyStarted(clock.Elapsed);
+            deliveringFrame = true;
             try
             {
                 using var bitmap = SoftwareBitmap.CreateCopyFromSurfaceAsync(frame.Surface, BitmapAlphaMode.Premultiplied).AsTask().GetAwaiter().GetResult();
@@ -556,6 +567,7 @@ public sealed class RemotePlayWindowStream : IStreamSession
             finally
             {
                 watch.CopyEnded();
+                deliveringFrame = false;
                 Volatile.Write(ref busy, 0);
             }
         }
@@ -596,17 +608,35 @@ public sealed class RemotePlayWindowStream : IStreamSession
                 try { fallbackTimer?.Dispose(); } catch (Exception) { }
                 fallbackTimer = null;
             }
-            // Süren PrintWindow çağrısı bitince DIB bırakılır (GrabFallback aynı anda onu kullanıyor olabilir).
+            // Süren PrintWindow çağrısı bitince DIB bırakılır (GrabFallback aynı anda onu kullanıyor olabilir). Hedef pencere
+            // yanıt vermiyorsa çağrı bir saniyeden uzun sürebilir: eskiden DIB yine de bırakılıyordu, biten çağrı
+            // bırakılmış belleği kopyalayabiliyordu (erişim ihlali). Şimdi DIB'i süren çağrı kendi bitince bırakır.
             var lastGrabber = Interlocked.Exchange(ref grabber, null);
             if (lastGrabber is not null)
             {
-                var spins = 0;
-                while (Volatile.Read(ref fallbackBusy) == 1 && spins++ < 100) Thread.Sleep(10);
-                lastGrabber.Dispose();
+                if (WaitWhile(ref fallbackBusy)) lastGrabber.Dispose();
+                else
+                {
+                    Volatile.Write(ref abandonedGrabber, lastGrabber);
+                    if (Volatile.Read(ref fallbackBusy) == 0) Interlocked.Exchange(ref abandonedGrabber, null)?.Dispose();
+                }
             }
+            // Süren kare kopyası Direct3D aygıtını ve kare havuzunu kullanır; onlar kopya bitmeden kapatılmaz.
+            try { pool.FrameArrived -= OnFrameArrived; } catch (Exception) { }
+            WaitWhile(ref busy);
             try { session.Dispose(); } catch (Exception) { }
             try { pool.Dispose(); } catch (Exception) { }
             try { device.Dispose(); } catch (Exception) { }
+        }
+
+        /// <summary>Süren kare işi bitene kadar (en çok bir saniye) bekler; bittiyse true. Kapatma kare işinin kendi iş
+        /// parçacığından geldiyse (okuma hattı kareyi alırken oturumu durdurdu) beklenmez.</summary>
+        private static bool WaitWhile(ref int flag)
+        {
+            if (deliveringFrame) return Volatile.Read(ref flag) == 0;
+            var spins = 0;
+            while (Volatile.Read(ref flag) == 1 && spins++ < 100) Thread.Sleep(10);
+            return Volatile.Read(ref flag) == 0;
         }
     }
 

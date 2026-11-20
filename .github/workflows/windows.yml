@@ -114,6 +114,38 @@ jobs:
       - name: Yerel testler
         run: build/native/couchsubs_native_test.exe remoteplay/Tests/RemotePlayTests/Fixtures/sample-1080p.h264
 
+      # Çökme kaydı (GitHub #587): kasıtlı erişim ihlalinde metin özeti ve küçük döküm yazılıyor mu. Türler: 0 çağıran iş
+      # parçacığında geçersiz adrese yazma, 1 yerel iş parçacığında aynısı, 2 bırakılmış belleğe atlama (adres hiçbir
+      # modüle düşmez; Windows bunu "StackHash" diye kaydeder).
+      - name: Çökme kaydı (yerel işleyici)
+        run: |
+          for kind in 0 1 2; do
+            dir="$PWD/crash-$kind"
+            mkdir -p "$dir"
+            code=0
+            build/native/couchsubs_native_test.exe --crash "$(cygpath -w "$dir")" "$kind" || code=$?
+            echo "tür $kind: çıkış kodu $code"
+            if [ "$code" -eq 0 ] || [ "$code" -eq 2 ] || [ "$code" -eq 3 ] || [ "$code" -eq 4 ]; then echo "süreç çökmedi"; exit 1; fi
+            txt=$(ls "$dir"/cokme-*.txt | head -1)
+            cat "$txt"
+            grep -aq "0xC0000005" "$txt" || { echo "istisna kodu yok"; exit 1; }
+            grep -aq "lenmedi: evet" "$txt" || { echo "işlenmedi satırı yok"; exit 1; }
+            grep -aq "m durumu: yaz" "$txt" || { echo "döküm yazılmadı"; exit 1; }
+            grep -aq "kernel32.dll" "$txt" || { echo "modül listesi yok"; exit 1; }
+            if [ "$kind" -eq 2 ]; then
+              grep -aq "^Mod.*l yok" "$txt" || { echo "adres bir modüle düştü"; exit 1; }
+            else
+              grep -aq "^Mod.*couchsubs_native_test.exe+0x" "$txt" || { echo "hatalı modül bulunamadı"; exit 1; }
+              grep -aq "yazma 0x0000000012345678" "$txt" || { echo "erişim adresi yok"; exit 1; }
+            fi
+            dmp="${txt%.txt}.dmp"
+            size=$(stat -c %s "$dmp")
+            echo "döküm: $size bayt"
+            if [ "$size" -lt 1024 ] || [ "$size" -gt 67108864 ]; then echo "döküm boyutu beklenmedik"; exit 1; fi
+            # Döküm dosyası "MDMP" imzasıyla başlar.
+            [ "$(head -c 4 "$dmp")" = "MDMP" ] || { echo "döküm imzası yok"; exit 1; }
+          done
+
       - name: DLL yalnız Windows'un kendi DLL'lerine bağlı olmalı
         run: |
           DLL=build/native/couchsubs_native.dll
@@ -121,7 +153,7 @@ jobs:
           allowed='^(kernel32|user32|advapi32|shell32|ole32|oleaut32|gdi32|ws2_32|wsock32|iphlpapi|bcrypt|bcryptprimitives|crypt32|secur32|normaliz|msvcrt|ntdll|api-ms-win-.*|ucrtbase)\.dll$'
           bad=$(awk '{print tolower($3)}' deps.txt | grep -Ev "$allowed" || true)
           if [ -n "$bad" ]; then echo "İzin verilmeyen bağımlılık: $bad"; exit 1; fi
-          for fn in cs_init cs_discover cs_discover_ex cs_wake cs_register cs_session_start cs_session_stop; do
+          for fn in cs_init cs_discover cs_discover_ex cs_wake cs_register cs_session_start cs_session_stop cs_crash_install; do
             objdump -p "$DLL" | grep -qw "$fn" || { echo "Dışa aktarılmamış: $fn"; exit 1; }
           done
           ls -l "$DLL"
@@ -375,6 +407,70 @@ jobs:
           $text = Get-Content hook-broken-out/errors.txt -Raw
           $text
           if ($text -notmatch "Velopack|CouchSubs\.(Shell|Core)") { throw "hata metni eksik dosyayı söylemiyor" }
+
+      # Yerel çökme kaydı (GitHub #587): uygulama erişim ihlaliyle kapanınca %LOCALAPPDATA%\CouchSubs\cokme klasörüne
+      # özet ve küçük döküm yazılmalı, sonraki açılış kaydı bulup tamamlamalı ve bir kez bildirmeli. Çökme yalnız
+      # --crash-test argümanıyla yapılır. Türler: yerel (P/Invoke altında yerel kodda), is-parcacigi (yerel iş
+      # parçacığında), atlama (bırakılmış belleğe atlama), yonetilen (yönetilen kodda geçersiz adrese yazma).
+      - name: Çökme kaydı
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'CouchSubs\cokme'
+          function Get-Records { @(Get-ChildItem $dir -Filter 'cokme-*.txt' -ErrorAction SilentlyContinue) }
+          function Invoke-App([string[]]$arguments) {
+            $p = Start-Process publish/CouchSubs/CouchSubs.exe -ArgumentList $arguments -PassThru
+            $null = $p.Handle
+            if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "uygulama zamanında kapanmadı: $arguments" }
+            return $p.ExitCode
+          }
+          # Önceki adımlarda uygulama işleyici kuruluyken hatasız çalıştı: kayıt bırakmamış olmalı.
+          if ((Get-Records).Count -gt 0) { Get-Records | ForEach-Object { Get-Content $_.FullName }; throw "çökme olmadan kayıt yazılmış" }
+          # Yakalanan NullReferenceException çökme değildir: kayıt yazılmaz, sonraki açılış bir şey bildirmez.
+          $code = Invoke-App '--crash-test', 'bos'
+          if ($code -ne 0) { throw "bos: çıkış kodu $code" }
+          if ((Get-Records).Count -gt 0) { throw "yakalanan hata için kayıt yazılmış" }
+          $code = Invoke-App '--crash-report', "$PWD\crash-none.txt"
+          if ($code -ne 6) { throw "çökme yokken kayıt bildirildi (çıkış kodu $code)" }
+          foreach ($kind in 'yerel', 'is-parcacigi', 'atlama', 'yonetilen') {
+            Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+            $code = Invoke-App '--crash-test', $kind
+            Write-Host "${kind}: çıkış kodu $code"
+            if ($code -in 0, 4, 5) { throw "${kind}: süreç çökmedi (çıkış kodu $code)" }
+            $summary = Get-Records | Select-Object -First 1
+            if (-not $summary) { throw "${kind}: özet yazılmadı" }
+            $dump = [IO.Path]::ChangeExtension($summary.FullName, '.dmp')
+            if (-not (Test-Path $dump)) { Get-Content $summary.FullName; throw "${kind}: döküm yazılmadı" }
+            $size = (Get-Item $dump).Length
+            Write-Host "${kind}: döküm $size bayt"
+            if ($size -lt 1024 -or $size -gt 64MB) { throw "${kind}: döküm boyutu beklenmedik ($size)" }
+            # Sonraki açılış: kayıt bulunur, modül sürümleri, son günlük satırları ve Windows'un kaydıyla tamamlanır.
+            $report = "$PWD\crash-$kind.txt"
+            $code = Invoke-App '--crash-report', $report
+            if ($code -ne 0) { Get-Content $summary.FullName; throw "${kind}: sonraki açılış kaydı bulmadı (çıkış kodu $code)" }
+            $text = Get-Content $report -Raw -Encoding UTF8
+            $text
+            $expected = @('0xC0000005', 'Sürüm: 0\.1\.0', 'hiçbir yere göndermez', 'Yüklü modüller:', 'coreclr\.dll  \[\d+', 'kernel32\.dll  \[\d+',
+                          'Son günlük satırları \(altyazi\.log\):', 'Windows olay günlüğü:', 'Döküm durumu: yazıldı', 'Tamamlandı:')
+            $expected += switch ($kind) {
+              'yerel' { 'Modül: couchsubs_native\.dll\+0x', 'Erişim: yazma 0x0000000012345678' }
+              'is-parcacigi' { 'Modül: couchsubs_native\.dll\+0x', 'Erişim: yazma 0x0000000012345678', 'İşlenmedi: evet' }
+              'atlama' { 'Modül: modül yok', 'Erişim: yürütme' }
+              'yonetilen' { 'Modül: modül yok', 'Erişim: yazma 0x0000000012345678' }
+            }
+            foreach ($pattern in $expected) { if ($text -notmatch $pattern) { throw "${kind}: özette yok: $pattern" } }
+            # Kullanıcı klasörünün yolu özete girmez.
+            if ($text -match [regex]::Escape($env:USERPROFILE)) { throw "${kind}: özette kullanıcı klasörünün yolu var" }
+            # Kayıt bir kez bildirilir.
+            $code = Invoke-App '--crash-report', "$PWD\crash-again.txt"
+            if ($code -ne 6) { throw "${kind}: kayıt ikinci kez bildirildi (çıkış kodu $code)" }
+          }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: couchsubs-cokme
+          path: crash-*.txt
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         if: always()

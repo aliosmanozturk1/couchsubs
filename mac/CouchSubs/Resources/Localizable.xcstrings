@@ -5259,6 +5259,11 @@
         }
       }
     },
+    "CouchSubs closed unexpectedly last time.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "CouchSubs closed unexpectedly last time."}}, "tr": {"stringUnit": {"state": "translated", "value": "CouchSubs geçen sefer beklenmedik biçimde kapandı."}}}},
+    "A crash record was saved on this computer. It stays here and is never sent anywhere on its own; you can add it when you report the problem.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "A crash record was saved on this computer. It stays here and is never sent anywhere on its own; you can add it when you report the problem."}}, "tr": {"stringUnit": {"state": "translated", "value": "Bu bilgisayara bir çökme kaydı yazıldı. Kayıt yalnız burada durur, kendiliğinden hiçbir yere gönderilmez; sorunu bildirirken ekleyebilirsiniz."}}}},
+    "macOS saved a crash report on this Mac. It stays here and is never sent anywhere on its own; you can add it when you report the problem.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "macOS saved a crash report on this Mac. It stays here and is never sent anywhere on its own; you can add it when you report the problem."}}, "tr": {"stringUnit": {"state": "translated", "value": "macOS bu Mac'e bir çökme raporu yazdı. Rapor yalnız burada durur, kendiliğinden hiçbir yere gönderilmez; sorunu bildirirken ekleyebilirsiniz."}}}},
+    "Show crash record": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Show crash record"}}, "tr": {"stringUnit": {"state": "translated", "value": "Çökme kaydını göster"}}}},
+    "Copy summary": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Copy summary"}}, "tr": {"stringUnit": {"state": "translated", "value": "Özeti kopyala"}}}},
     "Update now": {
       "localizations": {
         "en": {

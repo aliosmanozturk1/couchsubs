@@ -42,6 +42,20 @@
             <!-- Sol: denetimler ve durum -->
             <ScrollViewer Width="{DynamicResource size.mainColumn}" VerticalScrollBarVisibility="Auto" Focusable="False" Margin="0,0,12,0">
                 <StackPanel Margin="0,0,0,8">
+                    <!-- Önceki çalışma yerel bir hatayla kapandı: kayıt yalnız bu bilgisayarda, bir kez bildirilir -->
+                    <c:Card x:Name="CrashCard" Margin="0,0,0,12" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="{t:T 'CouchSubs closed unexpectedly last time.'}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock Text="{t:T 'A crash record was saved on this computer. It stays here and is never sent anywhere on its own; you can add it when you report the problem.'}"
+                                       Style="{StaticResource SecondaryText}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                            <WrapPanel Margin="0,4,0,0">
+                                <Button Content="{t:T 'Show crash record'}" Style="{StaticResource SecondaryButton}" Margin="0,8,8,0" Click="OnShowCrash" />
+                                <Button x:Name="CrashCopyButton" Content="{t:T 'Copy summary'}" Style="{StaticResource SecondaryButton}" Margin="0,8,8,0" Click="OnCopyCrash" />
+                                <Button Content="{t:T 'Close'}" Style="{StaticResource SecondaryButton}" Margin="0,8,0,0" Click="OnDismissCrash" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </c:Card>
+
                     <!-- Yeni sürüm -->
                     <c:Card x:Name="UpdateCard" Margin="0,0,0,12" Visibility="Collapsed">
                         <StackPanel>

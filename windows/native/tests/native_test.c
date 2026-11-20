@@ -343,8 +343,28 @@ static void test_discover_ex_returns_after_timeout(void)
 	CHECK(cs_discover_ex(targets, 1, 100, NULL, &found) != 0);
 }
 
+#ifdef _WIN32
+/* couchsubs_native_test --crash <klasör> <tür>: çökme kaydını kurar ve kasıtlı erişim ihlali yapar (CI doğrular). */
+static int crash_main(const char *directory, int kind)
+{
+	wchar_t wide[512];
+	if(!MultiByteToWideChar(CP_UTF8, 0, directory, -1, wide, 512))
+		return 2;
+	/* Windows'un hata penceresi CI'ı bekletmesin. */
+	SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+	if(cs_crash_install((const uint16_t *)wide, "Deneme: yerel test\r\n") != 0)
+		return 3;
+	cs_crash_test(kind);
+	return 4; /* buraya gelinmemeli */
+}
+#endif
+
 int main(int argc, char **argv)
 {
+#ifdef _WIN32
+	if(argc == 4 && strcmp(argv[1], "--crash") == 0)
+		return crash_main(argv[2], atoi(argv[3]));
+#endif
 	if(argc < 2)
 	{
 		fprintf(stderr, "usage: %s <sample-1080p.h264>\n", argv[0]);

@@ -100,6 +100,17 @@ CS_API int cs_session_set_login_pin(cs_session *session, const uint8_t *pin, siz
 /* Oturumu durdurur, iş parçacıklarını bekler ve belleği bırakır. Geri çağrı içinden çağrılmamalı. */
 CS_API void cs_session_stop(cs_session *session);
 
+/* --- Çökme kaydı (yalnız Windows; öteki sistemlerde -1 döner) --- */
+
+/* Süreç yerel bir hatayla (erişim ihlali gibi) kapanırken directory (UTF-16) klasörüne cokme-<zaman>-<süreç>-<sıra>.txt
+ * özetini ve aynı adlı küçük .dmp dökümünü yazan işleyicileri kurar. header (UTF-8, satır sonlarıyla) özetin başına olduğu
+ * gibi yazılır (sürüm, işletim sistemi). Süreç başına bir kez; sonraki çağrılar bir şey yapmaz. */
+CS_API int cs_crash_install(const uint16_t *directory, const char *header);
+
+/* Yalnız testler: kasıtlı erişim ihlali. kind 0: çağıran iş parçacığında geçersiz adrese yazma; 1: yerel iş parçacığında
+ * aynısı; 2: yerel iş parçacığında bırakılmış belleğe atlama (adres hiçbir modüle düşmez). Dönmez. */
+CS_API void cs_crash_test(int kind);
+
 #ifdef __cplusplus
 }
 #endif
