@@ -42,14 +42,10 @@
     <string name="error_model_storage">There is not enough free storage to download the translation model. Free up space and try again.</string>
     <string name="error_model_unavailable">The translation model service is temporarily unavailable. Check Google Play services updates and try again.</string>
     <string name="error_model_timeout">The translation model download timed out. Check your connection and try again.</string>
-    <string name="screen_translate">Translate screen</string>
+    <string name="screen_text_on">On-screen text: on</string>
+    <string name="screen_text_off">On-screen text: off</string>
+    <string name="screen_text_notice">On-screen text is now translated automatically; "Translate screen" was removed. This button turns automatic translation on or off.</string>
     <string name="screen_rotate">Rotate screen</string>
-    <string name="screen_working">Translating…</string>
-    <string name="screen_remove">Remove translations</string>
-    <string name="screen_translating">Translating the screen…</string>
-    <string name="screen_none">No text found on the screen.</string>
-    <string name="screen_no_picture">Couldn\'t capture the screen: no picture from the PS5 yet.</string>
-    <string name="screen_failed">Couldn\'t translate the screen: %1$s</string>
 
     <string name="welcome1_title">PS5 games with Turkish subtitles</string>
     <string name="welcome1_body">In games without Turkish, your phone reads the English subtitles and translates them into Turkish. You play as usual.</string>

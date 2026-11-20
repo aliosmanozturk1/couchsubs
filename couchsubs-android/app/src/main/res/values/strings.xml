@@ -42,14 +42,10 @@
     <string name="error_model_storage">Çeviri modeli için telefonda yeterli boş alan yok. Yer açıp yeniden dene.</string>
     <string name="error_model_unavailable">Çeviri modeli hizmeti şu anda kullanılamıyor. Google Play Hizmetleri güncellemelerini kontrol edip yeniden dene.</string>
     <string name="error_model_timeout">Çeviri modeli indirmesi zaman aşımına uğradı. Bağlantını kontrol edip yeniden dene.</string>
-    <string name="screen_translate">Ekranı çevir</string>
+    <string name="screen_text_on">Ekran yazıları: açık</string>
+    <string name="screen_text_off">Ekran yazıları: kapalı</string>
+    <string name="screen_text_notice">Artık ekran yazıları kendiliğinden çevriliyor; "Ekranı çevir" düğmesi kaldırıldı. Bu düğme otomatik çeviriyi açıp kapatır.</string>
     <string name="screen_rotate">Ekranı döndür</string>
-    <string name="screen_working">Ekran çevriliyor…</string>
-    <string name="screen_remove">Çevirileri kaldır</string>
-    <string name="screen_translating">Ekran çevriliyor…</string>
-    <string name="screen_none">Ekranda yazı bulunamadı.</string>
-    <string name="screen_no_picture">Ekran alınamadı: PS5\'ten henüz görüntü gelmedi.</string>
-    <string name="screen_failed">Ekran çevrilemedi: %1$s</string>
 
 
     <string name="welcome1_title">PS5 oyunları Türkçe altyazıyla</string>

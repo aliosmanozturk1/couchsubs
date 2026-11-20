@@ -219,6 +219,11 @@ class AppSettings(context: Context) : AreaStore {
         if (step.notice) autoScreenTextNotice = true
     }
 
+    /** "Ekranı çevir" kaldırıldıktan sonra yerindeki anahtara ilk dokunuşta verilen bilgi gösterildi mi. */
+    var screenTextNoticeShown: Boolean
+        get() = prefs.getBoolean("screenTextNoticeShown", false)
+        set(value) = prefs.edit().putBoolean("screenTextNoticeShown", value).apply()
+
     /** "Konuşana göre renk": konuşan adlı satır (ad ve cümle) o konuşanın renginde görünür. Eski kayıtlarda yoktur; açık başlar. */
     var speakerColors: Boolean
         get() = prefs.getBoolean("speakerColors", true)

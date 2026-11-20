@@ -287,10 +287,10 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
         }
     }
     ScreenScaffold(top = topBar, bottom = {
-        // İki ikincil düğme yan yana (Geçmiş ekranındaki gibi); "Ekranı çevir" yalnız görüntü gelirken.
+        // İki ikincil düğme yan yana (Geçmiş ekranındaki gibi); ekran yazısı anahtarı yalnız görüntü gelirken.
         Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
             SecondaryButton(stringResource(R.string.main_phone_view), Modifier.weight(1f), onClick = onPhoneView)
-            if (status.streaming) ScreenTranslateButton(status, Modifier.weight(1f))
+            if (status.streaming) ScreenTextButton(Modifier.weight(1f))
         }
         DestructiveButton(stringResource(if (status.demo) R.string.demo_mode_exit else R.string.stop), onClick = onStop)
     }) {
@@ -584,13 +584,20 @@ fun open(context: Context, url: String) {
     }
 }
 
-/** "Ekranı çevir": oyun ekranının tamamını çevirir; çeviri sürerken ya da sonuçlar ekrandayken dokununca kaldırır (iPhone ile aynı). */
+/**
+ * "Ekranı çevir" kaldırıldı: ekran yazıları kendiliğinden çevriliyor. Eski düğmenin yerinde otomatik ekran yazısının
+ * anahtarı durur (durumu yazar); ilk dokunuşta bir kez "Artık ekran yazıları kendiliğinden çevriliyor" bilgisi çıkar.
+ */
 @Composable
-fun ScreenTranslateButton(status: LiveStatus, modifier: Modifier = Modifier) {
-    val label = when (status.screenState) {
-        LiveStatus.ScreenState.IDLE -> R.string.screen_translate
-        LiveStatus.ScreenState.WORKING -> R.string.screen_working
-        LiveStatus.ScreenState.SHOWN -> R.string.screen_remove
+fun ScreenTextButton(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val settings = com.couchsubs.mobile.Services.settings
+    var on by remember { mutableStateOf(settings.autoScreenText) }
+    SecondaryButton(stringResource(if (on) R.string.screen_text_on else R.string.screen_text_off), modifier) {
+        on = com.couchsubs.mobile.service.TranslationService.toggleScreenText()
+        if (!settings.screenTextNoticeShown) {
+            settings.screenTextNoticeShown = true
+            android.widget.Toast.makeText(context, R.string.screen_text_notice, android.widget.Toast.LENGTH_LONG).show()
+        }
     }
-    SecondaryButton(stringResource(label), modifier) { com.couchsubs.mobile.service.TranslationService.translateScreen() }
 }

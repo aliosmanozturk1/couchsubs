@@ -101,10 +101,6 @@ class PhoneSubtitleActivity : ComponentActivity() {
                         IconAction(Icons.Filled.Refresh, stringResource(R.string.screen_rotate)) {
                             requestedOrientation = nextOrientation(requestedOrientation)
                         }
-                        if (connected) IconAction(
-                            if (status.screenState == LiveStatus.ScreenState.IDLE) Icons.Filled.Search else Icons.Filled.Delete,
-                            stringResource(if (status.screenState == LiveStatus.ScreenState.IDLE) R.string.screen_translate else R.string.screen_remove),
-                        ) { TranslationService.translateScreen() }
                         IconAction(Icons.Filled.Close, stringResource(R.string.close)) { finish() }
                     }
                     Column(Modifier.align(Alignment.Center).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
