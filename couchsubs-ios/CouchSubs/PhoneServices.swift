@@ -71,6 +71,8 @@ protocol PhoneServices: AnyObject {
     func register(host: String, accountId: Data, pin: UInt32) async throws -> RegisteredConsole
     func discoverTVs() async -> [LGTV]
     func pairTV(_ tv: LGTV, key: String?, server: String, accessKey: String) async throws -> TVPairing
+    /// Eşleşme isteği gönderen TV: marka ve ad adresten yoklanır (bkz. `PairedTV.identify`); tanınmazsa nil.
+    func identifyTV(host: String) async -> LGTV?
     /// `loginPasscode`: PS5 bu hesap için giriş şifresi isterse gönderilecek 4 hane (Ayarlar'da kayıtlıysa).
     func makeStream(console: RegisteredConsole, accountId: Data, loginPasscode: String?) -> StreamControlling
     /// `onKey`: TV bağlantıda yeni jeton verdi (Samsung); saklanır.
@@ -85,6 +87,8 @@ protocol PhoneServices: AnyObject {
 }
 
 extension PhoneServices {
+    func identifyTV(host: String) async -> LGTV? { await PairedTV.identify(host: host) }
+
     /// PS5'te o an çalışan oyun: yalnız bağlı PS5'in adresine keşif sorusu gider (ortak havuz için; bkz. `RunningGame`).
     func runningGame(host: String) async -> RunningGame? {
         guard let info = await Console.discover(timeout: .seconds(2), host: host).first else { return nil }

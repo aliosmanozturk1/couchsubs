@@ -759,6 +759,8 @@ public interface IAppServices
     Task<IReadOnlyList<LgTv>> DiscoverTvsAsync();
     /// <summary>TV ile eşleşir ve TV uygulamasını sunucu adresiyle başlatmayı dener.</summary>
     Task<TvPairing> PairTvAsync(LgTv tv, string? key, string server, string accessKey);
+    /// <summary>Eşleşme isteği gönderen TV: marka ve ad adresten yoklanır (bkz. <see cref="PairedTv.IdentifyAsync"/>); tanınmazsa null.</summary>
+    Task<LgTv?> IdentifyTvAsync(string host) => PairedTv.IdentifyAsync(host);
     /// <param name="loginPasscode">PS5 bu hesap için giriş şifresi isterse gönderilecek 4 hane (Ayarlar'da kayıtlıysa).</param>
     IStreamSession MakeStream(RegisteredConsole console, byte[] accountId, string? loginPasscode);
     /// <summary>Görüntüyü bu bilgisayardaki Remote Play penceresinden (PS Remote Play ya da chiaki-ng) alan kaynak.</summary>

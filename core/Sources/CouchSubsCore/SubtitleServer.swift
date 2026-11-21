@@ -579,7 +579,9 @@ public final class SubtitleServer: @unchecked Sendable {
 
         if path == "/pair" {
             if method == "POST" {
-                guard let ticket = pairing.begin() else { respondAndClose(connection, status: "409 Conflict", cors: cors); return }
+                var peer = ""
+                if case let .hostPort(host, _) = connection.endpoint { peer = SubtitleAccess.tvHost(fromPeer: "\(host)") }
+                guard let ticket = pairing.begin(host: peer) else { respondAndClose(connection, status: "409 Conflict", cors: cors); return }
                 if let handler = onPairingRequest { DispatchQueue.main.async { handler(ticket) } }
                 let data = try! JSONSerialization.data(withJSONObject: ["id": ticket.id, "code": ticket.code])
                 respondAndClose(connection, status: "200 OK", data: data, type: "application/json", cors: cors)

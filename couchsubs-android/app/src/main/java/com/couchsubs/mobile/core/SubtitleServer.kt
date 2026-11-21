@@ -420,7 +420,7 @@ class SubtitleServer(
             val path = request.path
             if (path == "/pair") {
                 if (method == "POST") {
-                    val ticket = pairing.begin()
+                    val ticket = pairing.begin(SubtitleAccess.tvHost(socket.inetAddress))
                     if (ticket == null) { respondAndClose(socket, "409 Conflict", cors = cors); return }
                     onPairingRequest?.invoke(ticket)
                     respondAndClose(socket, "200 OK", org.json.JSONObject().put("id", ticket.id).put("code", ticket.code).toString(), cors)

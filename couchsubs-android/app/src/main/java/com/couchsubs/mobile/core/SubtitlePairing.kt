@@ -7,7 +7,11 @@ import java.security.SecureRandom
  * (CouchSubsCore/SubtitlePairing.swift) ve Windows ile aynı; ortak deneme dosyası `subtitle-pairing.json`.
  */
 class SubtitlePairing(private val now: () -> Long = { System.nanoTime() / 1_000_000 }) {
-    data class Ticket(val id: String, val code: String)
+    /**
+     * [host]: isteği gönderen TV'nin adresi (bkz. [SubtitleAccess.tvHost]); bilinmiyorsa boş. Onaylanınca telefon bu TV'yi
+     * kendi TV kaydına alır (marka adresten yoklanır; bkz. [com.couchsubs.mobile.tv.PairedTv]).
+     */
+    data class Ticket(val id: String, val code: String, val host: String = "")
     private var session = false
     private var manualUntil = 0L
     private var expires = 0L
@@ -40,11 +44,11 @@ class SubtitlePairing(private val now: () -> Long = { System.nanoTime() / 1_000_
      * pencere açılır. Eskiden eski istek iki dakika dolana kadar her yeni isteği engelliyordu. Anahtarı teslim edilmiş
      * istek de yeni isteği engellemez.
      */
-    @Synchronized fun begin(): Ticket? {
+    @Synchronized fun begin(host: String = ""): Ticket? {
         expire()
         if ((!session && now() >= manualUntil) || now() < cooldown) return null
         if (ticket != null && !(if (approved) delivered else now() - began >= SUPERSEDE_AFTER_MS)) return null
-        return Ticket(SubtitleAccess.createKey(), (100000 + SecureRandom().nextInt(900000)).toString()).also {
+        return Ticket(SubtitleAccess.createKey(), (100000 + SecureRandom().nextInt(900000)).toString(), host).also {
             ticket = it; began = now(); expires = began + 120000; approved = false; delivered = false
         }
     }

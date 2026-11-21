@@ -112,6 +112,7 @@ final class FakeServices: AppServices {
     }
     /// TV'nin eşleşmede döndüğü jeton (Samsung jetonla gelen bağlantıda boş dönebilir).
     var pairKey = "tv-key"
+    func identifyTV(host: String) async -> LGTV? { LGTV(name: "LG OLED", host: host, brand: .lg) }
     var onKey: (@Sendable (String) -> Void)?
     var onOpenResult: (@Sendable (TVOpenProblem?) -> Void)?
     var streamPasscodes: [String?] = []
@@ -582,6 +583,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(services.launchedServer?.hasPrefix("http://") == true)
         XCTAssertTrue(services.launchedServer?.hasSuffix(":\(model.serverPort)") == true)
         XCTAssertEqual(store.load(String.self, for: StoreKey.tvKey), "tv-key")
+    }
+
+    /// PR #870 incelemesi: TV'nin başlattığı eşleşme onaylanınca TV kaydedilmiyordu (bekçi ve TV kartı çalışmıyordu). Onaylanan
+    /// TV elle seçilmiş gibi eşlenir: adres, marka ve izin kayıtlı.
+    func testApprovedTVRequestSavesTheTV() async throws {
+        let services = FakeServices()
+        let store = MemoryStore()
+        let model = AppModel(services: services, store: store, defaults: .isolated())
+        await model.openTVPairing()
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(model.serverPort)/pair")!)
+        request.httpMethod = "POST"
+        _ = try await URLSession.shared.data(for: request)
+        for _ in 0..<100 where model.tvPairingRequest == nil { try await Task.sleep(nanoseconds: 10_000_000) }
+        let pending = try XCTUnwrap(model.tvPairingRequest)
+        model.resolveTVPairing(SubtitlePairing.Ticket(id: pending.id, code: pending.code, host: "192.168.1.40"), accept: true)
+        for _ in 0..<100 where !model.hasTV { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertTrue(model.hasTV)
+        XCTAssertEqual(model.tv, LGTV(name: "LG OLED", host: "192.168.1.40", brand: .lg))
+        XCTAssertEqual(store.load(String.self, for: StoreKey.tvKey), "tv-key")
+        XCTAssertEqual(services.pairCount, 1)
     }
 
     /// "TV'de test et": TV uygulaması bağlı değilse önce TV'de açılır (Samsung 65S95F'de TV'ye hiçbir şey gelmiyordu);

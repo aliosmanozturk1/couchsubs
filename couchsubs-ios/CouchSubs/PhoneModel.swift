@@ -404,10 +404,38 @@ final class PhoneModel: ObservableObject {
     func resolveTVPairing(_ ticket: SubtitlePairing.Ticket, accept: Bool) {
         let resolved = server.pairing.resolve(ticket.id, accept: accept)
         SubtitleLog.write("TV eşleştirme isteği \(accept ? "onaylandı" : "reddedildi")\(resolved ? "" : " (istek artık geçerli değil)")")
-        if resolved, accept { tvPairingOpened = false }
+        if resolved, accept {
+            tvPairingOpened = false
+            adoptPairedTV(host: ticket.host)
+        }
         tvPairingRequest = nil
         // Onaylanan istek geçersizdiyse (süresi doldu, TV yeniden denedi) bekleyen yeni istek hemen gösterilir.
         syncTVPairing()
+    }
+
+    /// TV'nin kendisi başlattığı eşleşme onaylandı: TV, listeden elle seçilmiş gibi eşlenir ve kaydedilir (adres, marka, ad,
+    /// LG izni / Samsung jetonu; bkz. `PairedTV`). Eskiden yalnız altyazı anahtarı TV'ye gidiyordu: TV kaydı olmadığı için
+    /// TV bekçisi (otomatik açma) hiç çalışmıyor, ana ekranda TV kartı çıkmıyordu (PR #870 incelemesi).
+    private func adoptPairedTV(host: String) {
+        guard PairedTV.shouldAdopt(host: host, saved: tv, hasKey: tvKeySaved) else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            guard let found = await self.services.identifyTV(host: host) else {
+                SubtitleLog.write("Eşleşen TV'nin türü anlaşılamadı (\(host)); TV kaydedilmedi")
+                return
+            }
+            guard PairedTV.shouldAdopt(host: host, saved: self.tv, hasKey: self.tvKeySaved) else { return }
+            do {
+                try await self.pair(found)
+                SubtitleLog.write("Eşleşen TV kaydedildi: \(found.brand.rawValue) \(found.host)")
+                // Çeviri sürüyorsa bekçi bu TV için hemen kurulur (adressiz kayıtta çalışan boş bekçi yerine).
+                self.keeper?.stop()
+                self.keeper = nil
+                if self.isRunning { self.startKeeper() }
+            } catch {
+                SubtitleLog.write("Eşleşen TV kaydedilemedi (\(found.brand.rawValue) \(host)): \(error)")
+            }
+        }
     }
 
     /// Arayüzdeki isteği sunucudaki bekleyen istekle eşitler. İstek geldiğinde, uygulama öne geldiğinde ve istek

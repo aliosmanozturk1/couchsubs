@@ -127,7 +127,9 @@ class TranslationService : Service() {
          */
         fun resolvePairing(id: String, accept: Boolean) {
             val pairing = liveServer?.pairing
+            val host = pairing?.pending?.takeIf { it.id == id }?.host.orEmpty()
             val resolved = pairing?.resolve(id, accept) == true
+            if (resolved && accept) adoptPairedTv(host)
             Log.i(TAG, "TV eşleştirme isteği ${if (accept) "onaylandı" else "reddedildi"}${if (resolved) "" else " (istek artık geçerli değil)"}")
             // Onaylanan istek geçersizdiyse (süresi doldu, TV yeniden denedi) bekleyen yeni istek hemen gösterilir; yeni
             // istek yoksa "süresi doldu" yazılır (iPhone ve Mac ile aynı).
@@ -137,6 +139,28 @@ class TranslationService : Service() {
         }
 
         @Volatile private var pairingWatch: Thread? = null
+
+        /**
+         * TV'nin kendisi başlattığı eşleşme onaylandı: TV, listeden seçilmiş gibi kaydedilir (adres, marka, ad; TV izni/jetonu
+         * TV açılırken alınır; bkz. [com.couchsubs.mobile.tv.PairedTv]) ve çeviri sürüyorsa TV bekçisi bu TV için kurulur.
+         * Eskiden yalnız altyazı anahtarı TV'ye gidiyordu: TV kaydı olmadığı için bekçi (otomatik açma) hiç çalışmıyor, ana
+         * ekranda TV kartı çıkmıyordu (Mac, iPhone, Windows ile aynı).
+         */
+        private fun adoptPairedTv(host: String) {
+            val settings = Services.settings
+            if (!com.couchsubs.mobile.tv.PairedTv.shouldAdopt(host, settings.installedTv)) return
+            Thread({
+                val found = runCatching { com.couchsubs.mobile.tv.PairedTv.identify(host) }.getOrNull()
+                if (found == null) { Log.i(TAG, "Eşleşen TV'nin türü anlaşılamadı ($host); TV kaydedilmedi"); return@Thread }
+                if (!com.couchsubs.mobile.tv.PairedTv.shouldAdopt(host, settings.installedTv)) return@Thread
+                settings.installedTv = com.couchsubs.mobile.tv.TvChoice.select(null, found)
+                settings.tvName = found.name
+                // "Yalnız bu telefonda" seçiliyken TV eşlenirse altyazı TV'ye gider (TV seçilince olduğu gibi).
+                if (!settings.target.showsOnTv) settings.target = com.couchsubs.mobile.settings.SubtitleTarget.TV
+                Log.i(TAG, "Eşleşen TV kaydedildi: ${found.brand} ${found.host}")
+                current?.let { service -> service.server?.accessKey?.let { key -> service.launchTv(key) } }
+            }, "CouchSubs paired TV").apply { isDaemon = true }.start()
+        }
 
         /**
          * Arayüzdeki isteği sunucudaki bekleyen istekle eşitler. İstek geldiğinde, bir ekran öne geldiğinde ve istek

@@ -215,6 +215,9 @@ internal sealed class FakeServices : IAppServices
     }
     /// <summary>TV'nin eşleşmede döndüğü jeton (Samsung jetonla gelen bağlantıda boş dönebilir).</summary>
     public string PairKey { get; set; } = "tv-key";
+    /// <summary>Eşleşme isteği gönderen TV'nin adresinden yoklanan TV (null: tanınmadı).</summary>
+    public Func<string, LgTv?> Identify { get; set; } = host => new LgTv("Samsung TV", host, TvBrand.Samsung);
+    public Task<LgTv?> IdentifyTvAsync(string host) => Task.FromResult(Identify(host));
     /// <summary>Son bekçiye verilen "yeni jeton" geri çağrısı.</summary>
     public Action<string>? OnKey { get; private set; }
     public Action<TvOpenProblem?>? OnOpenResult { get; private set; }
@@ -869,6 +872,51 @@ public class AppControllerTests
         Assert.EndsWith($":{controller.ServerPort}", services.LaunchedServer);
         Assert.Equal("tv-key", store.Load<string>(StoreKeys.TvKey));
         controller.Dispose();
+    }
+
+    /// PR #870 incelemesi: TV'nin başlattığı eşleşme onaylanınca TV kaydedilmiyordu (bekçi ve TV kartı çalışmıyordu). Onaylanan
+    /// TV elle seçilmiş gibi eşlenir; kullanıcının seçtiği izinli TV değiştirilmez, türü tanınmayan TV kaydedilmez.
+    [Fact]
+    public async Task ApprovedTvRequestSavesTheTv()
+    {
+        var services = new FakeServices();
+        var store = new MemoryStore();
+        var controller = Make(services, store);
+        Assert.False(controller.HasTv);
+        await controller.AdoptPairedTvAsync("192.168.1.40");
+        Assert.True(controller.HasTv);
+        Assert.Equal(new LgTv("Samsung TV", "192.168.1.40", TvBrand.Samsung), controller.Tv);
+        Assert.Equal(new LgTv("Samsung TV", "192.168.1.40", TvBrand.Samsung), store.Load<LgTv>(StoreKeys.Tv));
+        Assert.Equal(1, services.PairCount);
+        // Kayıtlı, izinli TV varken başka TV'nin isteği onu değiştirmez.
+        await controller.AdoptPairedTvAsync("192.168.1.41");
+        Assert.Equal("192.168.1.40", controller.Tv?.Host);
+        Assert.Equal(1, services.PairCount);
+        controller.Dispose();
+
+        var unknown = new FakeServices { Identify = _ => null };
+        var other = Make(unknown, new MemoryStore());
+        await other.AdoptPairedTvAsync("192.168.1.40");
+        Assert.False(other.HasTv);
+        Assert.Equal(0, unknown.PairCount);
+        other.Dispose();
+    }
+
+    [Fact]
+    public void PairedTvRuleAndPeerAddress()
+    {
+        var lg = new LgTv("LG", "192.168.1.30");
+        Assert.True(PairedTv.ShouldAdopt("192.168.1.40", null, false));
+        Assert.True(PairedTv.ShouldAdopt("192.168.1.40", lg, false));
+        Assert.True(PairedTv.ShouldAdopt("192.168.1.40", new LgTv("Android TV", "", TvBrand.AndroidTv), true));
+        Assert.False(PairedTv.ShouldAdopt("192.168.1.40", lg, true));
+        Assert.False(PairedTv.ShouldAdopt("", null, false));
+        Assert.Equal("192.168.1.40", SubtitleAccess.TvHost(System.Net.IPAddress.Parse("::ffff:192.168.1.40")));
+        Assert.Equal("192.168.1.40", SubtitleAccess.TvHost(System.Net.IPAddress.Parse("192.168.1.40")));
+        Assert.Equal("fe80::1", SubtitleAccess.TvHost(System.Net.IPAddress.Parse("fe80::1%3")));
+        Assert.Equal("", SubtitleAccess.TvHost(System.Net.IPAddress.Loopback));
+        Assert.Equal("", SubtitleAccess.TvHost(System.Net.IPAddress.IPv6Loopback));
+        Assert.Equal("", SubtitleAccess.TvHost(System.Net.IPAddress.Parse("8.8.8.8")));
     }
 
     /// #40: Samsung jetonla gelen bağlantıda jeton göndermeyince saklı jeton silinmemeli (yoksa TV her seferinde izin sorar).

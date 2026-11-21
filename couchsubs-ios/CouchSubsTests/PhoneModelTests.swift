@@ -29,7 +29,12 @@ private final class FakeServices: PhoneServices {
     func accountId(fromRedirect url: URL) async throws -> Data { Data([1, 2, 3]) }
     func register(host: String, accountId: Data, pin: UInt32) async throws -> RegisteredConsole { try registerResult.get() }
     func discoverTVs() async -> [LGTV] { [] }
-    func pairTV(_ tv: LGTV, key: String?, server: String, accessKey: String) async throws -> TVPairing { TVPairing(key: "key", launched: launched) }
+    var paired: [LGTV] = []
+    func pairTV(_ tv: LGTV, key: String?, server: String, accessKey: String) async throws -> TVPairing {
+        paired.append(tv)
+        return TVPairing(key: "key", launched: launched)
+    }
+    func identifyTV(host: String) async -> LGTV? { LGTV(name: "Samsung TV", host: host, brand: .samsung) }
     var streamPasscodes: [String?] = []
     func makeStream(console: RegisteredConsole, accountId: Data, loginPasscode: String?) -> StreamControlling {
         streamPasscodes.append(loginPasscode)
@@ -149,6 +154,21 @@ final class PhoneModelTests: XCTestCase {
         try await waitForRequest(model, id: next["id"])
         model.resolveTVPairing(try XCTUnwrap(model.tvPairingRequest), accept: false)
         XCTAssertNil(model.tvPairingRequest)
+    }
+
+    /// PR #870 incelemesi: TV'nin başlattığı eşleşme onaylanınca TV kaydedilmiyordu (bekçi ve TV kartı çalışmıyordu). Onaylanan
+    /// TV, elle seçilmiş gibi eşlenir: adres ve marka kayıtlı, izni saklı.
+    func testApprovedTVRequestSavesTheTV() async throws {
+        let model = makeModel()
+        await model.openTVPairing()
+        let (_, ticket) = try await pairCall("POST", model)
+        try await waitForRequest(model, id: ticket["id"])
+        let shown = try XCTUnwrap(model.tvPairingRequest)
+        model.resolveTVPairing(SubtitlePairing.Ticket(id: shown.id, code: shown.code, host: "192.168.1.40"), accept: true)
+        for _ in 0..<50 where !model.hasTV { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertTrue(model.hasTV)
+        XCTAssertEqual(model.tv, LGTV(name: "Samsung TV", host: "192.168.1.40", brand: .samsung))
+        XCTAssertEqual(services.paired.map(\.host), ["192.168.1.40"])
     }
 
     /// TV'de Tamam ile yeniden denenince telefondaki istek yenisiyle değişir; eski pencereden verilen onay yok sayılır ve

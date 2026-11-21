@@ -8,7 +8,11 @@ namespace CouchSubs.Core;
 /// </summary>
 public sealed class SubtitlePairing(Func<long>? clock = null)
 {
-    public sealed record Ticket(string Id, string Code);
+    /// <param name="Host">
+    /// İsteği gönderen TV'nin adresi (bkz. <see cref="SubtitleAccess.TvHost"/>); bilinmiyorsa boş. Onaylanınca bilgisayar
+    /// bu TV'yi kendi TV kaydına alır (marka adresten yoklanır; bkz. <c>PairedTv</c>).
+    /// </param>
+    public sealed record Ticket(string Id, string Code, string Host = "");
     /// <summary>Onay bekleyen istek bu kadar eskiyse yeni istek onun yerini alır (bkz. <see cref="Begin"/>).</summary>
     public const long SupersedeAfterMs = 2000;
     private readonly object gate = new();
@@ -41,14 +45,14 @@ public sealed class SubtitlePairing(Func<long>? clock = null)
     /// yeni pencere açılır. Eskiden eski istek iki dakika dolana kadar her yeni isteği engelliyordu. Anahtarı teslim
     /// edilmiş istek de yeni isteği engellemez.
     /// </summary>
-    public Ticket? Begin()
+    public Ticket? Begin(string host = "")
     {
         lock (gate)
         {
             Expire();
             if ((!session && now() >= manualUntil) || now() < cooldown) return null;
             if (ticket is not null && !(approved ? delivered : now() - began >= SupersedeAfterMs)) return null;
-            ticket = new(SubtitleAccess.CreateKey(), RandomNumberGenerator.GetInt32(100000, 1000000).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            ticket = new(SubtitleAccess.CreateKey(), RandomNumberGenerator.GetInt32(100000, 1000000).ToString(System.Globalization.CultureInfo.InvariantCulture), host);
             began = now();
             expires = began + 120000;
             approved = false;

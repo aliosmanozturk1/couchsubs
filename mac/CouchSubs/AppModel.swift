@@ -9,6 +9,8 @@ import XboxStream
 
 /// Dış dünyayla (PS5, PSN, TV) konuşan her şey; testlerde sahtesi kullanılır.
 extension AppServices {
+    /// Eşleşme isteği gönderen TV: marka ve ad adresten yoklanır (bkz. `PairedTV.identify`); tanınmazsa nil.
+    func identifyTV(host: String) async -> LGTV? { await PairedTV.identify(host: host) }
     /// DeepL anahtarını dener (ayarlardaki "Kaydet ve dene").
     func checkOnlineKey(_ key: String) async -> OnlineKeyCheck { await DeepLTranslator.check(key: key) }
     /// Yapay zekâ anahtarını örnek bir satırı çevirerek dener.
@@ -65,6 +67,7 @@ protocol AppServices: AnyObject {
     func discoverTVs() async -> [LGTV]
     /// TV ile eşleşir ve TV uygulamasını sunucu adresiyle başlatmayı dener.
     func pairTV(_ tv: LGTV, key: String?, server: String, accessKey: String) async throws -> TVPairing
+    func identifyTV(host: String) async -> LGTV?
     /// `loginPasscode`: PS5 bu hesap için giriş şifresi isterse gönderilecek 4 hane (Ayarlar'da kayıtlıysa).
     func makeStream(console: RegisteredConsole, accountId: Data, loginPasscode: String?) -> StreamControlling
     /// Görüntüyü bu Mac'teki Remote Play penceresinden alan kaynak (`UserSettings.frameSource`, `remotePlayApp`).
@@ -1044,9 +1047,33 @@ final class AppModel: ObservableObject {
     @Published private(set) var legacyTVWarning = false
     @Published var tvPairingRequest: SubtitlePairing.Ticket?
     func resolveTVPairing(_ ticket: SubtitlePairing.Ticket, accept: Bool) {
-        server.pairing.resolve(ticket.id, accept: accept)
+        if server.pairing.resolve(ticket.id, accept: accept), accept { adoptPairedTV(host: ticket.host) }
         // Onaylanan istek artık geçerli değilse (süresi doldu, TV yeniden denedi) bekleyen yeni istek gösterilir.
         tvPairingRequest = server.pairing.pending
+    }
+    /// TV'nin kendisi başlattığı eşleşme onaylandı: TV, listeden elle seçilmiş gibi eşlenir ve kaydedilir (adres, marka, ad,
+    /// LG izni / Samsung jetonu; bkz. `PairedTV`). Eskiden yalnız altyazı anahtarı TV'ye gidiyordu: TV kaydı olmadığı için
+    /// TV bekçisi (otomatik açma) hiç çalışmıyor, ana ekranda TV kartı çıkmıyordu (iPhone, Windows, Android ile aynı).
+    private func adoptPairedTV(host: String) {
+        guard PairedTV.shouldAdopt(host: host, saved: tv, hasKey: tvKeySaved) else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            guard let found = await self.services.identifyTV(host: host) else {
+                SubtitleLog.write("Eşleşen TV'nin türü anlaşılamadı (\(host)); TV kaydedilmedi")
+                return
+            }
+            guard PairedTV.shouldAdopt(host: host, saved: self.tv, hasKey: self.tvKeySaved) else { return }
+            do {
+                try await self.pair(found)
+                SubtitleLog.write("Eşleşen TV kaydedildi: \(found.brand.rawValue) \(found.host)")
+                // Çeviri sürüyorsa bekçi bu TV için hemen kurulur (adressiz kayıtta çalışan boş bekçi yerine).
+                self.keeper?.stop()
+                self.keeper = nil
+                if self.isRunning { self.startKeeper() }
+            } catch {
+                SubtitleLog.write("Eşleşen TV kaydedilemedi (\(found.brand.rawValue) \(host)): \(error)")
+            }
+        }
     }
     func openTVPairing() async {
         do { try await startServer(); server.pairing.open() }

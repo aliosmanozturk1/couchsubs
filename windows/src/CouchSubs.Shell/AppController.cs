@@ -228,9 +228,37 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     });
     public bool ResolveTvPairing(string id, bool accept)
     {
+        var host = server.Pairing.Pending is { } pending && pending.Id == id ? pending.Host : "";
         var resolved = server.Pairing.Resolve(id, accept);
         SubtitleLog.Write($"TV eşleştirme isteği {(accept ? "onaylandı" : "reddedildi")}{(resolved ? "" : " (istek artık geçerli değil)")}");
+        if (resolved && accept) _ = AdoptPairedTvAsync(host);
         return resolved;
+    }
+
+    /// <summary>
+    /// TV'nin kendisi başlattığı eşleşme onaylandı: TV, listeden elle seçilmiş gibi eşlenir ve kaydedilir (adres, marka, ad,
+    /// LG izni / Samsung jetonu; bkz. <see cref="PairedTv"/>). Eskiden yalnız altyazı anahtarı TV'ye gidiyordu: TV kaydı
+    /// olmadığı için TV bekçisi (otomatik açma) hiç çalışmıyor, ana ekranda TV kartı çıkmıyordu (Mac, iPhone, Android ile aynı).
+    /// </summary>
+    public async Task AdoptPairedTvAsync(string host)
+    {
+        if (!PairedTv.ShouldAdopt(host, tv, HasTv)) return;
+        var found = await services.IdentifyTvAsync(host);
+        if (found is null) { SubtitleLog.Write($"Eşleşen TV'nin türü anlaşılamadı ({host}); TV kaydedilmedi"); return; }
+        if (!PairedTv.ShouldAdopt(host, tv, HasTv)) return;
+        try
+        {
+            await PairAsync(found);
+            SubtitleLog.Write($"Eşleşen TV kaydedildi: {found.Brand} {found.Host}");
+            // Çeviri sürüyorsa bekçi bu TV için hemen kurulur (adressiz kayıtta çalışan boş bekçi yerine).
+            keeper?.Stop();
+            keeper = null;
+            if (isRunning) StartKeeper();
+        }
+        catch (Exception error)
+        {
+            SubtitleLog.Write($"Eşleşen TV kaydedilemedi ({found.Brand} {host}): {error.Message}");
+        }
     }
     /// <summary>
     /// Onay bekleyen istek (yoksa null). Onaylanan istek artık geçerli değilse (süresi doldu, TV yeniden denedi) arayüz

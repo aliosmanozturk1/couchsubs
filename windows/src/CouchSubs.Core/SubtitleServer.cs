@@ -557,7 +557,7 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
             {
                 if (method == "POST")
                 {
-                    var ticket = Pairing.Begin();
+                    var ticket = Pairing.Begin(tcp.Client.RemoteEndPoint is IPEndPoint peer ? SubtitleAccess.TvHost(peer.Address) : "");
                     if (ticket is null) { await RespondAndClose(tcp, "409 Conflict", cors: cors); return; }
                     PairingRequested?.Invoke(ticket);
                     await RespondAndClose(tcp, "200 OK", JsonSerializer.Serialize(new { id = ticket.Id, code = ticket.Code }), cors);

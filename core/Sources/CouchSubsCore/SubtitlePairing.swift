@@ -3,7 +3,15 @@ import Foundation
 
 /// Kısa kod karşılaştırma içindir; teslim için ayrı 128 bit istek sırrı gerekir.
 public final class SubtitlePairing: @unchecked Sendable {
-    public struct Ticket: Sendable, Identifiable, Equatable { public let id: String; public let code: String }
+    /// `host`: isteği gönderen TV'nin adresi (bkz. `SubtitleAccess.tvHost`); bilinmiyorsa boş. Onaylanınca telefon/bilgisayar
+    /// bu TV'yi kendi TV kaydına alır (marka adresten yoklanır): eskiden TV'nin başlattığı eşleşmede TV kaydedilmiyor, TV
+    /// bekçisi (otomatik açma) hiç çalışmıyor, ana ekrandaki TV kartı çıkmıyordu.
+    public struct Ticket: Sendable, Identifiable, Equatable {
+        public let id: String
+        public let code: String
+        public let host: String
+        public init(id: String, code: String, host: String = "") { self.id = id; self.code = code; self.host = host }
+    }
     /// Onay bekleyen istek bu kadar eskiyse yeni istek onun yerini alır (bkz. `begin`).
     static let supersedeAfterMs: Int64 = 2000
     private let lock = NSLock()
@@ -36,14 +44,14 @@ public final class SubtitlePairing: @unchecked Sendable {
     /// TV'de Tamam ile yeniden denendi) eskisinin yerini alır: telefonda yeni kodla yeni pencere açılır. Eskiden eski
     /// istek iki dakika dolana kadar her yeni istek reddediliyor, telefondaki pencere TV'de artık görünmeyen kodu
     /// gösteriyordu. Anahtarı teslim edilmiş istek de yeni isteği engellemez.
-    public func begin() -> Ticket? {
+    public func begin(host: String = "") -> Ticket? {
         lock.lock(); defer { lock.unlock() }
         expire()
         guard session || now() < manualUntil, now() >= cooldown else { return nil }
         if ticket != nil {
             guard approved ? delivered : now() - began >= Self.supersedeAfterMs else { return nil }
         }
-        let result = Ticket(id: SubtitleAccess.createKey(), code: String(Int.random(in: 100000...999999)))
+        let result = Ticket(id: SubtitleAccess.createKey(), code: String(Int.random(in: 100000...999999)), host: host)
         ticket = result; began = now(); expires = began + 120000; approved = false; delivered = false
         return result
     }
