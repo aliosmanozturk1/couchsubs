@@ -1490,7 +1490,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         {
             translator = MakeTranslator();
             // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AiTranslator.TranslateAllAsync).
-            var items = await ScreenTranslation.TranslateAsync(frame, reader, translator, shown =>
+            // Altyazı zaten kendi yerinde çevriliyor: ekran çevirisinde ikinci kez çizilmez (bkz. SubtitleEcho).
+            var echo = SubtitleEcho;
+            var items = await ScreenTranslation.TranslateAsync(frame, reader, translator, echo, shown =>
             {
                 if (work.IsCancellationRequested) return;
                 server.SendScreen(shown, ScreenTranslation.DisplayMilliseconds(shown));
@@ -2377,6 +2379,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             SkipsTurkish = settings.TargetLanguage == "tr",
             WatchSubtitleBackground = settings.WatchSubtitleBackground,
             DropsScreenText = () => !demoMode && ScreenText.IsGta(gameSense.Current?.Name),
+            Echo = SubtitleEcho,
+            EchoPaused = () => Volatile.Read(ref screenText)?.InMenu == true,
         };
         built.MetricsReady += metrics => post(() => MetricsText = metrics.Summary(text));
         built.PairShown += (source, translation) =>
@@ -2417,6 +2421,12 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     /// <summary>Sürekli okunan ek bölgeleri okuyup çeviren; çeviri sürerken ve en az bir bölge sürekli okunurken var.</summary>
     private RegionWatcher? regionWatcher;
+    /// <summary>
+    /// Altyazı hattının son satırları ve alanı: ekran yazısı (otomatik, hazır alanlar, görev satırı, "Ekranı çevir")
+    /// altyazıyı ikinci kez çizmesin (bkz. <see cref="CouchSubs.Core.SubtitleEcho"/>). Uygulamada tek denetleyici, tek hat
+    /// vardır. Testler, sahte okuyucu altyazıya ve ek alana aynı yazıyı verdiğinde kapatır (çeviri başlamadan).
+    /// </summary>
+    public SubtitleEcho? SubtitleEcho { get; set; } = new();
     private readonly object regionGate = new();
     private IReadOnlyList<WatchedArea> savedWatchedAreas = [];
     private IReadOnlyList<WatchedArea> watchedAreas = [];
@@ -2508,7 +2518,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                     watcherRequested = phoneArea is not null || autoAreas.Count > 0 || missionArea is not null;
                     return;
                 }
-                regionWatcher = new RegionWatcher(reader, MakeTranslator(), server) { Log = SubtitleLog.Write };
+                regionWatcher = new RegionWatcher(reader, MakeTranslator(), server) { Log = SubtitleLog.Write, SubtitleEcho = SubtitleEcho };
             }
             // Okunup yazısız ya da gürültülü çıkan otomatik alan dedektöre bildirilir (o görüntüde yeniden önerilmez).
             var detector = screenText;

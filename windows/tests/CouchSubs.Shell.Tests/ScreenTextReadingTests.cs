@@ -33,6 +33,8 @@ public class ScreenTextReadingTests
         var settings = new MemorySettings();
         settings.Save(new UserSettings { FrameSource = FrameSource.RemotePlayWindow, Output = SubtitleOutput.Computer, AutoScreenText = enabled, AutoScreenTextReset = true });
         using var controller = AppControllerTests.Make(services, settings: settings);
+        // Sahte okuyucu altyazıya ve alana aynı yazıyı verir; altyazı yinelemesi engeli burada sınanmıyor.
+        controller.SubtitleEcho = null;
         var events = new ConcurrentQueue<SubtitleEvent>();
         controller.StreamEvent += events.Enqueue;
         await controller.StartAsync();
@@ -45,6 +47,32 @@ public class ScreenTextReadingTests
             await Task.Delay(50);
         }
         Assert.Equal(enabled, Found());
+        controller.Stop();
+    }
+
+    /// <summary>
+    /// Kullanıcı bildirimi (beta.65/66): otomatik ekran yazısı altyazıyı da okuyunca çeviri hem altyazı konumunda hem oyunun
+    /// altyazısının üstünde görünüyordu. Kutunun yazısı altyazı hattının okuduğuyla aynı: yerinde çizilmez, altyazı gelir.
+    /// </summary>
+    [Fact]
+    public async Task FoundBoxReadingTheSubtitleIsNotDrawnASecondTime()
+    {
+        var services = new FakeServices { ReaderLines = Reading.FromText("Follow Paulie to the car.") };
+        var settings = new MemorySettings();
+        settings.Save(new UserSettings { FrameSource = FrameSource.RemotePlayWindow, Output = SubtitleOutput.Computer, AutoScreenText = true, AutoScreenTextReset = true });
+        using var controller = AppControllerTests.Make(services, settings: settings);
+        var events = new ConcurrentQueue<SubtitleEvent>();
+        controller.StreamEvent += events.Enqueue;
+        await controller.StartAsync();
+        var frame = BoxFrame();
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(4);
+        while (DateTime.UtcNow < until)
+        {
+            services.Streams[0].Emit(frame);
+            await Task.Delay(50);
+        }
+        Assert.Contains(events, e => e.Kind == SubtitleEventKind.Subtitle && e.Text.Length > 0);
+        Assert.DoesNotContain(events, e => e.Kind == SubtitleEventKind.Region && e.Id?.StartsWith("auto-") == true && e.Text.Length > 0);
         controller.Stop();
     }
 }

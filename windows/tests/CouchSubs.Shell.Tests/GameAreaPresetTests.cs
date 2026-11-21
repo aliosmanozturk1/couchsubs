@@ -88,6 +88,8 @@ public class GameAreaPresetTests
         settings.Save(new UserSettings { FrameSource = FrameSource.RemotePlayWindow, Output = SubtitleOutput.Computer, AutoScreenText = false,
                                          AutoScreenTextReset = true, Overlay = overlay }.WithCustomRegion(userRegion));
         using var controller = AppControllerTests.Make(services, settings: settings);
+        // Sahte okuyucu altyazıya ve alana aynı yazıyı verir; altyazı yinelemesi engeli burada sınanmıyor.
+        controller.SubtitleEcho = null;
         var events = new ConcurrentQueue<SubtitleEvent>();
         controller.StreamEvent += events.Enqueue;
         controller.ChooseGame("GTA 6");

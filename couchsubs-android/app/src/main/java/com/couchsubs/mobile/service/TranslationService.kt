@@ -494,6 +494,7 @@ class TranslationService : Service() {
         pipeline =SubtitlePipeline(translator, subtitleServer).apply {
             // Yarım ya da bozuk okuma hemen çevrilmez; aynı satırın en iyi okuması çevrilir (Windows ve iPhone ile aynı).
             holdReadings = true
+            echo = com.couchsubs.mobile.core.SubtitleEcho.shared
             packLookup = { text ->
                 if (packTitles != null && settings.packsEnabled) {
                     library.setDisabled(settings.disabledPacks)
@@ -534,6 +535,7 @@ class TranslationService : Service() {
             prefetchTranslator = earlyTranslator ?: areaTranslator,
             readPhone = { flat -> areaReader.read(RegionPixels(flat.nv21, flat.width, flat.height, 0L)) }).apply {
             prefetchesTranslations = earlyTranslator != null
+            subtitleEcho = com.couchsubs.mobile.core.SubtitleEcho.shared
             // Altyazı okuması yavaşsa ya da uzun süredir bitmediyse ek alanlar seyrek okunur (Mac, iPhone ve Windows ile aynı).
             slowdown = {
                 val since = readStartedAt
@@ -776,7 +778,10 @@ class TranslationService : Service() {
         screenTask = screenWork.submit(Runnable {
             try {
                 val reader = screenReader ?: SubtitleReader().also { screenReader = it }
-                val reading = reader.read(pixels)
+                val read = reader.read(pixels)
+                // Altyazı zaten kendi yerinde çevriliyor: ekran çevirisinde ikinci kez çizilmez (bkz. SubtitleEcho).
+                val echo = com.couchsubs.mobile.core.SubtitleEcho.shared
+                val reading = echo.filter(read, geometry = echo.hasRecent)
                 // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AiTranslator.translateAll).
                 val translator = engineTranslator(free.separate())
                 // Yazıların içindeki kumanda simgeleri okunan kareden kesilir (ButtonIcons).

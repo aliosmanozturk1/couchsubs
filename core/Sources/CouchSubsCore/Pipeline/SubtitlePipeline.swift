@@ -119,6 +119,9 @@ public final class SubtitlePipeline {
     /// Görev satırının bölgesi değişti (nil: görev kalktı). Görev altyazıya girmez; bölgesi "auto-mission" ek alanı olarak
     /// kendi yerinde ve özgün stilinde gösterilir (bkz. `MissionLine`).
     public var onMissionChanged: ((CropRegion?) -> Void)?
+    /// Altyazının son okunan satırları ve alanı; ekran yazısı okuyucuları bunlarla altyazıyı dışlar (bkz. `SubtitleEcho`).
+    /// Uygulama `SubtitleEcho.shared` verir.
+    public var echo: SubtitleEcho?
     /// Son yazı tanımanın süresi (ms); kare değişmeyip okuma yeniden kullanılınca da o okumanın süresi geçerlidir.
     private var lastReadMs: Int?
     /// İşlenen karenin okunması (satır kararlı olunca isteğe geçer).
@@ -263,6 +266,8 @@ public final class SubtitlePipeline {
             onMissionChanged?(mission.region)
         }
         let reading = rows.subtitleBlock(in: place)
+        // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. `SubtitleEcho`).
+        echo?.record(reading, region: region)
         currentRead = ReadInfo(capturedAt: captured, ocrMs: lastReadMs, confidence: reading.confidence)
         let box = reading.box?.placed(in: place).centeredOnScreen()
         if !sawText, !reading.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -719,6 +724,7 @@ public final class SubtitlePipeline {
         scheduler.reset()
         stickyRows.reset()
         mission.reset()
+        echo?.reset()
         if stabilizer.reset() == .clear { server.clear() }
     }
 }

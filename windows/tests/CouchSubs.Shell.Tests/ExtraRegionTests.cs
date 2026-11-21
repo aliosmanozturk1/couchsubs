@@ -80,6 +80,8 @@ public class ExtraRegionTests
     public async Task SwitchingToFullScreenRemovesLiveRegionAndSwitchingBackBringsItBack()
     {
         var (controller, services) = Ready();
+        // Sahte okuyucu altyazıya ve alana aynı yazıyı verir; altyazı yinelemesi engeli burada sınanmıyor.
+        controller.SubtitleEcho = null;
         services.ReaderLines = new Reading([new TextLine("Find the blacksmith", new TextBox(0.1, 0.2, 0.9, 0.3))]);
         controller.Settings = controller.Settings with { Output = SubtitleOutput.Computer };
         controller.Settings = controller.Settings.WithExtraRegion(1, ExtraAreaPreset.Quest.Region()).WithExtraLive(1, true);
@@ -128,6 +130,8 @@ public class ExtraRegionTests
     public async Task LiveRegionIsReadWithoutAKeyPress()
     {
         var (controller, services) = Ready();
+        // Sahte okuyucu altyazıya ve alana aynı yazıyı verir; altyazı yinelemesi engeli burada sınanmıyor.
+        controller.SubtitleEcho = null;
         services.ReaderLines = new Reading([new TextLine("Find the blacksmith", new TextBox(0.1, 0.2, 0.9, 0.3))]);
         controller.Settings = controller.Settings with { Output = SubtitleOutput.Computer };
         controller.Settings = controller.Settings.WithExtraRegion(1, ExtraAreaPreset.Quest.Region()).WithExtraLive(1, true);
@@ -159,6 +163,8 @@ public class ExtraRegionTests
         byte[] Pack(string translation) => System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
             new Dictionary<string, string> { [PackKey.Key(prompt)!] = translation });
         var (controller, services) = Ready();
+        // Sahte okuyucu altyazıya ve alana aynı yazıyı verir; altyazı yinelemesi engeli burada sınanmıyor.
+        controller.SubtitleEcho = null;
         services.GamePacks = new GamePackLibrary(() => [("Hades.json", Pack("Demirciyi bul.")), ("Celeste.json", Pack("Nalbandı bul."))], null);
         services.ReaderLines = new Reading([new TextLine(prompt, new TextBox(0.1, 0.2, 0.9, 0.3))]);
         controller.Settings = (controller.Settings with { Output = SubtitleOutput.Computer, GamePacks = true })
@@ -343,6 +349,8 @@ public class ScreenTranslationControllerTests
     public async Task SecondPressRemovesTheTranslations()
     {
         var (controller, services) = Ready();
+        // Sahte okuyucu altyazıya ve alana aynı yazıyı verir; altyazı yinelemesi engeli burada sınanmıyor.
+        controller.SubtitleEcho = null;
         services.ReaderLines = new Reading([new TextLine("Open the door.", new TextBox(0.4, 0.8, 0.6, 0.84))]);
         await controller.StartAsync();
         services.Streams[0].Emit(Frame.Blank(64, 64));
@@ -360,6 +368,8 @@ public class ScreenTranslationControllerTests
     public async Task ComputerOnlyShowsTheTranslationsInTheSubtitleWindow()
     {
         var (controller, services) = Ready();
+        // Sahte okuyucu altyazıya ve alana aynı yazıyı verir; altyazı yinelemesi engeli burada sınanmıyor.
+        controller.SubtitleEcho = null;
         controller.Settings = controller.Settings with { Output = SubtitleOutput.Computer };
         services.ReaderLines = new Reading([new TextLine("Open the door.", new TextBox(0.4, 0.8, 0.6, 0.84))]);
         var received = new List<SubtitleEvent>();

@@ -607,6 +607,9 @@ class RegionWatcher(
         phone?.close()
     }
 
+    /** Altyazı hattının son satırları ve alanı (bkz. [SubtitleEcho]); uygulama [SubtitleEcho.shared] verir. */
+    @Volatile var subtitleEcho: SubtitleEcho? = null
+
     /** Otomatik alan okundu ama yazı yok ya da gürültü ([ScreenTextNoise]): bulucu o karoları reddeder. */
     @Volatile var onAutoRejected: ((String) -> Unit)? = null
 
@@ -731,7 +734,11 @@ class RegionWatcher(
         }
         if (started != session) return
         reads++
-        val text = if (area.auto) AutoText.clean(reading, area.menu) else reading
+        // Altyazı alanındaki ya da altyazı hattının okuduğu satırlar ekran yazısı değildir; altyazı iki yerde çizilmesin
+        // (bkz. [SubtitleEcho]). Menüde ve görev satırının kendi alanında yalnız metin eşleşmesi uygulanır.
+        val geometry = (area.auto || GameAreaPresets.isPreset(area.id)) && !area.menu && area.id != MissionLine.AREA_ID
+        val own = subtitleEcho?.filter(reading, area.region.box, geometry) ?: reading
+        val text = if (area.auto) AutoText.clean(own, area.menu) else own
         var candidate = candidate(text, area.region, crop.frame, keepPrompts = area.menu)
         if (area.auto) {
             if (candidate.key.isEmpty() || ScreenTextNoise.isNoise(candidate.paragraphs.joinToString(" ") { IconText.plain(it) }, area.menu) ||

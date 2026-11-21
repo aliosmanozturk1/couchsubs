@@ -184,6 +184,8 @@ public sealed partial class RegionWatcher
     /// </summary>
     internal static bool SplitsMenuRows(string? game) => GameName.Key(game) == "gta 6";
     public Action<string>? Log { get; set; }
+    /// <summary>Altyazı hattının son satırları ve alanı (bkz. <see cref="CouchSubs.Core.SubtitleEcho"/>); uygulama altyazı hattınınkini verir.</summary>
+    public SubtitleEcho? SubtitleEcho { get; set; }
     /// <summary>Otomatik alan okundu ama yazı yok ya da gürültü (<see cref="ScreenTextNoise"/>): alanın kimliği.</summary>
     public Action<string>? Rejected { get; set; }
     /// <summary>Her okumanın süresi (ms; ölçüm için).</summary>
@@ -435,6 +437,14 @@ public sealed partial class RegionWatcher
         state.LastReadCrop = crop;
         state.LastFullCheck = now();
         state.Lines = [.. reading.Lines.Where(line => line.Box.HasValue).Take(32).Select(line => line.Box!.Value)];
+        // Altyazı alanındaki ya da altyazı hattının okuduğu satırlar ekran yazısı değildir; altyazı iki yerde çizilmesin
+        // (bkz. SubtitleEcho). Menüde ve görev satırının kendi alanında yalnız metin eşleşmesi uygulanır.
+        if (SubtitleEcho is { } echo)
+        {
+            var place = new TextBox(area.Region.Left, area.Region.Top, area.Region.Right, area.Region.Bottom);
+            var geometry = (area.Auto || area.RequiresPanel) && !area.Menu && area.Id != MissionLine.AreaId;
+            reading = echo.Filter(reading, place, geometry);
+        }
         return MakeCandidate(reading, area.Region, image, SplitsMenuRows(Game?.Invoke()), auto: area.Auto, menu: area.Menu);
     }
 

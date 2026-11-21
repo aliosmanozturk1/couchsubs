@@ -112,6 +112,11 @@ class SubtitlePipeline(
      * kendi yerinde ve özgün stilinde gösterilir (bkz. [MissionLine]).
      */
     @Volatile var onMissionChanged: ((CropRegion?) -> Unit)? = null
+    /**
+     * Altyazının son okunan satırları ve alanı; ekran yazısı okuyucuları bunlarla altyazıyı dışlar (bkz. [SubtitleEcho]).
+     * Uygulama [SubtitleEcho.shared] verir.
+     */
+    @Volatile var echo: SubtitleEcho? = null
     private var lastRequested = 0
     private var lastShown = 0
     private var inFlight: Request? = null
@@ -179,6 +184,8 @@ class SubtitlePipeline(
             }
             filtered
         }.subtitleBlock(area)
+        // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. [SubtitleEcho]).
+        echo?.record(reading, area)
         if (missionChanged) onMissionChanged?.invoke(missionRegion)
         var flushed: (() -> Unit)? = null
         val after: (() -> Unit)? = synchronized(lock) {
@@ -533,6 +540,7 @@ class SubtitlePipeline(
         pairs.clear()
         stickyRows.reset()
         mission.reset()
+        echo?.reset()
         if (stabilizer.reset() == StabilizerAction.Clear) sender.clear()
     }
 

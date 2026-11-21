@@ -1976,9 +1976,12 @@ final class AppModel: ObservableObject {
         let server = self.server
         screenTask = Task { [weak self] in
             do {
-                let reading = try await ReadQueue.shared.run(priority: .background, detail: ReadQueue.detail("ekranı çevir", frame)) {
+                let read = try await ReadQueue.shared.run(priority: .background, detail: ReadQueue.detail("ekranı çevir", frame)) {
                     try reader.readLines(frame, deep: false)
                 }
+                // Altyazı zaten kendi yerinde çevriliyor: ekran çevirisinde ikinci kez çizilmez (bkz. SubtitleEcho).
+                let echo = SubtitleEcho.shared
+                let reading = echo.filter(read, geometry: echo.hasRecent)
                 // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AITranslationCore.translateAll). Yazının
                 // içindeki kumanda simgeleri okunan kareden kesilip TV'de çevirinin içine konur (ButtonIcons).
                 let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame) { shown in
@@ -2048,6 +2051,7 @@ final class AppModel: ObservableObject {
                                         translator: makeTranslator(),
                                         server: server, scheduler: scheduler)
         pipeline.showSpeakerNames = settings.showSpeakerNames
+        pipeline.echo = .shared
         // Görev satırı altyazıya girmez; otomatik ekran yazısı açıksa "auto-mission" ek alanı olarak kendi yerinde ve özgün
         // stilinde gösterilir (Windows ile aynı). Kapalıysa ayrıca gösterilmez.
         missionRegion = nil
@@ -2097,6 +2101,7 @@ final class AppModel: ObservableObject {
     private func makeRegionWatcher(packLookup: ((String) -> PackMatch?)?) -> RegionWatcher {
         let watcher = RegionWatcher(reader: VisionReader(language: settings.sourceLanguage), translator: makeTranslator(), server: server)
         watcher.packLookup = packLookup
+        watcher.subtitleEcho = .shared
         watcher.skipsTurkish = settings.targetLanguage == "tr"
         watcher.translatesUiCommands = settings.sourceLanguage == "en" && settings.targetLanguage == "tr"
         watcher.englishPhoneMessages = settings.sourceLanguage == "en"

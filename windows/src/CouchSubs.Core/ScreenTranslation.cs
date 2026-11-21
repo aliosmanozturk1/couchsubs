@@ -40,14 +40,24 @@ public static class ScreenTranslation
     /// <paramref name="progress"/> çağrılır; böylece TV çeviriler hazırlandıkça dolar. Çevirisi aslıyla aynı olan
     /// (ad, sayı, zaten Türkçe yazı) grup gösterilmez. Çevirmen kullanılamıyorsa <see cref="TranslatorException"/> fırlatır.
     /// </summary>
-    public static async Task<IReadOnlyList<Item>> TranslateAsync(
+    public static Task<IReadOnlyList<Item>> TranslateAsync(
         Frame frame, ITextReader reader, ITextTranslator translator,
+        Action<IReadOnlyList<Item>>? progress = null, CancellationToken cancellationToken = default) =>
+        TranslateAsync(frame, reader, translator, null, progress, cancellationToken);
+
+    /// <summary>
+    /// Kareyi okuyup çevirir; <paramref name="echo"/> verilirse altyazı hattının okuduğu satırlar (metinle; son altyazı
+    /// yakınsa altyazı alanındakiler de) çevrilmez: altyazı zaten kendi yerinde çevriliyor (bkz. <see cref="SubtitleEcho"/>).
+    /// </summary>
+    public static async Task<IReadOnlyList<Item>> TranslateAsync(
+        Frame frame, ITextReader reader, ITextTranslator translator, SubtitleEcho? echo,
         Action<IReadOnlyList<Item>>? progress = null, CancellationToken cancellationToken = default)
     {
         // Küçük karede (720p) köşe yazıları birkaç piksel boyundadır; büyütmek yazı tanımanın onları da bulmasını sağlar.
         // ReadScreen: altyazıya göre seçilmiş hazırlık değil, karenin bütün yazıları (bkz. ITextReader.ReadScreen).
         var reading = await Task.Run(() => reader.ReadScreen(frame.Height < 900 ? frame.Scaled(2) : frame), cancellationToken)
             .ConfigureAwait(false);
+        if (echo is not null) reading = echo.Filter(reading, geometry: echo.HasRecent);
         return await TranslateAsync(reading, translator, progress, cancellationToken, frame).ConfigureAwait(false);
     }
 

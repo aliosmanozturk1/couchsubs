@@ -91,6 +91,8 @@ public class AutoScreenTextOffTests
             AutoScreenText = true, AutoScreenTextReset = true,
         });
         using var controller = AppControllerTests.Make(services, settings: store);
+        // Sahte okuyucu altyazıya ve alana aynı yazıyı verir; altyazı yinelemesi engeli burada sınanmıyor.
+        controller.SubtitleEcho = null;
         var events = new ConcurrentQueue<SubtitleEvent>();
         controller.StreamEvent += events.Enqueue;
         await controller.StartAsync();

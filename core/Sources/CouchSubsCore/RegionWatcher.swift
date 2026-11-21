@@ -147,6 +147,8 @@ public final class RegionWatcher {
     /// Kısa İngilizce tuş komutlarını Türkçeye çevirir. Yalnız en → tr için açılır.
     public var translatesUiCommands = false
     public var onLog: ((String) -> Void)?
+    /// Altyazı hattının son satırları ve alanı (bkz. `SubtitleEcho`); uygulama `SubtitleEcho.shared` verir.
+    public var subtitleEcho: SubtitleEcho?
     /// Otomatik alan okundu ama yazı yok ya da gürültü (`ScreenTextNoise`): alanın kimliği (`ScreenTextDetector.reject`).
     public var onAutoRejected: ((String) -> Void)?
     /// Her okumanın süresi (ms; ölçüm için).
@@ -279,7 +281,12 @@ public final class RegionWatcher {
         }
         reads += 1
         onReadMs?(now() - started)
-        let candidate = Self.candidate(reading, in: region, frame: crop, auto: area.auto, menu: area.menu)
+        // Altyazı alanındaki ya da altyazı hattının okuduğu satırlar ekran yazısı değildir; altyazı iki yerde çizilmesin
+        // (bkz. `SubtitleEcho`). Menüde ve görev satırının kendi alanında yalnız metin eşleşmesi uygulanır.
+        let place = TextBox(left: region.left, top: region.top, right: region.right, bottom: region.bottom)
+        let geometry = (area.auto || GameAreaPresets.isPreset(area.id)) && !area.menu && area.id != MissionLine.areaId
+        let own = subtitleEcho?.filter(reading, place: place, geometry: geometry) ?? reading
+        let candidate = Self.candidate(own, in: region, frame: crop, auto: area.auto, menu: area.menu)
         if state.lastRead == candidate.key {
             state.candidate = nil
             states[area.id] = state

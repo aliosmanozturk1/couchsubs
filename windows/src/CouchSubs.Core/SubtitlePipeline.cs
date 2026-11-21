@@ -186,6 +186,13 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     public event Action<CropRegion?>? MissionChanged;
 
     private readonly MissionLine mission = new();
+    /// <summary>
+    /// Altyazının son okunan satırları ve alanı; ekran yazısı okuyucuları bunlarla altyazıyı dışlar (bkz.
+    /// <see cref="SubtitleEcho"/>). Uygulama (AppController) hatla ek alan okuyucusuna aynı örneği verir.
+    /// </summary>
+    public SubtitleEcho? Echo { get; init; }
+    /// <summary>Doğruysa bu karede okunan blok kaydedilmez (ekranda menü var, altyazı gönderilmiyor).</summary>
+    public Func<bool>? EchoPaused { get; init; }
     /// <summary>Son gösterilen çevirinin nereden geldiği: "paket" ya da "motor" (günlük ve sayım için).</summary>
     public string? LastOrigin { get; private set; }
     /// <summary>Bu hatta paketten gelen satır sayısı.</summary>
@@ -305,6 +312,9 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             MissionChanged?.Invoke(missionRegion);
         }
         var reading = rows.SubtitleBlock(area);
+        // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. SubtitleEcho). Menüde altyazı gönderilmez; okunan
+        // menü satırları altyazı sayılmaz (yoksa menünün kendi çevirisi metin eşleşmesiyle atılırdı).
+        if (Echo is { } echo && EchoPaused?.Invoke() != true) echo.Record(reading, region);
 
         Action? after = null;
         Action? flushed = null;
@@ -1009,6 +1019,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             schedule.Reset();
             stickyRows.Reset();
             mission.Reset();
+            Echo?.Reset();
             if (stabilizer.Reset() == StabilizerAction.Clear) sender.Clear();
         }
     }
