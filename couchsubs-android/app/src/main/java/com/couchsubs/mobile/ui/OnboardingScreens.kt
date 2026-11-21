@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
@@ -245,11 +247,27 @@ fun TargetScreen(onBack: (() -> Unit)? = null, onTvInstall: (() -> Unit)? = null
     val settings = Services.settings
     var target by remember { mutableStateOf(settings.target) }
     var tvs by remember { mutableStateOf<List<FoundTv>?>(null) }
-    LaunchedEffect(Unit) { tvs = withContext(Dispatchers.IO) { runCatching { TvDiscovery.search() }.getOrDefault(emptyList()) } }
+    // Seçilen TV: çeviride açılacak ve önde tutulacak TV (iPhone ile aynı; TvChoice).
+    var chosen by remember { mutableStateOf(settings.installedTv) }
+    var chosenName by remember { mutableStateOf(settings.tvName) }
+    var showManual by remember { mutableStateOf(false) }
+    var searchVersion by remember { mutableStateOf(0) }
+    LaunchedEffect(searchVersion) {
+        tvs = null
+        tvs = withContext(Dispatchers.IO) { runCatching { TvDiscovery.search() }.getOrDefault(emptyList()) }
+    }
+    fun choose(tv: FoundTv) {
+        // Android TV'nin adresi bilinmiyorsa (elle seçildi) TV uygulaması telefonu kendisi bulur; kayıt yalnız adla olur.
+        if (tv.host.isNotBlank()) chosen = com.couchsubs.mobile.tv.TvChoice.select(chosen, tv).also { settings.installedTv = it }
+        chosenName = tv.name
+        settings.tvName = tv.name
+        if (target == SubtitleTarget.PHONE) target = SubtitleTarget.TV
+    }
     ScreenScaffold(top = { TopBar(onBack = onBack) }, bottom = {
         PrimaryButton(stringResource(R.string.next_continue)) {
             settings.target = target
-            tvs?.firstOrNull()?.let { settings.tvName = it.name }
+            // Seçim yapılmadıysa ağda görülen ilk TV kullanılır (eski davranış).
+            if (chosen == null && target != SubtitleTarget.PHONE) tvs?.firstOrNull()?.let { choose(it) }
             settings.onboarded = true
             onDone()
         }
@@ -267,16 +285,24 @@ fun TargetScreen(onBack: (() -> Unit)? = null, onTvInstall: (() -> Unit)? = null
                 // TV'de "Bu telefonda" seçilir (iPhone'daki gibi; kullanıcı monitörde "Ağda TV bulunamadı"da kalmıştı).
                 else -> if (found.isEmpty()) Text(stringResource(if (onTvInstall != null) R.string.target_tvs_none_help else R.string.target_tvs_none),
                     style = Tokens.Type.caption, color = Tokens.Color.secondary)
-                else found.forEach { tv ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tv.name, style = Tokens.Type.body, color = Tokens.Color.text)
-                            Text(brandName(tv.brand), style = Tokens.Type.caption, color = Tokens.Color.secondary)
-                        }
-                        StatusLabel(stringResource(R.string.target_tv_on_network))
+                else Unit
+            }
+            // Bulunan TV'ler (kayıtlı TV ağda görünmese de en üstte): dokununca seçilir.
+            val listed = com.couchsubs.mobile.tv.TvChoice.list(tvs.orEmpty(), chosen, chosenName)
+            listed.forEach { tv ->
+                val selected = com.couchsubs.mobile.tv.TvChoice.isSelected(tv, chosen)
+                Row(Modifier.fillMaxWidth().clickable { choose(tv) }.padding(vertical = Tokens.Space.inline),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tv.name, style = Tokens.Type.body, color = Tokens.Color.text)
+                        Text(brandName(tv.brand), style = Tokens.Type.caption, color = Tokens.Color.secondary)
                     }
+                    if (selected) SelectedCheck()
+                    else if (tvs?.any { it.host == tv.host && it.brand == tv.brand } == true) StatusLabel(stringResource(R.string.target_tv_on_network))
                 }
             }
+            if (tvs != null) GhostButton(stringResource(R.string.target_search_again)) { searchVersion++ }
+            if (chosen != null) Text(stringResource(R.string.target_tv_selected_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
             Text(stringResource(R.string.target_tv_body), style = Tokens.Type.caption, color = Tokens.Color.secondary)
             // TV uygulamasını bilgisayarsız, bu telefondan kurmak (ilk kurulumda da).
             if (onTvInstall != null) GhostButton(stringResource(R.string.tvinstall_entry), onClick = onTvInstall)
@@ -297,14 +323,53 @@ fun TargetScreen(onBack: (() -> Unit)? = null, onTvInstall: (() -> Unit)? = null
                 style = if (target == SubtitleTarget.PHONE) TileStyle.ACTIVE else TileStyle.NORMAL,
                 corner = { if (target == SubtitleTarget.PHONE) SelectedCheck() }, onClick = { target = SubtitleTarget.PHONE }) },
             { StatusTile(Icons.Filled.Info, stringResource(R.string.target_unlisted_note), stringResource(R.string.target_unlisted), it,
-                onClick = { open(context, context.getString(R.string.url_tvs)) }) },
+                onClick = { showManual = true }) },
         )
+        if (showManual) ManualTvDialog(onDismiss = { showManual = false }, onSupported = { open(context, context.getString(R.string.url_tvs)) }) { tv ->
+            showManual = false
+            choose(tv)
+        }
         // TV'si olmayan ya da monitörde oynayan için: hangi hedef seçilirse seçilsin altyazı ayrıca bir tarayıcıda da görünür.
         SecondScreenTile()
         // TV kurulumu bitti: her çeviride TV uygulaması kendiliğinden açılmaya çalışılır; açılmazsa TV'den açılır.
         if (onBack == null && target != SubtitleTarget.PHONE && settings.installedTv != null)
             Text(stringResource(R.string.tv_open_wizard_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
     }
+}
+
+/**
+ * "TV'm listede yok" (iPhone ile aynı): marka seçilir, LG ve Samsung'da IP adresi yazılır (temizlenir, geçersizse
+ * söylenir); Android TV'de adres gerekmez, oradaki uygulama telefonu kendisi bulur.
+ */
+@Composable
+private fun ManualTvDialog(onDismiss: () -> Unit, onSupported: () -> Unit, onConnect: (FoundTv) -> Unit) {
+    var brand by remember { mutableStateOf(TvBrand.LG) }
+    var host by remember { mutableStateOf("") }
+    var invalid by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.target_unlisted_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Tokens.Space.inline)) {
+                Text(stringResource(R.string.target_unlisted_body), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                Segmented(listOf("LG", "Samsung", "Android TV"), TvBrand.entries.indexOf(brand)) { brand = TvBrand.entries[it]; invalid = false }
+                if (brand != TvBrand.ANDROID_TV) {
+                    Field(host, { host = it; invalid = false }, stringResource(R.string.target_ip_hint),
+                        keyboard = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri))
+                    if (invalid) Text(stringResource(R.string.address_invalid), style = Tokens.Type.caption, color = Tokens.Color.danger)
+                } else Text(stringResource(R.string.target_android_tv_found), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                TextButton(onSupported) { Text(stringResource(R.string.target_unlisted_note)) }
+            }
+        },
+        confirmButton = {
+            TextButton({
+                if (brand == TvBrand.ANDROID_TV) onConnect(FoundTv("Android TV", "", brand))
+                else com.couchsubs.mobile.core.ManualAddress.normalize(host)?.let { onConnect(FoundTv(it, it, brand)) } ?: run { invalid = true }
+            }, enabled = brand == TvBrand.ANDROID_TV || host.isNotBlank()) { Text(stringResource(R.string.target_connect)) }
+        },
+        dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancel)) } },
+        containerColor = Tokens.Color.surface2,
+    )
 }
 
 fun brandName(brand: TvBrand) = when (brand) {

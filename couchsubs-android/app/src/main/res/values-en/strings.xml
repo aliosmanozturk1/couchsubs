@@ -253,6 +253,13 @@
     <string name="target_phone_note">No TV, or the TV app isn\'t installed</string>
     <string name="target_unlisted">My TV isn\'t listed</string>
     <string name="target_unlisted_note">Supported TVs</string>
+    <string name="target_unlisted_title">My TV isn\'t listed</string>
+    <string name="target_unlisted_body">CouchSubs works with LG (webOS 4+), Samsung (Tizen, 2019+) and Android TV / Google TV. Type the TV\'s IP address, or choose Android TV: its CouchSubs app finds this phone by itself.</string>
+    <string name="target_ip_hint">IP address, e.g. 192.168.1.20</string>
+    <string name="target_connect">Connect</string>
+    <string name="target_search_again">Search again</string>
+    <string name="target_tv_selected_note">This TV is used when translating. The first time, the TV asks for permission: accept it with the remote.</string>
+    <string name="target_android_tv_found">The CouchSubs app on Android TV finds this phone by itself when it is opened.</string>
     <string name="main_ready">Ready</string>
     <string name="main_ready_body">Open the game on your PS5, then start.</string>
     <string name="main_unpaired">PS5 not paired</string>
@@ -585,6 +592,8 @@
     <string name="settings_test_subtitle">Test on TV</string>
     <string name="settings_test_needs_start">Start translation first; the test subtitle shows once the TV app connects to the phone.</string>
     <string name="settings_test_tv_not_connected">The test subtitle did not reach the TV because the TV app is not connected. Open CouchSubs on the TV. If the TV shows a 6-digit code, don\'t type it anywhere: approve it in the “Pair this TV?” window that opens on this phone, then test again.</string>
+    <string name="settings_pair_tv">Pair TV</string>
+    <string name="settings_pair_tv_note">Pairing is open for 2 minutes. Open CouchSubs on the TV; if the TV says pairing did not finish, press OK on its remote. When the TV shows a code, approve it in the window that opens on this phone.</string>
     <string name="test_subtitle_text">This is a test subtitle. Can you see it on top of the game?</string>
     <!-- Xbox (Beta) -->
     <string name="error_xbox_not_ready">Sign in with your Microsoft account and choose your Xbox first.</string>

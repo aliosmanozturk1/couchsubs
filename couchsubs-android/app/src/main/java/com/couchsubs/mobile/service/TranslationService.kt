@@ -212,6 +212,97 @@ class TranslationService : Service() {
 
         /** Altyazı sunucusuna bağlı TV sayısı (telefonun kendi altyazı ekranı sayılmaz); çeviri çalışmıyorsa 0. */
         fun connectedTvs(): Int = liveServer?.connectedClients ?: 0
+
+        /**
+         * Çeviri dışında açılan bekleme sunucusu ("TV'yi eşle" ve deneme altyazısı; iPhone `openTVPairing` ile aynı): TV
+         * uygulaması telefonu bulup eşleşebilsin diye altyazı sunucusu iki dakika açık kalır. Çeviri başlayınca kapanır
+         * (aynı kapıyı oturumun sunucusu açar). Eskiden Android'de eşleşme yalnız çeviri sürerken yapılabiliyordu.
+         */
+        @Volatile private var standby: SubtitleServer? = null
+        private val standbyTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { Thread(it, "CouchSubs standby").apply { isDaemon = true } }
+        private var standbyClose: java.util.concurrent.ScheduledFuture<*>? = null
+        /** Bekleme sunucusuna TV bağlanınca gönderilecek deneme altyazısı. */
+        @Volatile private var pendingTest: String? = null
+        const val STANDBY_MS = 120_000L
+
+        /** "TV'yi eşle": çeviri sürüyorsa onun sunucusunda, değilse bekleme sunucusunda 2 dakikalık eşleşme açılır. */
+        fun openPairing(context: Context): Boolean {
+            liveServer?.let { live ->
+                live.pairing.open()
+                return true
+            }
+            return openStandby(context)
+        }
+
+        /**
+         * Deneme altyazısı her zaman gönderilebilir (iPhone ile aynı): çeviri sürmüyorsa bekleme sunucusu açılır, TV
+         * uygulaması bağlanınca altyazı gider. Sunucu açılamazsa false.
+         */
+        fun testSubtitle(context: Context, text: String): Boolean {
+            val server = liveServer
+            if (server != null && (standby == null || server.connectedClients > 0)) {
+                server.sendSubtitle(text, 8000)
+                return true
+            }
+            pendingTest = text
+            return openStandby(context)
+        }
+
+        @Synchronized private fun openStandby(context: Context): Boolean {
+            standby?.let { open ->
+                open.pairing.open()
+                scheduleStandbyClose()
+                return true
+            }
+            if (current != null) return false
+            val settings = Services.settings
+            val app = context.applicationContext
+            val server = SubtitleServer(instanceId = installationId(app), key = settings.subtitleAccessKey,
+                obsOverlay = runCatching { app.assets.open("obs-overlay.html").bufferedReader().use { it.readText() } }.getOrDefault(""),
+                secondScreenPage = runCatching { app.assets.open("second-screen.html").bufferedReader().use { it.readText() } }.getOrDefault(""))
+            server.onPairingRequest = { _ -> syncPairing(server.pairing) }
+            server.sendsToTv = true
+            server.onClientsChanged = { count ->
+                LiveState.update { it.copy(connectedTvs = count) }
+                if (count > 0) pendingTest?.let { text ->
+                    pendingTest = null
+                    // Bağlanan TV önce görünümü (style) alır, sonra deneme altyazısını.
+                    Thread({ Thread.sleep(500); server.sendSubtitle(text, 8000) }, "CouchSubs test subtitle").apply { isDaemon = true }.start()
+                }
+            }
+            try {
+                server.start()
+            } catch (error: Exception) {
+                Log.w(TAG, "Bekleme sunucusu açılamadı", error)
+                return false
+            }
+            server.sendStyle(settings.style)
+            server.pairing.open()
+            standby = server
+            liveServer = server
+            scheduleStandbyClose()
+            Log.i(TAG, "Bekleme sunucusu açıldı (TV eşleşmesi / deneme altyazısı)")
+            return true
+        }
+
+        private fun scheduleStandbyClose() {
+            standbyClose?.cancel(false)
+            standbyClose = standbyTimer.schedule({ stopStandby() }, STANDBY_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }
+
+        /** Bekleme sunucusunu kapatır (süre doldu ya da çeviri başlıyor). */
+        @Synchronized fun stopStandby() {
+            val server = standby ?: return
+            standby = null
+            pendingTest = null
+            standbyClose?.cancel(false)
+            if (liveServer === server) liveServer = null
+            runCatching { server.stop() }
+            LiveState.update { it.copy(connectedTvs = 0, pairing = null) }
+        }
+
+        /** Bekleme sunucusu açık mı (Ayarlar'daki "eşleşme açık" notu). */
+        val standbyOpen: Boolean get() = standby != null
     }
 
     @Volatile private var subtitlePort = 8787
@@ -434,6 +525,8 @@ class TranslationService : Service() {
     }
 
     private fun begin() {
+        // Çeviri dışında açılan bekleme sunucusu aynı kapıyı tutar; oturumun sunucusundan önce kapanır.
+        stopStandby()
         demo = demoRequested
         demoRequested = false
         val xbox = settings.xbox && !demo

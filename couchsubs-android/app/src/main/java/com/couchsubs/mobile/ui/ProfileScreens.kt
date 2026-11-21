@@ -244,6 +244,12 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
         var keyVersion by remember { mutableStateOf(0) }
         SecondScreenTile(version = keyVersion)
         Tile(Modifier.fillMaxWidth()) {
+            // "TV'yi eşle" (iPhone ile aynı): çeviri sürmese de iki dakika eşleşme açılır; TV kod gösterirse bu
+            // telefonda açılan "Bu TV eşleşsin mi?" penceresinde onaylanır.
+            var pairingOpened by remember { mutableStateOf(false) }
+            SecondaryButton(stringResource(R.string.settings_pair_tv)) { pairingOpened = TranslationService.openPairing(context) }
+            if (pairingOpened && com.couchsubs.mobile.service.LiveState.status.collectAsState().value.connectedTvs == 0)
+                Text(stringResource(R.string.settings_pair_tv_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
             // OBS katmanı adresi (Mac ve Windows'taki gibi adres görünür ve kopyalanır; telefonda ayrıca paylaşılır).
             var address by remember { mutableStateOf(TranslationService.viewerAddress()) }
             var addressCopied by remember { mutableStateOf(false) }
@@ -407,7 +413,7 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             if (placement == SubtitlePlacement.FIXED) {
                 SliderHeader(stringResource(R.string.settings_position_height), "%${bottomPercent.toInt()}")
                 Slider(bottomPercent, { bottomPercent = it; settings.tvBottomPercent = it.toInt() }, valueRange = 0f..85f,
-                    onValueChangeFinished = { TranslationService.sendTestSubtitle(context.getString(R.string.test_subtitle_text)) },
+                    onValueChangeFinished = { TranslationService.testSubtitle(context, context.getString(R.string.test_subtitle_text)) },
                     colors = couchSliderColors())
                 Text(stringResource(R.string.settings_placement_fixed_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
             } else {
@@ -480,11 +486,13 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
         // Deneme altyazısı: TV'de (ya da telefon ekranında) yazının nasıl göründüğü; iPhone ile aynı.
         var testNote by remember { mutableStateOf<String?>(null) }
         SecondaryButton(stringResource(R.string.settings_test_subtitle)) {
-            testNote = if (!TranslationService.sendTestSubtitle(context.getString(R.string.test_subtitle_text)))
+            // Çeviri sürmüyorsa bekleme sunucusu açılır, TV uygulaması bağlanınca altyazı gider (iPhone ile aynı).
+            val waiting = TranslationService.connectedTvs() == 0
+            testNote = if (!TranslationService.testSubtitle(context, context.getString(R.string.test_subtitle_text)))
                 context.getString(R.string.settings_test_needs_start)
             // TV bağlı değilse yazı TV'ye gitmiyordu; TV'deki 6 haneli kodun nereye yazılacağı aranıyordu (kod yazılmaz,
             // bu telefonda açılan "Bu TV eşleşsin mi?" penceresinde onaylanır).
-            else if (settings.target.showsOnTv && TranslationService.connectedTvs() == 0)
+            else if (settings.target.showsOnTv && waiting)
                 context.getString(R.string.settings_test_tv_not_connected)
             else null
         }

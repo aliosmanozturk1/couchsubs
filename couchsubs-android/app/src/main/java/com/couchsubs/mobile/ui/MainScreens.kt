@@ -168,7 +168,7 @@ fun MainScreen(
             // Başlatınca ve durdurunca boşta ve çeviri ekranları solarak yer değiştirir.
             AnimatedContent(status.running, transitionSpec = { fadeIn(tween(MOTION_MS)) togetherWith fadeOut(tween(MOTION_MS)) },
                 label = "running") { running ->
-                if (running) RunningScreen(status, topBar, if (status.demo) onExitDemo else onStop, onPhoneView)
+                if (running) RunningScreen(status, topBar, if (status.demo) onExitDemo else onStop, onPhoneView, onTvUpdate)
                 else ScreenScaffold(top = topBar, bottom = {
                     // PS5 eşlenmemişse (kurulum atlandı) başlatmak yerine eşleme açılır.
                     if (paired) PrimaryButton(stringResource(R.string.start), modifier = mark(TourStep.START), onClick = onStart)
@@ -279,7 +279,8 @@ private fun DemoHeader(onExit: () -> Unit) {
 
 /** Çeviri sürerken (tuval Telefon-Calisiyor): süre, paket, canlı satır ve önceki satırlar, sayılar. */
 @Composable
-private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, onStop: () -> Unit, onPhoneView: () -> Unit) {
+private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, onStop: () -> Unit, onPhoneView: () -> Unit,
+                          onTvInstall: (InstalledTv) -> Unit = {}) {
     val context = LocalContext.current
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -326,7 +327,7 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
         // TV uygulaması bağlı değil: CouchSubs TV'de nerede bulunur (markaya göre), otomatik açma neden olmadı ve
         // "Otomatik açmayı dene" (Windows, Mac ve iPhone ile aynı).
         if (!status.demo && Services.settings.target.showsOnTv && status.connectedTvs == 0)
-            Services.settings.installedTv?.let { TvOpenCard(it.brand, status.tvOpenProblem) }
+            Services.settings.installedTv?.let { tv -> TvOpenCard(tv.brand, status.tvOpenProblem) { onTvInstall(tv) } }
         val current = status.recent.firstOrNull()
         // İlk altyazı gelene kadar ve bağlantı koptuğunda: kolu açınca PS5'te ana hesap seçilmeli (GitHub #231, MainAccountTip).
         if (com.couchsubs.mobile.remoteplay.MainAccountTip.visible(ps5 = !Services.settings.xbox, demo = status.demo,
@@ -390,7 +391,7 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
  * ("ilk başta olmadı, TV'den de uygulamayı açmak lazımmış", 21 Kas). Düğme açma döngüsünü beklemeden yeniden denetir.
  */
 @Composable
-private fun TvOpenCard(brand: com.couchsubs.mobile.tv.TvBrand, problem: com.couchsubs.mobile.tv.TvOpenProblem?) {
+private fun TvOpenCard(brand: com.couchsubs.mobile.tv.TvBrand, problem: com.couchsubs.mobile.tv.TvOpenProblem?, onInstall: () -> Unit) {
     Tile(Modifier.fillMaxWidth()) {
         Text(stringResource(com.couchsubs.mobile.tv.TvOpenProblem.openOnTv(brand)), style = Tokens.Type.body, color = Tokens.Color.text)
         com.couchsubs.mobile.tv.TvOpenProblem.reason(problem)?.let {
@@ -400,6 +401,8 @@ private fun TvOpenCard(brand: com.couchsubs.mobile.tv.TvBrand, problem: com.couc
             com.couchsubs.mobile.tv.TvOpenRetry.request()
             com.couchsubs.mobile.service.LiveState.update { it.copy(tvOpenProblem = null) }
         }
+        // TV uygulaması kurulu değilse ya da açılmıyorsa bu telefondan kurulur (iPhone'daki "TV uygulamasını bu telefondan kur").
+        GhostButton(stringResource(R.string.tvinstall_entry), onClick = onInstall)
     }
 }
 

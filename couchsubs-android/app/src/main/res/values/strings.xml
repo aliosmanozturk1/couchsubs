@@ -260,6 +260,13 @@
     <string name="target_phone_note">TV\'m yok ya da kurulu değil</string>
     <string name="target_unlisted">TV\'m listede yok</string>
     <string name="target_unlisted_note">Desteklenen TV\'ler</string>
+    <string name="target_unlisted_title">TV\'m listede yok</string>
+    <string name="target_unlisted_body">CouchSubs LG (webOS 4+), Samsung (Tizen, 2019+) ve Android TV / Google TV ile çalışır. TV\'nin IP adresini yaz ya da Android TV\'yi seç: oradaki CouchSubs uygulaması bu telefonu kendisi bulur.</string>
+    <string name="target_ip_hint">IP adresi, ör. 192.168.1.20</string>
+    <string name="target_connect">Bağlan</string>
+    <string name="target_search_again">Yeniden ara</string>
+    <string name="target_tv_selected_note">Çeviride bu TV kullanılır. İlk seferde TV izin ister: kumandayla onayla.</string>
+    <string name="target_android_tv_found">Android TV\'deki CouchSubs uygulaması açılınca bu telefonu kendisi bulur.</string>
     <string name="main_ready">Hazır</string>
     <string name="main_ready_body">PS5\'te oyunu aç, sonra başlat.</string>
     <string name="main_unpaired">PS5 eşlenmedi</string>
@@ -594,6 +601,8 @@
     <string name="settings_test_subtitle">TV\'de test et</string>
     <string name="settings_test_needs_start">Deneme altyazısı için önce çeviriyi başlatın; TV uygulaması telefona bağlanınca yazı görünür.</string>
     <string name="settings_test_tv_not_connected">Deneme yazısı TV\'ye gitmedi, çünkü TV uygulaması bağlı değil. TV\'de CouchSubs\'ı açın. TV\'de 6 haneli bir kod çıkarsa onu bir yere yazmayın: bu telefonda açılan “Bu TV eşleşsin mi?” penceresinde onaylayın, sonra yeniden deneyin.</string>
+    <string name="settings_pair_tv">TV\'yi eşle</string>
+    <string name="settings_pair_tv_note">Eşleşme 2 dakika açık. TV\'de CouchSubs\'ı aç; TV eşleşmenin bitmediğini söylerse kumandada Tamam\'a bas. TV kod gösterince bu telefonda açılan pencerede onayla.</string>
     <string name="test_subtitle_text">Bu bir deneme altyazısı. Oyunun üstünde görüyor musunuz?</string>
     <!-- Xbox (Beta) -->
     <string name="error_xbox_not_ready">Önce Microsoft hesabıyla giriş yapıp Xbox\'unuzu seçin.</string>
