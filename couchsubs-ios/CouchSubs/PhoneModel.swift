@@ -101,7 +101,8 @@ final class PhoneModel: ObservableObject {
     private let historyQueue = DispatchQueue(label: "history.json", qos: .utility)
     @Published private(set) var translatorStatus: TranslatorStatus = .ready
     /// Yazı tanıma (Vision) takıldı (#679); takılan okuma bitince kendiliğinden düzelir. iPhone'da ayrı süreçte yedek
-    /// okuyucu açılamaz; takılıyken yeni okuma verilmez, ana ekranda not görünür.
+    /// okuyucu açılamaz; takılıyken yeni okuma verilmez, ana ekranda not görünür. Takılma `abandonStallAfterMs`'i aşarsa
+    /// ya da çeviri yeniden başlatılırsa takılan okuma bırakılır (`abandonStalledRead`).
     @Published private(set) var readingStuck = false
     @Published private(set) var onlineIssue: OnlineKeyState?
     /// Son altyazı oyun paketinden mi geldi (ana ekrandaki "paket kullanılıyor" göstergesi).
@@ -217,6 +218,11 @@ final class PhoneModel: ObservableObject {
     private var missionRegion: CropRegion?
     /// Hatta aynı anda tek kare girer. Durdurma ve yeni hat kapıyı sıfırlar; takılan okuma hattı yeniden kurdurur (Mac ile aynı).
     private var frameGate = FrameGate()
+    /// Çözücüden gelen son kare (ana iş parçacığında bekleyen en çok bir kare); çeviri sürerken var.
+    private var frameMailbox: FrameMailbox<(frame: CGImage, capturedAt: Int)>?
+    /// Takılan okuma bu kadar sürdüyse bırakılır, okuma yeni kuyrukta sürer (bkz. `ReadQueue.abandonStall`). Takılan okuma
+    /// çoğu zaman bir iki dakikada kendiliğinden biter (model hazırlanıyor); bu yüzden hemen bırakılmaz.
+    static let abandonStallAfterMs = 45_000
     private var savedKeys: Set<TranslationEngine> = []
     private var stack = SubtitleStack()
     private var stackTimer: Task<Void, Never>?
@@ -625,11 +631,24 @@ final class PhoneModel: ObservableObject {
         } else { return }
         session.onState = { [weak self] state in Task { @MainActor in self?.sessionStateChanged(state) } }
         session.onConsoleMoved = { [weak self] moved in Task { @MainActor in self?.consoleMoved(moved) } }
+        // Kareler ana iş parçacığına tek gözlü kutudan gider: eskiden her kare (saniyede 20) ayrı bir ana iş parçacığı işi
+        // kuruyordu; ana iş parçacığı yavaşlayınca işler 8 MB'lık kareleriyle birikiyor, dokunuşlar ("Çeviriyi durdur")
+        // ve ekran dönüşü gecikiyordu (TestFlight, X). Yetişilemeyen kare atlanır (bkz. FrameMailbox).
+        let mailbox = FrameMailbox<(frame: CGImage, capturedAt: Int)>()
         session.onFrame = { [weak self] frame in
             // Karenin geldiği an: gecikme buradan TV'ye gidene kadar ölçülür.
-            let capturedAt = SubtitleStabilizer.uptimeMs()
-            Task { @MainActor in await self?.handle(frame, capturedAt: capturedAt) }
+            guard mailbox.put((frame, SubtitleStabilizer.uptimeMs())) else { return }
+            Task { @MainActor in
+                while let next = mailbox.take() {
+                    self?.handle(next.frame, capturedAt: next.capturedAt)
+                    await Task.yield()
+                }
+            }
         }
+        frameMailbox = mailbox
+        // "Durdur / Başlat" takılı okumayı da bırakır: eskiden iPhone'da takılan okuma bitmezse yalnız uygulamayı kapatıp
+        // açmak düzeltiyordu.
+        abandonStalledRead(olderThanMs: 0)
         session.start()
         self.session = session
         startKeeper()
@@ -687,6 +706,8 @@ final class PhoneModel: ObservableObject {
         regionWatcher = nil
         screenTextDetector?.reset()
         gamePhoneTracker = nil
+        frameMailbox?.clear()
+        frameMailbox = nil
         // Yeni "Başlat" eski oturumdan kalan (belki takılmış) okumayı beklemeden temiz başlar.
         frameGate.reset()
         server.pairing.setSession(false)
@@ -896,6 +917,8 @@ final class PhoneModel: ObservableObject {
         }
         pipeline.onMetrics = { [weak self] metrics in self?.lastMetrics = metrics }
         pipeline.onReadResult = { [weak self] error in
+            // Takılıyken her kare beklemeden `stuck` alır; takılma uzadıysa okuma bırakılır, altyazı yeni kuyrukta sürer.
+            if case ReadQueueError.stuck? = error { self?.abandonStalledRead(olderThanMs: Self.abandonStallAfterMs) }
             let stuck = ReadQueue.shared.stalledMs != nil
             if self?.readingStuck != stuck { self?.readingStuck = stuck }
         }
@@ -929,6 +952,14 @@ final class PhoneModel: ObservableObject {
         pipeline.warmUp()
         self.pipeline = pipeline
         configureGamePhone()
+    }
+
+    /// iPhone'da bağımsız yedek okuyucu yok: takılan okuma bırakılır, sonraki okumalar yeni kuyrukta hızlı düzeyde verilir
+    /// (Android'de takılan tanıyıcı da bırakılıp yenisi kuruluyor).
+    private func abandonStalledRead(olderThanMs: Int) {
+        guard let ms = ReadQueue.shared.abandonStall(olderThanMs: olderThanMs) else { return }
+        SubtitleLog.write("okuma \(ms) ms'dir takılı; takılan okuma bırakıldı, okuma yeni kuyrukta hızlı düzeyde sürüyor")
+        if readingStuck { readingStuck = false }
     }
 
     /// Oyun telefonu yalnız ayar açıkken ve oynanan oyun GTA 6 iken izlenir (Mac'teki `configureGamePhone` ile aynı).
@@ -984,7 +1015,9 @@ final class PhoneModel: ObservableObject {
         if visible != showsSubtitleOffTip { showsSubtitleOffTip = visible }
     }
 
-    private func handle(_ frame: CGImage, capturedAt: Int) async {
+    /// Kare ana iş parçacığında kısa iş görür (önizleme, ek alanlar) ve hemen döner; altyazı okuması kapıdan geçerse kendi
+    /// işinde beklenir. Eskiden kare işi okumayı bekliyordu; sonraki kareler de ayrı işlerde birikiyordu.
+    private func handle(_ frame: CGImage, capturedAt: Int) {
         framePreview.image = frame
         subtitleOffTip.frameArrived(at: Date(), streaming: sessionState == .streaming)
         updateSubtitleOffTip()
@@ -1011,8 +1044,11 @@ final class PhoneModel: ObservableObject {
             entry = frameGate.enter(now: SubtitleStabilizer.uptimeMs())
         }
         guard case .enter(let token) = entry, let pipeline else { return }
-        await pipeline.process(frame, region: settings.region, capturedAt: capturedAt)
-        frameGate.leave(token)
+        let region = settings.region
+        Task { [weak self] in
+            await pipeline.process(frame, region: region, capturedAt: capturedAt)
+            self?.frameGate.leave(token)
+        }
     }
 
     // MARK: - Geçmiş

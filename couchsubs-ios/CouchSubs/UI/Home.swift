@@ -426,6 +426,8 @@ struct SubtitleScreen: View {
     @Environment(\.dismiss) private var dismiss
     /// Ekran yatay mı; "Ekranı döndür" düğmesi dikeye ve geri çevirir.
     @State private var landscape = true
+    /// Bu açılışın döndürme numarası (`Orientation.hold`).
+    @State private var orientationToken = 0
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -535,10 +537,11 @@ struct SubtitleScreen: View {
         .persistentSystemOverlays(.hidden)
         .onAppear {
             landscape = true
+            orientationToken = Orientation.hold()
             Orientation.request(.landscape)
         }
         .onDisappear {
-            Orientation.release()
+            Orientation.release(orientationToken)
         }
     }
 
@@ -594,6 +597,17 @@ enum Orientation {
     /// "Ekranı döndür" düğmesinin istediği yön.
     nonisolated static func subtitleMask(landscape: Bool) -> UIInterfaceOrientationMask { landscape ? .landscape : .portrait }
 
+    /// Altyazı ekranının her açılışı yeni bir numara alır. Kapatıp hemen yeniden açınca eski ekranın `onDisappear`'ı yeni
+    /// ekranın `onAppear`'ından sonra gelebiliyor; eskiden bu geç `release` yeni ekranı dike çeviriyor, ekran yan dönmüyordu
+    /// (TestFlight, X). Eski ekranın bırakması artık yalnız kendi isteğini geri alır.
+    private static var holder = 0
+
+    /// Altyazı ekranı açıldı: döndürmeyi bu ekran yönetir; dönen numara `release(_:)`'e verilir.
+    static func hold() -> Int {
+        holder += 1
+        return holder
+    }
+
     static func request(_ mask: UIInterfaceOrientationMask) {
         allowed = mask
         apply(mask)
@@ -603,8 +617,10 @@ enum Orientation {
         }
     }
 
-    /// Altyazı ekranı kapandı: uygulama yine her yöne döner, telefon dike geçer.
-    static func release() {
+    /// Altyazı ekranı kapandı: uygulama yine her yöne döner, telefon dike geçer. Bu arada yeni altyazı ekranı açıldıysa
+    /// (numara değiştiyse) onun yönüne dokunulmaz.
+    static func release(_ token: Int) {
+        guard token == holder else { return }
         allowed = standard
         apply(.portrait)
     }

@@ -304,6 +304,77 @@ final class ReadQueueTests: XCTestCase {
         XCTAssertEqual(results.last.flatMap { $0 as? ReadQueueError }, .stuck)
         XCTAssertEqual(reader.callCount, 1)
     }
+
+    /// iPhone: asla dönmeyen okuma altyazıyı uygulama kapatılana dek durduruyordu (TestFlight, X). Takılma yeterince
+    /// uzunsa bırakılır; sonraki okuma yeni kuyrukta ve hızlı düzeyde verilir. Sınır kadar bırakıldıktan sonra yine `stuck`.
+    func testNeverReturningReadIsAbandonedWithoutRescue() async throws {
+        let hang = Hang()
+        defer { hang.release() }
+        defer { VisionReader.useFastLevel = false }
+        let queue = ReadQueue(label: "test.abandon", timeoutMs: 100)
+
+        _ = try? await queue.run { hang.wait() }
+        XCTAssertNotNil(queue.stalledMs)
+        XCTAssertNil(queue.abandonStall(olderThanMs: 60_000), "kısa takılma bırakılmaz")
+        do {
+            _ = try await queue.run { 1 }
+            XCTFail("takılıyken okuma verilmemeliydi")
+        } catch {
+            XCTAssertEqual(error as? ReadQueueError, .stuck)
+        }
+
+        let ms = queue.abandonStall(olderThanMs: 0, maxAbandons: 2)
+        XCTAssertGreaterThanOrEqual(ms ?? 0, 100)
+        XCTAssertNil(queue.stalledMs)
+        XCTAssertTrue(VisionReader.useFastLevel)
+        let value = try await queue.run { 2 }
+        XCTAssertEqual(value, 2)
+
+        // Yeni kuyrukta yine takılırsa bir kez daha bırakılır; sınırdan sonra bırakılmaz.
+        _ = try? await queue.run { hang.wait() }
+        XCTAssertNotNil(queue.abandonStall(olderThanMs: 0, maxAbandons: 2))
+        let three = try await queue.run { 3 }
+        XCTAssertEqual(three, 3)
+        _ = try? await queue.run { hang.wait() }
+        XCTAssertNil(queue.abandonStall(olderThanMs: 0, maxAbandons: 2))
+        XCTAssertNotNil(queue.stalledMs)
+
+        // Bırakılan okuma sonradan biterse yeni kuyruğa dokunmaz.
+        hang.release()
+        for _ in 0..<100 where queue.stalledMs != nil { try await Task.sleep(for: .milliseconds(10)) }
+        let four = try await queue.run { 4 }
+        XCTAssertEqual(four, 4)
+    }
+}
+
+/// iPhone'da kareler ana iş parçacığına tek gözlü kutudan gider (bkz. `FrameMailbox`).
+final class FrameMailboxTests: XCTestCase {
+    func testOnlyLatestFrameWaitsAndOneDeliveryIsScheduled() {
+        let box = FrameMailbox<Int>()
+        XCTAssertTrue(box.put(1), "ilk kare teslim işi kurdurur")
+        XCTAssertFalse(box.put(2))
+        XCTAssertFalse(box.put(3))
+        XCTAssertEqual(box.take(), 3, "yalnız son kare bekler")
+        XCTAssertEqual(box.takeDropped(), 2)
+        XCTAssertFalse(box.put(4), "teslim işi sürüyor: yenisi kurulmaz")
+        XCTAssertEqual(box.take(), 4)
+        XCTAssertNil(box.take(), "kutu boş: teslim işi biter")
+        XCTAssertTrue(box.put(5), "sonraki kare yeni teslim işi kurdurur")
+        box.clear()
+        XCTAssertNil(box.take())
+        XCTAssertTrue(box.put(6))
+    }
+
+    /// Ana iş parçacığı takılı kalsa da çözücü beklemez ve bellekte tek kare kalır.
+    func testSlowConsumerKeepsOneFrame() {
+        let box = FrameMailbox<[UInt8]>()
+        var scheduled = 0
+        for _ in 0..<200 where box.put([UInt8](repeating: 0, count: 16)) { scheduled += 1 }
+        XCTAssertEqual(scheduled, 1)
+        XCTAssertEqual(box.takeDropped(), 199)
+        XCTAssertNotNil(box.take())
+        XCTAssertNil(box.take())
+    }
 }
 
 private final class Counter: @unchecked Sendable {

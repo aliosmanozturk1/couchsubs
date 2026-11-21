@@ -107,7 +107,9 @@ public final class ReadQueue: @unchecked Sendable {
     }
 
     private let lock = NSLock()
-    private let primary: Lane
+    private var primary: Lane
+    private var primaryGeneration = 0
+    private var abandonedStalls = 0
     private var rescue: Lane
     private let label: String
     private var rescueGeneration = 0
@@ -144,6 +146,36 @@ public final class ReadQueue: @unchecked Sendable {
 
     /// Asıl okuyucu takılı mı ve kaç milisaniyedir.
     public var stalledMs: Int? { lock.withLock { primary.stalledSince.map { Self.uptimeMs() - $0 } } }
+
+    /// Bağımsız yedeği olmayan yerde (iPhone; ayrı süreç açılamaz) takılan okuma bırakılır: asıl okuyucuya yeni kuyruk
+    /// kurulur ve okumalar bundan sonra hızlı düzeyde (Neural Engine'siz) verilir. Eskiden iPhone'da takılan tek okuma
+    /// bitmezse altyazı bir daha gelmiyordu; "Durdur / Başlat" düzeltmiyor, yalnız uygulamayı kapatıp açmak
+    /// düzeltiyordu (Android'de takılan tanıyıcı zaten bırakılıp yenisi kuruluyor). Bırakılan okuma arka planda kalır
+    /// (iş parçacığı durdurulamaz); bu yüzden süreç başına en çok `maxAbandons` kez yapılır.
+    ///
+    /// `olderThanMs`: takılma en az bu kadar sürmüş olmalı (takılan okuma çoğu zaman kendiliğinden biter). Bırakıldıysa
+    /// takılmanın süresi (ms), bırakılmadıysa nil.
+    @discardableResult
+    public func abandonStall(olderThanMs: Int, maxAbandons: Int = ReadQueue.defaultMaxAbandons) -> Int? {
+        let abandoned: Int? = lock.withLock {
+            guard let since = primary.stalledSince, abandonedStalls < maxAbandons else { return nil }
+            let ms = Self.uptimeMs() - since + timeoutMs
+            guard ms >= olderThanMs else { return nil }
+            abandonedStalls += 1
+            primaryGeneration += 1
+            // Eski kuyruğun bekleyenleri yoktur (takılınca yedeğe taşındı ya da hata aldı); takılan iş orada kalır.
+            primary = Lane(label: "\(label).\(primaryGeneration)")
+            return ms
+        }
+        guard abandoned != nil else { return nil }
+        VisionReader.useFastLevel = true
+        let current = lock.withLock { primary }
+        pump(current)
+        return abandoned
+    }
+
+    /// iPhone'da süreç başına bırakılabilecek takılı okuma sayısı (her biri bir iş parçacığını tutar).
+    public static let defaultMaxAbandons = 3
 
     /// Takılıyken okumalar yedekten mi geliyor.
     public var isRescuing: Bool { lock.withLock { primary.stalledSince != nil && rescueUsable } }
