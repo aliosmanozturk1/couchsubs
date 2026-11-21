@@ -305,6 +305,74 @@ final class ReadQueueTests: XCTestCase {
         XCTAssertEqual(reader.callCount, 1)
     }
 
+    /// GitHub #822: altyazı okuması yavaşlayınca (Mac, Remote Play penceresi) her takılmada 10 sn hiç satır okunmuyordu;
+    /// kullanıcının geçmişinde çeviriler 8–11 sn arayla geliyordu. Yedek varken altyazı okuması `subtitleTimeoutMs`'te
+    /// takılı sayılır, sonraki altyazı hemen yedekten okunur.
+    func testSlowSubtitleReadMovesToRescueEarly() async throws {
+        let hang = Hang()
+        defer { hang.release() }
+        let queue = ReadQueue(label: "test.subtitle.early", timeoutMs: 5000, subtitleTimeoutMs: 150)
+        queue.rescuer = FakeRescuer()
+        let started = Date()
+        do {
+            _ = try await queue.run(priority: .subtitle) { hang.wait() }
+            XCTFail("takılan okuma dönmemeliydi")
+        } catch {
+            XCTAssertEqual(error as? ReadQueueError, .timedOut(ms: 150))
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "altyazı 5 sn'lik genel sınırı beklememeli")
+        XCTAssertTrue(queue.isRescuing)
+        let reading = try await queue.run(priority: .subtitle) { try VisionReader().readLines(self.image(), deep: false) }
+        XCTAssertEqual(reading.text, "yedekten")
+    }
+
+    /// Altyazı, asıl okuyucuda uzun süren bir arka plan okumasının (ek alan, "Ekranı çevir") arkasında genel sınır kadar
+    /// beklemez: yedek varsa `subtitleTimeoutMs` sonra yedekten okunur.
+    func testSubtitleDoesNotWaitBehindLongBackgroundRead() async throws {
+        let hang = Hang()
+        defer { hang.release() }
+        let queue = ReadQueue(label: "test.subtitle.behind", timeoutMs: 5000, subtitleTimeoutMs: 150)
+        queue.rescuer = FakeRescuer()
+        let background = Task { try? await queue.run(priority: .background) { hang.wait() } }
+        try await Task.sleep(for: .milliseconds(50))
+        let started = Date()
+        let reading = try await queue.run(priority: .subtitle) { try VisionReader().readLines(self.image(), deep: false) }
+        XCTAssertEqual(reading.text, "yedekten")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+        hang.release()
+        _ = await background.value
+    }
+
+    /// Yedek yokken (iPhone) altyazı için erken sınır uygulanmaz: beklemenin yerine geçecek okuyucu yok.
+    func testSubtitleLimitNeedsRescue() async throws {
+        let hang = Hang()
+        defer { hang.release() }
+        let queue = ReadQueue(label: "test.subtitle.norescue", timeoutMs: 400, subtitleTimeoutMs: 100)
+        do {
+            _ = try await queue.run(priority: .subtitle) { hang.wait() }
+            XCTFail("takılan okuma dönmemeliydi")
+        } catch {
+            XCTAssertEqual(error as? ReadQueueError, .timedOut(ms: 400))
+        }
+    }
+
+    /// Altyazıyı bekletmemek için erken takılı sayılıp genel sınırdan önce biten okuma hızlı düzeye geçirmez (o yol
+    /// yalnız gerçekten dönmeyen okumalar için).
+    func testEarlyStallDoesNotDegrade() async throws {
+        XCTAssertFalse(VisionReader.useFastLevel)
+        defer { VisionReader.useFastLevel = false }
+        let queue = ReadQueue(label: "test.subtitle.degrade", timeoutMs: 2000, degradeAfterStalls: 1, subtitleTimeoutMs: 100)
+        queue.rescuer = FakeRescuer()
+        let events = Events()
+        queue.onEvent = { events.add($0) }
+        _ = try? await queue.run(priority: .subtitle) { Thread.sleep(forTimeInterval: 0.3); return 1 }
+        for _ in 0..<100 where queue.stalledMs != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(queue.stalledMs)
+        XCTAssertTrue(events.all.contains { if case .recovered = $0 { return true } else { return false } })
+        XCTAssertFalse(events.all.contains(.degraded(stalls: 1)))
+        XCTAssertFalse(VisionReader.useFastLevel)
+    }
+
     /// iPhone: asla dönmeyen okuma altyazıyı uygulama kapatılana dek durduruyordu (TestFlight, X). Takılma yeterince
     /// uzunsa bırakılır; sonraki okuma yeni kuyrukta ve hızlı düzeyde verilir. Sınır kadar bırakıldıktan sonra yine `stuck`.
     func testNeverReturningReadIsAbandonedWithoutRescue() async throws {

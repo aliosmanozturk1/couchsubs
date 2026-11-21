@@ -3,7 +3,7 @@
 """Gerçek kare gerileme setinin iki koşusunu (önceki etiket, bu çekirdek) karşılaştırır (scripts/regression-frames.sh).
 
 Kırmızı (çıkış 1): altyazı yakalama oranı düştü, yanlış kabul arttı ya da telefon/harita sınıflaması, kutu örtme, telefon
-çevirisi senaryosu, konuşan adı sonradan okunan satır (tek satır) ya da ekran yazısı (menü sekmeleri, görev listesi, özel ad, fotoğraf/tuş simgesi örtme) geriledi. Ayrıca karede kare: önceki etikette geçip bu çekirdekte kalan her kare listelenir.
+çevirisi senaryosu, konuşan adı sonradan okunan satır (tek satır), yavaş okuyucuda altyazı (pencere kaynağı) ya da ekran yazısı (menü sekmeleri, görev listesi, özel ad, fotoğraf/tuş simgesi örtme) geriledi. Ayrıca karede kare: önceki etikette geçip bu çekirdekte kalan her kare listelenir.
 GITHUB_STEP_SUMMARY tanımlıysa tablo oraya da yazılır.
 """
 
@@ -20,6 +20,7 @@ METRICS = [
     ("cover", "Çizim kutusu örtme (piksel ≥%95)", False),
     ("phoneTranslation", "Telefon çevirisi gösteriliyor", False),
     ("speaker", "Konuşan adı sonradan (tek satır)", False),
+    ("slowReader", "Yavaş okuyucuda altyazı (pencere)", False),
     ("screen", "Ekran yazısı (menü, görev listesi)", False),
 ]
 
@@ -58,6 +59,9 @@ def frame_failures(summary):
     for scenario in summary.get("speakerScenarios", []):
         if not scenario["passed"]:
             failed["konuşan adı senaryosu " + scenario["name"]] = [scenario["detail"]]
+    for scenario in summary.get("slowReaderScenarios", []):
+        if not scenario["passed"]:
+            failed["yavaş okuyucu senaryosu " + scenario["name"]] = [scenario["detail"]]
     return failed
 
 

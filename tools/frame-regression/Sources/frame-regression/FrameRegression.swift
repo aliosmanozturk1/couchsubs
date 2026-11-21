@@ -162,6 +162,7 @@ enum Report {
         Swift.print(row("Çizim kutusu örtme (piksel ≥%95)", summary.cover))
         Swift.print(row("Telefon çevirisi gösteriliyor", summary.phoneTranslation))
         Swift.print(row("Konuşan adı sonradan (tek satır)", summary.speaker))
+        Swift.print(row("Yavaş okuyucuda altyazı (pencere)", summary.slowReader))
         Swift.print(row("Ekran yazısı (menü, görev listesi)", summary.screen))
         let misses = summary.frames.filter { $0.captured == false || $0.falseAccept == false || $0.phoneExpected != $0.phoneDetected
             || $0.mapExpected != $0.mapDetected || ($0.coverage.map { $0 < coverPass } ?? false) || $0.screen == false }
@@ -180,6 +181,9 @@ enum Report {
         }
         for scenario in summary.speakerScenarios where !scenario.passed {
             Swift.print("    ✗ konuşan adı senaryosu \(scenario.name): \(scenario.detail)")
+        }
+        for scenario in summary.slowReaderScenarios where !scenario.passed {
+            Swift.print("    ✗ yavaş okuyucu senaryosu \(scenario.name): \(scenario.detail)")
         }
     }
 }

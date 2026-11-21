@@ -10,14 +10,17 @@ struct Manifest: Decodable {
     var phoneScenarios: [PhoneScenario] = []
     /// Konuşan adı sonradan okunan diyalog senaryoları (X: "çift altyazı").
     var speakerScenarios: [SpeakerScenario] = []
+    /// Asıl okuyucu yavaşken (Mac, Remote Play penceresi) gerçek zamanda altyazı okunuyor mu (GitHub #822).
+    var slowReaderScenarios: [SlowReaderScenario] = []
 
-    enum CodingKeys: String, CodingKey { case frames, phoneScenarios, speakerScenarios }
+    enum CodingKeys: String, CodingKey { case frames, phoneScenarios, speakerScenarios, slowReaderScenarios }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         frames = try container.decode([Frame].self, forKey: .frames)
         phoneScenarios = try container.decodeIfPresent([PhoneScenario].self, forKey: .phoneScenarios) ?? []
         speakerScenarios = try container.decodeIfPresent([SpeakerScenario].self, forKey: .speakerScenarios) ?? []
+        slowReaderScenarios = try container.decodeIfPresent([SlowReaderScenario].self, forKey: .slowReaderScenarios) ?? []
     }
 
     static func load(_ directory: URL) throws -> Manifest {
@@ -76,6 +79,17 @@ struct SpeakerScenario: Decodable {
     var frame: String
     /// Konuşan adının karedeki yeri [sol, üst, sağ, alt]; ilk karelerde bu alan çevresinin rengiyle örtülür.
     var nameBox: [Double]
+}
+
+struct SlowReaderScenario: Decodable {
+    var name: String
+    /// Sırayla, her biri `showMs` gerçek zaman ekranda kalan altyazılı kareler (`frames` içindeki id).
+    var frames: [String]
+    var showMs: Int
+    /// Asıl okuyucudaki (bu süreçteki Vision) her okumanın süresi.
+    var readMs: Int
+    /// Geçmek için yakalanması gereken en az satır oranı.
+    var minCapture: Double
 }
 
 func box(_ values: [Double]?) -> TextBox? {

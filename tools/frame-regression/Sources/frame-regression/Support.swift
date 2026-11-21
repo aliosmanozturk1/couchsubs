@@ -144,3 +144,31 @@ final class CachedReader: TextReader, @unchecked Sendable {
         return reading
     }
 }
+
+/// Asıl okuyucu (bu süreçteki Vision) yavaş: yedek bağlamın dışındaki her okuma `delayMs` sürer (GitHub #822).
+final class SlowPrimaryReader: TextReader, @unchecked Sendable {
+    let base: TextReader
+    let delayMs: Int
+
+    init(base: TextReader, delayMs: Int) {
+        self.base = base
+        self.delayMs = delayMs
+    }
+
+    func read(_ image: CGImage) throws -> String { try readLines(image, deep: true).text }
+
+    func readLines(_ image: CGImage, deep: Bool) throws -> Reading {
+        if ReadQueue.activeRescuer == nil { Thread.sleep(forTimeInterval: Double(delayMs) / 1000) }
+        return try base.readLines(image, deep: deep)
+    }
+}
+
+/// Bağımsız yedek okuyucunun yerine: aynı süreçte isabetli Vision (Mac'teki ayrı yardımcı sürecin okuduğu gibi).
+final class InProcessRescuer: ReadRescuer, @unchecked Sendable {
+    func recognize(_ image: CGImage, language: String) throws -> Reading {
+        try VisionReader.recognize(image, language: language, fast: false)
+    }
+
+    func abandon() {}
+    func standDown() {}
+}

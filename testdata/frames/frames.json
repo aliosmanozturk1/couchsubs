@@ -1011,5 +1011,15 @@
       "frame": "gta6-08-jason",
       "nameBox": [0.338, 0.872, 0.397, 0.925]
     }
+  ],
+  "slowReaderScenarios": [
+    {
+      "name": "pencere kaynağı: asıl okuyucu yavaşken (her okuma 11 sn) art arda 2,5 sn'lik satırlar (#822)",
+      "frames": ["pencere-kare-1", "pencere-baslik-2", "pencere-serit-1", "pencere-kare-3-kisa",
+                 "pencere-kare-5-gorev", "pencere-baslik-3-kisa", "pencere-serit-2-gorev", "pencere-baslik-1"],
+      "showMs": 2500,
+      "readMs": 11000,
+      "minCapture": 0.6
+    }
   ]
 }

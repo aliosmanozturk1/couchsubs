@@ -54,11 +54,14 @@ struct Summary: Codable {
     var phoneTranslation: Metric
     /// Konuşan adı sonradan okunan satır tek çeviriyle, aynı satırın yerine geçerek gösteriliyor (adsız + adlı iki satır yok).
     var speaker: Metric
+    /// Asıl okuyucu yavaşken gerçek zamanda pencere karelerinin altyazısı okunuyor (GitHub #822).
+    var slowReader: Metric
     /// Ekran yazısı: menü sekmeleri ayrı, görev başlığı/açıklaması ayrı, özel ad çevrilmez, fotoğraf örtülmez, özgün renk.
     var screen: Metric
     var frames: [FrameResult]
     var scenarios: [ScenarioResult]
     var speakerScenarios: [ScenarioResult]
+    var slowReaderScenarios: [ScenarioResult]
 }
 
 @MainActor
@@ -128,6 +131,11 @@ final class Runner {
         for scenario in manifest.speakerScenarios {
             speakers.append(await runSpeaker(scenario))
         }
+        // 6) Asıl okuyucu yavaşken altyazı (pencere kaynağı, gerçek zaman).
+        var slow: [ScenarioResult] = []
+        for scenario in manifest.slowReaderScenarios {
+            slow.append(await runSlowReader(scenario))
+        }
         let frames = manifest.frames.map { results[$0.id]! }
         func metric(_ values: [Bool]) -> Summary.Metric { Summary.Metric(passed: values.filter { $0 }.count, total: values.count) }
         return Summary(
@@ -139,10 +147,58 @@ final class Runner {
             cover: metric(frames.compactMap { $0.coverage.map { $0 >= coverPass } }),
             phoneTranslation: metric(scenarios.map(\.passed)),
             speaker: metric(speakers.map(\.passed)),
+            slowReader: metric(slow.map(\.passed)),
             screen: metric(frames.compactMap(\.screen)),
             frames: frames,
             scenarios: scenarios,
-            speakerScenarios: speakers)
+            speakerScenarios: speakers,
+            slowReaderScenarios: slow)
+    }
+
+    /// GitHub #822 (Mac, Sony Remote Play penceresi; beta.52'de düzgün, sonrasında "5-6 cümlede bir çeviri"): kullanıcının
+    /// altyazı geçmişinde çeviriler beta.52'deki 1–4 sn yerine 8–11 sn (ve 19–20 sn) arayla geliyordu; bu, okuma sırasının
+    /// 10 sn'lik sınırıdır (`ReadQueue.defaultTimeoutMs`). Asıl okuyucu yavaşlayınca altyazı her seferinde 10 sn bekliyor,
+    /// o arada ekrana gelen satırlar hiç okunmuyordu. Burada uygulamanın okuma sırası (`ReadQueue.shared`) ve bağımsız
+    /// yedeği (bu süreçte isabetli Vision) kullanılır; asıl okuyucudaki her okuma `readMs` sürer. Kareler gerçek zamanda,
+    /// her biri `showMs` ekranda kalır (oyundaki gibi art arda); satırların en az `minCapture` oranı gönderilmeli.
+    private func runSlowReader(_ scenario: SlowReaderScenario) async -> ScenarioResult {
+        let frames = scenario.frames.compactMap { id in manifest.frames.first { $0.id == id } }
+        guard frames.count == scenario.frames.count, frames.allSatisfy({ $0.subtitle != nil }) else {
+            return ScenarioResult(name: scenario.name, passed: false, detail: "kare ya da beklenen altyazı yok")
+        }
+        let queue = ReadQueue.shared
+        let rescuer = InProcessRescuer()
+        let previous = queue.rescuer
+        queue.rescuer = rescuer
+        defer {
+            queue.rescuer = previous
+            VisionReader.useFastLevel = false
+        }
+        let slowReader = SlowPrimaryReader(base: self.reader, delayMs: scenario.readMs)
+        let translator = DictionaryTranslator(words: words)
+        let server = SubtitleRecorder()
+        let pipeline = SubtitlePipeline(reader: slowReader, translator: translator, server: server)
+        pipeline.holdReadings = false
+        let started = Date()
+        let total = Double(frames.count * scenario.showMs) / 1000
+        while true {
+            let elapsed = Date().timeIntervalSince(started)
+            guard elapsed < total else { break }
+            let frame = frames[min(frames.count - 1, Int(elapsed * 1000) / scenario.showMs)]
+            server.current = frame.id
+            await pipeline.process(images[frame.id]!, region: frame.cropRegion)
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        await pipeline.waitForTranslations()
+        let sources = server.sent.map { translator.source(of: $0.text) ?? $0.text }
+        let missed = frames.filter { frame in !sources.contains { Self.matches($0, withoutSpeaker(frame.subtitle!)) } }.map(\.id)
+        let captured = frames.count - missed.count
+        let passed = Double(captured) >= scenario.minCapture * Double(frames.count)
+        // Sonraki ölçümler takılı sıradan etkilenmesin: yavaş okuma biter.
+        for _ in 0..<Int(scenario.readMs / 100 + 20) where queue.stalledMs != nil { try? await Task.sleep(nanoseconds: 100_000_000) }
+        let detail = "\(captured)/\(frames.count) satır" + (missed.isEmpty ? "" : " (okunmayan: \(missed.joined(separator: ", ")))")
+        if verbose { print("— yavaş okuyucu senaryosu \(scenario.name): \(detail)") }
+        return ScenarioResult(name: scenario.name, passed: passed, detail: detail)
     }
 
     /// Ad örtülü kare (adsız okuma çevrilip gösterilir), sonra aynı kare adıyla: cümle bir kez çevrilmeli, adlı satır
