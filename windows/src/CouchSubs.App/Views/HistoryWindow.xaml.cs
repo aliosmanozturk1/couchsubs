@@ -81,7 +81,14 @@ public partial class HistoryWindow : Window
         }
     }
 
-    private void OnClear(object sender, RoutedEventArgs e) => controller.ClearHistory();
+    /// <summary>Geçmiş sorulmadan silinmez (Mac ve telefonlarla aynı onay).</summary>
+    private void OnClear(object sender, RoutedEventArgs e)
+    {
+        var text = Localizer.Current;
+        if (MessageBox.Show(this, text["All saved lines are removed from this computer."], text["Clear the history?"],
+                            MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            controller.ClearHistory();
+    }
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();
 }

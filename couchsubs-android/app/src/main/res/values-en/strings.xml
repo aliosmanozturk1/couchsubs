@@ -318,6 +318,13 @@
     <string name="settings_game_phone">Automatically translate the GTA 6 phone (experimental)</string>
     <string name="settings_subtitle_background">Watch subtitle background (GTA 6 experimental)</string>
     <string name="settings_subtitle_background_short">In GTA 6, set the subtitle background to Solid. Only text on the dark blue subtitle panel will be translated.</string>
+    <string name="settings_misread_wait">Wait for a misread line</string>
+    <string name="settings_misread_wait_note" formatted="false">When a line is read with words that are not in the dictionary, a better reading is awaited for at most this long. Measured in GTA V, translations from misread lines compared with 0 s: 0.2 s → 77%, 0.4 s → 49%, 0.6 s → 41%, 0.8 s (recommended) → 34%, 1.0 s → 31%.</string>
+    <string name="settings_partial_wait">Wait for a half-read line</string>
+    <string name="settings_partial_wait_note">When a line looks cut off (no sentence ending, such as a mission text with a colored word), the full line is awaited for at most this long. Its effect is small: at 0 s a few more lines arrive cut off. Recommended: 0.3 s.</string>
+    <string name="settings_waits_note">These waits only delay lines that were read badly; most lines are shown without waiting. A shorter wait shows those lines sooner but lets more wrong translations through.</string>
+    <string name="settings_waits_defaults">Restore defaults</string>
+    <string name="unit_seconds">sec</string>
     <string name="subtitle_background_tip">“Watch subtitle background” is on: only text on GTA 6’s dark subtitle panel is read. Set the game’s subtitle background to Solid or turn this setting off.</string>
     <string name="settings_xbox_audio">Play Xbox sound on this device</string>
     <string name="settings_xbox_audio_short">While remote play is running, the Xbox mutes the TV and sends game sound only to this device (an Xbox limitation). If you turn this off, the game has no sound. To hear it from the TV or speakers, connect this phone to a Bluetooth speaker or headphones.</string>
@@ -603,6 +610,13 @@
     <string name="xbox_login_failed">Couldn\'t sign in: %1$s</string>
     <string name="xbox_login_expired">The code expired. Try again.</string>
     <string name="xbox_sign_out">Sign out of Microsoft</string>
+    <string name="channel_connection">Connection</string>
+    <string name="connection_lost_title">PS5 connection lost</string>
+    <string name="connection_lost_body">Subtitles stopped. Open CouchSubs to reconnect.</string>
+    <string name="psn_sign_out">Sign out of PSN and reset the account</string>
+    <string name="psn_sign_out_title">Sign out of PSN?</string>
+    <string name="psn_sign_out_body">The second PSN account and the PS5 pairing are removed from this phone. To translate again, sign in with Sony and pair the PS5 again.</string>
+    <string name="psn_sign_out_confirm">Sign out</string>
     <string name="xbox_consoles_title">Choose your Xbox</string>
     <string name="xbox_consoles_body">The Xboxes on your account. On the Xbox, turn on Settings › Devices &amp; connections › Remote features.</string>
     <string name="xbox_consoles_searching">Looking for your Xboxes…</string>

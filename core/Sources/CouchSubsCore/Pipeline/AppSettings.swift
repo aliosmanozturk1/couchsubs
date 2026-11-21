@@ -160,6 +160,15 @@ public struct UserSettings: Codable, Equatable {
     public var fastSubtitleDetection = false
     /// Yalnız GTA 6'nın lacivert altyazı zemini üstündeki yazıyı oku. Varsayılan kapalı.
     public var watchSubtitleBackground = false
+    /// "Bozuk okunan satır için bekleme" (ms): sözlükte olmayan sözcüklerle okunan satırın daha iyi okuması için en çok bu
+    /// kadar beklenir (Windows: MisreadWaitMs). Eski kayıtlarda yoktur; önerilen 800 ile açılır.
+    public var misreadWaitMs = SubtitlePipeline.packWaitMs
+    /// "Yarım okunan satır için bekleme" (ms): yarım görünen satırın tamamı için en çok bu kadar beklenir (Windows:
+    /// PartialWaitMs). Önerilen 300.
+    public var partialWaitMs = SubtitlePipeline.cleanWaitMs
+    /// Ayarlardaki bekleme kaydırıcılarının üst sınırı (ms); kayıttaki değer hatta en çok `maxWaitMs` olarak uygulanır.
+    public static let waitSliderMaxMs = 1000
+    public static let maxWaitMs = 2000
     /// Mac'te GTA 6 telefonu açıkken mesajları yerinde gösterir. Varsayılan kapalı; kullanıcı açmadıkça telefon okunmaz.
     public var autoReadGamePhone = false
     /// Bilinen oyunlarda hazır ek alanlar (bkz. `GameAreaPresets`); kullanıcının kendi ek alanı varsa o kullanılır.
@@ -239,6 +248,8 @@ public struct UserSettings: Codable, Equatable {
         speakerColors = try values.decodeIfPresent(Bool.self, forKey: .speakerColors) ?? defaults.speakerColors
         fastSubtitleDetection = try values.decodeIfPresent(Bool.self, forKey: .fastSubtitleDetection) ?? defaults.fastSubtitleDetection
         watchSubtitleBackground = try values.decodeIfPresent(Bool.self, forKey: .watchSubtitleBackground) ?? defaults.watchSubtitleBackground
+        misreadWaitMs = (try? values.decodeIfPresent(Int.self, forKey: .misreadWaitMs)) ?? defaults.misreadWaitMs
+        partialWaitMs = (try? values.decodeIfPresent(Int.self, forKey: .partialWaitMs)) ?? defaults.partialWaitMs
         autoReadGamePhone = try values.decodeIfPresent(Bool.self, forKey: .autoReadGamePhone) ?? defaults.autoReadGamePhone
         gameAreaPresets = try values.decodeIfPresent(Bool.self, forKey: .gameAreaPresets) ?? defaults.gameAreaPresets
         setTextApart = try values.decodeIfPresent(Bool.self, forKey: .setTextApart) ?? defaults.setTextApart
@@ -387,5 +398,14 @@ extension UserSettings {
         gameAreaPresets = false
         autoReadGamePhone = false
         return changed
+    }
+}
+
+extension SubtitlePipeline {
+    /// Ayarlardaki iki bekleme süresini hatta uygular (Windows AppController.ApplyWaits ile aynı sınırlar: 0–2 sn).
+    /// Hat yeniden kurulmaz; bekleyen satır yeni süreyle sınanır.
+    public func applyWaits(from settings: UserSettings) {
+        packWait = min(max(settings.misreadWaitMs, 0), UserSettings.maxWaitMs)
+        cleanWait = min(max(settings.partialWaitMs, 0), UserSettings.maxWaitMs)
     }
 }

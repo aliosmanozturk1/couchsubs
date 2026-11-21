@@ -70,6 +70,9 @@ class SubtitlePipeline(
          * görünüyordu (Windows: CleanWaitMs).
          */
         const val CLEAN_WAIT_MS = 300
+        /** Ayarlardaki bekleme kaydırıcılarının üst sınırı ve hatta uygulanan en uzun bekleme (ms). */
+        const val WAIT_SLIDER_MAX_MS = 1000
+        const val MAX_WAIT_MS = 2000
         /** Çevrilen satırın daha iyi olmayan yeniden okuması bu süre içinde yeni satır sayılmaz. */
         const val REREAD_WITHIN_MS = 4000
 
@@ -145,6 +148,15 @@ class SubtitlePipeline(
     @Volatile var packWait = PACK_WAIT_MS
     /** Yarım olabilecek temiz okumanın bekleme süresi (0: beklenmez); testler değiştirir. */
     @Volatile var cleanWait = CLEAN_WAIT_MS
+
+    /**
+     * Ayarlardaki "Bozuk okunan satır için bekleme" ve "Yarım okunan satır için bekleme" sürelerini uygular (Windows
+     * ApplyWaits, Mac/iPhone applyWaits ile aynı sınırlar: 0–2 sn). Hat yeniden kurulmaz.
+     */
+    fun applyWaits(misreadMs: Int, partialMs: Int) {
+        packWait = misreadMs.coerceIn(0, MAX_WAIT_MS)
+        cleanWait = partialMs.coerceIn(0, MAX_WAIT_MS)
+    }
 
     private fun totalMs(request: Request): Int? = request.capturedAt?.let { maxOf(0, (now() - it).toInt()) }
 

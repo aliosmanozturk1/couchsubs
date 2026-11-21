@@ -288,11 +288,18 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
         }
     }
     ScreenScaffold(top = topBar, bottom = {
-        // İki ikincil düğme yan yana (Geçmiş ekranındaki gibi); "Ekranı çevir" yalnız görüntü gelirken.
-        Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
-            SecondaryButton(stringResource(R.string.main_phone_view), Modifier.weight(1f), onClick = onPhoneView)
-            if (status.streaming) ScreenTranslateButton(status, Modifier.weight(1f))
-        }
+        // İkincil düğmeler yan yana (iPhone ile aynı): altyazı ekranı telefonda gösterirken ya da deneme modunda, "TV'de
+        // dene" TV'ye çevirirken, "Ekranı çevir" yalnız görüntü gelirken.
+        val target = Services.settings.target
+        if (target.showsOnPhone || status.demo || target.showsOnTv || status.streaming)
+            Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
+                if (target.showsOnPhone || status.demo)
+                    SecondaryButton(stringResource(R.string.main_phone_view), Modifier.weight(1f), onClick = onPhoneView)
+                if (target.showsOnTv) SecondaryButton(stringResource(R.string.settings_test_subtitle), Modifier.weight(1f)) {
+                    com.couchsubs.mobile.service.TranslationService.sendTestSubtitle(context.getString(R.string.test_subtitle_text))
+                }
+                if (status.streaming) ScreenTranslateButton(status, Modifier.weight(1f))
+            }
         DestructiveButton(stringResource(if (status.demo) R.string.demo_mode_exit else R.string.stop), onClick = onStop)
     }) {
         if (status.demo) DemoHeader(onStop)
@@ -347,7 +354,8 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
                 metricsText(context, it)?.let { line -> Text(line, style = Tokens.Type.caption, color = Tokens.Color.secondary) }
             }
         }
-        val previous = status.recent.drop(1).take(4)
+        // Önceki 8 satır (iPhone ile aynı).
+        val previous = status.recent.drop(1).take(8)
         if (previous.isNotEmpty()) RowList(previous.map { pair ->
             {
                 // Satır iki ya da daha çok satıra uzayınca kaynak etiketi ilk satırın hizasında kalır.

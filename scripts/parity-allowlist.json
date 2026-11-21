@@ -1,0 +1,89 @@
+{
+  "_": "scripts/parity-check.py izin listesi. Her kayıt bir gerekçe taşır. 'AÇIK:' ile başlayan gerekçe kapatılmayı bekleyen bilinen farktır; kapatılınca kayıt silinir (silinmezse denetim kırmızı olur).",
+  "desktop_settings": {
+    "pairs": {
+      "XboxAudioOnComputer": "xboxAudioOnDevice"
+    },
+    "windows_only": {
+      "Overlay": "Bilinçli (saklama farkı): bilgisayar ekranındaki altyazı penceresinin yeri. Mac aynı bilgiyi UserDefaults'ta ayrı anahtarda saklar (SubtitleOverlay.frameKey).",
+      "CpuTranslationThreads": "Bilinçli: Windows'un ücretsiz çevirisi bu bilgisayardaki OPUS-MT modelidir (CPU iş parçacığı). Mac'te ücretsiz çeviri Apple Translation'dır; ayarı yoktur.",
+      "TranslationDevice": "Bilinçli: OPUS-MT'nin CPU/GPU (CUDA) seçimi. Mac'te Apple Translation çalışır, cihaz seçimi yoktur.",
+      "OcrEngine": "Bilinçli: Windows OCR'ı aydınlık sahnelerde zayıf olduğu için Gelişmiş (PP-OCR) seçeneği var. Mac Apple Vision kullanır.",
+      "XboxLegacyFrameRate": "Bilinçli: Windows Xbox görüntüsünü aralıkla yoklar (66/200 ms). Mac yerel XboxStreamSession'la her kareyi alır; yoklama aralığı yoktur.",
+      "Hotkeys": "AÇIK: Windows'ta 8 eylemli, ikişer yuvalı, değiştirilebilir kısayollar. Mac'te yalnız sabit ⌥⌘T ve ⌥⌘L var. Yeni alt sistem; ayrı PR.",
+      "FreeAreaTarget": "AÇIK: Serbest alan (görüntüyü dondur, sürükle, bir kez çevir) yalnız Windows'ta. Kısayollara bağlı; ayrı PR.",
+      "ExtraRegion1": "Bilinçli (model farkı): Windows ek alanları üç sabit yuvada tutar; Mac aynı bilgiyi extraAreas dizisinde (adlı, en çok 3) tutar.",
+      "ExtraRegion2": "Bilinçli (model farkı): bkz. ExtraRegion1.",
+      "ExtraRegion3": "Bilinçli (model farkı): bkz. ExtraRegion1.",
+      "ExtraLive1": "AÇIK: Ek alanın 'Bu alanı sürekli oku' (canlı/tek seferlik) seçimi yalnız Windows'ta; tek seferlik okuma kısayola bağlı. Kısayollarla birlikte ayrı PR.",
+      "ExtraLive2": "AÇIK: bkz. ExtraLive1.",
+      "ExtraLive3": "AÇIK: bkz. ExtraLive1.",
+      "ExtraTarget1": "AÇIK: Ek alan sonucunun TV / PC / ikisi seçimi ve PC sonuç penceresi yalnız Windows'ta. Ayrı PR.",
+      "ExtraTarget2": "AÇIK: bkz. ExtraTarget1.",
+      "ExtraTarget3": "AÇIK: bkz. ExtraTarget1."
+    },
+    "mac_only": {
+      "areaPreset": "Bilinçli (model farkı): Windows hazır alanı bölge değerinden çıkarır (AreaPresets), ayrı alanda saklamaz.",
+      "extraAreas": "Bilinçli (model farkı): Windows'ta ExtraRegion1-3 yuvaları; bkz. windows_only.ExtraRegion1.",
+      "localAIServer": "Hesaplanan alan (localAIBaseURL'den çıkar), saklanmaz. Windows'ta karşılığı LocalAIServers.Detect.",
+      "translationEngine": "Hesaplanan alan (onlineTranslation + onlineEngine), saklanmaz. Windows'ta aynı iki alan var."
+    }
+  },
+  "mobile_settings": {
+    "pairs": {
+      "English lines that are read, anonymous": "English lines read, anonymous",
+      "In games with a ready pack this engine only translates the missing lines.": "In games with a ready pack, this engine only translates missing lines.",
+      "Drag Background all the way to Solid to fully hide the English subtitle in the game. A full-width band also covers the sides.": "Drag the slider all the way to the end to make the background fully solid and hide the English subtitle in the game. A full-width band also covers the sides.",
+      "Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks. It is kept in the Keychain.": "Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks; it is stored encrypted on the phone.",
+      "The API key could not be saved to this iPhone's keychain.": "The API key could not be saved to this phone's secure storage.",
+      "Text colour": "Text color",
+      "Notify me when the connection drops": "When the PS5 connection drops",
+      "New packs and updates": "When a new pack arrives",
+      "Send test subtitle": "Test on TV",
+      "Not set up": "Not paired",
+      "Signed in": "Connected",
+      "Xbox and connection": "Xbox",
+      "Save": "Save and test",
+      "CouchSubs is free and open source (AGPL-3.0). Remote Play uses chiaki-ng (AGPL-3.0).": "CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera"
+    },
+    "iphone_only": {
+      "%@ PS5 · %@ TV": "Yerleşim farkı: iPhone Profil'in 'Cihazlar' kutusu; Android aynı bilgiyi PS5 ve TV kutularında ayrı gösterir.",
+      "Devices": "Yerleşim farkı: bkz. '%@ PS5 · %@ TV'.",
+      "Notifications": "Yerleşim farkı: iPhone bildirim anahtarlarını başlıklı satırda gösterir; Android'de başlık yok, anahtarlar aynı.",
+      "PS5 connection": "Yerleşim farkı: bkz. 'Notifications'.",
+      "Fast and cheap (recommended)": "Android aynı seçeneği kısa adla gösterir: 'Fast (recommended)' (settings_model_fast, ProfileScreens dışından seçilir).",
+      "Better quality, a little slower": "Android aynı seçeneği kısa adla gösterir: 'Better quality, slower'.",
+      "Free, no account needed": "Yerleşim farkı: iPhone motor kutusundaki açıklama; Android motor açıklamasını motor seçicisinde verir.",
+      "Enter the 4-digit passcode.": "Android şifre alanı yalnız rakam ve en çok 4 hane alır, her tuşta kaydeder; eksik şifre uyarısı yerine 'Kaydedildi' etiketi 4 hanede görünür.",
+      "Passcode saved.": "bkz. 'Enter the 4-digit passcode.' (Android'de 'Kaydedildi' etiketi).",
+      "Remove passcode": "Android'de alan boşaltılınca şifre silinir (her tuşta kaydedilir).",
+      "Pair TV": "AÇIK: Android'de çeviri dışında 2 dakikalık 'TV'yi eşle' düğmesi yok (altyazı sunucusu yalnız oturumda çalışıyor). Ayrı PR.",
+      "Pairing is open for 2 minutes. Open CouchSubs on the TV; if the TV says pairing did not finish, press OK on its remote. When the TV shows a code, approve it in the window that opens on this phone.": "AÇIK: bkz. 'Pair TV'.",
+      "CouchSubs": "AÇIK: iPhone'da Hakkında ekranı var; Android'deki Hakkında satırı yalnız kaynak bağlantısını açıyor.",
+      "Source code": "AÇIK: bkz. 'CouchSubs' (Hakkında ekranı)."
+    },
+    "android_only": {
+      "Beta": "Xbox etiketi; iPhone Xbox satırını etiketsiz gösterir (Xbox iPhone'da da beta).",
+      "Cancel": "Android onay pencerelerinin (PSN'den çıkış) düğmesi; iPhone confirmationDialog'da Vazgeç'i sistem ekler.",
+      "Paired": "Durum etiketi; iPhone eşleşmeyi satır ayrıntısında konsol adıyla gösterir.",
+      "Not connected": "Durum etiketi; iPhone PSN kutusunda 'Not set up' gösterir.",
+      "Key": "Android anahtar alanının etiketi; iPhone alanı yer tutucuyla gösterir.",
+      "Keep screen on": "Bilinçli: Android'de çeviri ön plan hizmetinde ekran kapalıyken de sürer, isteğe bağlı. iOS arka planda bağlantıyı durdurduğu için iPhone çeviri sürerken ekranı her zaman açık tutar.",
+      "Translation to the TV keeps going when the phone is locked or the screen turns off. While the screen is off, though, Wi-Fi switches to power saving, and on some phones the connection can slow down or drop. The most reliable way is to leave the screen on and turn the brightness down.": "Bilinçli: bkz. 'Keep screen on'.",
+      "CouchSubs has no accounts: your settings stay only on this phone. The app and game packs are free.": "Android Profil alt notu; iPhone aynı bilgiyi Gizlilik sayfasında verir.",
+      "DeepL could not be reached. Check your internet connection.": "iPhone aynı metni ortak DeepLUsageText.describe'tan alır (mac/CouchSubs/UI/DeepLUsageText.swift), Profile.swift'te geçmez.",
+      "DeepL did not accept this key. Copy it again from your DeepL account page.": "bkz. 'DeepL could not be reached…'.",
+      "This month: %@ of %@ characters used.": "bkz. 'DeepL could not be reached…' (DeepLUsageText).",
+      "Dinliyor musun beni?": "Örnek altyazı; iPhone'da Text(verbatim:) ile aynı metin (çevrilmez).",
+      "Looking for TVs on the network…": "Android Profil'deki TV kutusu ağdaki TV'leri arar; iPhone aynı aramayı Altyazı hedefi ekranında yapar.",
+      "No TV seen on the network (it may be off; that's fine).": "bkz. 'Looking for TVs on the network…'.",
+      "TV and subtitle target": "Yerleşim farkı: iPhone satırı 'Subtitle target' adıyla aynı ekrana götürür.",
+      "On the TV": "Yerleşim farkı: Android görünüm ayarlarında bölüm başlığı; iPhone aynı ayarları 'Subtitle appearance' kutusunda verir.",
+      "Subtitle background": "Yerleşim farkı: bkz. 'On the TV' (iPhone'da 'Background').",
+      "Text size": "Yerleşim farkı: iPhone boyutu 'Subtitle appearance' başlığındaki yüzdeyle gösterir.",
+      "TV app": "Yerleşim farkı: Android Ayarlar'daki TV uygulaması kurma kutusu; iPhone'da aynı kurulum Altyazı hedefi ekranından açılır.",
+      "Start translation first; the test subtitle shows once the TV app connects to the phone.": "AÇIK: Android'de deneme altyazısı çeviri dışında gönderilemiyor (iPhone sunucuyu açıp eşleşmeyi bekliyor). 'Pair TV' ile aynı ayrı PR.",
+      "This is a test subtitle. Can you see it on top of the game?": "iPhone deneme altyazısı metnini PhoneModel.sendTestSubtitle içinde kurar."
+    }
+  }
+}

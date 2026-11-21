@@ -129,6 +129,18 @@ class PhoneSubtitleActivity : ComponentActivity() {
                         val connected = status.running && status.streaming
                         StatusLabel(stringResource(if (connected) R.string.subtitle_connected else R.string.subtitle_waiting), ok = connected, live = connected)
                         status.packInUse?.let { Pill(stringResource(R.string.running_pack, it), pro = true) }
+                        // Bağlantı gidince bu ekrandan da yeniden bağlanılır (iPhone altyazı ekranı ve ana ekranla aynı
+                        // kural: ReconnectOffer).
+                        var now by remember { mutableStateOf(System.currentTimeMillis()) }
+                        LaunchedEffect(Unit) {
+                            while (true) {
+                                kotlinx.coroutines.delay(1000)
+                                now = System.currentTimeMillis()
+                            }
+                        }
+                        if (status.running && !status.demo && !status.streaming &&
+                            com.couchsubs.mobile.remoteplay.ReconnectOffer.shows(status.notLiveSince, status.gaveUp, now))
+                            GhostButton(stringResource(R.string.reconnect)) { TranslationService.reconnect() }
                         Spacer(Modifier.weight(1f))
                         IconAction(Icons.Filled.Refresh, stringResource(R.string.screen_rotate)) {
                             requestedOrientation = nextOrientation(requestedOrientation)

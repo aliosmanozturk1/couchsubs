@@ -166,11 +166,11 @@ private struct AppearanceCard: View {
 
     var body: some View {
         Card(title: model.settings.output == .tv ? "On the TV" : "Subtitle appearance") {
-            // 1920 piksellik TV ekranında yazı yüksekliği; sürüklerken TV'de örnek altyazı görünür. Sağda değer (piksel),
+            // 1920 piksellik TV ekranında yazı yüksekliği (Windows ile aynı aralık: 16–90); sürüklerken TV'de örnek altyazı görünür. Sağda değer (piksel),
             // sabit genişlikte rakamlarla: sürüklerken kaydırıcı oynamaz.
             HStack(spacing: Theme.space("m")) {
                 Slider(value: Binding(get: { Double(model.settings.style.fontSize) },
-                                      set: { model.settings.style.fontSize = Int($0.rounded()) }), in: 20...80) {
+                                      set: { model.settings.style.fontSize = Int($0.rounded()) }), in: 16...90) {
                     Text("Text size")
                 } minimumValueLabel: {
                     Text("Small").font(.csCallout).foregroundStyle(Color.csSecondary)
@@ -1045,6 +1045,17 @@ struct TranslationCard: View {
             HintText(text: "When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.")
             SwitchRow(title: "Watch subtitle background (GTA 6 experimental)", isOn: $model.settings.watchSubtitleBackground)
             HintText(text: "In GTA 6, set the subtitle background to Solid. Only text on the dark blue subtitle panel will be translated.")
+            // Windows'taki iki bekleme kaydırıcısı (aynı metin, aralık 0–1 sn, 0,1 sn adım; varsayılan 0,8 ve 0,3 sn).
+            HintText(text: "These waits only delay lines that were read badly; most lines are shown without waiting. A shorter wait shows those lines sooner but lets more wrong translations through.")
+            WaitSlider(title: "Wait for a misread line", ms: $model.settings.misreadWaitMs)
+            HintText(text: "When a line is read with words that are not in the dictionary, a better reading is awaited for at most this long. Measured in GTA V, translations from misread lines compared with 0 s: 0.2 s → 77%, 0.4 s → 49%, 0.6 s → 41%, 0.8 s (recommended) → 34%, 1.0 s → 31%.")
+            WaitSlider(title: "Wait for a half-read line", ms: $model.settings.partialWaitMs)
+            HintText(text: "When a line looks cut off (no sentence ending, such as a mission text with a colored word), the full line is awaited for at most this long. Its effect is small: at 0 s a few more lines arrive cut off. Recommended: 0.3 s.")
+            Button("Restore defaults") {
+                model.settings.misreadWaitMs = SubtitlePipeline.packWaitMs
+                model.settings.partialWaitMs = SubtitlePipeline.cleanWaitMs
+            }
+            .buttonStyle(.secondary)
         }
     }
 
@@ -1442,5 +1453,26 @@ private struct CustomAreaSliders: View {
             }
         }
         Button("Reset area") { settings.selectAreaPreset(.bottom) }.buttonStyle(.secondary)
+    }
+}
+
+/// Bekleme süresi kaydırıcısı: 0–1 sn, 0,1 sn adım; sağda değer ("0,8 sn"). Değer milisaniye olarak saklanır.
+private struct WaitSlider: View {
+    let title: LocalizedStringKey
+    @Binding var ms: Int
+
+    var body: some View {
+        let seconds = Double(min(max(ms, 0), UserSettings.waitSliderMaxMs)) / 1000
+        let unit = String(localized: "sec")
+        HStack(spacing: Theme.space("m")) {
+            Slider(value: Binding(get: { seconds }, set: { ms = Int(($0 * 10).rounded()) * 100 }),
+                   in: 0...Double(UserSettings.waitSliderMaxMs) / 1000, step: 0.1) {
+                Text(title)
+            }
+            Text(verbatim: "\(seconds.formatted(.number.precision(.fractionLength(1)))) \(unit)")
+                .font(.csCallout.monospacedDigit())
+                .foregroundStyle(Color.csSecondary)
+                .frame(minWidth: 56, alignment: .trailing)
+        }
     }
 }

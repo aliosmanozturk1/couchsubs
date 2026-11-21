@@ -574,6 +574,7 @@ class TranslationService : Service() {
         pipeline =SubtitlePipeline(translator, subtitleServer).apply {
             // Yarım ya da bozuk okuma hemen çevrilmez; aynı satırın en iyi okuması çevrilir (Windows ve iPhone ile aynı).
             holdReadings = true
+            applyWaits(settings.misreadWaitMs, settings.partialWaitMs)
             echo = com.couchsubs.mobile.core.SubtitleEcho.shared
             packLookup = { text ->
                 if (packTitles != null && settings.packsEnabled) {
@@ -682,7 +683,12 @@ class TranslationService : Service() {
             FramePreview.offer(frame, now)
         }
         val onState: (SessionState) -> Unit = { state ->
+            val wasStreaming = streaming
             streaming = state == SessionState.Streaming
+            // "PS5 bağlantısı koptuğunda bildir" (iPhone ile aynı): uygulama ekranda değilken akış koparsa bildirim.
+            if (streaming) ConnectionAlert.cancel(this)
+            else if (ConnectionAlert.shouldPost(wasStreaming, (state as? SessionState.Disconnected)?.kind, demo,
+                    settings.notifyDisconnect, ConnectionAlert.appVisible())) ConnectionAlert.post(this)
             if (!streaming) {
                 PlayedGame.consoleReported(null)
                 resetGamePhone()
@@ -953,6 +959,8 @@ class TranslationService : Service() {
             // Bölge değişmediyse (aynı altyazı duruyor) yeniden okunmaz; son okuma hattı yine besler (kararlılık ve
             // silme saate bağlıdır, Windows'taki ReadScheduler gibi). Aynı okuma en çok 20 kare (hızlı okumada 2) kullanılır.
             val current = pipeline ?: return
+            // Bekleme ayarları çeviri sürerken de değişebilir (Ayarlar'daki kaydırıcılar); her karede güncel değer uygulanır.
+            current.applyWaits(settings.misreadWaitMs, settings.partialWaitMs)
             val maxReuse = if (settings.fastSubtitleDetection) FAST_MAX_REUSE else DEFAULT_MAX_REUSE
             var reused = pixels.signature == lastSignature && reusedReads < maxReuse
             // "Altyazı zeminini izle" (GTA 6): yalnız koyu lacivert zeminin üstündeki satırlar hatta girer. Aynı okuma yeniden

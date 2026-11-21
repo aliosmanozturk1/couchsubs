@@ -94,6 +94,8 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var fastReading by remember { mutableStateOf(settings.fastSubtitleDetection) }
     var gamePhone by remember { mutableStateOf(settings.autoReadGamePhone) }
     var subtitleBackground by remember { mutableStateOf(settings.watchSubtitleBackground) }
+    var misreadWait by remember { mutableStateOf(settings.misreadWaitMs) }
+    var partialWait by remember { mutableStateOf(settings.partialWaitMs) }
     var usage by remember { mutableStateOf(settings.usageData) }
     var backgroundPip by remember { mutableStateOf(settings.backgroundPip) }
     LaunchedEffect(Unit) { tvs = withContext(Dispatchers.IO) { runCatching { TvDiscovery.search() }.getOrDefault(emptyList()) } }
@@ -174,6 +176,22 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
             } },
             { RowItem(stringResource(R.string.settings_subtitle_background), stringResource(R.string.settings_subtitle_background_short)) {
                 Switch(subtitleBackground, { subtitleBackground = it; settings.watchSubtitleBackground = it })
+            } },
+            // Windows, Mac ve iPhone'daki iki bekleme kaydırıcısı: aynı ad ve açıklama, 0–1 sn, 0,1 sn adım.
+            { Column {
+                WaitSlider(stringResource(R.string.settings_misread_wait), stringResource(R.string.settings_misread_wait_note), misreadWait) {
+                    misreadWait = it; settings.misreadWaitMs = it
+                }
+                WaitSlider(stringResource(R.string.settings_partial_wait), stringResource(R.string.settings_partial_wait_note), partialWait) {
+                    partialWait = it; settings.partialWaitMs = it
+                }
+                Text(stringResource(R.string.settings_waits_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                GhostButton(stringResource(R.string.settings_waits_defaults)) {
+                    misreadWait = com.couchsubs.mobile.core.SubtitlePipeline.PACK_WAIT_MS
+                    partialWait = com.couchsubs.mobile.core.SubtitlePipeline.CLEAN_WAIT_MS
+                    settings.misreadWaitMs = misreadWait
+                    settings.partialWaitMs = partialWait
+                }
             } },
             { RowItem(stringResource(R.string.profile_usage), stringResource(R.string.profile_usage_note)) {
                 Switch(usage, { usage = it; Services.setUsageData(it) })
@@ -439,6 +457,7 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             { RowItem(stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, onClick = { open(context, context.getString(R.string.url_source)) }) },
         ))
         XboxSignOutRow()
+        PsnSignOutRow()
         // TV uygulamasını bu telefondan kurmak ve güncellemek (bilgisayardaki gibi; Samsung, LG, Android TV).
         Tile(Modifier.fillMaxWidth()) {
             TileLabel(stringResource(R.string.settings_tv_app))
@@ -448,7 +467,10 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
         Tile(Modifier.fillMaxWidth()) {
             TileLabel(stringResource(R.string.demo_mode))
             Text(stringResource(R.string.demo_mode_body), style = Tokens.Type.caption, color = Tokens.Color.secondary)
-            SecondaryButton(stringResource(R.string.demo_mode_try), onClick = onDemo)
+            // Deneme modu sürerken buradan da çıkılır (iPhone ile aynı).
+            val live by com.couchsubs.mobile.service.LiveState.status.collectAsState()
+            if (live.running && live.demo) SecondaryButton(stringResource(R.string.demo_mode_exit)) { TranslationService.stop(context) }
+            else SecondaryButton(stringResource(R.string.demo_mode_try), onClick = onDemo)
         }
         // Deneme altyazısı: TV'de (ya da telefon ekranında) yazının nasıl göründüğü; iPhone ile aynı.
         var testNote by remember { mutableStateOf<String?>(null) }
@@ -510,6 +532,39 @@ private fun modelLabel(model: AiModel): String = when (model.label) {
 }
 
 
+/**
+ * PSN'den çıkış (iPhone signOutPSN ile aynı): çeviri durur; ikinci hesabın kimliği, PS5 eşleşmesi (PS5 o hesaba bağlıdır)
+ * ve giriş şifresi bu telefondan silinir. TV ve çeviri ayarları kalır. Yanlış hesapla giren kurulumu baştan almak zorundaydı.
+ */
+@Composable
+private fun PsnSignOutRow() {
+    val context = LocalContext.current
+    val settings = Services.settings
+    var linked by remember { mutableStateOf(settings.accountId != null || settings.console != null) }
+    var confirm by remember { mutableStateOf(false) }
+    if (settings.xbox || !linked) return
+    Tile(Modifier.fillMaxWidth()) {
+        RowItem(stringResource(R.string.psn_sign_out), onClick = { confirm = true })
+    }
+    if (confirm) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { confirm = false },
+        title = { Text(stringResource(R.string.psn_sign_out_title)) },
+        text = { Text(stringResource(R.string.psn_sign_out_body)) },
+        confirmButton = {
+            androidx.compose.material3.TextButton({
+                confirm = false
+                TranslationService.stop(context)
+                settings.accountId = null
+                settings.console = null
+                settings.loginPasscode = null
+                linked = false
+            }) { Text(stringResource(R.string.psn_sign_out_confirm), color = Tokens.Color.danger) }
+        },
+        dismissButton = { androidx.compose.material3.TextButton({ confirm = false }) { Text(stringResource(R.string.cancel)) } },
+        containerColor = Tokens.Color.surface2,
+    )
+}
+
 /** Xbox seçiliyken ve giriş yapılmışken Microsoft hesabından çıkış (jeton Keystore'dan silinir). */
 @Composable
 private fun XboxSignOutRow() {
@@ -567,6 +622,19 @@ private fun deepLUsageText(usage: KeyCheck.DeepLUsage): String = when (usage.sta
 }
 
 /** Altyazı hedefinin adı: TV'nin adı, "Bu telefon" ya da ikisi birden (iPhone ile aynı). */
+/** Bekleme süresi kaydırıcısı: 0–1 sn, 0,1 sn adım; değer milisaniye olarak verilir. */
+@Composable
+private fun WaitSlider(title: String, note: String, ms: Int, onChange: (Int) -> Unit) {
+    val max = com.couchsubs.mobile.core.SubtitlePipeline.WAIT_SLIDER_MAX_MS
+    val seconds = ms.coerceIn(0, max) / 1000f
+    Column {
+        SliderHeader(title, "${String.format(java.util.Locale.getDefault(), "%.1f", seconds)} ${stringResource(R.string.unit_seconds)}")
+        Slider(seconds, { onChange(Math.round(it * 10) * 100) }, valueRange = 0f..max / 1000f, steps = max / 100 - 1,
+            colors = couchSliderColors())
+        Text(note, style = Tokens.Type.caption, color = Tokens.Color.secondary)
+    }
+}
+
 @Composable
 fun targetName(settings: AppSettings): String {
     val tv = settings.tvName ?: stringResource(R.string.main_target_tv)

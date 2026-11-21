@@ -628,6 +628,9 @@ final class AppModel: ObservableObject {
                 || settings.aiInstruction != oldValue.aiInstruction
             if translationChanged { Task { await refreshTranslatorStatus() } }
             if settings.readsGamePhone != oldValue.readsGamePhone { configureGamePhone() }
+            if settings.misreadWaitMs != oldValue.misreadWaitMs || settings.partialWaitMs != oldValue.partialWaitMs {
+                pipeline?.applyWaits(from: settings)
+            }
             let languageChanged = settings.sourceLanguage != oldValue.sourceLanguage
                 || settings.targetLanguage != oldValue.targetLanguage
             if isRunning, languageChanged || translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection
@@ -2242,6 +2245,7 @@ final class AppModel: ObservableObject {
                                         translator: makeTranslator(),
                                         server: server, scheduler: scheduler)
         pipeline.showSpeakerNames = settings.showSpeakerNames
+        pipeline.applyWaits(from: settings)
         pipeline.echo = .shared
         // Görev satırı altyazıya girmez; otomatik ekran yazısı açıksa "auto-mission" ek alanı olarak kendi yerinde ve özgün
         // stilinde gösterilir (Windows ile aynı). Kapalıysa ayrıca gösterilmez.

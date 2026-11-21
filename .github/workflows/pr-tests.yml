@@ -14,6 +14,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # KALICI KURAL: Windows = Mac, Android = iPhone. Ayar alanları ve telefon ayar metinleri karşılaştırılır; bilinçli farklar
+  # scripts/parity-allowlist.json'da gerekçesiyle durur. Ucuz olduğu için her PR'da çalışır.
+  parity:
+    name: Platform eşitliği
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Eşitlik denetimi
+        run: python3 scripts/parity-check.py
+
   # Yalnız ilgili klasör değişince pahalı (özellikle macOS) işler çalışsın. Elle çalıştırmada hepsi çalışır.
   changes:
     name: Değişen yollar

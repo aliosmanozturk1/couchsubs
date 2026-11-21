@@ -10,6 +10,7 @@ import com.couchsubs.mobile.core.AreaProfile
 import com.couchsubs.mobile.core.AreaProfiles
 import com.couchsubs.mobile.core.AreaSet
 import com.couchsubs.mobile.core.AreaStore
+import com.couchsubs.mobile.core.SubtitlePipeline
 import com.couchsubs.mobile.core.SubtitlePlacement
 import com.couchsubs.mobile.core.toJson
 import com.couchsubs.mobile.core.SubtitleStyle
@@ -303,6 +304,19 @@ class AppSettings(context: Context) : AreaStore {
     var fastSubtitleDetection: Boolean
         get() = prefs.getBoolean("fastSubtitleDetection", false)
         set(value) = prefs.edit().putBoolean("fastSubtitleDetection", value).apply()
+
+    /**
+     * "Bozuk okunan satır için bekleme" (ms): sözlükte olmayan sözcüklerle okunan satırın daha iyi okuması için en çok bu
+     * kadar beklenir (Windows MisreadWaitMs, Mac/iPhone misreadWaitMs); önerilen 800.
+     */
+    var misreadWaitMs: Int
+        get() = prefs.getInt("misreadWaitMs", SubtitlePipeline.PACK_WAIT_MS)
+        set(value) = prefs.edit().putInt("misreadWaitMs", value).apply()
+
+    /** "Yarım okunan satır için bekleme" (ms): yarım görünen satırın tamamı için en çok bu kadar beklenir; önerilen 300. */
+    var partialWaitMs: Int
+        get() = prefs.getInt("partialWaitMs", SubtitlePipeline.CLEAN_WAIT_MS)
+        set(value) = prefs.edit().putInt("partialWaitMs", value).apply()
 
     /**
      * "GTA 6'daki telefonu otomatik çevir (deneysel)": GTA 6 oynanırken oyun içi telefon açılınca ekranı okunup çevrilir

@@ -130,6 +130,23 @@ struct ProfileScreen: View {
                           "In GTA 6, set the subtitle background to Solid. Only text on the dark blue subtitle panel will be translated.",
                           isOn: $model.settings.watchSubtitleBackground)
                 RowDivider()
+                // Windows ve Mac'teki iki bekleme kaydırıcısı (Android'de aynı ad ve açıklama; 0–1 sn, 0,1 sn adım).
+                waitRow("Wait for a misread line",
+                        "When a line is read with words that are not in the dictionary, a better reading is awaited for at most this long. Measured in GTA V, translations from misread lines compared with 0 s: 0.2 s → 77%, 0.4 s → 49%, 0.6 s → 41%, 0.8 s (recommended) → 34%, 1.0 s → 31%.",
+                        ms: $model.settings.misreadWaitMs)
+                RowDivider()
+                waitRow("Wait for a half-read line",
+                        "When a line looks cut off (no sentence ending, such as a mission text with a colored word), the full line is awaited for at most this long. Its effect is small: at 0 s a few more lines arrive cut off. Recommended: 0.3 s.",
+                        ms: $model.settings.partialWaitMs)
+                Text("These waits only delay lines that were read badly; most lines are shown without waiting. A shorter wait shows those lines sooner but lets more wrong translations through.")
+                    .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+                Button("Restore defaults") {
+                    model.settings.misreadWaitMs = SubtitlePipeline.packWaitMs
+                    model.settings.partialWaitMs = SubtitlePipeline.cleanWaitMs
+                }
+                .font(Mobile.TypeScale.body)
+                .padding(.vertical, Mobile.Space.gap)
+                RowDivider()
                 // Yalnız Xbox: uzaktan oynatmada Xbox sesi istemciye verip TV'yi susturabilir (PS5'te ses TV'de kalır).
                 if model.isXbox {
                     toggleRow("Play Xbox sound on this device",
@@ -187,6 +204,26 @@ struct ProfileScreen: View {
             }
         }
         .tint(Mobile.Palette.accent)
+        .padding(.vertical, Mobile.Space.gap)
+    }
+
+    /// Bekleme süresi: başlık, açıklama ve 0–1 sn kaydırıcı; değer milisaniye olarak saklanır.
+    private func waitRow(_ title: LocalizedStringKey, _ caption: LocalizedStringKey, ms: Binding<Int>) -> some View {
+        let seconds = Double(min(max(ms.wrappedValue, 0), UserSettings.waitSliderMaxMs)) / 1000
+        let unit = String(localized: "sec")
+        return VStack(alignment: .leading, spacing: Mobile.Space.hair) {
+            HStack {
+                Text(title).font(Mobile.TypeScale.headline)
+                Spacer()
+                Text(verbatim: "\(seconds.formatted(.number.precision(.fractionLength(1)))) \(unit)")
+                    .font(Mobile.TypeScale.body.monospacedDigit()).foregroundStyle(Mobile.Palette.secondary)
+            }
+            Slider(value: Binding(get: { seconds }, set: { ms.wrappedValue = Int(($0 * 10).rounded()) * 100 }),
+                   in: 0...Double(UserSettings.waitSliderMaxMs) / 1000, step: 0.1)
+                .tint(Mobile.Palette.accent)
+                .accessibilityLabel(Text(title))
+            Text(caption).font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+        }
         .padding(.vertical, Mobile.Space.gap)
     }
 }
