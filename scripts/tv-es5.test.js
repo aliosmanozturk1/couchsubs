@@ -66,6 +66,19 @@ test('Tizen paketinin sayfası ES2015+ API\'sini korumasız çağırmıyor', () 
     'backdrop-filter', ':has(', '@container', 'dvh', 'color-mix(']) {
     assert.ok(css.indexOf(rule) < 0, 'style.css (Android 8 WebView): ' + rule);
   }
+  // LG webOS 4.x (2018, ör. 55SK8500, #643): tarayıcı Chrome 53 ("cr53" tanıda). Chrome 54-58'de gelen API ve CSS LG
+  // paketinde (app.js, i18n.js, tv-webos/platform.js, style.css) kullanılmaz.
+  const webos = fs.readFileSync(path.join(root, 'tv-webos/platform.js'), 'utf8');
+  for (const [name, code] of [['app.js', app], ['i18n.js', i18n], ['tv-webos/platform.js', webos]]) {
+    for (const api of ['Object.values(', 'Object.entries(', 'Object.getOwnPropertyDescriptors', '.padStart(', '.padEnd(',
+      '.append(', '.prepend(', '.replaceWith(', '.before(', '.after(', 'async function', 'await ', 'once: true',
+      '.toggleAttribute(', '.getRootNode(']) {
+      assert.ok(code.indexOf(api) < 0, name + ' (webOS 4, Chrome 53): ' + api);
+    }
+  }
+  for (const rule of ['display: grid', 'display:grid', 'position: sticky', 'caret-color', 'font-display']) {
+    assert.ok(css.indexOf(rule) < 0, 'style.css (webOS 4, Chrome 53): ' + rule);
+  }
   // Array.from yalnız varlık denetimiyle.
   assert.ok(!/[^?]\s*Array\.from\(/.test(app.replace(/Array\.from \? Array\.from\(/g, '')), 'Array.from korumasız');
 });

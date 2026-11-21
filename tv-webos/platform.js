@@ -67,15 +67,16 @@
   // Bu girişte görüntü hiç gelmediyse (yanlış giriş, konsol kapalı) birkaç denemeden sonra durulur.
   var NEVER_PLAYED_MAX = 3;
   var STEADY_MS = 30000;
-  var REBUILD_GAP_MS = 300;
+  var REBUILD_GAP_MS = 1000;
 
   var hdmi = {
     port: 0, host: null, onStatus: null, video: null, builtAt: 0,
     played: false, everPlayed: false,
     rebuilds: 0, failures: 0, sincePort: 0, recent: [], reason: '', lastError: '', lastEvent: '',
     lastTime: -1, lastAdvanceAt: 0, advances: 0, playTried: false, sawUnpaused: false,
-    pending: null, building: null, checkTimer: null, soonTimer: null, wasHidden: false,
-    stalls: 0, stallNote: '', stallRebuiltAt: 0
+    pending: null, building: null, checkTimer: null, soonTimer: null, soonStrict: false, wasHidden: false,
+    stalls: 0, stallNote: '', stallRebuiltAt: 0, stallTimer: null,
+    stallVideo: null, stallTime: 0
   };
 
   function nowMs() { return new Date().getTime(); }
@@ -152,6 +153,19 @@
   //   dokunulmaz; değilse <video> 0.9.46 yoluyla bir kez yeniden kurulur; sonraki 30 sn 'stalled' olayı yalnız beklenir.
   //   Tanıda "stall <sayı> <eylem>": rebuilt (yeniden kuruldu), ok (görüntü akıyor), wait (30 sn dolmadı), nopic
   //   (görüntü hiç gelmemişti, gözcüye bırakıldı), busy (zaten kuruluyor ya da sınır doldu).
+  //
+  // 0.9.67 (#643, aynı TV, 0.9.63): "hdmi playing rs4 1920x1080 t= · rebuilt 1 (ev stalled) · ev stalled · stall 2 wait
+  // · rl 6 · snd on v100 tr1/1 sx no", bg 2. "snd on" <video>'nun kısık olmadığıdır (audioText), ses adımları değil;
+  // adımlar kapalı ("sx no"). Siyah kalmanın kod yolu: ilk 'stalled'dan sonra <video> yeniden kuruldu, ikinci 'stalled'
+  // 30 sn içinde geldiği için yalnız "wait" yazıldı ve hiçbir şey yapılmadı; bu TV sayacı ilerletmediği (t=) ve rs4
+  // "oynuyor" dediği için gözcü de bozulma görmedi: ekran kullanıcı girişi yeniden seçene kadar siyah. Ayrıca 'stalled'
+  // denetimi ve arka plandan dönüşün sıkı denetimi aynı zamanlayıcıyı (soonTimer) kullanıyordu; hemen ardından gelen
+  // webOSRelaunch (bilgisayarın bekçisi, "rl"), odak ya da ekran koruyucu sorusu onu gevşek denetimle siliyordu. Artık:
+  // - 30 sn içinde gelen 'stalled' yok sayılmaz: 1,5 sn sonra sayaç ilerlememişse <video> artan aralıkla (2, 4, 8… sn,
+  //   dakikada en çok 4) yeniden kurulur. Tanıda "stall <n> wait" sonra "rebuilt".
+  // - 'stalled' denetiminin kendi zamanlayıcısı var; arka plandan dönüşün sıkı denetimi gevşek olaylarla gevşemez.
+  // - Eski boru hattı bırakıldıktan sonra yenisi REBUILD_GAP_MS sonra açılır (kumandada aynı giriş numarası da). Tahmin
+  //   (gerçek TV'de doğrulanmadı): webOS 4'te bırakma geç biterse yeni <video> "oynuyor" der ama görüntü gelmez.
   var FOCUS_MAX = 3;
   var MUTE_CHECK_MS = 1500;
   var SOUND_AFTER_MS = 3000;
@@ -401,32 +415,40 @@
   }
 
   // Görüntü geldikten sonra 'stalled' olayı (#643): sayaç (currentTime) bu 1,5 sn'de ilerlediyse görüntü akıyordur, dokunulmaz;
-  // değilse <video> bir kez yeniden kurulur, sonraki STALL_EVENT_WAIT_MS boyunca olay yalnız beklenir.
+  // değilse <video> yeniden kurulur. Son yeniden kurmadan sonraki STALL_EVENT_WAIT_MS içinde gelen olay yok sayılmaz
+  // (0.9.63'te sayılıyordu, ekran siyah kalıyordu): kurma gözcünün artan aralığıyla (BACKOFF_MS, dakikada en çok
+  // MAX_PER_MINUTE) yapılır. Denetimin kendi zamanlayıcısı var: odak, yeniden başlatılma ya da ekran koruyucu sorusunun
+  // denetimi (checkSoon) onu silmez.
   function onStalled(video) {
     hdmi.stalls++;
     if (!hdmi.played) {
       hdmi.stallNote = 'nopic';
       return checkSoon(STALL_CHECK_MS, false);
     }
-    if (hdmi.stallRebuiltAt && nowMs() - hdmi.stallRebuiltAt < STALL_EVENT_WAIT_MS) {
-      hdmi.stallNote = 'wait';
-      return checkSoon(STALL_CHECK_MS, false);
-    }
-    var before = Number(video.currentTime);
-    clearTimeout(hdmi.soonTimer);
-    hdmi.soonTimer = setTimeout(function () {
+    // Denetim zaten bekliyorsa ya da kurma sıradaysa art arda gelen olay onu ertelemez.
+    if (hdmi.stallTimer !== null || hdmi.pending !== null || hdmi.building !== null) return;
+    var waiting = !!hdmi.stallRebuiltAt && nowMs() - hdmi.stallRebuiltAt < STALL_EVENT_WAIT_MS;
+    hdmi.stallNote = waiting ? 'wait' : 'check';
+    hdmi.stallVideo = video;
+    hdmi.stallTime = Number(video.currentTime);
+    clearTimeout(hdmi.stallTimer);
+    hdmi.stallTimer = setTimeout(function () {
+      hdmi.stallTimer = null;
       if (hdmi.video !== video || !hdmi.host || pageHidden()) return;
-      if (Number(video.currentTime) > before && health(nowMs()) === '') {
+      if (stallRecovered()) {
         hdmi.stallNote = 'ok';
         return;
       }
-      if (hdmi.pending !== null || hdmi.building !== null || !schedule('ev stalled', true, true)) {
+      if (hdmi.pending !== null || hdmi.building !== null || !schedule('ev stalled', !waiting, true)) {
         hdmi.stallNote = 'busy';
-        return;
       }
-      hdmi.stallRebuiltAt = nowMs();
-      hdmi.stallNote = 'rebuilt';
     }, STALL_CHECK_MS);
+  }
+
+  // 'stalled' olayından sonra görüntü kendiliğinden akmaya devam etti mi (sayaç ilerledi ve başka bozulma yok).
+  function stallRecovered() {
+    var video = hdmi.video;
+    return !!video && hdmi.stallVideo === video && Number(video.currentTime) > hdmi.stallTime && health(nowMs()) === '';
   }
 
   // Görüntü sağlamsa '', değilse neden.
@@ -473,6 +495,12 @@
     hdmi.sincePort++;
     hdmi.recent.push(nowMs());
     hdmi.reason = reason;
+    if (reason === 'ev stalled') {
+      hdmi.stallRebuiltAt = nowMs();
+      hdmi.stallNote = 'rebuilt';
+    }
+    clearTimeout(hdmi.stallTimer);
+    hdmi.stallTimer = null;
     var old = hdmi.video;
     // Görüntü 'stalled' oldu: ses adımları (açıkça istendiyse) bu oturumda kapanır, <video> eski yolla kurulur.
     if (reason === 'ev stalled') soundOff('stalled');
@@ -510,6 +538,10 @@
       if (pageHidden() || !hdmi.host) return;
       // Beklerken kendiliğinden düzeldiyse dokunulmaz.
       if (!force && reason !== 'resume' && health(nowMs()) === '') return;
+      if (reason === 'ev stalled' && stallRecovered()) {
+        hdmi.stallNote = 'ok';
+        return;
+      }
       rebuild(reason);
     }, delay);
     return true;
@@ -531,10 +563,16 @@
   // Bir olaydan (öne gelme, yeniden başlatılma, odak, ekran koruyucu sorusu) kısa süre sonra görüntüye bakar.
   // strict: uygulama gerçekten arka plandaydı. O zaman "bozuk görünmüyor" yetmez: sayaç ilerliyorsa görüntü vardır,
   // ilerlemiyorsa <video> yeniden kurulur (giriş ekranı zaten yeniden açılırken; çalışan oyunun ortasında değil).
+  // Sıkı denetim bitmeden gelen gevşek denetim (öne gelişin hemen ardından webOSRelaunch ve odak gelir) onu gevşetmez.
   function checkSoon(delay, strict) {
     if (!hdmi.host) return;
+    strict = !!strict || hdmi.soonStrict;
+    hdmi.soonStrict = strict;
     clearTimeout(hdmi.soonTimer);
     hdmi.soonTimer = setTimeout(function () {
+      hdmi.soonTimer = null;
+      // Arka planda kalındıysa sıkılık öne gelişte yeniden verilir.
+      hdmi.soonStrict = false;
       if (pageHidden() || hdmi.pending !== null || hdmi.building !== null || !hdmi.host) return;
       var now = nowMs();
       var reason = health(now);
@@ -542,7 +580,10 @@
       if (!strict || now - hdmi.builtAt < GRACE_MS) return;
       var video = hdmi.video;
       var before = Number(video.currentTime);
+      hdmi.soonStrict = true;
       hdmi.soonTimer = setTimeout(function () {
+        hdmi.soonTimer = null;
+        hdmi.soonStrict = false;
         if (pageHidden() || hdmi.video !== video || hdmi.pending !== null || hdmi.building !== null) return;
         if (Number(video.currentTime) > before) return;
         schedule('resume', true);
@@ -732,14 +773,21 @@
       clearTimeout(hdmi.pending);
       clearTimeout(hdmi.building);
       clearTimeout(hdmi.soonTimer);
+      clearTimeout(hdmi.stallTimer);
       hdmi.pending = null;
       hdmi.building = null;
+      hdmi.soonTimer = null;
+      hdmi.soonStrict = false;
+      hdmi.stallTimer = null;
       // Aynı giriş yeniden istendi (kullanıcı kumandada o girişin numarasına bastı): görüntü takıldıysa boru hattı da
-      // bırakılıp baştan kurulur. Başka girişe geçerken eskisi gibi yalnız sayfadan çıkarılır.
+      // bırakılıp baştan kurulur, yeni <video> gözcünün yeniden kurmasındaki gibi REBUILD_GAP_MS sonra açılır. Başka
+      // girişe geçerken eskisi gibi yalnız sayfadan çıkarılır.
+      var released = false;
       if (hdmi.video && port === hdmi.port && host === hdmi.host) {
         // Kullanıcı ses adımlarından hemen sonra girişi yeniden seçti (görüntü siyah): eski yola dönülür.
         if (soundSuspect(hdmi.video)) soundOff('reselect');
         releaseVideo(hdmi.video, true);
+        released = true;
       }
       clearTimeout(sound.timer);
       sound.timer = null;
@@ -754,7 +802,14 @@
       hdmi.sincePort = 0;
 
       onStatus('loading');
-      buildVideo();
+      if (released) {
+        hdmi.building = setTimeout(function () {
+          hdmi.building = null;
+          if (hdmi.host === host && hdmi.port === port) buildVideo();
+        }, REBUILD_GAP_MS);
+      } else {
+        buildVideo();
+      }
       if (hdmi.checkTimer === null) hdmi.checkTimer = setTimeout(tick, CHECK_MS);
     },
 

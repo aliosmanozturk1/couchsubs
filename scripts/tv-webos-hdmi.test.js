@@ -159,9 +159,11 @@ test('webOS HDMI: hata olayında <video> 2 sn sonra yeniden kurulur, görüntü 
   tv.advance(1900);
   assert.strictEqual(tv.videos.length, 1, '2 sn dolmadan kurulmaz');
   tv.advance(600);
-  assert.strictEqual(tv.videos.length, 2);
   assert.strictEqual(first.parentNode, null, 'eski <video> sayfadan çıkar');
   assert.strictEqual(first.loads, 1, 'eski boru hattı bırakılır');
+  assert.strictEqual(tv.videos.length, 1, 'yeni <video> bırakmadan 1 sn sonra açılır');
+  tv.advance(1000);
+  assert.strictEqual(tv.videos.length, 2);
   assert.strictEqual(tv.video.children[0].attributes.src, 'ext://hdmi:3');
   assert.strictEqual(tv.host.children.length, 1);
   tv.video.start();
@@ -303,6 +305,8 @@ test('webOS HDMI: aynı giriş yeniden seçilince boru hattı bırakılıp başt
   first.start();
   tv.show(3);
   assert.strictEqual(first.loads, 1);
+  assert.strictEqual(tv.videos.length, 1, 'yeni <video> bırakmadan 1 sn sonra açılır');
+  tv.advance(1000);
   assert.strictEqual(tv.videos.length, 2);
   assert.strictEqual(tv.host.children.length, 1);
   const second = tv.video;
@@ -482,7 +486,7 @@ test('webOS HDMI #643: ses adımları varsayılanda hiç yapılmaz; ses ayarı/s
   assert.match(tv.platform.diagnostics(), /^hdmi playing rs4 1920x1080 t= · snd on v100 tr0\/1 sx no · webOS/);
 });
 
-test('webOS HDMI #643: görüntü gelip stalled olursa <video> eski yolla bir kez kurulur, 30 sn beklenir, ses adımı yok', () => {
+test('webOS HDMI #643: görüntü gelip stalled olursa <video> eski yolla yeniden kurulur, ses adımı yok', () => {
   const tv = startTv({ luna: () => ({ returnValue: false }) });
   tv.show(2);
   const first = tv.video;
@@ -492,10 +496,12 @@ test('webOS HDMI #643: görüntü gelip stalled olursa <video> eski yolla bir ke
   first.fire('stalled');
   tv.advance(1400);
   assert.strictEqual(tv.videos.length, 1, '1,5 sn dolmadan kurulmaz');
-  tv.advance(500);
-  assert.strictEqual(tv.videos.length, 2, 'stalled sonrası yeniden kuruldu');
+  tv.advance(200);
   assert.strictEqual(first.parentNode, null);
   assert.strictEqual(first.loads, 1, 'eski boru hattı bırakıldı');
+  assert.strictEqual(tv.videos.length, 1, 'yeni <video> bırakmadan 1 sn sonra açılır');
+  tv.advance(1000);
+  assert.strictEqual(tv.videos.length, 2, 'stalled sonrası yeniden kuruldu');
   const second = tv.video;
   assert.strictEqual(second.children[0].attributes.src, 'ext://hdmi:2');
   assert.strictEqual(second.children[0].attributes.type, 'service/webos-external');
@@ -503,24 +509,81 @@ test('webOS HDMI #643: görüntü gelip stalled olursa <video> eski yolla bir ke
   const touched = watchSound(second);
   second.start();
   assert.match(tv.platform.diagnostics(), / · rebuilt 1 \(ev stalled\) · ev stalled · stall 1 rebuilt · snd .* sx no · /);
-  // 30 sn dolmadan gelen stalled yalnız beklenir.
+  // 0.9.63'te (#643 panel: "rebuilt 1 (ev stalled) · ev stalled · stall 2 wait") 30 sn dolmadan gelen ikinci stalled
+  // yalnız beklenirdi; TV sayacı ilerletmediği için ekran siyah kalıyordu. Artık gözcünün artan aralığıyla kurulur.
   tv.advance(10000);
   second.fire('stalled');
-  tv.advance(5000);
+  tv.advance(1600);
   assert.strictEqual(tv.videos.length, 2);
   assert.match(tv.platform.diagnostics(), / · stall 2 wait · /);
-  // 30 sn sonra yine stalled olursa yeniden kurulur.
-  tv.advance(20000);
-  second.fire('stalled');
-  tv.advance(2000);
-  assert.strictEqual(tv.videos.length, 3);
-  assert.match(tv.platform.diagnostics(), /rebuilt 2 \(ev stalled\) · ev stalled · stall 3 rebuilt/);
+  tv.advance(6000);
+  assert.strictEqual(tv.videos.length, 3, 'ikinci stalled de yeniden kurdurur');
+  assert.match(tv.platform.diagnostics(), /rebuilt 2 \(ev stalled\) · ev stalled · stall 2 rebuilt/);
+  const third = tv.video;
+  third.start();
+  // 30 sn sonra yine stalled olursa beklemeden kurulur.
+  tv.advance(40000);
+  third.fire('stalled');
+  tv.advance(2600);
+  assert.strictEqual(tv.videos.length, 4);
+  assert.match(tv.platform.diagnostics(), /rebuilt 3 \(ev stalled\) · ev stalled · stall 3 rebuilt/);
   tv.video.start();
   tv.advance(10 * 60000);
   assert.deepStrictEqual(touched, [], 'ses adımı hiç yapılmadı');
   assert.strictEqual(lunaCalls(tv, 'com.webos.audio').length + lunaCalls(tv, 'settingsservice').length, 0);
-  assert.strictEqual(tv.videos.length, 3, 'sağlam görüntüye bir daha dokunulmaz');
+  assert.strictEqual(tv.videos.length, 4, 'sağlam görüntüye bir daha dokunulmaz');
   assert.strictEqual(tv.statuses[tv.statuses.length - 1], 'playing');
+});
+
+test('webOS HDMI #643: stalled denetimi ardından gelen odak ve yeniden başlatılma denetimiyle silinmez', () => {
+  const tv = startTv();
+  tv.show(2);
+  tv.video.start();
+  tv.advance(20000);
+  tv.video.fire('stalled');
+  tv.advance(500);
+  tv.document.fire('webOSRelaunch');
+  tv.focus();
+  tv.advance(3000);
+  assert.strictEqual(tv.videos.length, 2);
+  assert.match(tv.platform.diagnostics(), /rebuilt 1 \(ev stalled\)/);
+});
+
+test('webOS HDMI #643: öne gelişin sıkı denetimi hemen ardından gelen webOSRelaunch ve odakla gevşemez', () => {
+  const tv = startTv();
+  tv.show(2);
+  tv.video.start();
+  tv.advance(20000);
+  tv.hide();
+  tv.advance(10000);
+  // Bilgisayarın bekçisi PS tuşundan sonra uygulamayı öne getirir: görünürlük, webOSRelaunch ve odak art arda gelir.
+  tv.unhide();
+  tv.document.fire('webOSRelaunch');
+  tv.focus();
+  tv.advance(5000);
+  assert.strictEqual(tv.videos.length, 2, 'sayacı ilerlemeyen görüntü öne gelişte yeniden kurulur');
+  assert.match(tv.platform.diagnostics(), /rebuilt 1 \(resume\)/);
+  tv.video.start();
+  tv.advance(10 * 60000);
+  assert.strictEqual(tv.videos.length, 2);
+});
+
+test('webOS HDMI #643: her yeni <video>\'da stalled gelse de dakikada en çok 4 kez kurulur', () => {
+  const tv = startTv();
+  tv.show(2);
+  let seen = 0;
+  for (let i = 0; i < 240; i++) {
+    if (tv.videos.length > seen) {
+      seen = tv.videos.length;
+      tv.video.start();
+    } else if (tv.video && tv.video.readyState >= 2) {
+      tv.video.fire('stalled');
+    }
+    tv.advance(1000);
+  }
+  // İlk <video> dışındaki kurmalar 4 dakikada.
+  assert.ok(tv.videos.length - 1 <= 16, 'kurma sayısı ' + (tv.videos.length - 1));
+  assert.ok(tv.videos.length - 1 >= 4, 'yine de kuruluyor');
 });
 
 test('webOS HDMI #643: ses adımları açıkken stalled olursa adımlar kapanır, yeni <video>\'ya dokunulmaz', () => {
@@ -532,7 +595,7 @@ test('webOS HDMI #643: ses adımları açıkken stalled olursa adımlar kapanır
   tv.advance(3500);
   assert.ok(before.length > 0, 'açıkça istendiği için adımlar yapıldı');
   first.fire('stalled');
-  tv.advance(2000);
+  tv.advance(3000);
   assert.strictEqual(tv.videos.length, 2);
   const touched = watchSound(tv.video);
   tv.video.start();
