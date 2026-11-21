@@ -2,6 +2,7 @@
 // sdb protokolü TizenSdb.Core'dan (MIT, Patrick Stel) taşındı: https://github.com/PatrickSt1991/tizen-sdb
 // (Android'deki Sdb.kt'nin Swift karşılığı). ADB ile aynı çerçeve biçimi; AdbConnection da bu çerçeveyi kullanır.
 
+import CouchSubsCore
 import Foundation
 
 /// sdb/adb çerçevesi: 24 baytlık küçük-endian başlık ve veri.
@@ -244,7 +245,7 @@ final class SdbConnection: WireConnection {
     static func parseCapability(_ bytes: [UInt8]) -> [String: String] {
         guard bytes.count >= 2 else { return [:] }
         var result: [String: String] = [:]
-        for line in String(decoding: bytes[2...], as: UTF8.self).split(separator: "\n") {
+        for line in String(decoding: bytes[2...], as: UTF8.self).deviceLines where !line.isEmpty {
             let parts = line.split(separator: ":").map(String.init).filter { !$0.isEmpty }
             if parts.count == 2, result[parts[0]] == nil { result[parts[0]] = parts[1] }
         }

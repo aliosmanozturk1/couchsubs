@@ -3,6 +3,7 @@
 // Android'deki SamsungCsr.kt'nin Der'i ve java.security karşılıkları.
 
 import CryptoKit
+import CouchSubsCore
 import Foundation
 import Security
 
@@ -99,7 +100,7 @@ enum Der {
     /// PEM metninden DER (PEM değilse veri olduğu gibi döner).
     static func fromPem(_ data: Data) -> Data {
         guard let text = String(data: data, encoding: .utf8), text.contains("-----BEGIN") else { return data }
-        let body = text.split(separator: "\n").filter { !$0.hasPrefix("-----") }.joined()
+        let body = text.deviceLines.filter { !$0.hasPrefix("-----") }.joined()
         return Data(base64Encoded: body, options: .ignoreUnknownCharacters) ?? data
     }
 }

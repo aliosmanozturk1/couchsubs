@@ -3,6 +3,7 @@
 // Protokol: AOSP packages/modules/adb (protocol.txt, pairing_connection). Google'ın adb aracı dağıtılmaz.
 
 import CryptoKit
+import CouchSubsCore
 import Foundation
 
 enum AndroidInstallError: Equatable, Sendable {
@@ -250,7 +251,7 @@ final class AndroidTvInstaller {
     }
 
     static func hasPlayStore(_ output: String) -> Bool {
-        output.split(separator: "\n").contains { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "package:com.android.vending" }
+        output.deviceLines.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "package:com.android.vending" }
     }
 
     let host: String

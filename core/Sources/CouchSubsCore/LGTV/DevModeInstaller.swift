@@ -240,7 +240,7 @@ public struct DevModeInstaller: Sendable {
     /// içinde FAILED hata, `installed`/`SUCCESS` başarıdır.
     static func parseInstallReplies(_ output: String) -> InstallOutcome {
         var pending = ""
-        for line in output.split(separator: "\n", omittingEmptySubsequences: false) {
+        for line in output.deviceLines {
             pending += line.trimmingCharacters(in: .whitespacesAndNewlines)
             if pending.isEmpty { continue }
             guard pending.hasPrefix("{") else {

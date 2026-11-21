@@ -3,6 +3,7 @@
 // SamsungDiagnostics.kt, SamsungTvInfo.kt) Swift karşılığı. Sertifika uç noktaları, giriş akışı ve hata kodlarının
 // anlamları Apps2Samsung'dan (MIT, Patrick Stel); masaüstündeki windows/src/CouchSubs.TvInstall/Samsung ile aynı mantık.
 
+import CouchSubsCore
 import Foundation
 
 // MARK: - Ortak
@@ -117,7 +118,7 @@ enum SamsungDiagnostics {
     }
 
     static func summary(_ log: String) -> String {
-        let lines = log.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let lines = log.deviceLines.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         if lines.isEmpty { return "TV yanıt vermedi" }
         var key: [String] = []
         for line in lines where ["fail", "error", "reason", "not match", "space"].contains(where: { line.localizedCaseInsensitiveContains($0) }) {
@@ -583,6 +584,13 @@ final class SamsungInstaller {
     static func needsDeviceProfile(_ platform: String) -> Bool {
         !platform.isEmpty && !isTooOld(platform) && !Versions.isNewer(platform, than: deviceProfileUpTo)
     }
+    /// `0 getduid` yanıtının ilk dolu satırı geçerli DUID ise onu verir. TV satırı CRLF ile bitirebilir
+    /// (ör. "XTCK7KNUEHTUM\r\nXTCK7KNUEHTUM"); `split(separator: "\n")` bunu bölmediği için `deviceLines`.
+    static func duid(fromGetduid output: String) -> String? {
+        let first = output.deviceLines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? ""
+        return isDuid(first) ? first : nil
+    }
+
     static func isDuid(_ text: String) -> Bool { text.range(of: #"^[A-Za-z0-9_\-+=/]{8,}$"#, options: .regularExpression) != nil }
     static func safeName(_ duid: String) -> String { duid.replacingOccurrences(of: #"[^A-Za-z0-9_\-]"#, with: "_", options: .regularExpression) }
 
@@ -788,8 +796,7 @@ final class SamsungInstaller {
         var last = ""
         for _ in 0..<3 {
             last = (try? device.shell("0 getduid")) ?? ""
-            let duid = last.split(separator: "\n", omittingEmptySubsequences: false).first.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
-            if Self.isDuid(duid) { return duid }
+            if let duid = Self.duid(fromGetduid: last) { return duid }
             Thread.sleep(forTimeInterval: 0.5)
         }
         throw SamsungInstallFailure(error: .unreachable, detail: "TV kimliği (DUID) okunamadı; TV'nin yanıtı: \(last.isEmpty ? "boş" : last)")
