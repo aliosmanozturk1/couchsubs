@@ -17,6 +17,10 @@ data class LiveStatus(
     val phase: String = "",
     /** Konsol görüntüsü geliyor (oturum Streaming); arayüz [phase] metnini karşılaştırmak yerine buna bakar. */
     val streaming: Boolean = false,
+    /** Bağlantının gittiği an (duvar saati, ms; bağlıyken null): "Yeniden bağlan" düğmesi (bkz. ReconnectOffer). */
+    val notLiveSince: Long? = null,
+    /** Oturum yeniden denemeyi bıraktı: "Yeniden bağlan" hemen görünür. */
+    val gaveUp: Boolean = false,
     val connectedTvs: Int = 0,
     /** TV uygulamasını kendiliğinden açmanın son denemesi neden olmadı (ana ekranda tek satır); açıldıysa null. */
     val tvOpenProblem: com.couchsubs.mobile.tv.TvOpenProblem? = null,

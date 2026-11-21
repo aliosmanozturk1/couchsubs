@@ -2463,6 +2463,8 @@ final class AppModel: ObservableObject {
                 SubtitleLog.write("yedek okuyucu da takıldı (\(failures). kez): \(stall.logText); yeniden kuruluyor")
             case .degraded(let stalls):
                 SubtitleLog.write("okuma \(stalls) kez takıldı; bu oturumda hızlı düzeyde okunacak (Neural Engine yolu bırakıldı)")
+            case .abandonedFinished(let still):
+                SubtitleLog.write("bırakılan takılı okuma sonunda bitti (bitmeyen bırakılmış okuma: \(still))")
             }
             Task { @MainActor in self?.readQueueChanged() }
         }

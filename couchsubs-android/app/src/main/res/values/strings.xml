@@ -18,6 +18,7 @@
     <string name="phase_connecting">PS5\'e bağlanılıyor…</string>
     <string name="phase_streaming">Altyazılar okunuyor</string>
     <string name="phase_reconnecting">Bağlantı koptu, yeniden bağlanılıyor…</string>
+    <string name="reconnect">Yeniden bağlan</string>
     <string name="phase_in_use">PS5 başka bir Remote Play bağlantısında. Diğer cihazı kapat.</string>
     <string name="phase_not_found_host">PS5 %1$s adresinde bulunamadı. Açık ve aynı ağda olduğundan emin ol. Yeniden bağlanılıyor…</string>
     <string name="phase_network">PS5 ile bağlantı koptu, yeniden bağlanılıyor… Sık oluyorsa PS5\'i modeme kabloyla bağla.</string>

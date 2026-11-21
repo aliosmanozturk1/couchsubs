@@ -567,6 +567,7 @@ public final class StreamSession: @unchecked Sendable {
     /// bloklar (yeniden deneme, eski oturumun kapanma olayı) kendini iptal eder.
     private let stateLock = NSLock()
     private var running = false
+    private var gaveUp = false
     private var generation = 0
 
     public init(console: RegisteredConsole, accountId: Data, loginPasscode: String? = nil) {
@@ -621,12 +622,30 @@ public final class StreamSession: @unchecked Sendable {
         return running
     }
 
+    /// Oturum yeniden denemeyi kendisi bıraktı mı (görüntü hiç gelmiyor, PS5'te Uzaktan Oynatma çöktü, kayıt ya da giriş
+    /// şifresi geçersiz). `reconnectNow` o zaman bir şey yapmaz; uygulama yeni oturum açmalıdır. Eskiden iPhone'da bu
+    /// durumda öne dönmek de bağlantıyı kurmuyordu, kullanıcı uygulamayı kapatıp açmak zorunda kalıyordu.
+    public var hasGivenUp: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return gaveUp
+    }
+
     private func bump(running: Bool) -> Int {
         stateLock.lock()
         defer { stateLock.unlock() }
         self.running = running
+        gaveUp = false
         generation += 1
         return generation
+    }
+
+    /// Yeniden deneme bırakılır (`stop`tan farkı: kullanıcı durdurmadı).
+    private func giveUp() {
+        _ = bump(running: false)
+        stateLock.lock()
+        gaveUp = true
+        stateLock.unlock()
     }
 
     private func isCurrent(_ value: Int) -> Bool {
@@ -791,7 +810,7 @@ public final class StreamSession: @unchecked Sendable {
                     }
                 case .stop(let reason):
                     // Şifre yok ya da yanlış: yeniden denemek aynı yere çıkar, oturum kapatılır.
-                    _ = self.bump(running: false)
+                    self.giveUp()
                     self.closeBox()
                     self.emit(.disconnected(reason))
                 }
@@ -811,7 +830,7 @@ public final class StreamSession: @unchecked Sendable {
                 if wasStreaming, QualityFallback.countsAsDrop(reason) { self.noteDrop() }
                 if reason == .registrationInvalid {
                     // Kayıt geçersiz: yeniden denemek aynı yere çıkar (eskiden sonsuza kadar "Yeniden bağlanılıyor…").
-                    _ = self.bump(running: false)
+                    self.giveUp()
                     return self.emit(.disconnected(.registrationInvalid))
                 }
                 if reason == .consoleRemotePlayCrashed {
@@ -820,7 +839,7 @@ public final class StreamSession: @unchecked Sendable {
                         + (retry ? "yeniden deneniyor" : "yeniden bağlanma bırakıldı, PS5 tamamen kapatılıp açılmalı"))
                     if !retry {
                         // PS5 kapatılıp açılmadan her deneme aynı yanıtı alır (eskiden sonsuz "Yeniden bağlanılıyor…").
-                        _ = self.bump(running: false)
+                        self.giveUp()
                         return self.emit(.disconnected(reason))
                     }
                 }
@@ -856,7 +875,7 @@ public final class StreamSession: @unchecked Sendable {
             self.noteDrop()
             if next == .giveUp {
                 // Görüntü hiç gelmiyor: sonsuz yeniden bağlanma döngüsü yerine dur ve nedenini söyle.
-                _ = self.bump(running: false)
+                self.giveUp()
                 return self.emit(.disconnected(.noPicture))
             }
             self.scheduleReconnect(boxGeneration, reason: .other(PictureWatchdog.reason))

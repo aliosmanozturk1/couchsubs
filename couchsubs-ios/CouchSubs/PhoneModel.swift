@@ -78,6 +78,8 @@ final class PhoneModel: ObservableObject {
     /// Deneme modu: konsol yerine uygulamadaki örnek kareler okunur (`DemoFrameSource`); kurulum gerekmez.
     @Published private(set) var demoMode = false
     @Published private(set) var sessionState: SessionState = .disconnected(.stopped)
+    /// Bağlantının ne zamandan beri gittiği: "Yeniden bağlan" düğmesi için (bkz. `offersReconnect`).
+    @Published private(set) var reconnectOffer = ReconnectOffer()
     @Published private(set) var tvClients = 0
     /// Çeviri bir süredir sürüyor ama TV uygulaması bağlanmadı: TV kartının altında ne yapılacağı söylenir.
     @Published private(set) var tvWaitingLong = false
@@ -621,45 +623,13 @@ final class PhoneModel: ObservableObject {
         // Konuşan renkleri oturum başına: yeni oturumda kişiler yeniden sıralanır.
         server.speakerBook.reset()
         makePipeline()
-        let session: StreamControlling
-        let consoleName: String
-        if demoMode {
-            RemotePlayLog.write("Deneme modu başladı (örnek kareler)")
-            session = DemoStream()
-            consoleName = ""
-        } else if let xbox {
-            RemotePlayLog.write("Çeviri başladı; Xbox'a bağlanılıyor (Beta): \(xbox.name)")
-            session = XboxStreamSession(auth: xboxAuth, console: xbox, playAudio: settings.xboxAudioOnDevice,
-                                        describe: XboxText.session, stopped: XboxText.stopped)
-            consoleName = xbox.name.isEmpty ? "Xbox" : xbox.name
-        } else if let console, let accountId {
-            RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)")
-            session = services.makeStream(console: console, accountId: accountId,
-                                          loginPasscode: store.load(String.self, for: StoreKey.loginPasscode))
-            consoleName = console.name.isEmpty ? console.host : console.name
-        } else { return }
-        session.onState = { [weak self] state in Task { @MainActor in self?.sessionStateChanged(state) } }
-        session.onConsoleMoved = { [weak self] moved in Task { @MainActor in self?.consoleMoved(moved) } }
-        // Kareler ana iş parçacığına tek gözlü kutudan gider: eskiden her kare (saniyede 20) ayrı bir ana iş parçacığı işi
-        // kuruyordu; ana iş parçacığı yavaşlayınca işler 8 MB'lık kareleriyle birikiyor, dokunuşlar ("Çeviriyi durdur")
-        // ve ekran dönüşü gecikiyordu (TestFlight, X). Yetişilemeyen kare atlanır (bkz. FrameMailbox).
-        let mailbox = FrameMailbox<(frame: CGImage, capturedAt: Int)>()
-        session.onFrame = { [weak self] frame in
-            // Karenin geldiği an: gecikme buradan TV'ye gidene kadar ölçülür.
-            guard mailbox.put((frame, SubtitleStabilizer.uptimeMs())) else { return }
-            Task { @MainActor in
-                while let next = mailbox.take() {
-                    self?.handle(next.frame, capturedAt: next.capturedAt)
-                    await Task.yield()
-                }
-            }
-        }
-        frameMailbox = mailbox
+        guard let (session, consoleName) = makeSession(xbox: xbox) else { return }
         // "Durdur / Başlat" takılı okumayı da bırakır: eskiden iPhone'da takılan okuma bitmezse yalnız uygulamayı kapatıp
         // açmak düzeltiyordu.
         abandonStalledRead(olderThanMs: 0)
         session.start()
         self.session = session
+        reconnectOffer.reset(now: Date())
         startKeeper()
         // Deneme karelerinde oyun yoktur: oyun sorulmaz, oyuna göre alan uygulanmaz.
         if !demoMode {
@@ -685,6 +655,90 @@ final class PhoneModel: ObservableObject {
         watchTVConnection()
         if notifiesDisconnect { requestNotificationPermission() }
         onAnalytics(.sessionStart(output: settings.output.rawValue))
+    }
+
+    /// Konsol oturumunu kurar ve olaylarını modele bağlar (başlatmaz). "Çeviriyi başlat" ve "Yeniden bağlan" kullanır.
+    private func makeSession(xbox: XboxConsole?) -> (StreamControlling, String)? {
+        let session: StreamControlling
+        let consoleName: String
+        if demoMode {
+            RemotePlayLog.write("Deneme modu başladı (örnek kareler)")
+            session = DemoStream()
+            consoleName = ""
+        } else if let xbox {
+            RemotePlayLog.write("Çeviri başladı; Xbox'a bağlanılıyor (Beta): \(xbox.name)")
+            session = XboxStreamSession(auth: xboxAuth, console: xbox, playAudio: settings.xboxAudioOnDevice,
+                                        describe: XboxText.session, stopped: XboxText.stopped)
+            consoleName = xbox.name.isEmpty ? "Xbox" : xbox.name
+        } else if let console, let accountId {
+            RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)")
+            session = services.makeStream(console: console, accountId: accountId,
+                                          loginPasscode: store.load(String.self, for: StoreKey.loginPasscode))
+            consoleName = console.name.isEmpty ? console.host : console.name
+        } else { return nil }
+        // Yeniden bağlanırken kapatılan eski oturumun geç gelen olayı (Xbox'ta "durdu") yeni oturumun durumunu ezmez.
+        session.onState = { [weak self, weak session] state in
+            Task { @MainActor in
+                guard let self, let session, self.session === session else { return }
+                self.sessionStateChanged(state)
+            }
+        }
+        session.onConsoleMoved = { [weak self] moved in Task { @MainActor in self?.consoleMoved(moved) } }
+        // Kareler ana iş parçacığına tek gözlü kutudan gider: eskiden her kare (saniyede 20) ayrı bir ana iş parçacığı işi
+        // kuruyordu; ana iş parçacığı yavaşlayınca işler 8 MB'lık kareleriyle birikiyor, dokunuşlar ("Çeviriyi durdur")
+        // ve ekran dönüşü gecikiyordu (TestFlight, X). Yetişilemeyen kare atlanır (bkz. FrameMailbox).
+        let mailbox = FrameMailbox<(frame: CGImage, capturedAt: Int)>()
+        session.onFrame = { [weak self] frame in
+            // Karenin geldiği an: gecikme buradan TV'ye gidene kadar ölçülür.
+            guard mailbox.put((frame, SubtitleStabilizer.uptimeMs())) else { return }
+            Task { @MainActor in
+                while let next = mailbox.take() {
+                    self?.handle(next.frame, capturedAt: next.capturedAt)
+                    await Task.yield()
+                }
+            }
+        }
+        frameMailbox = mailbox
+        return (session, consoleName)
+    }
+
+    /// "Yeniden bağlan" (ve oturumun bıraktığı bağlantıda öne dönüş): konsol oturumu kapatılıp yenisi açılır, TV bağlantısı
+    /// ve altyazı sunucusu yoklanır. Çeviri sürer (geçmiş, oyun seçimi, süre korunur). Eskiden oturum yeniden denemeyi
+    /// bırakınca (görüntü gelmiyor, PS5'te Uzaktan Oynatma çöktü, Xbox denemeleri bitti) ya da uzun süre bağlanamayınca
+    /// tek çare uygulamayı kapatıp açmaktı (TestFlight, iPhone).
+    func reconnect(reason: String = "kullanıcı") {
+        guard isRunning, !isStarting else { return }
+        let xbox = isXbox && !demoMode ? xboxConsole : nil
+        RemotePlayLog.write("Yeniden bağlanılıyor (\(reason)); son durum: \(sessionState)")
+        SubtitleLog.write("bağlantı yeniden kuruluyor (\(reason))")
+        session?.stop()
+        session = nil
+        frameMailbox?.clear()
+        frameGate.reset()
+        abandonStalledRead(olderThanMs: 0)
+        guard let (session, _) = makeSession(xbox: xbox) else { return }
+        sessionState = .connecting
+        session.start()
+        self.session = session
+        reconnectOffer.reset(now: Date())
+        if keeper == nil { startKeeper() } else { keeper?.reconnect() }
+        Task { await reviveServerIfSilent() }
+    }
+
+    /// Ana ekrandaki "Yeniden bağlan" düğmesi görünsün mü (bkz. `ReconnectOffer`).
+    func offersReconnect(now: Date = Date()) -> Bool {
+        guard isRunning, !demoMode else { return false }
+        return reconnectOffer.shows(gaveUp: session?.hasGivenUp ?? false, now: now)
+    }
+
+    /// Oturum yeniden denemeyi bıraktıysa uygulama öne dönünce kendiliğinden yeniden bağlanılır mı. Kayıt ya da giriş
+    /// şifresi sorununda hayır: aynı yere çıkar (yanlış şifre yeniden gönderilmez); kullanıcı düzeltip düğmeye basar.
+    static func reconnectsOnReturn(after state: SessionState) -> Bool {
+        guard case .disconnected(let reason) = state else { return true }
+        switch reason {
+        case .registrationInvalid, .loginPasscode, .loginPasscodeIncorrect, .stopped: return false
+        default: return true
+        }
     }
 
     func stop() {
@@ -726,6 +780,7 @@ final class PhoneModel: ObservableObject {
         isRunning = false
         onlineIssue = nil
         sessionState = .disconnected(.stopped)
+        reconnectOffer.reset()
         subtitleOffTip.reset()
         updateSubtitleOffTip()
         phoneHide()
@@ -745,7 +800,14 @@ final class PhoneModel: ObservableObject {
         syncTVPairing()
         guard isRunning else { return }
         if afterBackground { markBackground(false) }
-        if afterBackground || !Self.isLive(sessionState) { session?.reconnectNow() }
+        if session?.hasGivenUp == true {
+            // Oturum yeniden denemeyi bırakmıştı: `reconnectNow` bir şey yapmaz, kullanıcı uygulamayı kapatıp açmak zorunda
+            // kalıyordu. Arka planda (PiP) görüntü çözülemeyince "görüntü gelmiyor" diye bırakılabiliyor; dönüşte yeni
+            // oturum açılır. Kayıt ya da giriş şifresi sorununda açılmaz (aynı yere çıkar; düğme görünür).
+            if Self.reconnectsOnReturn(after: sessionState) { return reconnect(reason: "öne dönüş; oturum yeniden denemeyi bırakmıştı") }
+        } else if afterBackground || !Self.isLive(sessionState) {
+            session?.reconnectNow()
+        }
         keeper?.reconnect()
     }
 
@@ -898,6 +960,7 @@ final class PhoneModel: ObservableObject {
             SubtitleLog.write("PS5: Uzaktan Oynatma PS5'te çöktü (Remote Play on Console has crashed); PS5 tamamen kapatılıp açılmalı")
         }
         sessionState = state
+        reconnectOffer.update(live: state == .streaming)
         subtitleOffTip.connectionChanged(streaming: state == .streaming)
         updateSubtitleOffTip()
         // Akış sürerken kendiliğinden koptu (kullanıcı durdurmadı): tercih açıksa bildirim (uygulama etkin değilse).
@@ -951,6 +1014,8 @@ final class PhoneModel: ObservableObject {
             case .stalled(let stall, _): SubtitleLog.write("okuma takıldı: \(stall.logText); takılan okuma bekleniyor")
             case .recovered(let ms): SubtitleLog.write("okuma düzeldi: takılan okuma \(ms) ms sonra bitti")
             case .rescueFailed: break
+            case .abandonedFinished(let still):
+                SubtitleLog.write("bırakılan takılı okuma sonunda bitti (bitmeyen bırakılmış okuma: \(still))")
             case .degraded(let stalls):
                 SubtitleLog.write("okuma \(stalls) kez takıldı; bu oturumda hızlı düzeyde okunacak (Neural Engine yolu bırakıldı)")
             }

@@ -104,6 +104,16 @@ class TranslationService : Service() {
             context.startService(Intent(context, TranslationService::class.java).setAction(ACTION_STOP))
         }
 
+        /**
+         * "Yeniden bağlan": konsol oturumu kapatılıp yenisi açılır, çeviri sürer. Eskiden oturum yeniden denemeyi
+         * bırakınca (görüntü gelmiyor, PS5'te Uzaktan Oynatma çöktü) ya da uzun süre bağlanamayınca tek çare çeviriyi ya
+         * da uygulamayı kapatıp açmaktı (Mac/iPhone ile aynı).
+         */
+        fun reconnect() {
+            val service = current ?: return
+            runCatching { service.background.execute { service.reconnectSession() } }
+        }
+
         /** Çalışan hizmet ("ekranı çevir" düğmesi buraya gelir). */
         @Volatile private var current: TranslationService? = null
 
@@ -231,6 +241,11 @@ class TranslationService : Service() {
     }
     private lateinit var settings: AppSettings
     @Volatile private var session: FrameSource? = null
+    /** Konsol oturumunu yeniden kuran üretici ("Yeniden bağlan"); her yeni oturum [sourceGeneration]'ı artırır. */
+    @Volatile private var sourceFactory: (() -> FrameSource)? = null
+    @Volatile private var sourceGeneration = 0
+    /** "Yeniden bağlan" düğmesi için bağlantının ne zamandan beri gittiği (Mac/iPhone ile aynı; bkz. [ReconnectOffer]). */
+    private val reconnectOffer = com.couchsubs.mobile.remoteplay.ReconnectOffer()
     @Volatile private var server: SubtitleServer? = null
     @Volatile private var pipeline: SubtitlePipeline? = null
     @Volatile private var reader: SubtitleReader? = null
@@ -679,7 +694,15 @@ class TranslationService : Service() {
                 pipeline?.reset()
                 server?.clear()
             }
-            LiveState.update { it.withStreaming(state == SessionState.Streaming).copy(phase = describe(state)) }
+            val now = System.currentTimeMillis()
+            val gaveUp = synchronized(reconnectOffer) {
+                reconnectOffer.update(state == SessionState.Streaming, now)
+                session?.hasGivenUp == true
+            }
+            LiveState.update {
+                it.withStreaming(state == SessionState.Streaming)
+                    .copy(phase = describe(state), notLiveSince = reconnectOffer.notLiveSince, gaveUp = gaveUp)
+            }
         }
         // Oynanan oyun (PS5'in bildirdiği, kullanıcının seçtiği ya da paketten tanınan; bkz. PlayedGame): havuza giden
         // satırlar bu oyunla gider. Klipte oyun aranmaz, sorulmaz.
@@ -723,11 +746,18 @@ class TranslationService : Service() {
             PlayedGame.packs = null
             library.limitToGame(null)
         }
-        val source = replacement?.create(this, onFrame, onState)
-            ?: xboxConsole?.let { XboxStreamSession(this, Services.xboxAuth, it, onFrame, onState, ::describeXbox,
-                playAudio = settings.xboxAudioOnDevice) }
-            ?: StreamSession(console!!, accountId!!, onFrame, onState, onConsoleMoved = { moved -> settings.console = moved },
-                loginPasscode = settings.loginPasscode)
+        val makeSource: () -> FrameSource = {
+            // Yeniden bağlanırken kapatılan eski oturumun geç gelen durumu yeni oturumun durumunu ezmez.
+            val generation = ++sourceGeneration
+            val stateOf: (SessionState) -> Unit = { state -> if (generation == sourceGeneration) onState(state) }
+            replacement?.create(this, onFrame, stateOf)
+                ?: xboxConsole?.let { XboxStreamSession(this, Services.xboxAuth, it, onFrame, stateOf, ::describeXbox,
+                    playAudio = settings.xboxAudioOnDevice) }
+                ?: StreamSession(settings.console ?: console!!, accountId!!, onFrame, stateOf,
+                    onConsoleMoved = { moved -> settings.console = moved }, loginPasscode = settings.loginPasscode)
+        }
+        sourceFactory = makeSource
+        val source = makeSource()
         synchronized(lifecycle) {
             // Kurulum sürerken durdurulduysa (onDestroy çalıştı) açılan bağlantı başlatılmaz.
             if (destroyed) {
@@ -739,6 +769,7 @@ class TranslationService : Service() {
             Backend.breadcrumb(if (xboxConsole != null) "çeviri: Xbox oturumu açılıyor" else "çeviri: PS5 oturumu açılıyor")
             source.start()
         }
+        markReconnectStart()
         background.scheduleWithFixedDelay({
             // Kare sayacıyla "oyunun kendi altyazısını açın" ipucu da güncellenir (SubtitleOffTip; GitHub #503, #566).
             session?.let { s -> LiveState.update { it.withFrames(s.framesReceived, System.currentTimeMillis()) } }
@@ -1068,6 +1099,31 @@ class TranslationService : Service() {
     }
 
     /** Kurulan parçaları kapatır; onDestroy'dan ve hizmet kurulum bitmeden durdurulduysa kurulum iş parçacığından çağrılır. */
+    /** Yeni oturum açıldı: "Yeniden bağlan" düğmesinin süresi baştan sayılır. */
+    private fun markReconnectStart() {
+        val now = System.currentTimeMillis()
+        synchronized(reconnectOffer) { reconnectOffer.reset(now) }
+        LiveState.update { it.copy(notLiveSince = now, gaveUp = false) }
+    }
+
+    /** [reconnect]: arka plan iş parçacığında. */
+    private fun reconnectSession() {
+        val factory = sourceFactory ?: return
+        synchronized(lifecycle) {
+            if (destroyed || session == null) return
+            val text = "çeviri: kullanıcı yeniden bağlandı (son durum: ${LiveState.status.value.phase})"
+            Log.i(TAG, text)
+            Backend.breadcrumb(text)
+            session?.dispose()
+            val source = factory()
+            session = source
+            source.start()
+        }
+        markReconnectStart()
+        pipeline?.reset()
+        server?.clear()
+    }
+
     private fun releaseParts() = synchronized(lifecycle) {
         PlayedGame.stop()
         styleListener?.let(settings::removeListener)
@@ -1084,6 +1140,7 @@ class TranslationService : Service() {
         regionReader = null
         session?.dispose()
         session = null
+        sourceFactory = null
         pipeline?.reset()
         pipeline?.shutdown()
         pipeline = null

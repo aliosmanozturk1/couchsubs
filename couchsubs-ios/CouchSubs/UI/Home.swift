@@ -252,6 +252,14 @@ struct RunningScreen: View {
             } else {
                 if model.sessionState != .streaming {
                     MobileNote(text: model.ps5StatusText, tone: Mobile.Palette.secondary)
+                    // Oturum yeniden denemeyi bıraktıysa hemen, süren denemelerde 45 sn sonra: uygulamayı kapatıp açmadan
+                    // bağlantı baştan kurulur (ReconnectOffer; Android ile aynı).
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        if model.offersReconnect(now: context.date) {
+                            Button { model.reconnect() } label: { Label("Reconnect", systemImage: "arrow.clockwise") }
+                                .buttonStyle(MobileButtonStyle(kind: .secondary, compact: true))
+                        }
+                    }
                 }
                 // İlk altyazı gelene kadar ve bağlantı koptuğunda: kolu açınca PS5'te ana hesap seçilmeli (GitHub #231).
                 if MainAccountTip.isVisible(ps5: !model.isXbox, demo: model.demoMode, hasSubtitle: !model.recentLines.isEmpty,
@@ -556,6 +564,14 @@ struct SubtitleScreen: View {
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: Mobile.Space.inline) {
                 MobilePill(text: statusText, live: model.sessionState == .streaming)
+                if model.sessionState != .streaming {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        if model.offersReconnect(now: context.date) {
+                            Button { model.reconnect() } label: { Label("Reconnect", systemImage: "arrow.clockwise") }
+                                .buttonStyle(MobileButtonStyle(kind: .secondary, compact: true))
+                        }
+                    }
+                }
                 // "Arka planda sürdür" açıkken küçük önizleme: bu ekrandan çıkınca da görüntü küçük pencerede sürer.
                 if model.backgroundPiP && BackgroundPiP.isSupported {
                     PiPPreview()

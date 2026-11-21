@@ -1,6 +1,7 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Reconnect": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Reconnect"}},"tr":{"stringUnit":{"state":"translated","value":"Yeniden bağlan"}}}},
     "If CouchSubs didn't open on the TV by itself, open it on the TV: on Android TV it's under Apps.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"If CouchSubs didn't open on the TV by itself, open it on the TV: on Android TV it's under Apps."}},"tr":{"stringUnit":{"state":"translated","value":"CouchSubs TV'de kendiliğinden açılmadıysa TV'den açın: Android TV'de Uygulamalar bölümündedir."}}}},
     "If CouchSubs didn't open on the TV by itself, open it on the TV: it's in the TV's app list.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"If CouchSubs didn't open on the TV by itself, open it on the TV: it's in the TV's app list."}},"tr":{"stringUnit":{"state":"translated","value":"CouchSubs TV'de kendiliğinden açılmadıysa TV'den açın: TV'nin uygulamalar listesindedir."}}}},
     "Couldn't open it automatically: the TV didn't answer. Is the TV on and on the same Wi-Fi as this device?": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Couldn't open it automatically: the TV didn't answer. Is the TV on and on the same Wi-Fi as this device?"}},"tr":{"stringUnit":{"state":"translated","value":"Otomatik açılamadı: TV yanıt vermedi. TV açık mı, bu cihazla aynı Wi-Fi'da mı?"}}}},

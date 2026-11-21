@@ -18,6 +18,7 @@
     <string name="phase_connecting">Connecting to PS5…</string>
     <string name="phase_streaming">Reading subtitles</string>
     <string name="phase_reconnecting">Connection lost, reconnecting…</string>
+    <string name="reconnect">Reconnect</string>
     <string name="phase_in_use">PS5 is in another Remote Play session. Close the other device.</string>
     <string name="phase_not_found_host">PS5 not found at %1$s. Make sure it is on and on the same network. Reconnecting…</string>
     <string name="phase_network">Lost the connection to the PS5. Reconnecting… If this keeps happening, connect the PS5 to the router with a cable.</string>

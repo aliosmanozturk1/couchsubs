@@ -12,10 +12,12 @@ private final class FakeStream: StreamControlling {
     var onConsoleMoved: ((RegisteredConsole) -> Void)?
     private(set) var started = false
     private(set) var stopped = false
-    func start() { started = true }
+    private(set) var starts = 0
+    func start() { started = true; starts += 1; hasGivenUp = false }
     func stop() { stopped = true }
     private(set) var reconnects = 0
     func reconnectNow() { reconnects += 1 }
+    var hasGivenUp = false
 }
 
 private final class FakeServices: PhoneServices {
@@ -219,6 +221,52 @@ final class PhoneModelTests: XCTestCase {
         model.stop()
     }
 
+    /// TestFlight (iPhone): "bağlı olmasına rağmen çok kopuyor, sürekli uygulamayı açıp kapatmak zorunda kalıyorum". Oturum
+    /// yeniden denemeyi bırakınca `reconnectNow` bir şey yapmıyordu; öne dönmek de bağlantıyı kurmuyordu. Artık dönüşte
+    /// yeni oturum açılır, "Yeniden bağlan" düğmesi hemen görünür; kayıt ya da şifre sorununda kendiliğinden açılmaz.
+    func testGivenUpSessionIsReopenedOnReturnAndByTheButton() async throws {
+        let model = makeModel()
+        try await model.completePSNLogin(redirect: URL(string: "https://example.com")!)
+        try await model.register(host: "192.168.1.20", pin: "12345678")
+        model.settings.output = .computer
+        await model.start()
+        XCTAssertEqual(services.stream.starts, 1)
+        XCTAssertFalse(model.offersReconnect())
+        services.stream.onState?(.streaming)
+        for _ in 0..<100 where model.sessionState != .streaming { try await Task.sleep(nanoseconds: 10_000_000) }
+
+        // Görüntü hiç gelmedi, oturum bıraktı: düğme hemen görünür, öne dönünce yeni oturum açılır.
+        services.stream.hasGivenUp = true
+        services.stream.onState?(.disconnected(.noPicture))
+        for _ in 0..<100 where model.sessionState == .streaming { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertTrue(model.offersReconnect())
+        model.becameActive(afterBackground: false)
+        XCTAssertEqual(services.stream.starts, 2)
+        XCTAssertEqual(services.streamPasscodes.count, 2)
+        XCTAssertEqual(services.stream.reconnects, 0)
+        XCTAssertTrue(model.isRunning)
+        XCTAssertFalse(model.offersReconnect())
+
+        // Yanlış giriş şifresi: dönüşte yeniden gönderilmez, düğme görünür; düğme yeni oturum açar.
+        services.stream.hasGivenUp = true
+        services.stream.onState?(.disconnected(.loginPasscodeIncorrect))
+        for _ in 0..<100 where model.sessionState != .disconnected(.loginPasscodeIncorrect) { try await Task.sleep(nanoseconds: 10_000_000) }
+        model.becameActive(afterBackground: true)
+        XCTAssertEqual(services.stream.starts, 2)
+        XCTAssertTrue(model.offersReconnect())
+        model.reconnect()
+        XCTAssertEqual(services.stream.starts, 3)
+        XCTAssertFalse(model.offersReconnect())
+
+        // Süren denemelerde düğme 45 sn sonra görünür.
+        services.stream.onState?(.disconnected(.network))
+        for _ in 0..<100 where model.sessionState != .disconnected(.network) { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertFalse(model.offersReconnect())
+        XCTAssertTrue(model.offersReconnect(now: Date().addingTimeInterval(ReconnectOffer.after + 1)))
+        model.stop()
+        XCTAssertFalse(model.offersReconnect(now: Date().addingTimeInterval(1000)))
+    }
+
     /// X/DM'de bildirildi: iPhone arka plana alınınca ya da kilitlenince altyazı sessizce duruyordu. Çeviri sürerken arka
     /// plana geçilince uyarı kurulur, öne dönünce geri alınır; çeviri yokken ya da bildirim tercihi kapalıyken kurulmaz.
     func testGoingToBackgroundWhileTranslatingWarnsAndReturningClears() async throws {
@@ -249,6 +297,8 @@ final class PhoneModelTests: XCTestCase {
     func testPhoneScreenShowsSubtitlesOnlyWhenChosen() {
         let model = makeModel()
         model.clock = { 100 }
+        // "Arka planda sürdür" (varsayılan açık) satırları PiP penceresi için TV seçiliyken de tutar (#775).
+        model.backgroundPiP = false
         model.settings.output = .tv
         model.phoneReceive(.subtitle(text: "Merhaba", durationMs: 4000, paragraphs: false))
         XCTAssertTrue(model.phoneLines.isEmpty)

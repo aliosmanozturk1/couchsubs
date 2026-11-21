@@ -62,6 +62,8 @@ public final class ReadQueue: @unchecked Sendable {
         case rescueFailed(Stall, failures: Int)
         /// Okuyucu `stalls` kez takıldı: bundan sonra hızlı düzeyde okunur (Neural Engine yolu bırakıldı).
         case degraded(stalls: Int)
+        /// Bırakılan (iPhone) takılı okuma sonunda bitti; `stillStuck`: hâlâ bitmemiş bırakılan okuma sayısı.
+        case abandonedFinished(stillStuck: Int)
     }
 
     /// Dönmeyen okumanın ayrıntısı.
@@ -103,6 +105,8 @@ public final class ReadQueue: @unchecked Sendable {
         var running: Item?
         /// Süren okumanın süresi doldu; bitene kadar bu kuyruğa yeni okuma verilmez.
         var stalledSince: Int?
+        /// Takılı okumasıyla bırakıldı (`abandonStall`); okuma bitince sayaçtan düşülür.
+        var abandoned = false
         init(label: String) { queue = DispatchQueue(label: label, qos: .userInitiated) }
     }
 
@@ -162,6 +166,7 @@ public final class ReadQueue: @unchecked Sendable {
             let ms = Self.uptimeMs() - since + timeoutMs
             guard ms >= olderThanMs else { return nil }
             abandonedStalls += 1
+            primary.abandoned = true
             primaryGeneration += 1
             // Eski kuyruğun bekleyenleri yoktur (takılınca yedeğe taşındı ya da hata aldı); takılan iş orada kalır.
             primary = Lane(label: "\(label).\(primaryGeneration)")
@@ -274,7 +279,14 @@ public final class ReadQueue: @unchecked Sendable {
         lock.withLock {
             guard lane.running === item else { return }
             lane.running = nil
-            if lane === primary {
+            if lane.abandoned {
+                // Bırakılan okuma sonunda bitti: iş parçacığı serbest, sınırdan düşülür. Eskiden sayaç süreç boyunca
+                // yalnız artıyordu; uzun oyunda (TestFlight, X: "2 saat sonra altyazı gitti, uygulamayı kapatıp açınca
+                // düzeldi") dördüncü takılma bırakılamıyor, altyazı uygulama kapatılana dek bir daha gelmiyordu.
+                lane.abandoned = false
+                abandonedStalls = max(0, abandonedStalls - 1)
+                events.append(.abandonedFinished(stillStuck: abandonedStalls))
+            } else if lane === primary {
                 if let since = lane.stalledSince {
                     // Takılan okuma sonunda bitti: asıl okuyucu yeniden kullanılır.
                     lane.stalledSince = nil

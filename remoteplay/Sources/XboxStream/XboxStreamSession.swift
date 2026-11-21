@@ -195,7 +195,13 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
             guard !Task.isCancelled, !stopped, case let .retry(delay?) = action else { break }
             try? await Task.sleep(nanoseconds: UInt64(delay) * 1_000_000)
         }
+        // Denemeler bitti ya da konsol reddetti: `reconnectNow` bundan sonra bir şey yapmaz, uygulama yeni oturum açar.
+        if !Task.isCancelled && !stopped { locked { gaveUp = true } }
     }
+
+    /// Yeniden denemeler bitti, yayın kendiliğinden durdu (kullanıcı durdurmadı).
+    public var hasGivenUp: Bool { locked { gaveUp } }
+    private var gaveUp = false
 
     /// Bağlantı bitince: kaç kare geldi, kaç onay gitti, ilk kareden kaç saniye sonra ve neden bitti.
     private func summarize() {

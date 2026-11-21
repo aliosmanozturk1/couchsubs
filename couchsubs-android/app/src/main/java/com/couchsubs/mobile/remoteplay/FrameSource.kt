@@ -43,6 +43,9 @@ interface FrameSource {
 
     /** Gelen kare sayısı (tanı: görüntü geliyor mu). */
     val framesReceived: Long
+
+    /** Oturum yeniden denemeyi kendisi bıraktı (kullanıcı durdurmadı); ana ekranda "Yeniden bağlan" hemen görünür. */
+    val hasGivenUp: Boolean get() = false
 }
 
 /** PS5 oturumunun yerine kare kaynağı kuran üretici (yalnız geliştirme yapısında kullanılır). */

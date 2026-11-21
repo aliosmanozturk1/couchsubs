@@ -345,6 +345,37 @@ final class ReadQueueTests: XCTestCase {
         let four = try await queue.run { 4 }
         XCTAssertEqual(four, 4)
     }
+
+    /// X (iPhone): "2 saat oynadım, bir anda altyazılar gitti; uygulamayı kapatıp açınca düzeldi". Bırakma sınırı süreç
+    /// boyunca sayılıyordu: uzun oyunda dördüncü takılma bırakılamıyor, altyazı uygulama kapatılana dek gelmiyordu. Uzun
+    /// oturum sıkıştırılmış sürede: her biri sonradan biten on takılma; her biri bırakılır, okuma her seferinde sürer.
+    func testLongSessionKeepsAbandoningStallsThatLaterFinish() async throws {
+        defer { VisionReader.useFastLevel = false }
+        let queue = ReadQueue(label: "test.abandon.long", timeoutMs: 50)
+        let events = EventLog()
+        queue.onEvent = { events.add($0) }
+        for round in 1...10 {
+            let hang = Hang()
+            _ = try? await queue.run { hang.wait() }
+            XCTAssertNotNil(queue.stalledMs, "tur \(round)")
+            XCTAssertNotNil(queue.abandonStall(olderThanMs: 0, maxAbandons: 3), "tur \(round): takılan okuma bırakılmalı")
+            let value = try await queue.run { round }
+            XCTAssertEqual(value, round)
+            // Takılan okuma (Vision) bir süre sonra kendiliğinden biter.
+            hang.release()
+            for _ in 0..<200 where events.finishedCount < round { try await Task.sleep(for: .milliseconds(5)) }
+            XCTAssertEqual(events.finishedCount, round, "tur \(round): bitti olayı")
+        }
+    }
+}
+
+private final class EventLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [ReadQueue.Event] = []
+    func add(_ event: ReadQueue.Event) { lock.withLock { events.append(event) } }
+    var finishedCount: Int {
+        lock.withLock { events.filter { if case .abandonedFinished = $0 { return true } else { return false } }.count }
+    }
 }
 
 /// iPhone'da kareler ana iş parçacığına tek gözlü kutudan gider (bkz. `FrameMailbox`).

@@ -14,6 +14,8 @@ protocol StreamControlling: AnyObject {
     func start()
     func stop()
     func reconnectNow()
+    /// Oturum yeniden denemeyi kendisi bıraktı (kullanıcı durdurmadı); `reconnectNow` artık bir şey yapmaz.
+    var hasGivenUp: Bool { get }
 }
 
 /// TV uygulamasını açık tutan görevli (gerçekte `TVKeeper`).
@@ -44,6 +46,8 @@ final class DemoStream: StreamControlling {
     func stop() { source.stop() }
 
     func reconnectNow() {}
+
+    var hasGivenUp: Bool { false }
 }
 
 /// Adresi bilinmeyen TV için: TV uygulaması telefonu ağda kendisi bulur.

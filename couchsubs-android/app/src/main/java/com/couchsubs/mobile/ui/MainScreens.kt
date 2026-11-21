@@ -307,6 +307,11 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
         // Görüntü gelirken durum metni ("Altyazılar okunuyor") üstteki "Çeviri sürüyor" satırını tekrarlar; yalnız
         // bağlanırken ve bağlantı sorunlarında gösterilir.
         if (!status.streaming && status.phase.isNotEmpty()) Text(status.phase, style = Tokens.Type.caption, color = Tokens.Color.secondary)
+        // Oturum yeniden denemeyi bıraktıysa hemen, süren denemelerde 45 sn sonra: uygulamayı kapatıp açmadan bağlantı
+        // baştan kurulur (ReconnectOffer; Mac/iPhone ile aynı).
+        if (status.running && !status.demo && !status.streaming &&
+            com.couchsubs.mobile.remoteplay.ReconnectOffer.shows(status.notLiveSince, status.gaveUp, now))
+            SecondaryButton(stringResource(R.string.reconnect)) { com.couchsubs.mobile.service.TranslationService.reconnect() }
         AnimatedNote(status.error)
         // TV'ye çevirirken telefon kilitlenebilir: pil kısıtlaması açıksa çeviri ekran kapanınca durabilir.
         if (!status.demo && Services.settings.target.showsOnTv) BackgroundLimitNote()

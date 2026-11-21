@@ -564,7 +564,21 @@ class StreamSession(
 
     private fun bump(value: Boolean) = synchronized(stateLock) {
         running = value
+        gaveUp = false
         ++generation
+    }
+
+    /**
+     * Oturum yeniden denemeyi kendisi bıraktı mı (görüntü hiç gelmiyor, PS5'te Uzaktan Oynatma çöktü, kayıt ya da giriş
+     * şifresi geçersiz); [reconnectNow] o zaman bir şey yapmaz, hizmet yeni oturum açmalıdır (Mac/iPhone ile aynı).
+     */
+    override val hasGivenUp: Boolean get() = synchronized(stateLock) { gaveUp }
+    private var gaveUp = false
+
+    /** Yeniden deneme bırakılır ([stop]'tan farkı: kullanıcı durdurmadı). */
+    private fun giveUp() = synchronized(stateLock) {
+        bump(false)
+        gaveUp = true
     }
 
     private fun isCurrent(value: Int) = synchronized(stateLock) { running && generation == value }
@@ -709,7 +723,7 @@ class StreamSession(
                         }
                         // Şifre yok ya da yanlış: yeniden denemek aynı yere çıkar.
                         is LoginPasscode.Reply.Stop -> {
-                            bump(false)
+                            giveUp()
                             closeNative()
                             emit(SessionState.Disconnected(reply.kind))
                         }
@@ -743,7 +757,7 @@ class StreamSession(
                     if (wasStreaming && QualityFallback.countsAsDrop(kind)) noteDrop()
                     if (kind == DisconnectKind.REGISTRATION_INVALID) {
                         // Kayıt geçersiz: yeniden denemek aynı yere çıkar (eskiden sonsuza kadar "Yeniden bağlanılıyor…").
-                        bump(false)
+                        giveUp()
                         emit(SessionState.Disconnected(kind, text))
                         return@execute
                     }
@@ -755,7 +769,7 @@ class StreamSession(
                         Backend.breadcrumb(note)
                         if (!retry) {
                             // PS5 kapatılıp açılmadan her deneme aynı yanıtı alır (eskiden sonsuz "yeniden bağlanılıyor").
-                            bump(false)
+                            giveUp()
                             emit(SessionState.Disconnected(kind))
                             return@execute
                         }
@@ -795,7 +809,7 @@ class StreamSession(
                 noteDrop()
                 if (next == PictureWatchdog.Next.GIVE_UP) {
                     // İki çözücü türüyle de görüntü gelmedi: sonsuz "yeniden bağlanılıyor" döngüsü yerine dur ve söyle.
-                    bump(false)
+                    giveUp()
                     Backend.recordError(NoPictureException(text))
                     emit(SessionState.Disconnected(DisconnectKind.NO_PICTURE, PictureWatchdog.REASON))
                     return@schedule
