@@ -174,6 +174,8 @@ struct SamsungTvInfo: Equatable, Sendable {
     let model: String?
     let developerMode: Bool?
     let developerIp: String?
+    /// Ekran çözünürlüğü ("3840x2160"; ultra geniş monitörde geniş yüzey için, #886).
+    var resolution: String? = nil
 
     static func parse(_ data: Data) -> SamsungTvInfo? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let device = json["device"] as? [String: Any] else { return nil }
@@ -183,7 +185,23 @@ struct SamsungTvInfo: Equatable, Sendable {
         }
         return SamsungTvInfo(name: text("name"), model: text("modelName"),
                              developerMode: text("developerMode").map { $0 == "1" || $0.lowercased() == "true" },
-                             developerIp: text("developerIP").flatMap { $0 == "0.0.0.0" ? nil : $0 })
+                             developerIp: text("developerIP").flatMap { $0 == "0.0.0.0" ? nil : $0 },
+                             resolution: text("resolution"))
+    }
+
+    /// Kurulumun eşzamanlı akışı için (bekler, en çok `timeout`); yanıt yoksa nil.
+    static func fetchNow(host: String, timeout: TimeInterval = 1.5) -> SamsungTvInfo? {
+        guard let url = URL(string: "http://\(host):8001/api/v2/") else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = timeout
+        let done = DispatchSemaphore(value: 0)
+        var reply: Data?
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            reply = data
+            done.signal()
+        }.resume()
+        guard done.wait(timeout: .now() + timeout + 0.5) == .success, let reply else { return nil }
+        return parse(reply)
     }
 
     static func fetch(host: String, timeout: TimeInterval = 1.5) async -> SamsungTvInfo? {
@@ -689,7 +707,15 @@ final class SamsungInstaller {
         func sign(_ unsigned: [UInt8]) throws -> [UInt8] {
             try WgtSigner.sign(unsigned, author: author, distributor: distributor, digest: legacy ? .sha256 : .sha512)
         }
-        let signed = try sign(legacy ? LegacyTizenPackage.adapt(original) : original)
+        // 21:9 / 32:9 Samsung monitör: geniş uygulama yüzeyi (#886; TV'lerde ve Tizen 2.x'te paket değişmez).
+        var wide = false
+        if !legacy {
+            let info = SamsungTvInfo.fetchNow(host: host)
+            log.write("Ekran: model \(info?.model ?? "?"), çözünürlük \(info?.resolution ?? "?")")
+            wide = WideScreenPackage.applies(model: info?.model, resolution: info?.resolution)
+            if wide { log.write("Ultra geniş monitör: paket geniş uygulama yüzeyiyle (base_screen_resolution, device-width) kuruluyor (#886).") }
+        }
+        let signed = try sign(legacy ? LegacyTizenPackage.adapt(original) : wide ? WideScreenPackage.adapt(original) : original)
         if legacy {
             log.write("Tizen \(platform): paketten network.public izni ve ultra geniş ekran ayarı çıkarıldı (#621).")
             log.write("Tizen \(platform): imza SHA-256 ile üretildi (rsa-sha256, sha256 özet; yeni TV'lerde SHA-512).")

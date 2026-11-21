@@ -237,7 +237,14 @@ class SamsungInstaller(
                     log.write("Tizen $platform: paketten network.public izni ve ultra geniş ekran ayarı çıkarıldı (#621).")
                     log.write("Tizen $platform: imza SHA-256 ile üretildi (rsa-sha256, sha256 özet; yeni TV'lerde SHA-512).")
                 }
-            } else sign(original)
+            } else {
+                // 21:9 / 32:9 Samsung monitör: geniş uygulama yüzeyi (#886; TV'lerde paket değişmez).
+                val info = SamsungTvInfo.fetch(host)
+                log.write("Ekran: model ${info?.model ?: "?"}, çözünürlük ${info?.resolution ?: "?"}")
+                val wide = WideScreenPackage.applies(info?.model, info?.resolution)
+                if (wide) log.write("Ultra geniş monitör: paket geniş uygulama yüzeyiyle (base_screen_resolution, device-width) kuruluyor (#886).")
+                sign(if (wide) WideScreenPackage.adapt(original) else original)
+            }
             log.write("Paket imzalandı (${signed.size} bayt).")
             progress(InstallStep.INSTALLING)
             try {

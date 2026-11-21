@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.67';
+  var APP_VERSION = '0.9.68';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -98,6 +98,39 @@
       (audioContext ? ' ac ' + audioContext.state : '');
     el.textContent = (text ? text + ' · ' : '') + page;
     $('row-platform').style.display = '';
+    fitPanel();
+  }
+
+  // Bilgi paneli ekrana sığmazsa (uzun tanı satırları; Samsung Odyssey G9'da panelin altı ekranın dışında kalıyordu,
+  // oyun modunda daha da büyüyordu, #886) sol üst köşesinden küçültülür: alttaki tuş listesi kesilmez. Ölçü görünen
+  // alandır (sayfa ya da görsel görünüm hangisi küçükse); panelin üst ve sol boşluğu altta ve sağda da bırakılır.
+  var PANEL_MIN_SCALE = 0.5;
+  function setPanelScale(panel, scale) {
+    var value = scale < 1 ? 'scale(' + scale + ')' : '';
+    panel.style.webkitTransformOrigin = panel.style.transformOrigin = '0 0';
+    panel.style.webkitTransform = value;
+    panel.style.transform = value;
+  }
+
+  function fitPanel() {
+    var panel = $('panel');
+    if (!panel || panel.className === 'hidden') return;
+    try {
+      var zoom = window.COUCHSUBS_ZOOM || 1;
+      var width = (document.documentElement.clientWidth || window.innerWidth || 1920) / zoom;
+      var height = (document.documentElement.clientHeight || window.innerHeight || 1080) / zoom;
+      var visual = window.visualViewport;
+      if (visual && visual.height > 0 && visual.width > 0) {
+        width = Math.min(width, visual.width);
+        height = Math.min(height, visual.height);
+      }
+      // Doğal ölçü (offset ölçüleri dönüşümden etkilenmez).
+      var top = panel.offsetTop;
+      var left = panel.offsetLeft;
+      var scale = Math.min(1, (height - top * 2) / panel.offsetHeight, (width - left * 2) / panel.offsetWidth);
+      if (!(scale > 0)) scale = 1;
+      setPanelScale(panel, Math.max(PANEL_MIN_SCALE, Math.round(scale * 1000) / 1000));
+    } catch (e) {}
   }
 
   // Sayfanın oyunun üstüne çizdiği kutular: sayısı ve en büyüğünün ekrana oranı ("ovl 2 max 4%").
@@ -265,6 +298,7 @@
         if (text) setStatus('st-window', text, 'muted');
         // Panelin gerçek ölçüsü HDMI açılırken okunur; Sarı tuş listede ona göre görünür (#304).
         formatKeys();
+        fitPanel();
       });
     } catch (e) {}
   }
@@ -2554,6 +2588,7 @@
     hidePanelTip();
     $('waiting').className = 'hidden';
     $('panel').className = '';
+    renderDiag();
     clearTimeout(panelTimer);
     if (autoHide) panelTimer = setTimeout(autoHidePanel, 8000);
   }

@@ -32,7 +32,11 @@ Tizen 3.0 için yapılanlar ve neyin doğrulandığı:
   `SamsungInstaller.MINIMUM_TIZEN`, iPhone `SamsungInstaller.minimumTizen`); 2.3 ve eskisi `TooOld` ile durur (#638'de
   masaüstü 2016 TV'yi reddediyordu). Tizen 2.x'te dördü de imzalamadan önce paketin `config.xml`'ini #71'de çalışan hâle
   döndürür: `network.public` izni ve `base_screen_resolution` ayarı çıkarılır (`LegacyTizenPackage`, #621; Android
-  `.kt`, iPhone `.swift`, Mac ve Windows `.cs`). Tizen 2.4–4.0'da, Apps2Samsung'un
+  `.kt`, iPhone `.swift`, Mac ve Windows `.cs`). TV'nin 8001 yanıtı 21:9 / 32:9 Samsung monitör diyorsa (model
+  `LS34`/`LS49`/`LS57…` ya da çözünürlük oranı en az 1,9) dördü de paketi geniş uygulama yüzeyiyle kurar:
+  `config.xml`'e `base_screen_resolution=fullscreen`, `index.html`'e `width=device-width` görünümü eklenir
+  (`WideScreenPackage`, #886; Odyssey G9'da 0.9.55'ten beri uygulama 16:9 kutuda kalıyordu). TV'lerde paket değişmez:
+  aynı ayar 4K/8K TV'de görüntüyü sol üst köşede bırakıyordu (#799). Tizen 2.4–4.0'da, Apps2Samsung'un
   `TizenPermitInstall`'ı gibi, sertifika alınırken saklanan `device-profile.xml`'i kurulumdan önce TV'nin
   `sdk_toolpath` klasörüne gönderir. Sertifika aynı uç noktalardan, aynı `public` düzeyle alınır.
 - **Gerçek TV'de doğrulanan:** bir kullanıcı (UE43MU7000U, Tizen 3.0) paketi Tizen Studio sertifikası ve Apps2Samsung

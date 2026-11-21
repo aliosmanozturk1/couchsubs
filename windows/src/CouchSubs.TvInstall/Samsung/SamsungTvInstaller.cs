@@ -247,6 +247,11 @@ public sealed partial class SamsungTvInstaller(string host, string profilesDirec
             }
             else
             {
+                // 21:9 / 32:9 Samsung monitör: geniş uygulama yüzeyi (#886; TV'lerde paket değişmez).
+                var (model, resolution) = await ReadScreenInfoAsync(host, cancellationToken);
+                Log.Write($"Ekran: model {model ?? "?"}, çözünürlük {resolution ?? "?"}");
+                if (WideScreenPackage.Applies(model, resolution) && WideScreenPackage.Adapt(staged))
+                    Log.Write("Ultra geniş monitör: paket geniş uygulama yüzeyiyle (base_screen_resolution, device-width) kuruluyor (#886).");
                 await TizenWgtSigner.ReSignWgtWithCertsInPlace(staged, profile.AuthorP12, profile.DistributorP12, profile.Password);
             }
             Log.Write("Paket imzalandı.");
@@ -553,6 +558,16 @@ public sealed partial class SamsungTvInstaller(string host, string profilesDirec
     private static async Task<(string? Mode, string? Ip)> ReadDeveloperInfoAsync(string host, CancellationToken cancellationToken)
     {
         try { return DeveloperInfo(await InfoHttp.GetStringAsync($"http://{host}:8001/api/v2/", cancellationToken)); }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return (null, null);
+        }
+    }
+
+    /// <summary>TV'nin 8001 yanıtındaki model adı ve çözünürlük; okunamazsa ikisi de null.</summary>
+    private static async Task<(string? Model, string? Resolution)> ReadScreenInfoAsync(string host, CancellationToken cancellationToken)
+    {
+        try { return WideScreenPackage.ScreenInfo(await InfoHttp.GetStringAsync($"http://{host}:8001/api/v2/", cancellationToken)); }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
             return (null, null);
