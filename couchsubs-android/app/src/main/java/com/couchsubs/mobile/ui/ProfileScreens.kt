@@ -210,6 +210,7 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
                    onPlatform: () -> Unit = {}, onDemo: () -> Unit = {}) {
     val context = LocalContext.current
     val settings = Services.settings
+    var showAbout by remember { mutableStateOf(false) }
     var engine by remember { mutableStateOf(settings.engine) }
     // Anahtar kaydedilmeden önce denenir (iPhone gibi): yalnız kabul edilen anahtar gizli depoya yazılır.
     var key by remember(engine) { mutableStateOf("") }
@@ -465,8 +466,9 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             if (settings.xbox) ({ RowItem(stringResource(R.string.settings_xbox_audio), stringResource(R.string.settings_xbox_audio_short)) {
                 Switch(xboxAudio, { xboxAudio = it; settings.xboxAudioOnDevice = it })
             } }) else null,
-            { RowItem(stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, onClick = { open(context, context.getString(R.string.url_source)) }) },
+            { RowItem(stringResource(R.string.settings_about), BuildConfig.VERSION_NAME, onClick = { showAbout = true }) },
         ))
+        if (showAbout) AboutDialog { showAbout = false }
         XboxSignOutRow()
         PsnSignOutRow()
         // TV uygulamasını bu telefondan kurmak ve güncellemek (bilgisayardaki gibi; Samsung, LG, Android TV).
@@ -574,6 +576,27 @@ private fun PsnSignOutRow() {
             }) { Text(stringResource(R.string.psn_sign_out_confirm), color = Tokens.Color.danger) }
         },
         dismissButton = { androidx.compose.material3.TextButton({ confirm = false }) { Text(stringResource(R.string.cancel)) } },
+        containerColor = Tokens.Color.surface2,
+    )
+}
+
+/** Hakkında (iPhone AboutScreen ile aynı): sürüm, lisans, Remote Play teşekkürü ve kaynak kodu bağlantısı. */
+@Composable
+private fun AboutDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("CouchSubs ${BuildConfig.VERSION_NAME}") },
+        text = {
+            Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(Tokens.Space.inline)) {
+                Text("Copyright © 2026 Sinan Yorulmaz", style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                Text(stringResource(R.string.about_body), style = Tokens.Type.body, color = Tokens.Color.secondary)
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton({ open(context, context.getString(R.string.url_source)) }) { Text(stringResource(R.string.about_source)) }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onDismiss) { Text(stringResource(R.string.close)) } },
         containerColor = Tokens.Color.surface2,
     )
 }

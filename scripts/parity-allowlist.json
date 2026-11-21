@@ -44,7 +44,6 @@
       "Signed in": "Connected",
       "Xbox and connection": "Xbox",
       "Save": "Save and test",
-      "CouchSubs is free and open source (AGPL-3.0). Remote Play uses chiaki-ng (AGPL-3.0).": "CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera",
       "No Turkish voice is installed on this phone. Add one in Settings › Accessibility › Spoken Content › Voices › Turkish.": "No Turkish voice is installed on this phone. Add Turkish in the phone's text-to-speech settings (Settings › Accessibility › Text-to-speech output)."
     },
     "iphone_only": {
@@ -59,8 +58,7 @@
       "Enter the 4-digit passcode.": "Android şifre alanı yalnız rakam ve en çok 4 hane alır, her tuşta kaydeder; eksik şifre uyarısı yerine 'Kaydedildi' etiketi 4 hanede görünür.",
       "Passcode saved.": "bkz. 'Enter the 4-digit passcode.' (Android'de 'Kaydedildi' etiketi).",
       "Remove passcode": "Android'de alan boşaltılınca şifre silinir (her tuşta kaydedilir).",
-      "CouchSubs": "AÇIK: iPhone'da Hakkında ekranı var; Android'deki Hakkında satırı yalnız kaynak bağlantısını açıyor.",
-      "Source code": "AÇIK: bkz. 'CouchSubs' (Hakkında ekranı)."
+      "CouchSubs": "Yerleşim farkı: iPhone Hakkında ekranındaki uygulama adı (sürümle birlikte); Android Hakkında penceresinin başlığında aynı ad sürümle yazar."
     },
     "android_only": {
       "Beta": "Xbox etiketi; iPhone Xbox satırını etiketsiz gösterir (Xbox iPhone'da da beta).",
@@ -83,7 +81,9 @@
       "Text size": "Yerleşim farkı: iPhone boyutu 'Subtitle appearance' başlığındaki yüzdeyle gösterir.",
       "TV app": "Yerleşim farkı: Android Ayarlar'daki TV uygulaması kurma kutusu; iPhone'da aynı kurulum Altyazı hedefi ekranından açılır.",
       "Start translation first; the test subtitle shows once the TV app connects to the phone.": "Android'de bekleme sunucusu açılamazsa (kapı başka uygulamada) gösterilen yedek ileti; iPhone sunucuyu açamazsa sessiz kalır.",
-      "This is a test subtitle. Can you see it on top of the game?": "iPhone deneme altyazısı metnini PhoneModel.sendTestSubtitle içinde kurar."
+      "This is a test subtitle. Can you see it on top of the game?": "iPhone deneme altyazısı metnini PhoneModel.sendTestSubtitle içinde kurar.",
+      "Close": "Android Hakkında penceresinin kapatma düğmesi; iPhone Hakkında ekranı geri düğmesiyle kapanır.",
+      "CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera": "Android Ayarlar'ın alt satırı; iPhone aynı bilgiyi Profil'in altında Text(verbatim:) ile verir."
     }
   }
 }

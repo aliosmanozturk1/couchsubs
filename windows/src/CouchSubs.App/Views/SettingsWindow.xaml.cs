@@ -131,6 +131,9 @@ public partial class SettingsWindow : Window
         BuildShortcuts();
         ShowShortcutTexts();
         PreviewKeyDown += OnShortcutKey;
+        ShowStreamWindowToggle();
+        // Akış penceresi kendi düğmesiyle kapanmış olabilir; Ayarlar öne gelince düğme güncellenir.
+        Activated += (_, _) => ShowStreamWindowToggle();
         Closed += (_, _) => StopRecording();
         loading = false;
     }
@@ -1432,7 +1435,16 @@ public partial class SettingsWindow : Window
             controller.StreamBackground = background;
     }
 
-    private void OnOpenStreamWindow(object sender, RoutedEventArgs e) => StreamWindow.Open(controller);
+    /// <summary>Akış penceresi açıkken düğme onu kapatır (Mac'teki "Akış penceresini kapat" ile aynı).</summary>
+    private void OnOpenStreamWindow(object sender, RoutedEventArgs e)
+    {
+        if (StreamWindow.IsOpen) StreamWindow.CloseIfOpen();
+        else StreamWindow.Open(controller);
+        ShowStreamWindowToggle();
+    }
+
+    private void ShowStreamWindowToggle() =>
+        StreamWindowToggle.Content = Localizer.Current[StreamWindow.IsOpen ? "Close the stream window" : "Open the stream window"];
 
     /// <summary>Ek bölgenin ipucu, o bölgenin kısayoluyla.</summary>
     private void ShowAreaHint()

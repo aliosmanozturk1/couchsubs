@@ -74,4 +74,6 @@ public partial class XboxLoginStep : UserControl
         catch (System.ComponentModel.Win32Exception) { }
         e.Handled = true;
     }
+
+    private void OnShowLog(object sender, RoutedEventArgs e) => LogFile.Show();
 }

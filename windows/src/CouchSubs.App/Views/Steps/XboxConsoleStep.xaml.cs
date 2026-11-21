@@ -44,4 +44,6 @@ public partial class XboxConsoleStep : UserControl
         catch (Exception error) { Error.Text = error.Message; Status.Text = text["Couldn't get the consoles."]; }
         finally { Refresh.IsEnabled = true; }
     }
+
+    private void OnShowLog(object sender, RoutedEventArgs e) => LogFile.Show();
 }

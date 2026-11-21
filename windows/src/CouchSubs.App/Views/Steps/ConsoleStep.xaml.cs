@@ -126,19 +126,5 @@ public partial class ConsoleStep : UserControl
         if (IsLoaded) Controller.ContinueAfterPairing();
     }
 
-    private void OnShowLog(object sender, RoutedEventArgs e)
-    {
-        var path = RemotePlayLog.FilePath;
-        try
-        {
-            var folder = Path.GetDirectoryName(path)!;
-            Directory.CreateDirectory(folder);
-            var arguments = File.Exists(path) ? $"/select,\"{path}\"" : $"\"{folder}\"";
-            Process.Start(new ProcessStartInfo("explorer.exe", arguments) { UseShellExecute = true });
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
-        {
-            // Dosya Gezgini açılamazsa yol zaten hata iletisinde yazıyor.
-        }
-    }
+    private void OnShowLog(object sender, RoutedEventArgs e) => LogFile.Show();
 }

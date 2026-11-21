@@ -11,6 +11,9 @@
             <TextBlock x:Name="Status" Style="{StaticResource HintText}" Margin="0,12,0,8" TextWrapping="Wrap" />
             <StackPanel x:Name="Consoles" />
             <TextBlock x:Name="Error" Style="{StaticResource ErrorText}" Margin="0,12,0,0" TextWrapping="Wrap" />
+            <!-- Hata olunca Xbox satırlarının da yazıldığı günlük açılır (Mac ve PS5 adımındaki gibi). -->
+            <Button Content="{t:T 'Show log file'}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="OnShowLog"
+                    Visibility="{Binding Text, ElementName=Error, Converter={StaticResource VisibleIf}}" />
         </StackPanel>
     </c:StepLayout>
 </UserControl>

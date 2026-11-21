@@ -648,7 +648,7 @@
                                     <ComboBoxItem Content="{t:T 'Magenta'}" Tag="Magenta" />
                                 </ComboBox>
                             </DockPanel>
-                            <Button Content="{t:T 'Open the stream window'}" HorizontalAlignment="Left" Click="OnOpenStreamWindow" />
+                            <Button x:Name="StreamWindowToggle" Content="{t:T 'Open the stream window'}" HorizontalAlignment="Left" Click="OnOpenStreamWindow" />
                             <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,12,0,0"
                                        Text="{t:T 'Keep the window open and uncovered while streaming. Subtitles appear in it while the translation is running, even when they are shown only on the TV.'}" />
                         </StackPanel>

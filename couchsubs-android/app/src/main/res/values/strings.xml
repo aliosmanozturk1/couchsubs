@@ -413,6 +413,8 @@
     <string name="settings_passcode_note">Yalnız ikinci hesabın PS5\'te giriş şifresi varsa gerekir. PS5 isteyince CouchSubs girer; şifre telefonda şifreli saklanır.</string>
     <string name="settings_about">Hakkında</string>
     <string name="settings_copyright">CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera</string>
+    <string name="about_body">CouchSubs ücretsiz ve açık kaynaklıdır (AGPL-3.0). Remote Play için chiaki-ng (AGPL-3.0) kullanılır.</string>
+    <string name="about_source">Kaynak kodu</string>
     <string name="main_packs_off">Kapalı</string>
     <string name="packs_free">Ücretsiz</string>
     <string name="packs_free_count">Ücretsiz · %1$d oyun</string>

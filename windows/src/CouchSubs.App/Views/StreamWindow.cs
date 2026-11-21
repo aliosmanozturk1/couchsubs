@@ -57,6 +57,9 @@ public sealed class StreamWindow : Window
 
     public static bool IsOpen => open is not null;
 
+    /// <summary>Açık pencereyi kapatır (Ayarlar'daki "Akış penceresini kapat"; Mac ile aynı).</summary>
+    public static void CloseIfOpen() => open?.Close();
+
     /// <summary>Yayın programının pencere listesinde görünen ad; altyazıya göre değişmez (Türkçede "CouchSubs Yayın").</summary>
     public static string WindowTitle => Localizer.Current["CouchSubs Stream"];
 

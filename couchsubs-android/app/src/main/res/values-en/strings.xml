@@ -406,6 +406,8 @@
     <string name="settings_passcode_note">Only needed if the second account has a login passcode on the PS5. CouchSubs enters it when the PS5 asks; it is stored encrypted on the phone.</string>
     <string name="settings_about">About</string>
     <string name="settings_copyright">CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera</string>
+    <string name="about_body">CouchSubs is free and open source (AGPL-3.0). Remote Play uses chiaki-ng (AGPL-3.0).</string>
+    <string name="about_source">Source code</string>
     <string name="main_packs_off">Off</string>
     <string name="packs_free">Free</string>
     <string name="packs_free_count">Free · %1$d games</string>
