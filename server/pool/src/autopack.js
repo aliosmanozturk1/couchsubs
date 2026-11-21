@@ -44,15 +44,24 @@ export const MAX_LOOK = 500;
 export const JOB_NIGHTLY = 2000;
 /** Workers AI isteği başına satır. */
 export const BATCH = 40;
-/** Claude ile (ANTHROPIC_API_KEY varken) sınırlar. Nöron payı yoktur; sınırı tetikleme sayısı ve Worker sınırları koyar.
- *  Gece: 36 tetiklemenin biri plan, en az biri paket; 34 × 1000 = 34.000 ≥ 30.000 satır. Tetikleme: 1000 satır, 100'lük
- *  10 istek aynı anda (yanıt beklemek CPU sayılmaz) + D1 sayfaları (en çok 3) + R2 okuma/yazma (~6) = ~20 alt istek,
- *  Free planın 50 sınırının altında. 1000 çevrilecek satır için çöp payıyla 1500 satıra bakılır (3 × 1500'lük sayfa).
- *  Dev oyun (GTA 6) gecede en çok 15.000 satır alır, kalan pay öteki oyunlara kalır. Maliyet (claude-haiku-5-5,
- *  $0,10 / $0,50 MTok): satır başına ~20 giriş + ~25 çıkış jetonu, sistem metni önbellekten; 30.000 satır ~0,5 $. */
+/** Claude ile (ANTHROPIC_API_KEY varken) sınırlar. Çeviri Message Batches ile gider (%50 indirim): bir tetikleme en çok
+ *  linesPerRun satırı 100'lük isteklere bölüp tek batch olarak gönderir (1 alt istek), sonraki tetiklemeler sonucu
+ *  toplar (durum + sonuç dosyası, batch başına 2 alt istek). Aynı anda en çok MAX_PENDING_BATCHES batch bekler.
+ *  Maliyet sınırı (claude-opus-5-5, effort low, Batches: $2 / $10 MTok): 2026-11-21 ölçümünde (150 GTA 6 satırı) satır
+ *  başına ~0,00047 $ (giriş ~50 jeton: sistem metni + satır, çıkış ~37 jeton: düşünme dahil). Gecelik 5500 satır ~2,6 $;
+ *  NIGHT_BUDGET_USD (3 $) toplanan yanıtların usage'ıyla ayrıca durdurur. Dev oyun (GTA 6) gecede en çok 4000 satır alır. */
 export const CLAUDE_LIMITS = Object.freeze({
-  linesPerRun: 1000, nightly: 30000, jobNightly: 15000, maxLook: 1500, batch: 100,
+  linesPerRun: 1000, nightly: 5500, jobNightly: 4000, maxLook: 1500, batch: 100,
 });
+/** Aynı anda bekleyen en çok batch (oyun başına önbellekte durur). */
+export const MAX_PENDING_BATCHES = 3;
+/** Gezinti bitmiş oyun, paketini kurmadan önce bekleyen batch'ini en çok bu kadar bekler (sonra paket kurulur; geç
+ *  kalan batch ertesi gece toplanır). */
+export const BATCH_WAIT_MS = 45 * 60 * 1000;
+/** Gecelik Claude harcama sınırı (dolar; toplanan yanıtların usage'ından, Batches fiyatıyla). */
+export const NIGHT_BUDGET_USD = 3;
+/** claude-opus-5-5 Batches fiyatı ($/MTok): giriş, çıkış, önbellekten okuma, önbelleğe yazma. */
+const BATCH_PRICE = Object.freeze({ in: 2, out: 10, cacheRead: 0.1, cacheWrite: 2.5 });
 const AI_LIMITS = Object.freeze({
   linesPerRun: LINES_PER_RUN, nightly: NIGHTLY_LIMIT, jobNightly: JOB_NIGHTLY, maxLook: MAX_LOOK, batch: BATCH,
 });
@@ -62,8 +71,11 @@ export const limitsFor = (env) => (env?.ANTHROPIC_API_KEY ? CLAUDE_LIMITS : AI_L
 export const LAST_HOUR_UTC = 5;
 export const LAST_MINUTE_UTC = 52;
 export const MODEL = "@cf/zai-org/glm-5.3-flash";
-export const CLAUDE_MODEL = "claude-haiku-5-5";
+export const CLAUDE_MODEL = "claude-opus-5-5";
+/** Opus 5.5'te düşünme kapatılamaz; kısa satır çevirisi için en düşük düzey. temperature gönderilmez. */
+export const CLAUDE_EFFORT = "low";
 export const CLAUDE_URL = "https://api.anthropic.com/v1/messages";
+export const CLAUDE_BATCHES_URL = "https://api.anthropic.com/v1/messages/batches";
 export const SOURCE = `CouchSubs havuzu (en az ${MIN_INSTALLS} oyuncu) + Claude (${CLAUDE_MODEL}) / Workers AI (${MODEL})`;
 /** Oyunu bilinmeyen satırların ortak paketi (title_id NULL). PS5'in keşif yanıtı çalışan oyunu bildirmediği için
  *  satırların çoğu oyunsuz gelir; uygulamalar sunucudaki her paketi indirdiğinden bu paket de herkese gider. Oyunu
@@ -201,27 +213,39 @@ const SYSTEM = (game) =>
   "- These lines were read from the TV with OCR; if a word is clearly damaged, translate the most likely original.\n" +
   "- One Turkish line per item, no notes. Output only JSON: {\"items\":[{\"id\":\"0\",\"tr\":\"...\"}]}";
 
-// Claude için oyun altyazısı kuralları (tools/packs/poolpack.py system_prompt'undan uyarlandı). Metin yalnız oyuna göre
-// değişir: bir oyunun bütün istekleri aynı sistem metniyle gider ve önbellekten (prompt caching) okunur.
-const CLAUDE_SYSTEM = (game) =>
-  "You translate video game subtitles from English into Turkish for CouchSubs, an app that shows Turkish subtitles on " +
-  "the TV while people play" + (game ? ` ${game}` : "") + ".\nThese lines were read from the TV screen with OCR.\n\n" +
-  "Rules:\n" +
-  "- Natural spoken Turkish, the way a professional Turkish subtitle translator would write it; match the tone and " +
-  "register (casual banter stays casual; 'sen' between friends, family and enemies; 'siz' only for formal or " +
-  "respectful address). Tutorial hints: short imperative.\n" +
-  "- Each item is one on-screen subtitle line (it may hold several sentences). Translate it as one Turkish line and " +
-  "keep its sentences in order. Never merge, split or skip items, never move meaning between items.\n" +
-  "- A line may be cut off by OCR: translate only what is there; never invent the missing words.\n" +
-  "- OCR often swaps letters (ali = all, Iaw = law, Hels = He's): read the intended English first and never copy OCR " +
-  "damage into the Turkish.\n" +
-  "- Keep character, place, gang, vehicle, brand and radio station names as they are.\n" +
-  "- Keep profanity and insults at the same strength (motherfucker = orospu çocuğu, fucking = siktiğimin / amına " +
-  "koyayım, shit = bok / siktir, damn = lanet olsun). Do not soften and do not intensify. Slang stays slang.\n" +
-  "- Keep punctuation style (…, ?!, quotes, dashes) and numbers. No English words left unless they are names.\n" +
-  "- Interjections and sounds (Ugh, Huh, Hmm) get a Turkish equivalent or stay as a sound.\n" +
-  "- Input: one line per item as `id<TAB>English`. Output only JSON: {\"items\":[{\"id\":\"0\",\"tr\":\"...\"}]}, " +
-  "exactly one item per input id, no notes, no line breaks inside a translation.";
+// Claude için oyun altyazısı kuralları. 2026-11-21 kalite testinde (150 GTA 6 satırı, Opus 5.5 kör puanlama) eski istemin
+// "fucking = siktiğimin" eşlemesi kelimesi kelimesine küfür, "zenci", metne giren konuşmacı etiketleri ve çevrilmiş yazı
+// tanıma çöpü üretiyordu; bu istem küfrü ve argoyu doğal Türkçe karşılığıyla ister, çöp satırı boş bırakır. Metin yalnız
+// oyuna göre değişir: bir oyunun bütün istekleri aynı sistem metniyle gider ve önbellekten (prompt caching) okunur.
+const CLAUDE_SYSTEM = (game) => `You translate video game subtitles from English into Turkish for CouchSubs, an app that shows Turkish subtitles on the TV while people play` + (game ? ` ${game}` : "") + `. The lines were read from the TV screen with OCR, so some are damaged.
+
+Write the Turkish a professional Turkish subtitler would write for this game: spoken, the way people in Turkey actually talk (street-level where the characters are). Keep the tone of every line: banter stays banter, threats stay threats, crude stays crude.
+
+Swearing and slang: translate the intent, never word by word.
+- Heavy swearing stays heavy, but it must be what a Turkish speaker would really say in that situation.
+- "fucking" as an intensifier is usually dropped or carried by the sentence ("I don't fucking know" = "Ne bileyim lan!" / "Bilmiyorum amına koyayım"; "too fucking far" = "çok uzaktayız lan"); before a noun use "lanet olası", "kahrolası", "Allah'ın belası" or "şu ... " with tone ("my fucking car" = "lanet olası arabam"). "siktiğimin" is almost never right; do not use it as an adjective.
+- "fuck!" = "Siktir!"; "fuck you" = "Siktir git" / "Sikeyim seni"; "fuck off" = "Siktir git"; "what the fuck" = "Ne oluyor lan?" / "Bu ne amına koyayım?"; "holy shit" = "Ha siktir!" / "Vay amına koyayım!"; "shit" = "Siktir" / "Hay sikeyim" / "bok" (as a thing); "damn" = "Kahretsin" / "Lanet olsun", admiring "damn" = "Vay be"; "motherfucker" = "orospu çocuğu" / "ananı sikeyim" (as an outburst); "son of a bitch" = "orospu çocuğu"; "asshole" = "şerefsiz" / "pislik" / "göt herif"; "bitch" at a person = "orospu" / "kaltak", about a man = "korkak" / "karı gibi", about a thing ("this bitch") = "bu meret"; "cunt" = "orospu" / "amcık".
+- The n-word ("nigga", "niggas") between friends is an address: "kanka", "lan", "kardeşim" or drop it; about other people it means "guys/dudes": "herifler", "bunlar", "adamlar". Never translate it as "zenci".
+- "bro", "homie", "dawg" = "kanka" / "kardeşim"; "man" / "dude" as address = "dostum" / "lan" / "ahbap" or drop.
+- Street slang gets its meaning, not its words: "stay low" = "göze batma", "you got it fucked up" = "kafayı yemişsin", "on the flip" = "sonra görüşürüz", "boosting a car" = "araba çalmak", "get smoked" = "vurulmak".
+
+Speaker labels and tags:
+- OCR sometimes joins two subtitles, so a speaker label can appear inside a line ("Okay. Jason: Let's go."). Keep a character-name label exactly as it is, with its colon ("Jason:", "Dre'Quan:"), and translate only the speech.
+- Generic labels: "Stranger:" = "Yabancı:", "Guard:" = "Gardiyan:", "Cop:" = "Polis:". Drop "Unknown Language:" and "In Spanish:" style prefixes and music tags ("[dark music]", "♪"); short sound or manner tags are translated ([laughing] = [gülerek]).
+
+OCR damage:
+- OCR swaps letters (ali = all, Iaw = law, Hels = He's, sorne = some, vehicte = vehicle): read the intended English first and never copy OCR damage into the Turkish.
+- A line may be cut off: translate only what is there; never invent missing words.
+- Drop stray fragments that are not part of the speech: random capital-letter strings, broken half-words, HUD codes and stray numbers ("J26 487", "DI", "Tsk"), phone numbers glued to dialogue.
+- If nothing meaningful is left (pure OCR noise like "EML. S.", "LRR O..", "F I."), output an empty string "" for that item. A line with real words (dialogue, a sign, a menu, an ad) is always translated, even when parts are damaged.
+
+Names: keep character, place, gang, brand, vehicle, shop, radio station, song and show names exactly as they are (in GTA for example Lucia, Jason, Vice City, Leonida, Port Gellhorn, Grassrivers, Ambrosia, VCPD, FIB, IAA, Ammu-Nation, Cluckin' Bell, DWNPLY, Ganado). Use Turkish suffixes with an apostrophe (Cal'in, Vicki'nin).
+
+Form:
+- "sen" between friends, family and enemies; "siz" only for clearly formal address. On-screen objectives and hints are short imperatives ("Arabaya bin.", "Cal'in evine git."). Big-caps UI words stay caps: Wasted = ÖLDÜN, Busted = YAKALANDIN, Mission Passed = GÖREV BAŞARILI.
+- Keep the Turkish about as long as the English; a subtitle has to be read in a second or two. Keep the sentences of one item in order, as one line. Never merge, split, skip or move meaning between items.
+- Keep punctuation style (…, ?!, quotes, dashes). Interjections become Turkish sounds (Ugh = Of, Huh = Ha?, Hmm = Hmm).
+- Input: one item per line as \`id<TAB>English\`. Output only JSON: {"items":[{"id":"0","tr":"..."}]}, exactly one item per input id, no notes, no line breaks inside a translation.`;
 
 const CLAUDE_SCHEMA = {
   type: "object",
@@ -240,27 +264,50 @@ const CLAUDE_SCHEMA = {
   additionalProperties: false,
 };
 
-/** Satırları Claude ile (Anthropic Messages API) çevirir; id → Türkçe. Hata ya da bozuk yanıtta boş. */
+const claudeHeaders = (env) => ({
+  "content-type": "application/json",
+  "x-api-key": env.ANTHROPIC_API_KEY,
+  "anthropic-version": "2023-06-01",
+});
+
+/** Bir çeviri isteğinin gövdesi (Messages API; Batches'te `params`). Opus 5.5 düşünmeyi kapatamaz: `thinking`
+ *  gönderilmez, effort low; temperature yok. */
+export function claudeParams(items, game) {
+  return {
+    model: CLAUDE_MODEL,
+    max_tokens: 32000,
+    system: [{ type: "text", text: CLAUDE_SYSTEM(game), cache_control: { type: "ephemeral" } }],
+    output_config: { effort: CLAUDE_EFFORT, format: { type: "json_schema", schema: CLAUDE_SCHEMA } },
+    messages: [{ role: "user", content: items.map((it, i) => `${i}\t${it.en}`).join("\n") }],
+  };
+}
+
+/** Claude yanıtından id → Türkçe ("" = model satırı yazı tanıma çöpü saydı, çevrilmez). Yarım (max_tokens) ya da
+ *  reddedilmiş yanıt alınmaz: satırlar sonraki geçişte yeniden denenir (fail sayacı). */
+export function claudeReply(reply, items) {
+  if (reply?.stop_reason !== "end_turn") {
+    console.log("autopack: Claude yanıtı tamamlanmadı", reply?.stop_reason);
+    return new Map();
+  }
+  const text = (reply.content ?? []).filter((b) => b?.type === "text").map((b) => b.text).join("");
+  return parseReply({ response: text }, items, { allowSkip: true });
+}
+
+/** Yanıtın Batches fiyatıyla doları (usage'dan). */
+export function batchCost(usage) {
+  const u = usage ?? {};
+  const n = (v) => (Number.isFinite(v) ? v : 0);
+  return (n(u.input_tokens) * BATCH_PRICE.in + n(u.output_tokens) * BATCH_PRICE.out
+    + n(u.cache_read_input_tokens) * BATCH_PRICE.cacheRead + n(u.cache_creation_input_tokens) * BATCH_PRICE.cacheWrite) / 1e6;
+}
+
+/** Satırları Claude ile (Anthropic Messages API, eşzamanlı) çevirir; id → Türkçe. Hata ya da bozuk yanıtta boş. Gece işi
+ *  Batches kullanır (submitBatch / collectBatches); bu yol elle denemeler içindir. */
 export async function translateClaude(env, items, game) {
-  const user = items.map((it, i) => `${i}\t${it.en}`).join("\n");
   let reply;
   try {
     const res = await fetch(CLAUDE_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: 16000,
-        // Kısa satır çevirisi: düşünme jetonları çıktıyı yemesin.
-        thinking: { type: "disabled" },
-        system: [{ type: "text", text: CLAUDE_SYSTEM(game), cache_control: { type: "ephemeral" } }],
-        output_config: { format: { type: "json_schema", schema: CLAUDE_SCHEMA } },
-        messages: [{ role: "user", content: user }],
-      }),
+      method: "POST", headers: claudeHeaders(env), body: JSON.stringify(claudeParams(items, game)),
     });
     if (!res.ok) {
       console.log("autopack: Claude hatası", res.status, (await res.text()).slice(0, 300));
@@ -271,16 +318,109 @@ export async function translateClaude(env, items, game) {
     console.log("autopack: Claude çeviri hatası", String(e?.message || e));
     return new Map();
   }
-  // Yarım (max_tokens) ya da reddedilmiş yanıt alınmaz; satırlar sonraki tetiklemede yeniden denenir (fail sayacı).
-  if (reply?.stop_reason !== "end_turn") {
-    console.log("autopack: Claude yanıtı tamamlanmadı", reply?.stop_reason);
-    return new Map();
+  return claudeReply(reply, items);
+}
+
+/** Satırları 100'lük isteklere bölüp tek Message Batch olarak gönderir. Bekleyen batch kaydı ya da hata halinde null. */
+export async function submitBatch(env, todo, game, size, now) {
+  const reqs = {};
+  const requests = [];
+  for (let i = 0; i < todo.length; i += size) {
+    const id = `c${i}`;
+    const part = todo.slice(i, i + size);
+    reqs[id] = part;
+    requests.push({ custom_id: id, params: claudeParams(part, game) });
   }
-  const text = (reply.content ?? []).filter((b) => b?.type === "text").map((b) => b.text).join("");
-  const u = reply.usage ?? {};
-  console.log("autopack: Claude", items.length, "satır; giriş", u.input_tokens, "önbellek", u.cache_read_input_tokens,
-    "çıkış", u.output_tokens);
-  return parseReply({ response: text }, items);
+  try {
+    const res = await fetch(CLAUDE_BATCHES_URL, {
+      method: "POST", headers: claudeHeaders(env), body: JSON.stringify({ requests }),
+    });
+    if (!res.ok) {
+      console.log("autopack: Claude batch hatası", res.status, (await res.text()).slice(0, 300));
+      return null;
+    }
+    const batch = await res.json();
+    if (typeof batch?.id !== "string" || !batch.id) return null;
+    console.log("autopack: Claude batch", batch.id, todo.length, "satır");
+    return { id: batch.id, at: now.getTime(), reqs };
+  } catch (e) {
+    console.log("autopack: Claude batch gönderilemedi", String(e?.message || e));
+    return null;
+  }
+}
+
+/** Bekleyen batch'lerden bitenlerin sonuçlarını önbelleğe yazar. Döner: { lines: çevrilen satır, usd, usage }. */
+export async function collectBatches(env, cache) {
+  const out = { lines: 0, usd: 0, input: 0, output: 0 };
+  const keep = [];
+  for (const b of cache.batches ?? []) {
+    let status;
+    try {
+      const res = await fetch(`${CLAUDE_BATCHES_URL}/${b.id}`, { headers: claudeHeaders(env) });
+      if (res.status === 404) {
+        // Silinmiş/süresi geçmiş batch: satırlar bir başarısızlık sayar, sonraki geçişte yeniden denenir.
+        failLines(cache, Object.values(b.reqs).flat());
+        continue;
+      }
+      if (!res.ok) { keep.push(b); continue; }
+      status = await res.json();
+    } catch { keep.push(b); continue; }
+    if (status?.processing_status !== "ended" || typeof status.results_url !== "string") { keep.push(b); continue; }
+    let text;
+    try {
+      const res = await fetch(status.results_url, { headers: claudeHeaders(env) });
+      if (!res.ok) { keep.push(b); continue; }
+      text = await res.text();
+    } catch { keep.push(b); continue; }
+    const seen = new Set();
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      let row;
+      try { row = JSON.parse(line); } catch { continue; }
+      const part = b.reqs[row?.custom_id];
+      if (!Array.isArray(part) || seen.has(row.custom_id)) continue;
+      seen.add(row.custom_id);
+      const message = row.result?.type === "succeeded" ? row.result.message : null;
+      if (message?.usage) {
+        out.usd += batchCost(message.usage);
+        out.input += (message.usage.input_tokens ?? 0) + (message.usage.cache_read_input_tokens ?? 0)
+          + (message.usage.cache_creation_input_tokens ?? 0);
+        out.output += message.usage.output_tokens ?? 0;
+      }
+      out.lines += applyTranslations(cache, part, message ? claudeReply(message, part) : new Map());
+    }
+    // Sonuç dosyasında olmayan istekler (hata) de bir başarısızlık sayar.
+    for (const [id, part] of Object.entries(b.reqs)) if (!seen.has(id)) failLines(cache, part);
+  }
+  cache.batches = keep;
+  return out;
+}
+
+/** Çevirileri önbelleğe yazar ("" = kalıcı atla); alınamayan satır bir başarısızlık sayar. Döner: yazılan satır. */
+function applyTranslations(cache, part, got) {
+  let n = 0;
+  part.forEach((line, j) => {
+    const tr = got.get(j);
+    if (tr === "") {
+      cache.skip[line.pool] = 2;
+      delete cache.fail[line.pool];
+    } else if (tr) {
+      cache.lines[line.pool] = { k: line.k, en: line.en, tr };
+      delete cache.fail[line.pool];
+      n++;
+    } else failLines(cache, [line]);
+  });
+  return n;
+}
+
+function failLines(cache, lines) {
+  for (const line of lines) {
+    // İki kez çevrilemeyen satır bırakılır (sonsuz döngü olmasın). 2 = bu geçişte kalıcı atla.
+    if ((cache.fail[line.pool] = (cache.fail[line.pool] || 0) + 1) >= 2) {
+      cache.skip[line.pool] = 2;
+      delete cache.fail[line.pool];
+    }
+  }
 }
 
 /** Çeviri sağlayıcısı: ANTHROPIC_API_KEY secret'ı varsa Claude, yoksa Workers AI. */
@@ -305,7 +445,9 @@ export async function translateWorkersAI(env, items, game) {
   return parseReply(reply, items);
 }
 
-export function parseReply(reply, items) {
+/** Yanıttaki items → id → Türkçe. allowSkip: boş "tr" bilerek boş bırakılmış satırdır (yazı tanıma çöpü), "" olarak
+ *  döner; yoksa boş satır alınmaz. */
+export function parseReply(reply, items, { allowSkip = false } = {}) {
   let content = reply?.choices?.[0]?.message?.content ?? reply?.response;
   let parsed = content;
   if (typeof content === "string") {
@@ -319,8 +461,9 @@ export function parseReply(reply, items) {
     const id = it?.id;
     if (typeof id !== "number" && !(typeof id === "string" && /^\d+$/.test(id))) continue;
     const i = Number(id);
-    const tr = typeof it?.tr === "string" ? it.tr.replace(/\s+/g, " ").trim() : "";
-    if (!Number.isSafeInteger(i) || !items[i] || !tr) continue;
+    if (typeof it?.tr !== "string") continue;
+    const tr = it.tr.replace(/\s+/g, " ").trim();
+    if (!Number.isSafeInteger(i) || !items[i] || (!tr && !allowSkip)) continue;
     // Açıklama ya da birden çok satır yazmış, çok uzun ya da Türkçe değil: alınmaz.
     if (/[{}]/.test(tr) || tr.length > items[i].en.length * 3 + 40) continue;
     // Ambiguous AI IDs must not silently overwrite an earlier, different subtitle.
@@ -362,6 +505,11 @@ async function loadCache(env, job) {
       && typeof line.k === "string" && /^[0-9a-f]{16}$/.test(line.k)
       && typeof line.en === "string" && line.en.trim().length > 0
       && typeof line.tr === "string" && line.tr.trim().length > 0)) return null;
+    // Bekleyen Claude batch'leri: bozuk kayıt atılır (satırları sonraki geçişte yeniden denenir), önbellek korunur.
+    const validBatch = (b) => record(b) && typeof b.id === "string" && b.id.length > 0 && Number.isFinite(b.at)
+      && record(b.reqs) && Object.values(b.reqs).every((part) => Array.isArray(part) && part.every((line) =>
+        record(line) && /^[0-9a-f]{16}$/.test(line.pool) && /^[0-9a-f]{16}$/.test(line.k) && typeof line.en === "string"));
+    cache.batches = Array.isArray(cache.batches) ? cache.batches.filter(validBatch) : [];
     return cache;
   } catch { return null; }
 }
@@ -616,6 +764,24 @@ export async function runAutopack(env, now = new Date()) {
   const cache = await loadCache(env, job);
   if (!cache) return { phase: "waiting", reason: "auto/translation cache invalid" };
   cache.fail ??= {};
+  cache.batches ??= [];
+  // Claude: önce bekleyen batch'lerden bitenleri topla (çeviri Batches ile gider, sonuç sonraki tetiklemelerde gelir).
+  const claude = Boolean(env.ANTHROPIC_API_KEY);
+  let collected = null;
+  if (claude && cache.batches.length) {
+    collected = await collectBatches(env, cache);
+    state.usd = (state.usd ?? 0) + collected.usd;
+    state.claudeIn = (state.claudeIn ?? 0) + collected.input;
+    state.claudeOut = (state.claudeOut ?? 0) + collected.output;
+    state.collected = (state.collected ?? 0) + collected.lines;
+    if (collected.lines) cache.touched = night;
+  }
+  const overBudget = claude && (state.usd ?? 0) >= NIGHT_BUDGET_USD;
+  const saveCollected = async () => {
+    if (!collected) return;
+    await putJson(env, cacheFile(job), cache);
+    await putJson(env, STATE, state);
+  };
   // Exclude named rows only when their individual pack was actually published or
   // confirmed unchanged. An unbuilt named pack must fall back into the general pool.
   const published = new Set(state.done
@@ -628,11 +794,14 @@ export async function runAutopack(env, now = new Date()) {
   let scanned = 0;
   // Gezinti ya da gecelik pay bitti, gecenin son tetiklemesi (bu gece çevrilen paket kurulur) ya da yalnız yeniden
   // adlandırma: çeviri yok, paket kurulur.
-  let exhausted = job.retitle || cache.passNight === night || want <= 0
+  let exhausted = job.retitle || cache.passNight === night || want <= 0 || overBudget
     || (isFinalTick(now) && cache.touched === night);
+  // Bekleyen batch sınırı doluysa bu tetiklemede yeni satır gönderilmez (gezinti de ilerlemez).
+  const full = claude && cache.batches.length >= MAX_PENDING_BATCHES;
+  const before = { cursor: cache.cursor, skip: cache.skip, passNight: cache.passNight };
   // Anahtar imleci: installs azalan, key artan sırada kaldığımız yerden devam eder. İmlecin gerisindeki satırlara bu
   // geçişte bir daha bakılmaz, o yüzden atlananlar (bilinen, çöp) skip'e yazılmaz; önbellek ve D1 okuması küçük kalır.
-  for (let page = 0; !exhausted && page < MAX_PAGES && todo.length < want && looked < limits.maxLook; page++) {
+  for (let page = 0; !exhausted && !full && page < MAX_PAGES && todo.length < want && looked < limits.maxLook; page++) {
     const rows = await fetchPage(env, job, separate, cache.cursor);
     let stopped = false;
     for (const r of rows) {
@@ -655,27 +824,28 @@ export async function runAutopack(env, now = new Date()) {
     }
   }
 
+  if (todo.length > 0 && claude) {
+    const batch = await submitBatch(env, todo, job.game, limits.batch, now);
+    if (!batch) {
+      // Gönderilemedi: gezinti geri alınır, satırlar sonraki tetiklemede yeniden alınır.
+      Object.assign(cache, before);
+      await saveCollected();
+      return { phase: "error", titleId: job.titleId, game: job.gameKey, collected: collected?.lines ?? 0 };
+    }
+    cache.batches.push(batch);
+    state.translated += todo.length;
+    job.did = (job.did ?? 0) + todo.length;
+    await putJson(env, cacheFile(job), cache);
+    await putJson(env, STATE, state);
+    return { phase: "submit", titleId: job.titleId, game: job.gameKey, looked, submitted: todo.length,
+      batch: batch.id, collected: collected?.lines ?? 0 };
+  }
+
   if (todo.length > 0) {
-    const chunks = [];
-    for (let i = 0; i < todo.length; i += limits.batch) chunks.push(todo.slice(i, i + limits.batch));
-    // Claude istekleri aynı anda gider (yanıt beklemek CPU sayılmaz); Workers AI eskisi gibi sırayla.
-    const parallel = env.ANTHROPIC_API_KEY
-      ? await Promise.all(chunks.map((chunk) => translate(env, chunk, job.game)))
-      : null;
-    for (let c = 0; c < chunks.length; c++) {
-      const chunk = chunks[c];
-      const got = parallel ? parallel[c] : await translate(env, chunk, job.game);
-      chunk.forEach((line, j) => {
-        const tr = got.get(j);
-        if (tr) {
-          cache.lines[line.pool] = { k: line.k, en: line.en, tr };
-          delete cache.fail[line.pool];
-        } else if ((cache.fail[line.pool] = (cache.fail[line.pool] || 0) + 1) >= 2) {
-          // İki kez çevrilemeyen satır bırakılır (sonsuz döngü olmasın). 2 = bu geçişte kalıcı atla.
-          cache.skip[line.pool] = 2;
-          delete cache.fail[line.pool];
-        }
-      });
+    // Workers AI: eşzamanlı, sırayla.
+    for (let i = 0; i < todo.length; i += limits.batch) {
+      const chunk = todo.slice(i, i + limits.batch);
+      applyTranslations(cache, chunk, await translateWorkersAI(env, chunk, job.game));
     }
     state.translated += todo.length;
     job.did = (job.did ?? 0) + todo.length;
@@ -686,15 +856,29 @@ export async function runAutopack(env, now = new Date()) {
   }
 
   // Yeni çevrilecek satır çıkmadı ama gezinti sürüyor (önbellekte olanlar atlandı): imleci kaydet, paket kurma.
-  if (!exhausted && scanned > 0 && cache.cursor) {
+  if (!exhausted && !full && scanned > 0 && cache.cursor) {
     await putJson(env, cacheFile(job), cache);
-    return { phase: "scan", titleId: job.titleId, game: job.gameKey, scanned };
+    if (collected) await putJson(env, STATE, state);
+    return { phase: "scan", titleId: job.titleId, game: job.gameKey, scanned, collected: collected?.lines ?? 0 };
   }
 
+  // Bekleyen batch var: gezinti sürüyorsa (yer açılmasını bekliyor) ya da bitti ama batch henüz taze ise beklenir.
+  // Gecenin son tetiklemesinde paket kurulur; geç kalan batch ertesi gece toplanır.
+  if (cache.batches.length && !isFinalTick(now)) {
+    const oldest = Math.min(...cache.batches.map((b) => b.at));
+    if (!exhausted || now.getTime() - oldest < BATCH_WAIT_MS) {
+      await saveCollected();
+      return { phase: "wait", titleId: job.titleId, game: job.gameKey, pending: cache.batches.length,
+        collected: collected?.lines ?? 0 };
+    }
+  }
+
+  // Toplanan çeviriler paketten önce önbelleğe (paket değişmese de kaybolmasın).
+  await saveCollected();
   // Çevrilecek yeni satır kalmadı (ya da gecenin sınırı doldu): paket.
   const result = await buildPack(env, job, cache, known);
   state.queue.shift();
   state.done.push({ ...job, ...result });
   await putJson(env, STATE, state);
-  return { phase: "build", titleId: job.titleId, game: job.gameKey, ...result };
+  return { phase: "build", titleId: job.titleId, game: job.gameKey, ...result, collected: collected?.lines ?? 0 };
 }

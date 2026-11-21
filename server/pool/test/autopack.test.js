@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   GENERAL, GENERAL_TITLE, JOB_NIGHTLY, LAST_HOUR_UTC, LINES_PER_RUN, NIGHTLY_LIMIT, PAGE, isFinalTick, jobPackId,
   computeStats, packBody, packTitle, parseReply, runAutopack,
-  CLAUDE_LIMITS, CLAUDE_MODEL, CLAUDE_URL, limitsFor, translateClaude,
+  CLAUDE_LIMITS, CLAUDE_MODEL, CLAUDE_URL, CLAUDE_BATCHES_URL, CLAUDE_EFFORT, MAX_PENDING_BATCHES, NIGHT_BUDGET_USD,
+  BATCH_WAIT_MS, batchCost, claudeParams, limitsFor, translateClaude,
 } from "../src/autopack.js";
 
 test("malformed current-night state is rebuilt instead of stopping the scheduler", async () => {
@@ -744,15 +745,18 @@ function claudeFetch({ calls = [], reply } = {}) {
 test("Claude limits fit the cron and the per-run subrequest budget", () => {
   assert.ok((36 - 2) * CLAUDE_LIMITS.linesPerRun >= CLAUDE_LIMITS.nightly);
   assert.ok(CLAUDE_LIMITS.jobNightly <= CLAUDE_LIMITS.nightly);
-  // Workers Free: istek başına 50 alt istek. Çeviri istekleri + en çok 3 D1 sayfası + ~8 R2 işi.
-  assert.ok(Math.ceil(CLAUDE_LIMITS.linesPerRun / CLAUDE_LIMITS.batch) + 3 + 8 <= 50);
+  // Workers Free: istek başına 50 alt istek. Batch gönderimi 1 + bekleyen her batch için durum ve sonuç (2) + en çok
+  // 3 D1 sayfası + ~10 R2 işi.
+  assert.ok(1 + 2 * MAX_PENDING_BATCHES + 3 + 10 <= 50);
+  // Gecelik maliyet: ölçülen satır başına Batches maliyetiyle (bkz. CLAUDE_LIMITS) gecelik sınır 3 doları geçmez.
+  assert.ok(CLAUDE_LIMITS.nightly * 0.0005 <= NIGHT_BUDGET_USD);
   assert.ok(CLAUDE_LIMITS.maxLook >= CLAUDE_LIMITS.linesPerRun);
   assert.ok(3 * PAGE >= CLAUDE_LIMITS.maxLook);
   assert.equal(limitsFor({ ANTHROPIC_API_KEY: "k" }), CLAUDE_LIMITS);
   assert.equal(limitsFor({ AI: {} }).linesPerRun, LINES_PER_RUN);
 });
 
-test("Claude request uses the secret, Haiku without thinking and a cached system prompt", async (t) => {
+test("Claude request uses the secret, Opus at low effort (thinking cannot be disabled) and a cached system prompt", async (t) => {
   const calls = [];
   t.mock.method(globalThis, "fetch", claudeFetch({ calls }));
   const items = [{ en: "Get in the car, Lucia." }, { en: "Where's Essex?" }];
@@ -762,12 +766,28 @@ test("Claude request uses the secret, Haiku without thinking and a cached system
   assert.equal(calls[0].url, CLAUDE_URL);
   assert.equal(calls[0].headers["x-api-key"], "sk-test");
   assert.equal(calls[0].headers["anthropic-version"], "2023-06-01");
-  assert.equal(calls[0].body.model, CLAUDE_MODEL);
-  assert.deepEqual(calls[0].body.thinking, { type: "disabled" });
+  assert.equal(calls[0].body.model, "claude-opus-5-5");
+  assert.equal(CLAUDE_MODEL, "claude-opus-5-5");
+  // Opus 5.5: thinking alanı yok (disabled 400 verir), effort low; temperature hiç gönderilmez.
+  assert.equal("thinking" in calls[0].body, false);
+  assert.equal("temperature" in calls[0].body, false);
+  assert.equal(calls[0].body.output_config.effort, "low");
+  assert.equal(CLAUDE_EFFORT, "low");
   assert.deepEqual(calls[0].body.system[0].cache_control, { type: "ephemeral" });
   assert.match(calls[0].body.system[0].text, /Grand Theft Auto VI/);
   assert.equal(calls[0].body.output_config.format.type, "json_schema");
   assert.equal(calls[0].body.messages[0].content, "0\tGet in the car, Lucia.\n1\tWhere's Essex?");
+});
+
+test("translation prompt asks for natural Turkish swearing, kept speaker labels and skipped OCR noise", () => {
+  const text = claudeParams([{ en: "x" }], "Grand Theft Auto VI").system[0].text;
+  // Eski istem "fucking = siktiğimin" diyordu; yeni istem kelimesi kelimesine çeviriyi yasaklar.
+  assert.doesNotMatch(text, /fucking = siktiğimin/);
+  assert.match(text, /never word by word/);
+  assert.match(text, /Never translate it as "zenci"/);
+  assert.match(text, /Keep a character-name label exactly as it is/);
+  assert.match(text, /output an empty string ""/);
+  assert.match(text, /radio station, song/);
 });
 
 test("Claude errors and unfinished replies translate nothing instead of guessing", async (t) => {
@@ -783,21 +803,177 @@ test("Claude errors and unfinished replies translate nothing instead of guessing
   assert.equal((await translateClaude(env, items, null)).size, 0);
 });
 
-test("with the Claude secret the night runs on Claude, in larger runs, without Workers AI", async (t) => {
+/** Sahte Message Batches API: gönderilen batch'leri kaydeder; `ended` ile bitmiş sayılır; sonuçlar her satıra
+ *  translate(en) yazar. */
+function batchApi({ translate = () => "Arabaya bin, Lucia.", ended = () => true, createStatus = 200 } = {}) {
+  const batches = new Map();
   const calls = [];
-  t.mock.method(globalThis, "fetch", claudeFetch({ calls }));
-  const { env, stored } = pagedEnv({ rows: bigRows(4000), state: titledState() });
-  env.AI = { run: async () => { throw new Error("Workers AI must not be used"); } };
-  env.ANTHROPIC_API_KEY = "sk-test";
+  const fetch = async (url, init = {}) => {
+    calls.push({ url, method: init.method ?? "GET", headers: init.headers });
+    if (url === CLAUDE_BATCHES_URL && init.method === "POST") {
+      if (createStatus !== 200) return new Response("overloaded", { status: createStatus });
+      const id = `msgbatch_${batches.size + 1}`;
+      batches.set(id, JSON.parse(init.body).requests);
+      return new Response(JSON.stringify({ id, processing_status: "in_progress" }), { status: 200 });
+    }
+    const status = url.match(/\/v1\/messages\/batches\/([^/]+)$/);
+    if (status) {
+      if (!batches.has(status[1])) return new Response("not found", { status: 404 });
+      const done = ended(status[1]);
+      return new Response(JSON.stringify({
+        id: status[1], processing_status: done ? "ended" : "in_progress",
+        results_url: done ? `${CLAUDE_BATCHES_URL}/${status[1]}/results` : null,
+      }), { status: 200 });
+    }
+    const results = url.match(/\/v1\/messages\/batches\/([^/]+)\/results$/);
+    if (results) {
+      const lines = batches.get(results[1]).map((r) => {
+        const items = r.params.messages[0].content.split("\n").map((l) => {
+          const [id, en] = l.split("\t");
+          return { id, tr: translate(en) };
+        });
+        return JSON.stringify({ custom_id: r.custom_id, result: { type: "succeeded", message: {
+          stop_reason: "end_turn",
+          content: [{ type: "thinking", thinking: "", signature: "x" }, { type: "text", text: JSON.stringify({ items }) }],
+          usage: { input_tokens: 4000, output_tokens: 3000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        } } });
+      });
+      return new Response(lines.join("\n"), { status: 200 });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  return { fetch, batches, calls };
+}
+
+const claudeEnv = (opts) => {
+  const made = pagedEnv(opts);
+  made.env.AI = { run: async () => { throw new Error("Workers AI must not be used"); } };
+  made.env.ANTHROPIC_API_KEY = "sk-test";
+  return made;
+};
+
+test("with the Claude secret the night sends Message Batches and collects them on the next run", async (t) => {
+  const api = batchApi();
+  t.mock.method(globalThis, "fetch", api.fetch);
+  const { env, stored } = claudeEnv({ rows: bigRows(4000), state: titledState() });
+  const now = new Date("2026-11-20T03:12:00Z");
+  const first = await runAutopack(env, now);
+  assert.equal(first.phase, "submit");
+  assert.equal(first.submitted, CLAUDE_LIMITS.linesPerRun);
+  assert.equal(api.batches.size, 1);
+  const requests = api.batches.get("msgbatch_1");
+  assert.equal(requests.length, CLAUDE_LIMITS.linesPerRun / CLAUDE_LIMITS.batch);
+  assert.equal(requests[0].params.model, "claude-opus-5-5");
+  assert.equal("thinking" in requests[0].params, false);
+  assert.equal(requests[0].params.output_config.effort, "low");
+  let cache = JSON.parse(stored.get("auto/tr/PPSA1.json"));
+  assert.equal(Object.keys(cache.lines).length, 0);
+  assert.equal(cache.batches.length, 1);
+  assert.equal(JSON.parse(stored.get("auto/state.json")).translated, CLAUDE_LIMITS.linesPerRun);
+
+  const second = await runAutopack(env, new Date("2026-11-20T03:17:00Z"));
+  assert.equal(second.phase, "submit");
+  assert.equal(second.collected, CLAUDE_LIMITS.linesPerRun);
+  cache = JSON.parse(stored.get("auto/tr/PPSA1.json"));
+  assert.equal(Object.keys(cache.lines).length, CLAUDE_LIMITS.linesPerRun);
+  assert.equal(cache.batches.length, 1);
+  assert.equal(cache.batches[0].id, "msgbatch_2");
+  // Harcama usage'dan, Batches fiyatıyla: 10 istek × (4000 giriş × 2 $ + 3000 çıkış × 10 $) / 1e6.
+  const state = JSON.parse(stored.get("auto/state.json"));
+  assert.ok(Math.abs(state.usd - 10 * batchCost({ input_tokens: 4000, output_tokens: 3000 })) < 1e-9);
+  assert.ok(Math.abs(state.usd - 0.38) < 1e-9);
+  // Aynı satır iki kez gönderilmez.
+  const sent = [...api.batches.values()].flat().flatMap((r) => r.params.messages[0].content.split("\n"));
+  assert.equal(new Set(sent).size, sent.length);
+});
+
+test("empty translation marks an OCR-noise line as skipped instead of retrying it", async (t) => {
+  const api = batchApi({ translate: (en) => (en.includes("number 1,") ? "" : "Arabaya bin, Lucia.") });
+  t.mock.method(globalThis, "fetch", api.fetch);
+  const { env, stored } = claudeEnv({ rows: bigRows(20), state: titledState() });
+  assert.equal((await runAutopack(env, new Date("2026-11-20T03:12:00Z"))).phase, "submit");
+  await runAutopack(env, new Date("2026-11-20T03:17:00Z"));
+  const cache = JSON.parse(stored.get("auto/tr/PPSA1.json"));
+  assert.equal(cache.skip[hex(1)], 2);
+  assert.equal(cache.lines[hex(1)], undefined);
+  assert.equal(cache.fail[hex(1)], undefined);
+  assert.equal(Object.keys(cache.lines).length, 19);
+});
+
+test("unfinished batch keeps the job waiting; the final tick publishes and the late batch is collected next night", async (t) => {
+  let done = false;
+  const api = batchApi({ ended: () => done });
+  t.mock.method(globalThis, "fetch", api.fetch);
+  const rows = bigRows(320);
+  const lines = {};
+  for (const r of rows.slice(0, 310)) lines[r.key] = { k: r.key, en: r.text, tr: "Arabaya bin, Lucia." };
+  const { env, stored } = claudeEnv({ rows, state: titledState(), cache: { lines, skip: {}, fail: {} } });
+  assert.equal((await runAutopack(env, new Date("2026-11-20T03:12:00Z"))).phase, "submit");
+  // Gezinti bitti (10 satır gönderildi) ama batch taze: paket kurulmaz, beklenir.
+  assert.equal((await runAutopack(env, new Date("2026-11-20T03:17:00Z"))).phase, "wait");
+  assert.equal(JSON.parse(stored.get("index.json")).packs.length, 0);
+  // Son tetikleme: bekleyen batch varken de paket kurulur.
+  assert.equal((await runAutopack(env, new Date("2026-11-20T05:57:00Z"))).phase, "build");
+  assert.equal(JSON.parse(stored.get("index.json")).packs[0].entries, 310);
+  // Ertesi gece sonuç toplanır.
+  done = true;
+  stored.set("auto/state.json", JSON.stringify({ ...titledState(), night: "2026-11-21" }));
+  const next = await runAutopack(env, new Date("2026-11-21T03:12:00Z"));
+  assert.equal(next.collected, 10);
+  assert.equal(Object.keys(JSON.parse(stored.get("auto/tr/PPSA1.json")).lines).length, 320);
+});
+
+test("an old pending batch does not hold the pack forever", async (t) => {
+  const api = batchApi({ ended: () => false });
+  t.mock.method(globalThis, "fetch", api.fetch);
+  const rows = bigRows(320);
+  const lines = {};
+  for (const r of rows.slice(0, 310)) lines[r.key] = { k: r.key, en: r.text, tr: "Arabaya bin, Lucia." };
+  const { env } = claudeEnv({ rows, state: titledState(), cache: { lines, skip: {}, fail: {} } });
+  const start = new Date("2026-11-20T03:12:00Z");
+  assert.equal((await runAutopack(env, start)).phase, "submit");
+  assert.equal((await runAutopack(env, new Date(start.getTime() + BATCH_WAIT_MS - 60_000))).phase, "wait");
+  assert.equal((await runAutopack(env, new Date(start.getTime() + BATCH_WAIT_MS + 60_000))).phase, "build");
+});
+
+test("pending batch limit stops new submissions until a batch is collected", async (t) => {
+  const api = batchApi({ ended: () => false });
+  t.mock.method(globalThis, "fetch", api.fetch);
+  const { env, stored } = claudeEnv({ rows: bigRows(6000), state: titledState() });
+  const now = new Date("2026-11-20T03:12:00Z");
+  for (let i = 0; i < MAX_PENDING_BATCHES; i++) assert.equal((await runAutopack(env, now)).phase, "submit");
+  const cursor = JSON.parse(stored.get("auto/tr/PPSA1.json")).cursor;
+  assert.equal((await runAutopack(env, now)).phase, "wait");
+  assert.equal(api.batches.size, MAX_PENDING_BATCHES);
+  assert.deepEqual(JSON.parse(stored.get("auto/tr/PPSA1.json")).cursor, cursor);
+});
+
+test("a failed batch submission rolls the cursor back so the lines are taken again", async (t) => {
+  const api = batchApi({ createStatus: 529 });
+  t.mock.method(globalThis, "fetch", api.fetch);
+  const { env, stored } = claudeEnv({ rows: bigRows(4000), state: titledState() });
   const result = await runAutopack(env, new Date("2026-11-20T03:12:00Z"));
-  assert.equal(result.phase, "translate");
-  assert.equal(result.translated, CLAUDE_LIMITS.linesPerRun);
-  assert.equal(calls.length, CLAUDE_LIMITS.linesPerRun / CLAUDE_LIMITS.batch);
-  assert.equal(Object.keys(JSON.parse(stored.get("auto/tr/PPSA1.json")).lines).length, CLAUDE_LIMITS.linesPerRun);
+  assert.equal(result.phase, "error");
+  const cache = stored.get("auto/tr/PPSA1.json");
+  assert.ok(!cache || JSON.parse(cache).cursor == null);
+  assert.equal(JSON.parse(stored.get("auto/state.json")).translated, 0);
+});
+
+test("the nightly dollar budget stops new batches", async (t) => {
+  const api = batchApi();
+  t.mock.method(globalThis, "fetch", api.fetch);
+  const rows = bigRows(4000);
+  const lines = {};
+  for (const r of rows.slice(0, 400)) lines[r.key] = { k: r.key, en: r.text, tr: "Arabaya bin, Lucia." };
+  const { env } = claudeEnv({
+    rows, state: { ...titledState(), usd: NIGHT_BUDGET_USD }, cache: { lines, skip: {}, fail: {} },
+  });
+  assert.equal((await runAutopack(env, new Date("2026-11-20T03:12:00Z"))).phase, "build");
+  assert.equal(api.batches.size, 0);
 });
 
 test("without Workers AI binding the Claude secret alone enables the night", async (t) => {
-  t.mock.method(globalThis, "fetch", claudeFetch());
+  t.mock.method(globalThis, "fetch", batchApi().fetch);
   const { env } = pagedEnv({ rows: bigRows(10), state: titledState() });
   delete env.AI;
   assert.equal((await runAutopack(env, new Date("2026-11-20T03:12:00Z"))).phase, "disabled");
