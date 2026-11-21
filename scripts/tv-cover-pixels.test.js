@@ -210,8 +210,9 @@ function obsRun(events, mode) {
   // Ekran görüntüsü yerleşimi ölçer, belirme geçişini (0,15 sn) beklemez.
   const still = '<style>#line { transition: none !important; }</style>';
   const html = fs.readFileSync(obsPage, 'utf8').replace('<head>', '<head>' + stub + still).replace('</body>', probe + '</body>');
-  const english = `left:${ENGLISH.left * 100}%;top:${ENGLISH.top * 100}%;width:${(ENGLISH.right - ENGLISH.left) * 100}%;` +
-    `height:${(ENGLISH.bottom - ENGLISH.top) * 100}%`;
+  // Piksel olarak, iframe'in (1920×1080) koordinatlarında: dış sayfanın görünümü (Linux'ta) 1080'den farklı olabiliyor.
+  const english = `left:${Math.round(ENGLISH.left * 1920)}px;top:${Math.round(ENGLISH.top * 1080)}px;` +
+    `width:${Math.round((ENGLISH.right - ENGLISH.left) * 1920)}px;height:${Math.round((ENGLISH.bottom - ENGLISH.top) * 1080)}px`;
   const encoded = Buffer.from(html, 'utf8').toString('base64');
   const page = `<!doctype html><style>html,body{margin:0;background:#fff;overflow:hidden}</style>
     <div style="position:absolute;background:#f00;${english}"></div>
