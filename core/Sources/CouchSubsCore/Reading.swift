@@ -172,8 +172,10 @@ public struct Reading: Equatable, Sendable {
     /// Ortalanmış blok yoksa en az üç sözcüklü, menü olmayan en alttaki blok alınır. Satırların yeri bilinmiyorsa
     /// okuma olduğu gibi kalır. `area`, okunan alanın karedeki yeridir (ortalanmışlık karenin ortasına göre ölçülür).
     /// Tek satırlık etkileşim/HUD etiketi ("TAKE AMMO PACK (0/3)", `ButtonPrompts.isActionLabel`) ve sahne yazısı
-    /// (tabela, tişört; `SceneText`) altyazı bloğu sayılmaz.
-    public func subtitleBlock(in area: TextBox) -> Reading {
+    /// (tabela, tişört; `SceneText`) altyazı bloğu sayılmaz. `band`: bu oturumda altyazının okunduğu yükseklikler
+    /// (`SubtitleBand`); `dropped`: sahne yazısı sayılıp atılan her blok ve nedeni (altyazı günlüğü için).
+    public func subtitleBlock(in area: TextBox, band: SubtitleBand = SubtitleBand(),
+                              dropped: ((Reading, String) -> Void)? = nil) -> Reading {
         guard !lines.isEmpty, lines.allSatisfy({ $0.box != nil }) else { return isActionLabel ? .empty : self }
         var blocks: [[TextLine]] = []
         for line in lines.sorted(by: { $0.box!.top < $1.box!.top }) {
@@ -185,8 +187,12 @@ public struct Reading: Equatable, Sendable {
             }
         }
         // Tabela, tişört, plaka gibi sahne yazısı (`SceneText`) altyazı alanına düşse de altyazı değildir.
-        let candidates = blocks.map { Reading(lines: $0) }
-            .filter { !$0.isMenu && !$0.isActionLabel && !SceneText.isSceneText($0, in: area) }
+        let candidates = blocks.map { Reading(lines: $0) }.filter { block in
+            guard !block.isMenu, !block.isActionLabel else { return false }
+            guard let reason = SceneText.reason(block, in: area, band: band) else { return true }
+            dropped?(block, reason)
+            return false
+        }
         let centered = candidates.filter { reading in
             guard let box = reading.box?.placed(in: area) else { return false }
             return abs((box.left + box.right) / 2 - 0.5) <= 0.12

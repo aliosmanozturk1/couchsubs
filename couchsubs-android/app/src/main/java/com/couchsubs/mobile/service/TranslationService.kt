@@ -688,6 +688,8 @@ class TranslationService : Service() {
                 else emptyList()
             }
             onPackMissed = { text -> linePool.offer(text) }
+            // Altyazı alanında okunup sahne yazısı sayılan bloklar nedeniyle günlüğe (GitHub #822).
+            onLog = { Log.i(TAG, it) }
             onPairShown = { pair ->
                 LiveState.shown(pair, pair.packId?.let { packTitles?.get(it) ?: it })
                 // Türkçe dublaj (iPhone ve masaüstüyle aynı): yeni altyazının cümleleri telefonun Türkçe sesiyle okunur.

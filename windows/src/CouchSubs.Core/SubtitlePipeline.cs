@@ -83,6 +83,10 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     private Reading lastPanelReading = Reading.Empty;
     /// <summary>Konuşma değişirken sabit duran görev/HUD satırları (GTA 6).</summary>
     private readonly StickyRows stickyRows = new();
+    /// <summary>Bu oturumda kesin altyazının okunduğu yükseklikler: oradaki kısa satır sahne yazısı sayılmaz (SceneText).</summary>
+    private readonly SubtitleBand subtitleBand = new();
+    /// <summary>Günlüğe yazılmış son sahne yazıları (her karede yeniden yazılmasın).</summary>
+    private readonly List<string> loggedSceneText = [];
     /// <summary>Oturumun (hat kurulunca ya da sıfırlanınca) başladığı an; ilk karenin ne kadar sonra geldiği günlüğe yazılır.</summary>
     private long sessionStart = (clock ?? DefaultClock)();
     private bool sawFrame;
@@ -209,6 +213,16 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
 
     private void Write(string message) => Log?.Invoke(message);
 
+    /// <summary>Sahne yazısı sayılıp atılan blok günlüğe nedeniyle bir kez yazılır (GitHub #822).</summary>
+    private void LogSceneText(string text, string reason)
+    {
+        var key = text + "|" + reason;
+        if (loggedSceneText.Contains(key)) return;
+        loggedSceneText.Add(key);
+        if (loggedSceneText.Count > 20) loggedSceneText.RemoveAt(0);
+        Write($"sahne yazısı: {SubtitleLog.Excerpt(text)} altyazı sayılmadı ({reason})");
+    }
+
     private void Write(Request request, string message) => Log?.Invoke($"#{request.Number} {message}");
 
     /// <summary>Okuma çeviriyi beklemez; böylece çeviri sürerken gelen satırlar da yakalanır.</summary>
@@ -311,7 +325,12 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             Write(missionRegion is null ? "görev satırı kalktı" : "görev satırı kendi yerinde gösteriliyor");
             MissionChanged?.Invoke(missionRegion);
         }
-        var reading = rows.SubtitleBlock(area);
+        Reading reading;
+        lock (gate)
+        {
+            reading = rows.SubtitleBlock(area, subtitleBand, (block, reason) => LogSceneText(block.Text, reason));
+            subtitleBand.Record(reading, area);
+        }
         // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. SubtitleEcho). Menüde altyazı gönderilmez; okunan
         // menü satırları altyazı sayılmaz (yoksa menünün kendi çevirisi metin eşleşmesiyle atılırdı).
         if (Echo is { } echo && EchoPaused?.Invoke() != true) echo.Record(reading, region);
@@ -1018,6 +1037,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             currentRead = null;
             schedule.Reset();
             stickyRows.Reset();
+            subtitleBand.Reset();
+            loggedSceneText.Clear();
             mission.Reset();
             Echo?.Reset();
             if (stabilizer.Reset() == StabilizerAction.Clear) sender.Clear();

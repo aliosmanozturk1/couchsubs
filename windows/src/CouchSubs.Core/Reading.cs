@@ -157,9 +157,11 @@ public sealed class Reading
     /// Ortalanmış blok yoksa en az üç sözcüklü, menü olmayan en alttaki blok alınır. Satırların yeri bilinmiyorsa
     /// okuma olduğu gibi kalır. <paramref name="area"/>, okunan alanın karedeki yeridir (Mac: Reading.subtitleBlock).
     /// Tek satırlık etkileşim/HUD etiketi ("TAKE AMMO PACK (0/3)", <see cref="ButtonPrompts.IsActionLabel"/>) ve sahne
-    /// yazısı (tabela, tişört; <see cref="SceneText"/>) altyazı bloğu sayılmaz.
+    /// yazısı (tabela, tişört; <see cref="SceneText"/>) altyazı bloğu sayılmaz. <paramref name="band"/>: bu oturumda
+    /// altyazının okunduğu yükseklikler; <paramref name="dropped"/>: sahne yazısı sayılıp atılan her blok ve nedeni
+    /// (altyazı günlüğü için).
     /// </summary>
-    public Reading SubtitleBlock(TextBox area)
+    public Reading SubtitleBlock(TextBox area, SubtitleBand? band = null, Action<Reading, string>? dropped = null)
     {
         if (Lines.Count == 0 || Lines.Any(line => line.Box is null)) return IsActionLabel ? Empty : this;
         var blocks = new List<List<TextLine>>();
@@ -171,8 +173,13 @@ public sealed class Reading
             else blocks.Add([line]);
         }
         // Tabela, tişört, plaka gibi sahne yazısı (SceneText) altyazı alanına düşse de altyazı değildir.
-        var candidates = blocks.Select(block => new Reading(block))
-            .Where(reading => !reading.IsMenu && !reading.IsActionLabel && !SceneText.IsSceneText(reading, area)).ToList();
+        var candidates = blocks.Select(block => new Reading(block)).Where(reading =>
+        {
+            if (reading.IsMenu || reading.IsActionLabel) return false;
+            if (SceneText.Reason(reading, area, band) is not { } reason) return true;
+            dropped?.Invoke(reading, reason);
+            return false;
+        }).ToList();
         var centered = candidates.Where(reading =>
         {
             var box = reading.Box!.Value.PlacedIn(area);

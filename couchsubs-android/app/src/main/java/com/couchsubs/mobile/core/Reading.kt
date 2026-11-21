@@ -146,9 +146,10 @@ class Reading(lines: List<TextLine>) {
      * altyazıdır. Ortalanmış blok yoksa en az üç sözcüklü, menü olmayan en alttaki blok alınır. Satırların yeri
      * bilinmiyorsa okuma olduğu gibi kalır. [area]: okunan alanın karedeki yeri. Tek satırlık etkileşim/HUD etiketi
      * ("TAKE AMMO PACK (0/3)", [ButtonPrompts.isActionLabel]) ve sahne yazısı (tabela, tişört; [SceneText]) altyazı
-     * bloğu sayılmaz.
+     * bloğu sayılmaz. [band]: bu oturumda altyazının okunduğu yükseklikler; [dropped]: sahne yazısı sayılıp atılan her
+     * blok ve nedeni (altyazı günlüğü için).
      */
-    fun subtitleBlock(area: TextBox): Reading {
+    fun subtitleBlock(area: TextBox, band: SubtitleBand? = null, dropped: ((Reading, String) -> Unit)? = null): Reading {
         if (lines.isEmpty() || lines.any { it.box == null }) return if (isActionLabel) Empty else this
         val blocks = mutableListOf<MutableList<TextLine>>()
         for (line in lines.sortedBy { it.box!!.top }) {
@@ -157,7 +158,12 @@ class Reading(lines: List<TextLine>) {
             if (index >= 0) blocks[index].add(line) else blocks.add(mutableListOf(line))
         }
         // Tabela, tişört, plaka gibi sahne yazısı ([SceneText]) altyazı alanına düşse de altyazı değildir.
-        val candidates = blocks.map { Reading(it) }.filter { !it.isMenu && !it.isActionLabel && !SceneText.isSceneText(it, area) }
+        val candidates = blocks.map { Reading(it) }.filter { block ->
+            if (block.isMenu || block.isActionLabel) return@filter false
+            val reason = SceneText.reason(block, area, band) ?: return@filter true
+            dropped?.invoke(block, reason)
+            false
+        }
         val centered = candidates.filter { reading ->
             val placed = reading.box!!.placedIn(area)
             abs((placed.left + placed.right) / 2 - 0.5) <= 0.12

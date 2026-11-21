@@ -108,6 +108,23 @@ class SubtitlePipeline(
     private val stabilizer = SubtitleStabilizer(clock = now)
     /** Konuşma değişirken sabit duran görev/HUD satırları (GTA 6). */
     private val stickyRows = StickyRows()
+    /** Bu oturumda kesin altyazının okunduğu yükseklikler: oradaki kısa satır sahne yazısı sayılmaz ([SceneText]). */
+    private val subtitleBand = SubtitleBand()
+    /** Günlüğe yazılmış son sahne yazıları (her karede yeniden yazılmasın). */
+    private val loggedSceneText = ArrayDeque<String>()
+
+    /** Altyazı günlüğü (Mac/iPhone `onLog`, Windows `Log`): şimdilik sahne yazısı sayılıp atılan bloklar. */
+    var onLog: ((String) -> Unit)? = null
+
+    /** Sahne yazısı sayılıp atılan blok günlüğe nedeniyle bir kez yazılır (GitHub #822). */
+    private fun logSceneText(text: String, reason: String) {
+        val key = "$text|$reason"
+        if (key in loggedSceneText) return
+        loggedSceneText.addLast(key)
+        if (loggedSceneText.size > 20) loggedSceneText.removeFirst()
+        val excerpt = text.replace('\n', ' ').let { if (it.length > 120) it.take(120) + "…" else it }
+        onLog?.invoke("sahne yazısı: \"$excerpt\" altyazı sayılmadı ($reason)")
+    }
     private val mission = MissionLine()
 
     /**
@@ -194,8 +211,10 @@ class SubtitlePipeline(
                 missionChanged = true
                 missionRegion = mission.region
             }
-            filtered
-        }.subtitleBlock(area)
+            // Bu oturumda altyazının okunduğu yükseklikteki kısa satır tabela sayılmaz; atılan blok günlüğe (GitHub #822).
+            filtered.subtitleBlock(area, subtitleBand) { block, reason -> logSceneText(block.text, reason) }
+                .also { subtitleBand.record(it, area) }
+        }
         // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. [SubtitleEcho]).
         echo?.record(reading, area)
         if (missionChanged) onMissionChanged?.invoke(missionRegion)
@@ -551,6 +570,8 @@ class SubtitlePipeline(
         lastShownSource = null
         pairs.clear()
         stickyRows.reset()
+        subtitleBand.reset()
+        loggedSceneText.clear()
         mission.reset()
         echo?.reset()
         if (stabilizer.reset() == StabilizerAction.Clear) sender.clear()

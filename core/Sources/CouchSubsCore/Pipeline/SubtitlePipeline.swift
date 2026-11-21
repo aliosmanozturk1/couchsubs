@@ -115,6 +115,10 @@ public final class SubtitlePipeline {
     private var lastOcrReading = Reading.empty
     private var lastPanelReading = Reading.empty
     private var stickyRows = StickyRows()
+    /// Bu oturumda kesin altyazının okunduğu yükseklikler: oradaki kısa satır sahne yazısı sayılmaz (`SceneText`).
+    private var subtitleBand = SubtitleBand()
+    /// Günlüğe yazılmış son sahne yazıları (her karede yeniden yazılmasın).
+    private var loggedSceneText: [String] = []
     private var mission = MissionLine()
     /// Görev satırının bölgesi değişti (nil: görev kalktı). Görev altyazıya girmez; bölgesi "auto-mission" ek alanı olarak
     /// kendi yerinde ve özgün stilinde gösterilir (bkz. `MissionLine`).
@@ -265,7 +269,10 @@ public final class SubtitlePipeline {
             log(mission.region == nil ? "görev satırı kalktı" : "görev satırı kendi yerinde gösteriliyor")
             onMissionChanged?(mission.region)
         }
-        let reading = rows.subtitleBlock(in: place)
+        let reading = rows.subtitleBlock(in: place, band: subtitleBand) { [weak self] block, reason in
+            self?.logSceneText(block.text, reason)
+        }
+        subtitleBand.record(reading, in: place)
         // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. `SubtitleEcho`).
         echo?.record(reading, region: region)
         currentRead = ReadInfo(capturedAt: captured, ocrMs: lastReadMs, confidence: reading.confidence)
@@ -702,6 +709,15 @@ public final class SubtitlePipeline {
         Task { await translator.warmUp() }
     }
 
+    /// Sahne yazısı sayılıp atılan blok günlüğe nedeniyle bir kez yazılır (GitHub #822: atılan altyazı günlükte görünsün).
+    private func logSceneText(_ text: String, _ reason: String) {
+        let key = text + "|" + reason
+        guard !loggedSceneText.contains(key) else { return }
+        loggedSceneText.append(key)
+        if loggedSceneText.count > 20 { loggedSceneText.removeFirst() }
+        log("sahne yazısı: \(SubtitleLog.excerpt(text)) altyazı sayılmadı (\(reason))")
+    }
+
     /// Okuma durunca TV'deki son altyazıyı kaldırır.
     public func reset() {
         log("hat sıfırlandı (paketten \(packHits) satır)")
@@ -723,6 +739,8 @@ public final class SubtitlePipeline {
         lastReadMs = nil
         scheduler.reset()
         stickyRows.reset()
+        subtitleBand.reset()
+        loggedSceneText.removeAll()
         mission.reset()
         echo?.reset()
         if stabilizer.reset() == .clear { server.clear() }
