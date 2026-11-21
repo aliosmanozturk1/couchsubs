@@ -1899,7 +1899,7 @@ final class AppModel: ObservableObject {
         lastMetrics = nil
         subtitleOffTip.reset()
         updateSubtitleOffTip()
-        if settings.dubbing.enabled, dubbingModelReady { makeDubber().prepare() }
+        if settings.dubbing.enabled, dubbingReady { makeDubber().prepare() }
         SubtitleLog.write("oturum başladı: CouchSubs \(AppIdentity.version), \(settings.sourceLanguage)→\(settings.targetLanguage), "
             + "motor: \(onlineTranslationActive ? settings.onlineEngine.rawValue : "ücretsiz"), "
             + "seçilen motor: \(settings.translationEngine.rawValue), paketler: \(settings.gamePacks ? "açık" : "kapalı"), "
@@ -2895,17 +2895,25 @@ extension AppModel {
         return dubber
     }
 
+    /// Dublaj çalabilir mi: doğal seste model indirilmiş olmalı, Hızlı seste (Mac'in kendi sesi) indirme gerekmez.
+    var dubbingReady: Bool { settings.dubbing.engine == .fast || dubbingModelReady }
+
     private func speak(_ lines: [SpokenLine]) {
-        guard settings.dubbing.enabled, dubbingModelReady else { return }
+        guard settings.dubbing.enabled, dubbingReady else { return }
         makeDubber().speak(lines)
     }
 
     private func dubbingSettingsChanged(from old: DubbingSettings) {
         guard let dubber else {
-            if settings.dubbing.enabled, !old.enabled, isRunning, dubbingModelReady { makeDubber().prepare() }
+            if settings.dubbing.enabled, !old.enabled, isRunning, dubbingReady { makeDubber().prepare() }
             return
         }
         dubber.cast = settings.dubbing.cast
+        if dubber.voiceEngine != settings.dubbing.engine {
+            dubber.stop()
+            dubber.voiceEngine = settings.dubbing.engine
+            if settings.dubbing.enabled, isRunning, dubbingReady { dubber.prepare() }
+        }
         if dubber.output != settings.dubbing.output {
             dubber.stop()
             dubber.output = settings.dubbing.output
@@ -2933,7 +2941,7 @@ extension AppModel {
 
     /// Ayarlardaki "Dinle": sesi seçilen çıkıştan çalar.
     func previewVoice(_ voice: DubbingVoice) async {
-        guard dubbingModelReady else { return }
+        guard dubbingReady else { return }
         dubbingError = nil
         try? await startServer()
         makeDubber().preview(voice)

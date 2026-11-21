@@ -13,11 +13,23 @@ struct DubbingCard: View {
             HintText(text: "In the game's audio settings, turn the dialogue (voice) volume down; keep music and effects. If the game can show speaker names in subtitles, turn them on: every character then speaks with its own voice.")
 
             if model.settings.dubbing.enabled {
-                if let progress = model.dubbingDownload {
+                // "Ses: Doğal / Hızlı" (Windows ile aynı): Hızlı, Mac'in kendi Türkçe sesidir; indirme gerekmez.
+                Picker("Voice", selection: $model.settings.dubbing.engine) {
+                    Text("Natural").tag(DubbingEngine.natural)
+                    Text("Fast").tag(DubbingEngine.fast)
+                }
+                .pickerStyle(.segmented)
+                HintText(text: model.settings.dubbing.engine == .fast
+                    ? "This Mac's own Turkish voice: speaks at once, nothing to download. Sounds more mechanical."
+                    : "Natural voices, downloaded once. Each line takes a moment to prepare, so the voice can come a little after the subtitle.")
+                if model.settings.dubbing.engine == .fast, !SystemSpeech.hasTurkishVoice {
+                    ErrorText(error: String(localized: "No Turkish voice is installed on this Mac. Add one in System Settings › Accessibility › Spoken Content › System Voice › Manage Voices."))
+                }
+                if let progress = model.dubbingDownload, model.settings.dubbing.engine == .natural {
                     ProgressView(value: progress) {
                         Text("Downloading voices… \(Int(progress * 100))%")
                     }
-                } else if !model.dubbingModelReady {
+                } else if !model.dubbingReady {
                     HStack {
                         Text("The voices are downloaded once (440 MB).").foregroundStyle(Color.csSecondary)
                         Spacer()
@@ -41,7 +53,9 @@ struct DubbingCard: View {
                                                     set: { model.assignVoice($0, to: name) }))
                         }
                     }
-                    HintText(text: "Voices: Pocket TTS Turkish (wite-tech, CC BY 4.0) with Kyutai's pocket-tts. The voices are synthetic, not real people.")
+                    if model.settings.dubbing.engine == .natural {
+                        HintText(text: "Voices: Pocket TTS Turkish (wite-tech, CC BY 4.0) with Kyutai's pocket-tts. The voices are synthetic, not real people.")
+                    }
                 }
                 if let error = model.dubbingError {
                     Text(error).font(.csCallout).foregroundStyle(Color.csDanger)

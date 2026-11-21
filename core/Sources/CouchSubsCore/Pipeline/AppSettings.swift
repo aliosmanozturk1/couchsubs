@@ -355,10 +355,20 @@ public enum DubbingOutput: String, Codable, CaseIterable, Sendable {
     case computer
 }
 
+/// Dublajın sesi (Windows DubbingEngine ile aynı): Pocket TTS'in doğal sesleri ya da cihazın kendi Türkçe sesi.
+public enum DubbingEngine: String, Codable, CaseIterable, Sendable {
+    /// İndirilen doğal sesler (Pocket TTS Turkish).
+    case natural
+    /// Cihazın kendi Türkçe sesi (`SystemSpeech`): indirme yok, anında konuşur, daha mekanik.
+    case fast
+}
+
 public struct DubbingSettings: Codable, Equatable {
     public var enabled = false
     public var output = DubbingOutput.tv
     public var cast = VoiceCast()
+    /// "Ses: Doğal / Hızlı". Eski kayıtlarda yoktur; doğal sesle açılır (Windows ile aynı).
+    public var engine = DubbingEngine.natural
 
     public init() {}
 
@@ -368,6 +378,7 @@ public struct DubbingSettings: Codable, Equatable {
         enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? defaults.enabled
         output = (try? values.decodeIfPresent(DubbingOutput.self, forKey: .output)) ?? defaults.output
         cast = (try? values.decodeIfPresent(VoiceCast.self, forKey: .cast)) ?? defaults.cast
+        engine = (try? values.decodeIfPresent(DubbingEngine.self, forKey: .engine)) ?? defaults.engine
     }
 }
 
