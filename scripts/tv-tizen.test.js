@@ -17,19 +17,32 @@ const code = fs.readFileSync(path.join(tizenDir, 'platform.js'), 'utf8');
 // (verilmezse sayfa ölçüsü; null ise getRect yok). Sahte show, Samsung belgesindeki gibi alanın dışına taşan
 // dikdörtgeni NotSupportedError ile reddeder ve başarıda istenen dikdörtgeni aynen geri verir.
 // opts.reject(rect): true ise show o dikdörtgeni ayrıca reddeder; opts.picture: kayıtlı seçim.
+// opts.follow: görünüm değişince innerWidth/innerHeight de değişir ('width=device-width' ekranın ölçüsü, 'width=N' N
+// genişlik, 16:9). opts.cssBounds: TVWindow sınırı ve '100%' penceresi o anki sayfa ölçüsü (4K Samsung QN900A).
 function load(innerWidth, innerHeight, opts = {}) {
-  const meta = { content: 'width=device-width', setAttribute(name, value) { if (name === 'content') this.content = value; } };
+  let window = null;
+  const meta = { content: 'width=device-width', setAttribute(name, value) {
+    if (name !== 'content') return;
+    this.content = value;
+    if (!opts.follow || !window) return;
+    const width = value === 'width=device-width' ? opts.screen[0] : Number(value.replace('width=', ''));
+    window.innerWidth = width;
+    window.innerHeight = Math.round(width * opts.screen[1] / opts.screen[0]);
+  } };
   const shown = [];
   const store = {};
   if (opts.picture) store['couchsubs.picture'] = opts.picture;
-  const window = { innerWidth, innerHeight, addEventListener() {},
+  window = { innerWidth, innerHeight, addEventListener() {},
     localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } } };
   if (opts.screen) window.screen = { width: opts.screen[0], height: opts.screen[1] };
   const area = opts.area === undefined ? [innerWidth, innerHeight] : opts.area;
   // opts.physical: TV koordinatı fiziksel pikselde okur (sınır ekranın ölçüsü), '100%' ise sayfanın CSS ölçüsünde çizilir
   // (4K Samsung, scr 3840x2160, sayfa 1920x1080: görüntü sol üst çeyrekte).
-  const bounds = opts.physical ? opts.screen : area || [innerWidth, innerHeight];
-  const fullArea = area || [innerWidth, innerHeight];
+  const staticBounds = opts.physical ? opts.screen : area || [innerWidth, innerHeight];
+  const staticArea = area || [innerWidth, innerHeight];
+  const page = () => [window.innerWidth, window.innerHeight];
+  let bounds = staticBounds;
+  let fullArea = staticArea;
   let current = null;
   const px = (rect) => rect.map((v) => (String(v).endsWith('%') ? null : parseFloat(v)));
   const outside = (rect) => {
@@ -40,7 +53,8 @@ function load(innerWidth, innerHeight, opts = {}) {
   const tvwindow = {
     setSource(source, ok) { ok(); },
     show(ok, fail, rect, type, z) {
-      const entry = { rect: [...rect], type, z, ok: false };
+      if (opts.cssBounds) bounds = fullArea = page();
+      const entry = { rect: [...rect], type, z, ok: false, page: page() };
       shown.push(entry);
       if (outside(rect) || (opts.reject && opts.reject(rect))) {
         const error = new Error('outside'); error.name = 'NotSupportedError';
@@ -72,12 +86,12 @@ function load(innerWidth, innerHeight, opts = {}) {
     },
     tvwindow,
   };
-  const document = { querySelector: (q) => (q === 'meta[name="viewport"]' ? meta : null) };
+  const document = { querySelector: (q) => (q === 'meta[name="viewport"]' ? meta : null), documentElement: { style: {} } };
   vm.runInNewContext(code, { window, document, tizen, setTimeout, clearTimeout, setInterval });
   const diagnostics = [];
   window.COUCHSUBS_PLATFORM.pictureDiagnostics((text) => diagnostics.push(text));
   // accepted: Samsung'un kabul ettiği istekler (reddedilen denemeler hariç).
-  return { platform: window.COUCHSUBS_PLATFORM, meta, shown, store, diagnostics, current: () => current,
+  return { platform: window.COUCHSUBS_PLATFORM, meta, shown, store, diagnostics, current: () => current, window, document,
     accepted: () => shown.filter((s) => s.ok),
     runTimers, tick, resolution, resetWindow, listeners, pending: () => timers.filter((t) => t.fn).length, intervals: () => intervals.length };
 }
@@ -122,7 +136,7 @@ function playHdmi(loaded) {
 }
 
 test('16:9 TV (1080p ve 4K): HDMI penceresi yüzeyin tamamı, sayfanın arkasında; tek show', () => {
-  for (const screen of [[1920, 1080], [3840, 2160], undefined]) {
+  for (const screen of [[1920, 1080], undefined]) {
     const loaded = load(1920, 1080, { screen });
     assert.deepEqual(playHdmi(loaded), [FULL]);
     assert.equal(loaded.shown[0].type, 'MAIN');
@@ -407,30 +421,99 @@ test('Ekranı doldur seçiliyken ve 16:9 TV\'de sınama/yeniden isteme yok', () 
   assert.equal(tv.pending(), 0);
 });
 
-// X'te bildirilen 4K Samsung TV: Pencere satırı 'scr 3840x2160 dpr 1 page 1920x1080 vv 2 · 100% ok · area 0,0,1920,1080 ·
-// fit'. '100%' penceresi sayfanın CSS ölçüsünde (1920x1080) çiziliyor, TV koordinatı fiziksel pikselde okuyor: PS5
-// görüntüsü sol üst çeyrekte küçük kalıyordu. Pencere ekranın fiziksel ölçüsünde istenir.
-test('4K Samsung (scr 3840x2160, sayfa 1920x1080): görüntü ekranın tamamına istenir, çeyrekte kalmaz', () => {
-  const loaded = load(1920, 1080, { screen: [3840, 2160], physical: true });
+// X'te bildirilen 4K Samsung TV (QE75QN900A, 0.9.46): Pencere satırı 'scr 3840x2160 dpr 1 page 1920x1080 vv 2 · 100% ok ·
+// area 0,0,1920,1080 · fit 0,0,3840,2160 fail NotSupportedError · now 0,0,1920,1080'. TVWindow dikdörtgeni o anki sayfa
+// ölçüsünde sınırlıyor (cssBounds), sayfa 1920'lik görünümde 2 kat büyütülüyor: '100%' sol üst çeyrek. Görünüm kısa
+// süre ekran genişliğinde açılıp '100%' o ölçüde istenir (hold); Sarı sıradaki yöntemi dener.
+// Görünüm değişikliğinden sonraki beklemeler dahil bütün zamanlayıcılar.
+function drain(loaded) {
+  for (let i = 0; i < 10 && loaded.pending(); i++) loaded.runTimers();
+}
+
+function playAsync(loaded) {
+  const statuses = [];
+  loaded.platform.showHdmi(1, null, (s) => statuses.push(s));
+  drain(loaded);
+  assert.deepEqual(statuses, ['loading', 'playing']);
+  return loaded.accepted().map((s) => s.rect);
+}
+
+const QN900A = { screen: [3840, 2160], follow: true, cssBounds: true };
+
+test('4K Samsung (QN900A): fiziksel istek reddedilir, pencere ekran genişliğindeki görünümde istenir, sayfa 1920ye döner', () => {
+  const loaded = load(1920, 1080, QN900A);
   assert.equal(loaded.meta.content, 'width=1920');
+  assert.deepEqual(playAsync(loaded), [FULL, FULL]);
+  assert.deepEqual(loaded.shown.map((s) => s.rect), [FULL, ['0px', '0px', '3840px', '2160px'], FULL]);
+  // Son '100%' ekran genişliğindeki görünümde istendi: pencere ekranın tamamı.
+  assert.deepEqual(loaded.shown.at(-1).page, [3840, 2160]);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '3840px', '2160px']);
+  // Sayfa yine 1920'lik görünümde, zoom yok.
+  assert.equal(loaded.meta.content, 'width=1920');
+  assert.equal(loaded.platform.pageZoom(), 1);
+  assert.equal(loaded.platform.pictureModes(), 'hold');
+  assert.match(loaded.diagnostics.at(-1),
+    /scr 3840x2160 .*area 0,0,1920,1080 · auto · physical 0,0,3840,2160 fail NotSupportedError hold vw 3840 ok · now 0,0,3840,2160 · vw 1920$/);
+  // Yeniden açılışta fiziksel istek bir daha denenmez.
+  playAsync(loaded);
+  assert.equal(loaded.shown.filter((s) => s.rect[2] === '3840px').length, 1);
+});
+
+test('4K Samsung: sinyal değişince (menü → oyun) pencere yine ekran genişliğindeki görünümde istenir', () => {
+  const loaded = load(1920, 1080, QN900A);
+  playAsync(loaded);
+  loaded.resetWindow();
+  loaded.resolution({ width: 3840, height: 2160, frequency: 60, type: 'HDMI' });
+  drain(loaded);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '3840px', '2160px']);
+  assert.equal(loaded.meta.content, 'width=1920');
+  assert.match(loaded.diagnostics.at(-1), /^signal 3840\/2160\/60\/HDMI → .*hold vw 3840 ok/);
+});
+
+test('4K Samsung: Sarı sırayla zoom, page, hold dener; seçim saklanır, zoom sayfayı 1920lik ölçüye büyütür', () => {
+  const loaded = load(1920, 1080, QN900A);
+  playAsync(loaded);
+  const yellow = () => { const mode = loaded.platform.togglePicture(() => {}); drain(loaded); return mode; };
+  assert.equal(yellow(), 'zoom');
+  assert.equal(loaded.store['couchsubs.picture4k'], 'zoom');
+  assert.equal(loaded.meta.content, 'width=device-width');
+  assert.equal(loaded.document.documentElement.style.zoom, '2');
+  assert.equal(loaded.platform.pageZoom(), 2);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '3840px', '2160px']);
+  assert.match(loaded.diagnostics.at(-1), /· zoom · zoom vw 3840 ok · now 0,0,3840,2160 · vw 3840 zoom 2$/);
+  assert.equal(yellow(), 'page');
+  assert.equal(loaded.meta.content, 'width=1920');
+  assert.equal(loaded.document.documentElement.style.zoom, '');
+  assert.equal(loaded.platform.pageZoom(), 1);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '1920px', '1080px']);
+  assert.match(loaded.diagnostics.at(-1), /· page · page ok/);
+  assert.equal(yellow(), 'hold');
+  assert.deepEqual(loaded.current(), ['0px', '0px', '3840px', '2160px']);
+  // Kayıtlı seçim yeniden açılışta kullanılır (fiziksel istek denenmez).
+  const again = load(1920, 1080, { ...QN900A });
+  again.store['couchsubs.picture4k'] = 'zoom';
+  playAsync(again);
+  assert.equal(again.shown.filter((s) => s.rect[2] === '3840px').length, 0);
+  assert.equal(again.platform.pageZoom(), 2);
+});
+
+test('4K Samsung: görünüm genişlemezse hold ve zoom atlanır, eski 100% penceresi kalır, nedeni yazılır', () => {
+  const loaded = load(1920, 1080, { screen: [3840, 2160], cssBounds: true });
+  playAsync(loaded);
+  assert.equal(loaded.meta.content, 'width=1920');
+  assert.equal(loaded.platform.pageZoom(), 1);
+  assert.match(loaded.diagnostics.at(-1), /physical 0,0,3840,2160 fail NotSupportedError hold fail vw 1920 zoom fail vw 1920 page ok/);
+});
+
+test('4K Samsung fiziksel koordinat kullanıyorsa (0.9.39) pencere ekranın fiziksel ölçüsünde kalır', () => {
+  const loaded = load(1920, 1080, { screen: [3840, 2160], physical: true });
   assert.deepEqual(playHdmi(loaded), [FULL, ['0px', '0px', '3840px', '2160px']]);
   assert.deepEqual(loaded.current(), ['0px', '0px', '3840px', '2160px']);
-  assert.match(loaded.diagnostics.at(-1), /scr 3840x2160 .*area 0,0,1920,1080 · fit 0,0,3840,2160 ok/);
-  // Sinyal değişince yine ekranın tamamı istenir.
+  assert.match(loaded.diagnostics.at(-1), /scr 3840x2160 .*area 0,0,1920,1080 · auto · physical 0,0,3840,2160 ok/);
   loaded.resetWindow();
   loaded.resolution({ width: 3840, height: 2160, frequency: 60, type: 'HDMI' });
   loaded.runTimers();
   assert.deepEqual(loaded.current(), ['0px', '0px', '3840px', '2160px']);
-});
-
-test('4K Samsung sayfa koordinatı kullanıyorsa fiziksel istek reddedilir, 100% kalır; bir daha denenmez', () => {
-  const loaded = load(1920, 1080, { screen: [3840, 2160] });
-  assert.deepEqual(playHdmi(loaded), [FULL]);
-  assert.deepEqual(loaded.shown.map((s) => s.rect), [FULL, ['0px', '0px', '3840px', '2160px']]);
-  assert.deepEqual(loaded.current(), ['0px', '0px', '1920px', '1080px']);
-  loaded.platform.showHdmi(1, null, () => {});
-  assert.deepEqual(loaded.shown.at(-1).rect, FULL);
-  assert.equal(loaded.shown.filter((s) => s.rect[2] === '3840px').length, 1);
 });
 
 test('Ultra geniş monitör fiziksel koordinat kullanıyorsa 16:9 kutu fiziksel ölçüde ortada', () => {

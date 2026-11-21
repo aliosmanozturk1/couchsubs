@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Samsung TV paketinin (scripts/package-tizen.sh çıktısı) gerçek Chromium'da çizimi: ultrawide (3440x1440) ve 16:9
-// (1920x1080) ekran, görünüm (viewport) etiketi dikkate alınarak (TV tarayıcısı gibi). #304: paketteki sabit
+// Samsung TV paketinin (scripts/package-tizen.sh çıktısı) gerçek Chromium'da çizimi: ultrawide (3440x1440), 16:9
+// (1920x1080) ve 4K (3840x2160) ekran, görünüm (viewport) etiketi dikkate alınarak (TV tarayıcısı gibi). #304: paketteki sabit
 // "width=1920" görünümü Samsung'un uygulamayı 21:9 ekranda 16:9 kutuda tutmasına yol açıyordu.
 // Çalıştırma: node --test scripts/tv-tizen-screen.test.js (Tarayıcı yolu: COUCHSUBS_TEST_BROWSER)
 'use strict';
@@ -42,7 +42,9 @@ function devtools(proc) {
   });
 }
 
-async function render(page, width, height) {
+// extra.cssBounds: sahte TVWindow dikdörtgeni o anki sayfa ölçüsünde sınırlar (4K QN900A); extra.yellow: Sarı tuşa
+// kaç kez basılacağı (her basıştan sonra ölçülür).
+async function render(page, width, height, extra = {}) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'couchsubs-tizen-screen-'));
   const proc = spawn(browser, ['--headless=new', '--disable-gpu', '--disable-background-networking', '--no-first-run',
     '--no-default-browser-check', '--hide-scrollbars', '--remote-debugging-pipe', '--user-data-dir=' + path.join(temp, 'profile'),
@@ -63,19 +65,35 @@ async function render(page, width, height) {
       document.getElementById('panel').className = '';
       // HDMI penceresi (#304): sahte TVWindow (getRect yok; Samsung belgesindeki gibi istenen dikdörtgeni geri verir).
       var rects = [];
+      var cssBounds = ${JSON.stringify(!!extra.cssBounds)};
       window.tizen = { systeminfo: { getPropertyValue: function (name, ok) { ok({ connected: [{ type: 'HDMI', number: 1 }] }); } },
         tvwindow: { setSource: function (s, ok) { ok(); }, show: function (ok, fail, rect) {
-          rects.push(rect.slice());
+          rects.push(rect.slice().concat(['@' + innerWidth]));
+          if (cssBounds && String(rect[2]).indexOf('%') < 0 && parseFloat(rect[2]) > innerWidth) {
+            return fail({ name: 'NotSupportedError' });
+          }
           ok(rect.slice()); } } };
+      function snapshot() {
+        return {
+          rects: rects.map(function (r) { return cssBounds ? r : r.slice(0, 4); }),
+          viewport: document.querySelector('meta[name="viewport"]').getAttribute('content'),
+          inner: [innerWidth, innerHeight],
+          scale: visualViewport.scale,
+          zoom: document.documentElement.style.zoom || '',
+          panel: box(document.getElementById('panel')),
+          subtitle: box(document.getElementById('subtitle')),
+        };
+      }
+      var shots = [];
+      var presses = ${Number(extra.yellow || 0)};
       window.COUCHSUBS_PLATFORM.showHdmi(1, null, function () {});
-      done(JSON.stringify({
-        rects: rects,
-        viewport: document.querySelector('meta[name="viewport"]').getAttribute('content'),
-        inner: [innerWidth, innerHeight],
-        scale: visualViewport.scale,
-        panel: box(document.getElementById('panel')),
-        subtitle: box(document.getElementById('subtitle')),
-      }));
+      function next() {
+        shots.push(snapshot());
+        if (shots.length > presses) return done(JSON.stringify(presses ? shots : shots[0]));
+        window.COUCHSUBS_PLATFORM.togglePicture(function () {});
+        setTimeout(next, 800);
+      }
+      setTimeout(next, ${extra.cssBounds ? 800 : 0});
     }, 1500); })`;
     const { result } = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId);
     return JSON.parse(result.value);
@@ -136,6 +154,33 @@ test('Samsung paketi: ultrawide ve 16:9 ekranda sayfa ekranın tamamına çizili
       assert.ok(Math.abs((r.subtitle.left + r.subtitle.right) / 2 - 960) < 2, JSON.stringify(r));
       // 16:9 TV'de HDMI penceresi eskisi gibi tek '100%' çağrısı.
       assert.deepEqual(r.rects, [['0', '0', '100%', '100%']]);
+    });
+
+    await t.test('3840x2160 (4K QN900A, pencere sayfa ölçüsünde sınırlı): yöntemler sırayla, sayfa düzeni değişmez', async () => {
+      // X'teki 4K Samsung: 'scr 3840x2160 dpr 1 page 1920x1080 vv 2'; 3840x2160 px reddedilir, '100%' sol üst çeyrek.
+      const [hold, zoom, page2] = await render(page, 3840, 2160, { cssBounds: true, yellow: 2 });
+      const FULL = ['0', '0', '100%', '100%'];
+      // Varsayılan (hold): fiziksel istek reddedilir, '100%' ekran genişliğindeki görünümde (3840) istenir, sayfa 1920'ye
+      // döner (visualViewport 2, eskisi gibi).
+      assert.deepEqual(hold.rects, [[...FULL, '@1920'], ['0px', '0px', '3840px', '2160px', '@1920'], [...FULL, '@3840']]);
+      assert.equal(hold.viewport, 'width=1920');
+      assert.deepEqual(hold.inner, [1920, 1080]);
+      assert.equal(hold.scale, 2);
+      // Sarı (zoom): sayfa ekran genişliğinde, CSS zoom 2; son '100%' 3840'lık sayfada. Panel ve altyazı ekranda aynı
+      // yerde (bu Chrome'da getBoundingClientRect zoom'lu ölçü verir: hold'daki CSS ölçüsü x visualViewport).
+      assert.equal(zoom.viewport, 'width=device-width');
+      assert.deepEqual(zoom.inner, [3840, 2160]);
+      assert.equal(zoom.zoom, '2');
+      assert.deepEqual(zoom.rects.at(-1), [...FULL, '@3840']);
+      for (const key of ['panel', 'subtitle']) {
+        for (const side of ['left', 'right', 'top', 'bottom']) {
+          assert.ok(Math.abs(zoom[key][side] - hold[key][side] * hold.scale) < 2, key + ' ' + side + ' ' + JSON.stringify([hold, zoom]));
+        }
+      }
+      // Sarı (page): eski davranış, 1920'lik görünümde '100%'.
+      assert.equal(page2.viewport, 'width=1920');
+      assert.equal(page2.zoom, '');
+      assert.deepEqual(page2.rects.at(-1), [...FULL, '@1920']);
     });
 
     await t.test('telefon ve Android uygulamasının paketleri de aynı görünümü yazar', () => {

@@ -6,11 +6,13 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.46';
+  var APP_VERSION = '0.9.47';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
   var KEY = { RED: 403, GREEN: 404, YELLOW: 405, BLUE: 406, LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, OK: 13, BACK: platform.backKey };
+  // Sayfa ölçüleri (innerWidth, clientWidth ...) window.COUCHSUBS_ZOOM'a bölünür: Samsung 4K'da sayfa HDMI görüntüsü
+  // için ekranın fiziksel genişliğinde açılıp CSS zoom ile 1920'lik ölçüye büyütülebilir (tv-tizen/platform.js).
 
   var server = null;
   var eventSource = null;
@@ -91,8 +93,8 @@
     var count = 0;
     var largest = 0;
     try {
-      var width = window.innerWidth || 1920;
-      var height = window.innerHeight || 1080;
+      var width = (window.innerWidth || 1920) / (window.COUCHSUBS_ZOOM || 1);
+      var height = (window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1);
       var boxes = document.querySelectorAll('#screen .item, #regions .item, #regions .region, #subtitle-cover');
       for (var i = 0; i < boxes.length; i++) {
         var rect = boxes[i].getBoundingClientRect();
@@ -654,8 +656,8 @@
 
   function coverSize(textId) {
     if (textId !== 'subtitle-text' || placement !== 'cover' || !currentBox) return null;
-    var width = document.documentElement.clientWidth || window.innerWidth || 1920;
-    var height = document.documentElement.clientHeight || window.innerHeight || 1080;
+    var width = (document.documentElement.clientWidth || window.innerWidth || 1920) / (window.COUCHSUBS_ZOOM || 1);
+    var height = (document.documentElement.clientHeight || window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1);
     var box = coverBounds(screenBox(currentBox, isOverlay()), isOverlay());
     return {
       width: bandShape ? width : (box.right - box.left) * width,
@@ -664,7 +666,7 @@
   }
 
   function wrapToWidth(text, el, size, cover) {
-    var viewport = document.documentElement.clientWidth || window.innerWidth || 1920;
+    var viewport = (document.documentElement.clientWidth || window.innerWidth || 1920) / (window.COUCHSUBS_ZOOM || 1);
     // Yatay iç boşluk iki yanda 0.5em: toplam bir yazı boyu.
     var room = viewport * WRAP_WIDTH - size;
     var width = lineWidths(el, text, size);
@@ -719,7 +721,7 @@
     // hem bölünmüş satır sayısına sığana dek küçülür. Görev paneli gibi satır satır yazılar bu sınırın dışındadır.
     // Gizli satır (display: none) ölçülemez, 0 yüksekliğiyle döngüye girmez.
     if (paragraphs) return fitBox(el);
-    var limit = (document.documentElement.clientHeight || window.innerHeight || 1080) * SUBTITLE_MAX_HEIGHT;
+    var limit = (document.documentElement.clientHeight || window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1) * SUBTITLE_MAX_HEIGHT;
     var lines = wrapped.text.split('\n').length;
     while (size > SUBTITLE_MIN_FONT && (el.offsetHeight > limit || extraLines(el, lines))) {
       size -= 1;
@@ -811,7 +813,7 @@
   function notePlace() {
     var el = $('subtitle-text');
     var rect = el.getBoundingClientRect();
-    var height = document.documentElement.clientHeight || window.innerHeight || 0;
+    var height = (document.documentElement.clientHeight || window.innerHeight || 0) / (window.COUCHSUBS_ZOOM || 1);
     diag.place = 'y ' + Math.round(rect.top) + '-' + Math.round(rect.bottom) + '/' + height + ' ' +
       window.getComputedStyle($('subtitle')).visibility + ' f' + window.getComputedStyle(el).fontSize;
     renderDiag();
@@ -977,8 +979,8 @@
   // Yeriyle gelen çevirileri (ekranı çevir öğeleri, ek alan blokları) kendi İngilizce yazılarının üstüne koyar.
   function placeItems(host, items, regionId) {
     var phone = regionId === 'game-phone';
-    var width = window.innerWidth || 1920;
-    var height = window.innerHeight || 1080;
+    var width = (window.innerWidth || 1920) / (window.COUCHSUBS_ZOOM || 1);
+    var height = (window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1);
     var pad = phone ? 0.001 : SCREEN_PAD;
     var minWidth = phone ? 1 : 80;
     for (var i = 0; i < (items || []).length; i++) {
@@ -1119,8 +1121,8 @@
       return;
     }
     if (tooBig(box)) return hideRegion(id);
-    var width = window.innerWidth || 1920;
-    var height = window.innerHeight || 1080;
+    var width = (window.innerWidth || 1920) / (window.COUCHSUBS_ZOOM || 1);
+    var height = (window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1);
     fillText(el, data.text, data.icons);
     el.style.left = el.style.right = el.style.top = el.style.bottom = '';
     if ((box.left + box.right) / 2 > 0.5) {
@@ -1192,7 +1194,7 @@
     if (!el || !$('subtitle-text') || el.className === 'hidden' || !parts.length) return;
     var sub = $('subtitle-text').getBoundingClientRect();
     if (!(sub.height > 0)) return;
-    var height = document.documentElement.clientHeight || window.innerHeight || 1080;
+    var height = (document.documentElement.clientHeight || window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1);
     var gap = Math.max(4, Math.round(height * AVOID_GAP));
     for (var j = 0; j < parts.length; j++) {
       var r = parts[j].getBoundingClientRect();
@@ -1242,7 +1244,7 @@
     // Altyazı yokken (ör. ayar değişince yeniden yerleşirken) örtü tek başına boş siyah kutu olarak kalmasın.
     if (!box || el.className === 'hidden') return avoidRegions();
 
-    var height = document.documentElement.clientHeight || window.innerHeight || 1080;
+    var height = (document.documentElement.clientHeight || window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1);
     var gap = Math.round(height * 0.012);
     var mode = placement;
     // Ekranın kenarında yer yoksa öbür yana geçilir.
@@ -1303,8 +1305,8 @@
   }
 
   function placeCover(cover, box, text) {
-    var width = document.documentElement.clientWidth || window.innerWidth || 1920;
-    var height = document.documentElement.clientHeight || window.innerHeight || 1080;
+    var width = (document.documentElement.clientWidth || window.innerWidth || 1920) / (window.COUCHSUBS_ZOOM || 1);
+    var height = (document.documentElement.clientHeight || window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1);
     var bounds = coverBounds(box, isOverlay());
     var left = bounds.left * width;
     var top = bounds.top * height;
@@ -1334,8 +1336,8 @@
   // dışına düşerse hiç görünmüyordu. Yerleştirilen altyazı görünür alanda değilse sabit yüksekliğe döner.
   function keepOnScreen(el, cover) {
     var rect = el.getBoundingClientRect();
-    var viewHeight = document.documentElement.clientHeight || window.innerHeight || 1080;
-    var viewWidth = document.documentElement.clientWidth || window.innerWidth || 1920;
+    var viewHeight = (document.documentElement.clientHeight || window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1);
+    var viewWidth = (document.documentElement.clientWidth || window.innerWidth || 1920) / (window.COUCHSUBS_ZOOM || 1);
     var visible = rect.height > 0 && rect.top >= -2 && rect.bottom <= viewHeight + 2 && rect.right > 0 && rect.left < viewWidth;
     if (visible) return;
     el.style.left = '8%';
@@ -2239,8 +2241,10 @@
   function formatKeys() {
     var el = $('keys');
     var text = el.textContent;
-    // Geniş ekranlı Samsung'da (21:9, 32:9) Sarı tuş HDMI görüntüsünü sığdırır ya da ekranı doldurur (#304).
-    if (pictureModes()) text += ' · ' + t('keyPicture');
+    // Geniş ekranlı Samsung'da (21:9, 32:9) Sarı tuş HDMI görüntüsünü sığdırır ya da ekranı doldurur (#304); 4K
+    // Samsung'da görüntü ekranı doldurmuyorsa sıradaki pencere yöntemini dener.
+    var modes = pictureModes();
+    if (modes) text += ' · ' + t(PICTURE_TEXT[modes] ? 'keyPictureSize' : 'keyPicture');
     var parts = text.split(' · ');
     el.innerHTML = '';
     for (var i = 0; i < parts.length; i++) {
@@ -2259,11 +2263,15 @@
     try { return typeof platform.pictureModes === 'function' ? platform.pictureModes() : null; } catch (e) { return null; }
   }
 
-  // Sarı: geniş ekranda HDMI görüntüsü 16:9 tam yükseklik (yanlarda siyah) ya da ekranın tamamı (gerilmiş).
+  // 4K Samsung'daki pencere yöntemleri (tv-tizen/platform.js) ve Sarı'dan sonra gösterilen yazı.
+  var PICTURE_TEXT = { hold: 'pictureSize1', zoom: 'pictureSize2', page: 'pictureSize3' };
+
+  // Sarı: geniş ekranda HDMI görüntüsü 16:9 tam yükseklik (yanlarda siyah) ya da ekranın tamamı (gerilmiş); 4K
+  // Samsung'da sıradaki pencere yöntemi.
   function togglePicture() {
     if (!pictureModes()) return;
     var mode = platform.togglePicture();
-    showSubtitle(t(mode === 'fill' ? 'pictureFill' : 'pictureFit'), 3000);
+    showSubtitle(t(PICTURE_TEXT[mode] || (mode === 'fill' ? 'pictureFill' : 'pictureFit')), 3000);
   }
 
   // Panel açıkken bekleme kutusu kapanır: ikisi üst üste binince yazılar okunmuyor.

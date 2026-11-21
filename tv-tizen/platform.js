@@ -163,9 +163,169 @@
     return true;
   }
 
-  // '100%'ten başka bir pencere gerekiyor mu: geniş ekran ya da ekranın fiziksel ölçüsünde kabul edilmiş pencere (4K).
+  // '100%'ten başka bir pencere gerekiyor mu: geniş ekran, ekranın fiziksel ölçüsünde kabul edilmiş pencere ya da
+  // ölçeklenmiş 16:9 sayfa (4K).
   function customWindow() {
-    return isWide() || acceptedRect !== null;
+    return isWide() || acceptedRect !== null || scaledScreen();
+  }
+
+  // --- 4K Samsung: ölçeklenmiş 16:9 sayfa ---
+  // X'te bildirilen 4K/8K Samsung'lar (QE75QN900A, Tizen 6.0): 'scr 3840x2160 dpr 1 page 1920x1080 vv 2 · 100% ok ·
+  // area 0,0,1920,1080 · fit 0,0,3840,2160 fail NotSupportedError · now 0,0,1920,1080'. Paketin "width=device-width"
+  // görünümü ve base_screen_resolution=fullscreen bu TV'de uygulama yüzeyini 3840x2160 açıyor; platform.js görünümü
+  // 1920'ye çekince Chromium sayfayı 2 kat büyütüyor (visualViewport 2). TVWindow ise dikdörtgeni sayfanın CSS
+  // pikselinde sınırlıyor (3840x2160 reddediliyor, '100%' = 1920x1080) ama yüzeye büyütmeden çiziyor: PS5 görüntüsü
+  // sol üst çeyrekte kalıyor. Ultra geniş G8'de 0.9.32'deki "her yönde %75" küçülme de aynı orandı (1080/1440).
+  // Bu çıkarım kanıta dayanıyor ama gerçek TV'de denenmedi; bu yüzden pencere sırayla şu yollarla istenir, her
+  // denemenin sonucu Pencere satırına yazılır, Sarı tuş sıradakine geçer ve seçim saklanır:
+  //   physical: ekranın fiziksel ölçüsünde px dikdörtgen (0.9.39; bu TV reddediyor, reddedilirse bir daha denenmez)
+  //   hold: görünüm kısa süre ekran genişliğine (device-width) açılır, '100%' o ölçüde istenir, görünüm 1920'ye döner
+  //         (Samsung pencereyi istendiği andaki ölçüde tutarsa sayfa değişmeden görüntü ekranı doldurur)
+  //   zoom: görünüm ekran genişliğinde kalır, sayfa CSS zoom ile 1920'lik ölçüye büyütülür, '100%' istenir
+  //   page: eski davranış, 1920'lik görünümde '100%'
+  var SCALED_KEY = 'couchsubs.picture4k';
+  var SCALED_MODES = ['hold', 'zoom', 'page'];
+  // Görünüm değişikliğinden sonra innerWidth'in yenilenmesi için beklenen süre (ms).
+  var VIEWPORT_DELAY = 300;
+  var zoomFactor = 1;
+  // Son başlatılan deneme dizisi: görünüm beklemesi sürerken yenisi başlarsa (sinyal, Sarı) eskisi bırakılır.
+  var scaledRun = 0;
+
+  // Ekran 16:9 (ya da dar) ve fiziksel ölçüsü 1920x1080'den belirgin büyük: sayfa 1920'lik görünümde büyütülüyor.
+  function scaledScreen() {
+    try {
+      var width = window.screen && window.screen.width;
+      var height = window.screen && window.screen.height;
+      if (!(width > 0) || !(height > 0) || width / height >= WIDE_RATIO) return false;
+      return width > NARROW_WIDTH * 1.05 && height > PAGE_HEIGHT * 1.05;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Sarı tuşla seçilen yöntem; seçilmemişse null (önce physical, reddedilirse hold).
+  function scaledMode() {
+    try {
+      var stored = window.localStorage.getItem(SCALED_KEY);
+      return SCALED_MODES.indexOf(stored) >= 0 ? stored : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function setViewport(content) {
+    try {
+      var meta = document.querySelector('meta[name="viewport"]');
+      if (meta) meta.setAttribute('content', content);
+    } catch (e) {}
+  }
+
+  function setZoom(factor) {
+    zoomFactor = factor > 1 ? factor : 1;
+    // app.js yerleşim ölçülerini buna böler.
+    window.COUCHSUBS_ZOOM = zoomFactor;
+    try {
+      document.documentElement.style.zoom = zoomFactor > 1 ? String(zoomFactor) : '';
+    } catch (e) {}
+  }
+
+  // Sayfa 1920'lik görünüme ve zoom'suz hâline döner.
+  function pageViewport() {
+    if (zoomFactor > 1) setZoom(1);
+    setViewport('width=' + NARROW_WIDTH);
+  }
+
+  // Webapis ürün bilgisi: panel 4K/8K mı (tanı satırı için; API yoksa boş).
+  function panelText() {
+    try {
+      var info = webapis.productinfo;
+      if (typeof info.is8KPanelSupported === 'function' && info.is8KPanelSupported()) return ' · panel 8k';
+      if (typeof info.isUdPanelSupported === 'function' && info.isUdPanelSupported()) return ' · panel 4k';
+    } catch (e) {}
+    return '';
+  }
+
+  function showFull(ok, fail) {
+    try {
+      tizen.tvwindow.show(ok, fail, FULL_SCREEN, 'MAIN', 'BEHIND');
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  // line: tanı satırının başı. Sırayla denenen yöntemler: seçilmişse o (reddedilirse sıradakiler), yoksa physical
+  // (bir kez reddedildiyse atlanır) ve hold. Her biri tried listesine yazılır; biri kabul edilince durulur.
+  function showScaled(line, done) {
+    var chosen = scaledMode();
+    var order = chosen ? SCALED_MODES.slice(SCALED_MODES.indexOf(chosen)).concat(SCALED_MODES.slice(0, SCALED_MODES.indexOf(chosen)))
+      : (physicalRejected ? [] : ['physical']).concat(SCALED_MODES);
+    var tried = [];
+    var run = ++scaledRun;
+    acceptedRect = null;
+    var finish = function () {
+      readRect(function (now) {
+        notePicture(line + panelText() + ' · ' + tried.join(' ') + (now ? ' · now ' + rectText(now) : '') +
+          ' · vw ' + window.innerWidth + (zoomFactor > 1 ? ' zoom ' + zoomFactor : ''));
+        done();
+      });
+    };
+    var attempt = function (index) {
+      if (index >= order.length) {
+        // Hepsi reddedildi: eski '100%' penceresi.
+        pageViewport();
+        return showFull(finish, finish);
+      }
+      var mode = order[index];
+      var next = function (e) {
+        tried.push(mode + ' fail ' + errorText(e));
+        attempt(index + 1);
+      };
+      if (mode === 'physical') {
+        pageViewport();
+        var rect = ['0px', '0px', Math.floor(window.screen.width) + 'px', Math.floor(window.screen.height) + 'px'];
+        try {
+          tizen.tvwindow.show(function () {
+            acceptedRect = parseRect(rect);
+            tried.push('physical ' + rectText(rect) + ' ok');
+            finish();
+          }, function (e) {
+            physicalRejected = true;
+            tried.push('physical ' + rectText(rect) + ' fail ' + errorText(e));
+            attempt(index + 1);
+          }, rect, 'MAIN', 'BEHIND');
+        } catch (e) {
+          physicalRejected = true;
+          next(e);
+        }
+        return;
+      }
+      if (mode === 'page') {
+        pageViewport();
+        return showFull(function () { tried.push('page ok'); finish(); }, next);
+      }
+      // hold ve zoom: görünüm ekran genişliğinde açılır, yenilenmesi beklenir (zoom açıkken innerWidth değişmez).
+      if (zoomFactor > 1 && mode !== 'zoom') setZoom(1);
+      setViewport('width=device-width');
+      later(function () {
+        if (run !== scaledRun) return done();
+        var width = window.innerWidth;
+        if (!(width > NARROW_WIDTH * 1.05)) {
+          // Görünüm genişlemedi: bu yöntem bu TV'de anlamsız.
+          pageViewport();
+          return next({ name: 'vw ' + width });
+        }
+        if (mode === 'zoom') setZoom(width / NARROW_WIDTH);
+        showFull(function () {
+          tried.push(mode + ' vw ' + width + ' ok');
+          if (mode === 'hold') pageViewport();
+          finish();
+        }, function (e) {
+          pageViewport();
+          next(e);
+        });
+      }, VIEWPORT_DELAY);
+    };
+    attempt(0);
   }
 
   // HDMI açıkken pencere yeniden istenir (sinyal değişti ya da Samsung ölçüyü bozdu).
@@ -256,6 +416,7 @@
       readRect(function (full) {
         var area = parseRect(full) || [0, 0, window.innerWidth, window.innerHeight];
         var line = prefix + reportedSizes() + ' · 100% ok · area ' + (parseRect(full) ? '' : 'page ') + rectText(area) + ' · ' + mode;
+        if (!isWide() && scaledScreen()) return showScaled(line.slice(0, line.length - mode.length) + (scaledMode() || 'auto'), done);
         var targets = [];
         var physical = physicalRejected ? null : screenArea(area);
         if (physical) targets.push(pictureRect(physical, mode) || wholeRect(physical));
@@ -376,12 +537,25 @@
 
     // Geniş ekranda (21:9, 32:9) HDMI görüntüsü: 'fit' 16:9 tam yükseklik, 'fill' ekranı doldurur (gerer). Sarı tuş
     // değiştirir (app.js); 16:9 TV'de yoktur.
+    // 4K Samsung'da (ölçeklenmiş 16:9 sayfa) Sarı tuş sıradaki pencere yöntemine geçer: 'hold' | 'zoom' | 'page'.
     pictureModes: function () {
+      if (!isWide() && scaledScreen()) return scaledMode() || 'hold';
       return viewportFor(window.innerWidth, window.innerHeight) ? pictureMode() : null;
     },
+    // Sayfanın CSS zoom oranı (zoom yönteminde ekran genişliği / 1920, yoksa 1); app.js aynı değeri
+    // window.COUCHSUBS_ZOOM'dan okur.
+    pageZoom: function () {
+      return zoomFactor;
+    },
     togglePicture: function (onStatus) {
-      var next = pictureMode() === 'fill' ? 'fit' : 'fill';
-      try { window.localStorage.setItem(PICTURE_KEY, next); } catch (e) {}
+      var next;
+      if (!isWide() && scaledScreen()) {
+        next = SCALED_MODES[(SCALED_MODES.indexOf(scaledMode() || 'hold') + 1) % SCALED_MODES.length];
+        try { window.localStorage.setItem(SCALED_KEY, next); } catch (e) {}
+      } else {
+        next = pictureMode() === 'fill' ? 'fit' : 'fill';
+        try { window.localStorage.setItem(PICTURE_KEY, next); } catch (e) {}
+      }
       if (shownPort !== null) {
         var failed = function () { if (onStatus) onStatus('inputError'); };
         try {
