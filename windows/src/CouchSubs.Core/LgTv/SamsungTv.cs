@@ -166,6 +166,18 @@ public static class SamsungAppKnowledge
         if (added && notify) Changed?.Invoke(host.Trim());
     }
 
+    /// <summary>
+    /// Eşleşmiş TV ağda yeni adreste bulundu (modem yeni adres verdi, bkz. <see cref="TvLocator"/>): eski adreste kurulu
+    /// olduğu biliniyorsa yeni adres de bilinen sayılır. Bilgi adrese bağlı olduğundan, adresi değişen TV'de bekçi önce
+    /// listeye bakıyor, liste geliştirici moduyla kurulan uygulamayı içermiyorsa uygulamayı hiç açmıyordu (beta.62'de
+    /// adres değişse de açıyordu).
+    /// </summary>
+    public static void Carry(string? from, string? to)
+    {
+        if (string.IsNullOrWhiteSpace(to) || !IsKnown(from) || IsKnown(to)) return;
+        Mark(to);
+    }
+
     public static void Forget(string? host)
     {
         if (string.IsNullOrWhiteSpace(host)) return;

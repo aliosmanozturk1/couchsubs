@@ -2545,6 +2545,33 @@ public class TvAppInstallTests
         Assert.Equal(moved, controller.Tv);
         Assert.Equal(moved, store.Load<LgTv>(StoreKeys.Tv));
     }
+
+    /// <summary>
+    /// Samsung TV yeni adrese taşındı: uygulamanın orada kurulu olduğu bilgisi de taşınır ve saklanır (tvAppSeen), bekçi
+    /// yeni adreste listeye bakmadan açar.
+    /// </summary>
+    [Fact]
+    public void MovedSamsungTvStaysKnownInstalled()
+    {
+        var old = "198.51.100." + Random.Shared.Next(1, 120);
+        var moved = "198.51.100." + Random.Shared.Next(130, 250);
+        var store = new MemoryStore();
+        store.Save(StoreKeys.Tv, new LgTv("Samsung", old, TvBrand.Samsung));
+        store.Save(StoreKeys.TvAppSeen, old);
+        try
+        {
+            var controller = Make(new FakeServices(), store);
+            Assert.True(SamsungAppKnowledge.IsKnown(old));
+            controller.TvMoved(new LgTv("Samsung", moved, TvBrand.Samsung));
+            Assert.True(SamsungAppKnowledge.IsKnown(moved));
+            Assert.Equal(moved, store.Load<string>(StoreKeys.TvAppSeen));
+        }
+        finally
+        {
+            SamsungAppKnowledge.Forget(old);
+            SamsungAppKnowledge.Forget(moved);
+        }
+    }
 }
 
 internal sealed class FakeDubbingModel(bool installed) : IDubbingModel

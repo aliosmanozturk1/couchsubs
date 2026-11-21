@@ -766,6 +766,7 @@ final class PhoneModel: ObservableObject {
     }
 
     private func tvMoved(to moved: LGTV) {
+        if moved.brand == .samsung { SamsungAppKnowledge.shared.carry(from: tv?.host, to: moved.host) }
         tv = moved
         store.save(moved, for: StoreKey.tv)
     }

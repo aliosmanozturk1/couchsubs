@@ -138,6 +138,8 @@ public sealed class LiveServices : IAppServices
             var token = new SamsungTokenHolder(key, onKey);
             var samsungLocator = new TvLocator(tv, async target =>
             {
+                // Adresi değişen TV'de kurulu olduğu bilgisi yeni adrese de geçer (yoksa bekçi listeye bakıp açmayabilir).
+                SamsungAppKnowledge.Carry(tv.Host, target.Host);
                 var client = new SamsungClient(target, token.Current);
                 try
                 {

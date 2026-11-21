@@ -263,7 +263,10 @@ final class LiveServices: AppServices {
             return IdleKeeper()
         case .samsung:
             let token = SamsungTokenHolder(token: key, onChange: onKey)
+            let paired = tv.host
             let locator = TVLocator(tv: tv, connect: { tv in
+                // Adresi değişen TV'de kurulu olduğu bilgisi yeni adrese de geçer (yoksa bekçi listeye bakıp açmayabilir).
+                SamsungAppKnowledge.shared.carry(from: paired, to: tv.host)
                 let client = SamsungClient(tv: tv, token: token.current)
                 do {
                     let received = try await client.connect()
@@ -2028,6 +2031,7 @@ final class AppModel: ObservableObject {
     }
 
     func tvMoved(to moved: LGTV) {
+        if moved.brand == .samsung { SamsungAppKnowledge.shared.carry(from: tv?.host, to: moved.host) }
         tv = moved
         store.save(moved, for: StoreKey.tv)
     }

@@ -68,6 +68,44 @@ public class SamsungTvTests
         finally { SamsungAppKnowledge.Changed = before; }
     }
 
+    /// <summary>
+    /// Modem TV'ye yeni adres verince (TvLocator) kurulu olduğu bilgisi yeni adrese geçer: yoksa bekçi yeni adreste
+    /// listeye bakıyor, liste geliştirici moduyla kurulan uygulamayı içermiyorsa uygulamayı hiç açmıyordu.
+    /// </summary>
+    [Fact]
+    public void KnowledgeFollowsTheTvToItsNewAddress()
+    {
+        var old = "198.51.100." + Random.Shared.Next(1, 120);
+        var moved = "198.51.100." + Random.Shared.Next(130, 250);
+        var stranger = "203.0.113." + Random.Shared.Next(1, 250);
+        var saved = new List<string>();
+        var before = SamsungAppKnowledge.Changed;
+        SamsungAppKnowledge.Changed = saved.Add;
+        try
+        {
+            SamsungAppKnowledge.Mark(old, notify: false);
+            Assert.False(SamsungAppKnowledge.ChecksList(SamsungAppKnowledge.IsKnown(old)));
+            Assert.True(SamsungAppKnowledge.ChecksList(SamsungAppKnowledge.IsKnown(moved)));
+            SamsungAppKnowledge.Carry(old, moved);
+            Assert.True(SamsungAppKnowledge.IsKnown(moved));
+            Assert.Equal("DEEP_LINK", SamsungAppKnowledge.ActionFor(SamsungAppKnowledge.IsKnown(moved), SamsungAppPresence.Missing));
+            // Yeni adres saklanır (Windows'ta tvAppSeen); ikinci taşıma yeniden yazmaz.
+            Assert.Equal([moved], saved);
+            SamsungAppKnowledge.Carry(old, moved);
+            Assert.Equal([moved], saved);
+            // Bilinmeyen TV'den bilgi taşınmaz.
+            SamsungAppKnowledge.Carry(stranger, "203.0.113.251");
+            Assert.False(SamsungAppKnowledge.IsKnown("203.0.113.251"));
+            SamsungAppKnowledge.Carry(old, null);
+        }
+        finally
+        {
+            SamsungAppKnowledge.Changed = before;
+            SamsungAppKnowledge.Forget(old);
+            SamsungAppKnowledge.Forget(moved);
+        }
+    }
+
     [Fact]
     public void InstalledAppListDecidesLaunch()
     {
