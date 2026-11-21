@@ -126,10 +126,7 @@ public partial class SettingsWindow : Window
         RemotePlayAppChoice.SelectedItem = RemotePlayAppChoice.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == settings.RemotePlayApp.ToString());
         XboxAudioOnComputer.IsChecked = settings.XboxAudioOnComputer;
         XboxLegacyFrameRate.IsChecked = settings.XboxLegacyFrameRate;
-        PlayStationPictureSourceCard.Visibility = controller.IsXbox ? Visibility.Collapsed : Visibility.Visible;
-        XboxPictureSourceCard.Visibility = controller.IsXbox ? Visibility.Visible : Visibility.Collapsed;
-        ShowFrameSource();
-        PasscodeTab.Visibility = controller.IsXbox ? Visibility.Collapsed : Visibility.Visible;
+        ShowConsole();
         ShowPasscode();
         BuildShortcuts();
         ShowShortcutTexts();
@@ -186,6 +183,46 @@ public partial class SettingsWindow : Window
     private static void OpenUrl(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
 
     /// <summary>"Hesabı bağla": sihirbaz ikinci hesap adımından açılır; ayar penceresi kapanır, sihirbaz ana pencerede görünür.</summary>
+    /// <summary>Konsol kartı ve konsola bağlı bölümler (Mac Ayarlar › Konsol ile aynı).</summary>
+    private void ShowConsole()
+    {
+        var xbox = controller.IsXbox;
+        var wasLoading = loading;
+        loading = true;
+        (xbox ? ConsoleXbox : ConsolePlayStation).IsChecked = true;
+        loading = wasLoading;
+        ConsoleCard.Visibility = controller.XboxAvailable ? Visibility.Visible : Visibility.Collapsed;
+        ConsolePlayStationHint.Visibility = xbox ? Visibility.Collapsed : Visibility.Visible;
+        ConsoleXboxPanel.Visibility = xbox ? Visibility.Visible : Visibility.Collapsed;
+        ConsoleXboxName.Text = controller.SelectedXboxConsole is { } console ? "  ·  " + (string.IsNullOrEmpty(console.Name) ? "Xbox" : console.Name) : "";
+        ConsoleXboxLink.Content = Localizer.Current[controller.HasXboxAccount ? "Choose your Xbox" : "Sign in with Microsoft"];
+        ConsoleXboxLink.Style = (Style)FindResource(controller.NeedsXboxLink ? "PrimaryButton" : "SecondaryButton");
+        ConsoleXboxSignedIn.Visibility = controller.HasXboxAccount ? Visibility.Visible : Visibility.Collapsed;
+        PlayStationPictureSourceCard.Visibility = xbox ? Visibility.Collapsed : Visibility.Visible;
+        XboxPictureSourceCard.Visibility = xbox ? Visibility.Visible : Visibility.Collapsed;
+        ShowFrameSource();
+        PasscodeTab.Visibility = xbox ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void OnConsoleKind(object sender, RoutedEventArgs e)
+    {
+        if (loading || sender is not RadioButton { Tag: string tag }) return;
+        controller.ChangeConsoleKind(tag == "Xbox" ? GameConsoleKind.Xbox : GameConsoleKind.PlayStation);
+        ShowConsole();
+    }
+
+    private void OnLinkXbox(object sender, RoutedEventArgs e)
+    {
+        controller.LinkXbox();
+        Close();
+    }
+
+    private void OnSignOutXbox(object sender, RoutedEventArgs e)
+    {
+        controller.SignOutXbox();
+        ShowConsole();
+    }
+
     private void OnLinkPs5(object sender, RoutedEventArgs e)
     {
         controller.LinkPs5Account();

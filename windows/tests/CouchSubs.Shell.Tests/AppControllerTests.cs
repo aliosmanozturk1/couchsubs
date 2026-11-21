@@ -571,6 +571,43 @@ public class AppControllerTests
         }
     }
 
+    /// Ayarlar › Konsol (Mac ile aynı): kurulumdan sonra da PS5 ↔ Xbox geçilir; Microsoft'tan çıkış jetonu siler, Xbox
+    /// bağlama kurulumun Xbox adımlarını açar ve Xbox seçilince ana ekrana döner.
+    [Fact]
+    public void ConsoleKindChangesAfterSetupAndXboxCanBeLinkedAndSignedOut()
+    {
+        var store = new MemoryStore();
+        store.Save(StoreKeys.SetupComplete, true);
+        store.Save(StoreKeys.ConsoleKindLocked, true);
+        store.Save(StoreKeys.XboxToken, "{}");
+        var controller = new AppController(new FakeServices { Xbox = new FakeXbox([]) }, store, new MemorySettings(), new FakeSleep(),
+            Localizer.ForLanguage("tr"), action => action());
+        Assert.False(controller.IsXbox);
+        controller.ChangeConsoleKind(GameConsoleKind.Xbox);
+        Assert.True(controller.IsXbox);
+        Assert.Equal(GameConsoleKind.Xbox, store.Load<GameConsoleKind?>(StoreKeys.ConsoleKind));
+        Assert.True(controller.NeedsXboxLink);
+
+        controller.LinkXbox();
+        Assert.Equal(OnboardingStep.Console, controller.Step);
+        controller.SelectXboxConsole(new XboxConsole("F4", "Salon Xbox", "XboxSeriesX", true));
+        Assert.False(controller.NeedsXboxLink);
+        controller.Advance();
+        Assert.Equal(OnboardingStep.Done, controller.Step);
+
+        controller.SignOutXbox();
+        Assert.False(controller.HasXboxAccount);
+        Assert.Null(store.Load<string>(StoreKeys.XboxToken));
+        Assert.True(controller.NeedsXboxLink);
+        Assert.Equal("Salon Xbox", controller.SelectedXboxConsole?.Name);
+        controller.LinkXbox();
+        Assert.Equal(OnboardingStep.PsnLogin, controller.Step);
+
+        controller.ChangeConsoleKind(GameConsoleKind.PlayStation);
+        Assert.False(controller.IsXbox);
+        Assert.False(controller.NeedsXboxLink);
+    }
+
     /// Eski sürüm Xbox adını bozuk kaydettiyse (#223) liste sorulunca kayıtlı ad düzelir; konsol yeniden seçilmez.
     [Fact]
     public async Task XboxDiscoveryRepairsSavedConsoleName()

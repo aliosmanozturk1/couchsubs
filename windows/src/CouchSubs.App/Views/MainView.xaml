@@ -143,6 +143,9 @@
                             </c:Card.Style>
                             <StackPanel>
                                 <c:StatusRow x:Name="ConsoleStatus" Title="{Binding ConsoleTitle}" Glyph="{x:Static c:Glyphs.Controller}" Value="{Binding Ps5StatusText}" Tone="{Binding Ps5Tone}" />
+                                <!-- Xbox seçili ama Microsoft girişi ya da Xbox seçimi eksik (Mac ana ekranı ile aynı). -->
+                                <Button Content="{Binding XboxLinkTitle}" HorizontalAlignment="Left" Margin="0,12,0,0" Padding="16,0" Click="OnLinkXbox"
+                                        Style="{StaticResource PrimaryButton}" Visibility="{Binding NeedsXboxLink, Converter={StaticResource VisibleIf}}" />
                                 <!-- Oturum yeniden denemeyi bıraktıysa hemen, süren denemelerde 45 sn sonra: uygulamayı kapatıp açmadan
                                      konsol bağlantısı baştan kurulur, çeviri sürer (ReconnectOffer; Mac, iPhone ve Android ile aynı). -->
                                 <Button Content="{t:T 'Reconnect'}" HorizontalAlignment="Left" Margin="0,12,0,0" Padding="16,0" Click="OnReconnect"

@@ -295,6 +295,8 @@ public partial class MainView : UserControl
     /// <summary>TV adımı açılır (kurulum kartı orada görünür) ve TV'ye yeniden bakılır.</summary>
     /// <summary>TV uygulaması bağlı değil: bekçi TV uygulamasını beklemeden yeniden açmaya çalışır.</summary>
     private void OnRetryTvOpen(object sender, RoutedEventArgs e) => controller.RetryTvOpen();
+    private void OnLinkXbox(object sender, RoutedEventArgs e) => controller.LinkXbox();
+
     private void OnReconnect(object sender, RoutedEventArgs e) => controller.Reconnect();
 
     private async void OnReinstallTvApp(object sender, RoutedEventArgs e)

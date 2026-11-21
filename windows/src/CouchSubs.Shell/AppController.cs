@@ -308,6 +308,64 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         store.Save(StoreKeys.ConsoleKind, kind);
         Changed(nameof(ConsoleKind), nameof(IsXbox), nameof(ConsoleTitle), nameof(StepCount), nameof(StepNumber), nameof(CanStart), nameof(CanAdvance), nameof(Ps5StatusText));
     }
+    /// <summary>
+    /// Ayarlar › Konsol (Mac ConsoleSettingsCard / choosePlatform ile aynı): kurulumdan sonra da PS5 ile Xbox arasında
+    /// geçilir. Çeviri sürüyorsa durur ve yeni konsolla yeniden başlar (konsol hazırsa). Eskiden konsol türü kurulumda
+    /// kilitleniyordu; değiştirmenin tek yolu "Kurulumu sıfırla"ydı.
+    /// </summary>
+    public void ChangeConsoleKind(GameConsoleKind kind)
+    {
+        if (kind == consoleKind || kind == GameConsoleKind.Xbox && services.Xbox is null) return;
+        var wasRunning = isRunning && !demoMode;
+        if (wasRunning) StopForRestart();
+        consoleKind = kind;
+        store.Save(StoreKeys.ConsoleKind, kind);
+        RemotePlayLog.Note($"Konsol türü: {(kind == GameConsoleKind.Xbox ? "Xbox (Beta)" : "PlayStation 5")}");
+        Changed(nameof(ConsoleKind), nameof(IsXbox), nameof(ConsoleTitle), nameof(StepCount), nameof(StepNumber), nameof(CanStart),
+            nameof(CanAdvance), nameof(Ps5StatusText), nameof(PictureSourceTitle), nameof(NeedsXboxLink), nameof(XboxLinkTitle));
+        if (wasRunning && CanStart)
+            _ = StartAsync().ContinueWith(task => RemotePlayLog.Note($"Çeviri yeniden başlatılamadı: {task.Exception?.GetBaseException().Message}"),
+                                          TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    /// <summary>Bu sürümde Xbox ev yayını var mı (Ayarlar'daki konsol seçimi yalnız o zaman görünür).</summary>
+    public bool XboxAvailable => services.Xbox is not null;
+
+    /// <summary>Xbox seçili ama Microsoft girişi ya da Xbox seçimi eksik: ana ekranda ve Ayarlar'da bağlama düğmesi görünür.</summary>
+    public bool NeedsXboxLink => IsXbox && (xboxToken is null || xboxConsole is null);
+
+    /// <summary>Bağlama düğmesinin adı: giriş yoksa "Microsoft ile giriş yap", varsa "Xbox'ını seç" (Mac ile aynı).</summary>
+    public string XboxLinkTitle => text[xboxToken is null ? "Sign in with Microsoft" : "Choose your Xbox"];
+
+    /// <summary>Kurulumun Xbox adımlarına dönüldü ("Microsoft ile giriş yap" / "Xbox'ını seç"); Xbox seçilince ana ekrana dönülür.</summary>
+    private bool linkingXbox;
+
+    /// <summary>
+    /// "Microsoft ile giriş yap" / "Xbox'ını seç" (Mac linkXbox ile aynı): kurulumun Xbox adımları açılır; giriş varsa
+    /// doğrudan Xbox seçimine gidilir. Xbox seçilince kurulumun geri kalanı atlanır, ana ekrana dönülür.
+    /// </summary>
+    public void LinkXbox()
+    {
+        if (!IsXbox || services.Xbox is null) return;
+        linkingXbox = true;
+        Step = xboxToken is null ? OnboardingStep.PsnLogin : OnboardingStep.Console;
+    }
+
+    /// <summary>
+    /// "Microsoft hesabından çıkış" (Mac signOutXbox ile aynı): Xbox çevirisi durur, Microsoft jetonu silinir. Seçilen Xbox
+    /// kalır; yeniden giriş yapınca aynı Xbox kullanılır.
+    /// </summary>
+    public void SignOutXbox()
+    {
+        if (IsXbox && isRunning && !demoMode) Stop();
+        xboxGeneration++;
+        services.Xbox?.Clear();
+        store.Remove(StoreKeys.XboxToken);
+        xboxToken = null;
+        RemotePlayLog.Note("Xbox: Microsoft hesabından çıkıldı");
+        Changed(nameof(HasXboxAccount), nameof(CanStart), nameof(CanAdvance), nameof(Ps5StatusText), nameof(NeedsXboxLink), nameof(XboxLinkTitle));
+    }
+
     public async Task<XboxLoginChallenge> BeginXboxLoginAsync()
     {
         var login = await (services.Xbox ?? throw new InvalidOperationException(text["Xbox streaming isn't available in this version."])).BeginLoginAsync();
@@ -318,7 +376,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     {
         xboxToken = await (services.Xbox ?? throw new InvalidOperationException(text["Xbox streaming isn't available in this version."])).CompleteLoginAsync();
         store.Save(StoreKeys.XboxToken, xboxToken);
-        Changed(nameof(HasXboxAccount), nameof(CanAdvance), nameof(CanStart));
+        Changed(nameof(HasXboxAccount), nameof(CanAdvance), nameof(CanStart), nameof(NeedsXboxLink), nameof(XboxLinkTitle));
     }
     private void OnXboxTokenUpdated(string token)
     {
@@ -394,7 +452,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (!selected.StreamingEnabled) return;
         xboxConsole = selected;
         store.Save(StoreKeys.XboxConsole, selected);
-        Changed(nameof(SelectedXboxConsole), nameof(CanAdvance), nameof(CanStart), nameof(Ps5StatusText));
+        Changed(nameof(SelectedXboxConsole), nameof(CanAdvance), nameof(CanStart), nameof(Ps5StatusText), nameof(NeedsXboxLink), nameof(XboxLinkTitle));
     }
     public bool HasAccount => accountId is not null;
     public RegisteredConsole? Console => console;
@@ -640,6 +698,13 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             consoleKindLocked = true;
             store.Save(StoreKeys.ConsoleKindLocked, true);
             Changed(nameof(ConsoleKindLocked));
+        }
+        // Ayarlar'dan Xbox bağlanırken Xbox seçilince kurulumun geri kalanı atlanır.
+        if (linkingXbox && step == OnboardingStep.Console)
+        {
+            linkingXbox = false;
+            Step = OnboardingStep.Done;
+            return;
         }
         Step = step == OnboardingStep.Welcome && IsXbox ? OnboardingStep.PsnLogin : step + 1;
     }

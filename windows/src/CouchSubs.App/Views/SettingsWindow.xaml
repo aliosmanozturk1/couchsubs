@@ -659,6 +659,28 @@
             <TabItem x:Name="PictureSourceSection" Header="{t:T 'Picture source'}">
                 <StackPanel>
                     <TextBlock Text="{t:T 'Picture source'}" Style="{StaticResource DisplayText}" Margin="0,0,0,12" />
+                    <!-- Konsol (Mac Ayarlar › Konsol ile aynı): kurulumdan sonra da PS5 ↔ Xbox geçilir; Xbox'ta bağlı Xbox,
+                         Microsoft girişi ve çıkış. -->
+                    <c:Card x:Name="ConsoleCard" Title="{t:T 'Console'}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <RadioButton x:Name="ConsolePlayStation" Content="PlayStation 5" GroupName="console" Checked="OnConsoleKind" Tag="PlayStation" />
+                            <RadioButton x:Name="ConsoleXbox" Content="{t:T 'Xbox Series / Xbox One (Beta)'}" GroupName="console" Checked="OnConsoleKind" Tag="Xbox" Margin="0,6,0,0" />
+                            <TextBlock x:Name="ConsolePlayStationHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Text="{t:T 'With Remote Play and a second PSN account.'}" />
+                            <StackPanel x:Name="ConsoleXboxPanel" Margin="0,8,0,0">
+                                <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
+                                           Text="{t:T 'Xbox support is in Beta. If something goes wrong, tell us and we\'ll fix it as soon as we can.'}" />
+                                <Grid Margin="0,12,0,0">
+                                    <TextBlock VerticalAlignment="Center"><Run Text="{t:T 'Xbox and connection'}" /><Run x:Name="ConsoleXboxName" /></TextBlock>
+                                    <Button x:Name="ConsoleXboxLink" HorizontalAlignment="Right" Click="OnLinkXbox" />
+                                </Grid>
+                                <Grid x:Name="ConsoleXboxSignedIn" Margin="0,8,0,0">
+                                    <TextBlock Text="{t:T 'Signed in'}" Foreground="{DynamicResource successBrush}" VerticalAlignment="Center" />
+                                    <Button Content="{t:T 'Sign out of Microsoft'}" HorizontalAlignment="Right" Click="OnSignOutXbox" />
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </c:Card>
                     <c:Card x:Name="PlayStationPictureSourceCard">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
