@@ -30,9 +30,15 @@ public struct StickyRows {
     /// Eklenen satır görev sayılmak için ekrandaki en uzun satırın en çok bu kadarı olmalı (görev kısa: "Follow John");
     /// boyları yakınsa hangisinin görev olduğu bilinmez, eski kural uygulanır.
     public static let joinedShare = 0.8
+    /// Konuşmanın üstünde, konuşma yerleştikten en az bu kadar sonra beliren kırıntı satır (`OcrNoise.isCrumb`) altyazıya
+    /// katılmaz. Altyazının üst satırı alttakinden sonra belirmez; alttaki kırıntı ise iki satırlı altyazının geç beliren
+    /// ikinci satırı olabileceği için `lingerMs` ve devam kuralıyla sınanır.
+    public static let crumbAboveMs = 500
 
     private struct Row {
         var text: String
+        /// Satırın son okunuşu (ham); kırıntı denetimi için (`OcrNoise.isCrumb`).
+        var raw: String
         var since: Int
         var lastSeen: Int
         /// Satırın en son büyüdüğü an (yazı yazılır gibi beliren satır).
@@ -68,6 +74,7 @@ public struct StickyRows {
             guard text.count >= 3 else { matched.append(nil); continue }
             if let index = rows.indices.first(where: { !used.contains($0) && TextMatch.isSimilar(text, rows[$0].text) }) {
                 rows[index].lastSeen = time
+                rows[index].raw = line.text
                 if text.count >= rows[index].text.count + 3 {
                     // Satır büyüdü (yazı yazılır gibi): yaşı yeniden başlar; okuma sapmaları (kısalıp uzama) saymaz.
                     rows[index].text = text
@@ -76,7 +83,7 @@ public struct StickyRows {
                 used.insert(index)
                 matched.append(index)
             } else {
-                rows.append(Row(text: text, since: time, lastSeen: time, grown: time))
+                rows.append(Row(text: text, raw: line.text, since: time, lastSeen: time, grown: time))
                 used.insert(rows.count - 1)
                 created.append(matched.count)
                 matched.append(rows.count - 1)
@@ -86,7 +93,9 @@ public struct StickyRows {
         for position in created { rows[matched[position]!].joined = joins(reading, matched, position, present, at: time) }
         for index in present where !rows[index].sticky && time - rows[index].since >= Self.stickyMs {
             let since = rows[index].since
-            if present.contains(where: { rows[$0].since - since >= Self.youngerByMs }) {
+            // Yanındaki daha yeni satır kırıntıysa (`OcrNoise.isCrumb`) kanıt değildir: uzun konuşma solan satırın
+            // parçası ya da HUD kırıntısı yüzünden görev/HUD sayılmasın (GitHub #854).
+            if present.contains(where: { rows[$0].since - since >= Self.youngerByMs && !OcrNoise.isCrumb(rows[$0].raw) }) {
                 rows[index].sticky = true
                 newlySticky.append(reading.lines[matched.firstIndex(of: index)!].text)
             }
@@ -132,7 +141,12 @@ public struct StickyRows {
         let live = matched.indices.filter { matched[$0].map { !rows[$0].sticky } ?? false }
         guard live.count >= 2 else { return result }
         let settled = live.filter { !rows[matched[$0]!].joined }
-        guard let youngest = (settled.isEmpty ? live : settled).map({ rows[matched[$0]!].since }).max() else { return result }
+        // Kırıntı satır (`OcrNoise.isCrumb`) "en yeni" sayılmaz: konuşmanın üstünde sonradan beliren okuma kırıntısı
+        // ("one ready.") konuşmayı eski gösterip attırıyor, TV'de konuşmanın yerine kırıntının çevirisi çıkıyordu (GitHub
+        // #854, GTA 6). Kırıntının kendisi konuşma ondan önce yerleşmişse uçta atılır (`dropLateCrumbs`).
+        let substantial = (settled.isEmpty ? live : settled).filter { !OcrNoise.isCrumb(rows[matched[$0]!].raw) }
+        dropLateCrumbs(reading, matched, live, into: &result)
+        guard let youngest = substantial.map({ rows[matched[$0]!].since }).max() else { return result }
         func old(_ position: Int) -> Bool {
             let row = rows[matched[position]!]
             return SpeakerPrefix.split(reading.lines[position].text) == nil
@@ -148,6 +162,25 @@ public struct StickyRows {
         }
         for position in live.reversed() { if old(position) { result[position] = true } else { break } }
         return result
+    }
+
+    /// Uçtaki kırıntı satır, yanındaki gerçek satır ondan önce yerleşmişse (üstte `crumbAboveMs`, altta `lingerMs`)
+    /// altyazıya katılmaz. Üstteki satırın devamı olan alt satır (iki satırlı altyazının geç beliren ikinci satırı,
+    /// `Reading.continues`) kalır.
+    private func dropLateCrumbs(_ reading: Reading, _ matched: [Int?], _ live: [Int], into result: inout [Bool]) {
+        guard let first = live.first, let last = live.last, first != last else { return }
+        func late(_ position: Int, by ms: Int) -> Bool {
+            let row = rows[matched[position]!]
+            guard OcrNoise.isCrumb(row.raw), SpeakerPrefix.split(reading.lines[position].text) == nil else { return false }
+            return live.contains { other in
+                other != position && !OcrNoise.isCrumb(rows[matched[other]!].raw) && row.since - rows[matched[other]!].grown >= ms
+            }
+        }
+        if late(first, by: Self.crumbAboveMs) { result[first] = true }
+        if late(last, by: Self.lingerMs), let k = live.firstIndex(of: last), k > 0,
+           !Reading.continues(reading.lines[live[k - 1]].text, with: reading.lines[last].text) {
+            result[last] = true
+        }
     }
 
     public mutating func reset() {

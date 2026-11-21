@@ -55,6 +55,21 @@ class SubtitleStabilizer(
             val text = raw.trim().trimEnd('"', '\'', '”', '’', '»', ')', ']')
             return text.isNotEmpty() && text.last() in ".!?…"
         }
+
+        /**
+         * Okumanın gönderilenden farklı her sözcüğü onun onarılmış hali mi: gönderilendeki sözcük ya sözcük değil
+         * ([OcrNoise.isNonWord]: "ijz") ya da yenisinin baştan/sondan kesilmiş parçası ("eedboat" → "speedboat").
+         */
+        fun repairsWords(words: List<String>, old: List<String>): Boolean {
+            var changed = false
+            for ((next, previous) in words.zip(old)) {
+                if (next == previous) continue
+                changed = true
+                val fragment = next.length > previous.length && (next.endsWith(previous) || next.startsWith(previous))
+                if (!fragment && !(OcrNoise.isNonWord(previous) && !OcrNoise.isNonWord(next))) return false
+            }
+            return changed
+        }
     }
 
     private data class Left(val rows: String, val raw: String, val leftAt: Long)
@@ -76,6 +91,10 @@ class SubtitleStabilizer(
     private val history = mutableListOf<Left>()
     private var forgotten = ""
     private var retryAt = 0L
+    /** Gönderilen satırın kaç kez aynı okunduğu ve gönderilenden farklı okunan, art arda gelen aynı okuma (düzeltme adayı). */
+    private var sentReads = 0
+    private data class Correction(val text: String, val raw: String, val count: Int)
+    private var correction: Correction? = null
 
     /**
      * [signature]: karenin bölge izi ([RegionSignature.of]); verilmezse boş okuma hep kalkma sayılır.
@@ -116,7 +135,7 @@ class SubtitleStabilizer(
         // Gönderilenin gürültülü yeniden okuması yeni satır değildir.
         if (isSame(text, sent)) {
             remember(signature, box)
-            return StabilizerAction.None
+            return corrected(text, rawText)?.let { StabilizerAction.translate(it) } ?: StabilizerAction.None
         }
         if (!ready) return StabilizerAction.None
         // Aynı cümlenin bir iki sözcüğü başka okunmuş, daha iyi olmayan okuması da yeni satır değildir; çevrilseydi TV'de
@@ -143,8 +162,43 @@ class SubtitleStabilizer(
         forgotten = ""
         sentRaw = rawText.trim()
         sent = TextMatch.normalizeRows(sentRaw)
+        sentReads = 1
+        correction = null
         remember(signature, box)
         return StabilizerAction.translate(sentRaw)
+    }
+
+    /**
+     * Gönderilen satır ilk karesinde bir sözcüğü bozuk okunmuş olabilir: yazı belirirken (ya da renkli sözcük açık zeminde)
+     * "lives" "Ijz", "speedboat" "eedboat" okunuyor, satır noktalamayla bittiği için ilk karede gidiyordu. Sonraki
+     * okumalar aynı satır sayıldığından ([isSame]) doğrusu hiç çevrilmiyor, TV'de bozuk sözcüklü çeviri kalıyordu (GitHub
+     * #854, GTA 6). Gönderilenle aynı sayıda sözcüklü, ondan farklı bir okuma art arda en az [stableFrames] kez okunur,
+     * puanı da ([OcrNoise.score]: daha çok düzgün harf) yüksekse ve ya gönderilenden daha çok kez okunduysa ya da farklı
+     * sözcükleri gönderilenin onarılmış hali ise ([repairsWords]) düzeltmedir: yeniden çevrilir (hat onu gösterilenin
+     * yerine koyar). Düzeltilen satır bir daha düzeltilmez. Mac/iPhone (SubtitleStabilizer.swift) ve Windows
+     * (SubtitleStabilizer.cs) aynı kuralı uygular.
+     */
+    private fun corrected(text: String, rawText: String): String? {
+        if (sentReads <= 0) return null
+        val shown = TextMatch.normalize(sentRaw)
+        if (text == shown) {
+            sentReads++
+            return null
+        }
+        val raw = rawText.trim()
+        val current = correction
+        val candidate = if (current != null && current.text == text) Correction(text, raw, current.count + 1) else Correction(text, raw, 1)
+        correction = candidate
+        val words = text.split(' ').filter { it.isNotEmpty() }
+        val old = shown.split(' ').filter { it.isNotEmpty() }
+        if (candidate.count < stableFrames || words.size != old.size || OcrNoise.score(candidate.raw) <= OcrNoise.score(sentRaw) ||
+            !(candidate.count > sentReads || repairsWords(words, old))) return null
+        sentRaw = candidate.raw
+        sent = TextMatch.normalizeRows(sentRaw)
+        // Düzeltme kesindir: aynı satır bir daha düzeltilmez (iki okuma arasında gidip gelmesin).
+        sentReads = 0
+        correction = null
+        return sentRaw
     }
 
     /** Ekrandaki satır bu karede okundu: bölgenin izi ve satırın yeri saklanır (yer bilinmiyorsa hiçbiri). */
@@ -168,6 +222,8 @@ class SubtitleStabilizer(
             sent = ""
             sentRaw = ""
         }
+        sentReads = 0
+        correction = null
         lastSeen = null
         clearPending = false
     }
@@ -213,6 +269,8 @@ class SubtitleStabilizer(
         val shouldClear = sent.isNotEmpty() || clearPending
         sent = ""
         sentRaw = ""
+        sentReads = 0
+        correction = null
         clearPending = false
         return if (shouldClear) StabilizerAction.Clear else StabilizerAction.None
     }

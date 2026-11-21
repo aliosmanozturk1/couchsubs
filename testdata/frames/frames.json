@@ -878,6 +878,119 @@
       "game": "GTA 6",
       "session": "obs-program",
       "note": "karede yalnız kendi altyazımız var: yeniden çevrilmemeli, hiçbir şey gönderilmemeli"
+    },
+    {
+      "id": "gta6-882-arama-1",
+      "file": "gta6-882-arama-1.jpg",
+      "source": "sentetik: gta6-01-lucia karesi + GitHub #882'deki gibi sağ altta arama kartının yanında küçük HUD yazısı (\"Earpc\" / \"ar.\")",
+      "game": "GTA 6",
+      "session": "gta6-882-arama",
+      "subtitle": "Lucia: Could I have another ice water, please?",
+      "mission": false,
+      "note": "konuşmalar değişirken ekranın sağında duran HUD kırıntısı görev satırı sayılıp kendi yerinde çevrilmemeli"
+    },
+    {
+      "id": "gta6-882-arama-2",
+      "file": "gta6-882-arama-2.jpg",
+      "source": "sentetik: gta6-02-yolanda karesi + aynı HUD kırıntısı",
+      "game": "GTA 6",
+      "session": "gta6-882-arama",
+      "subtitle": "Yolanda: You can look out there all day, girl.",
+      "mission": false
+    },
+    {
+      "id": "gta6-882-arama-3",
+      "file": "gta6-882-arama-1.jpg",
+      "source": "sentetik: gta6-882-arama-1 yeniden",
+      "game": "GTA 6",
+      "session": "gta6-882-arama",
+      "subtitle": "Lucia: Could I have another ice water, please?",
+      "mission": false
+    },
+    {
+      "id": "gta6-882-arama-4",
+      "file": "gta6-882-arama-2.jpg",
+      "source": "sentetik: gta6-882-arama-2 yeniden",
+      "game": "GTA 6",
+      "session": "gta6-882-arama",
+      "subtitle": "Yolanda: You can look out there all day, girl.",
+      "mission": false,
+      "note": "eski çekirdekte kırıntı 3 sn sonra auto-mission olup \"kulaklı ar.\" gibi çevriliyordu"
+    },
+    {
+      "id": "gta6-854-kirinti-1",
+      "file": "gta6-854-kirinti-1.jpg",
+      "source": "sentetik: GitHub #854 (son yorum) kullanıcının TV fotoğrafı; oyun alanı kırpılıp 1920x1080'e düzeltildi, CouchSubs'ın kendi çeviri kutuları çevredeki görüntüyle boyandı",
+      "game": "GTA 6",
+      "session": "gta6-854-kirinti",
+      "subtitle": "It's not too far, don't worry. That's why I got Burim here.",
+      "blank": 0,
+      "note": "uzun satır alanın iki yanından taşıyor (\"t's … here\" okunur)"
+    },
+    {
+      "id": "gta6-854-kirinti-2",
+      "file": "gta6-854-kirinti-2.jpg",
+      "source": "sentetik: GitHub #854 (son yorum) kullanıcının TV fotoğrafı; oyun alanı kırpılıp 1920x1080'e düzeltildi, CouchSubs'ın kendi çeviri kutuları çevredeki görüntüyle boyandı; konuşmanın üstüne solan satırdan kalan kırıntı (\"ne ready.\") eklendi",
+      "game": "GTA 6",
+      "session": "gta6-854-kirinti",
+      "signs": [
+        "one ready",
+        "ne ready"
+      ],
+      "note": "konuşma sürüyor: kırıntı tek başına ya da konuşmayla birlikte çevrilmemeli, konuşma atılmamalı (TV'de \"e'ne hazır.\")"
+    },
+    {
+      "id": "gta6-854-gorev-1",
+      "file": "gta6-854-gorev-1.jpg",
+      "source": "sentetik: GitHub #854 (son yorum) kullanıcının TV fotoğrafı; oyun alanı kırpılıp 1920x1080'e düzeltildi, CouchSubs'ın kendi çeviri kutuları çevredeki görüntüyle boyandı; görev satırı tek başına, pembe sözcüğün açık zemindeki ilk harfleri silindi (\"eedboat\" okunur)",
+      "game": "GTA 6",
+      "session": "gta6-854-gorev",
+      "subtitle": "Get in the speedboat",
+      "reads": 2,
+      "blank": 0,
+      "note": "renkli sözcük ilk karelerde bozuk okunuyor"
+    },
+    {
+      "id": "gta6-854-gorev-2",
+      "file": "gta6-854-gorev-2.jpg",
+      "source": "sentetik: GitHub #854 (son yorum) kullanıcının TV fotoğrafı; oyun alanı kırpılıp 1920x1080'e düzeltildi, CouchSubs'ın kendi çeviri kutuları çevredeki görüntüyle boyandı; görev satırı tek başına",
+      "game": "GTA 6",
+      "session": "gta6-854-gorev",
+      "subtitle": "Get in the speedboat",
+      "blank": 0,
+      "note": "doğru okuma gelince bozuk çevirinin yerine yeniden çevrilmeli"
+    },
+    {
+      "id": "gta6-854-gorev-3",
+      "file": "gta6-854-gorev-3.jpg",
+      "source": "sentetik: GitHub #854 (son yorum) kullanıcının TV fotoğrafı; oyun alanı kırpılıp 1920x1080'e düzeltildi, CouchSubs'ın kendi çeviri kutuları çevredeki görüntüyle boyandı",
+      "game": "GTA 6",
+      "session": "gta6-854-gorev",
+      "subtitle": "Somebody's happy to be free, ah?",
+      "note": "görev satırı konuşmanın altında; altyazı konuşmadır"
+    },
+    {
+      "id": "gta6-854-lives-1",
+      "file": "gta6-854-lives-1.jpg",
+      "source": "sentetik: GitHub #854 (son yorum) kullanıcının TV fotoğrafı; oyun alanı kırpılıp 1920x1080'e düzeltildi, CouchSubs'ın kendi çeviri kutuları çevredeki görüntüyle boyandı; \"lives\" sözcüğü yazı belirirken bozuk okunmuş gibi değiştirildi",
+      "game": "GTA 6",
+      "session": "gta6-854-lives",
+      "subtitle": "To the best day of our fucking lives, eh?",
+      "reads": 2,
+      "blank": 0,
+      "note": "ilk iki karede bozuk okunan sözcük (TV'de \"Ijz'lerinin\")"
+    },
+    {
+      "id": "gta6-854-lives-2",
+      "file": "gta6-854-lives-2.jpg",
+      "source": "sentetik: GitHub #854 (son yorum) kullanıcının TV fotoğrafı; oyun alanı kırpılıp 1920x1080'e düzeltildi, CouchSubs'ın kendi çeviri kutuları çevredeki görüntüyle boyandı",
+      "game": "GTA 6",
+      "session": "gta6-854-lives",
+      "subtitle": "To the best day of our fucking lives, eh?",
+      "signs": [
+        "liz"
+      ],
+      "note": "doğru okuma yeniden çevrilmeli (küfür sansürsüz kalır)"
     }
   ],
   "phoneScenarios": [

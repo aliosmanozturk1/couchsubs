@@ -69,6 +69,9 @@ public struct SubtitleStabilizer {
     private var retryAt = 0
     /// Bekleyen (henüz gönderilmemiş) çöp gibi okunan aday; gönderilmeden kalkarsa günlüğe yazılır.
     private var garbledPending = ""
+    /// Gönderilen satırın kaç kez aynı okunduğu ve gönderilenden farklı okunan, art arda gelen aynı okuma (düzeltme adayı).
+    private var sentReads = 0
+    private var correction: (text: String, raw: String, count: Int)?
     /// Son `feed` çağrısında bırakılan satır (günlük için); her çağrıda sıfırlanır.
     public private(set) var note: StabilizerNote?
 
@@ -124,6 +127,7 @@ public struct SubtitleStabilizer {
         // Gönderilenin gürültülü yeniden okuması yeni satır değildir; TV'de aynı cümle iki kez görünmesin.
         if Self.isSame(text, sent) {
             remember(signature, box)
+            if let fixed = corrected(text, rawText) { return .translate(fixed) }
             return .none
         }
         guard ready else {
@@ -154,8 +158,55 @@ public struct SubtitleStabilizer {
         forgotten = ""
         sentRaw = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         sent = TextMatch.normalizeRows(sentRaw)
+        sentReads = 1
+        correction = nil
         remember(signature, box)
         return .translate(sentRaw)
+    }
+
+    /// Gönderilen satır ilk karesinde bir sözcüğü bozuk okunmuş olabilir: yazı belirirken (ya da renkli sözcük açık zeminde)
+    /// "lives" "Ijz", "speedboat" "eedboat" okunuyor, satır noktalamayla bittiği için ilk karede gidiyordu. Sonraki
+    /// okumalar aynı satır sayıldığından (`isSame`) doğrusu hiç çevrilmiyor, TV'de bozuk sözcüklü çeviri kalıyordu
+    /// (GitHub #854, GTA 6). Gönderilenle aynı sayıda sözcüklü, ondan farklı bir okuma art arda en az `stableFrames` kez
+    /// okunur, puanı da (`OcrNoise.score`: daha çok düzgün harf) yüksekse ve ya gönderilenden daha çok kez okunduysa ya da
+    /// farklı sözcükleri gönderilenin onarılmış hali ise (`repairsWords`) düzeltmedir: yeniden çevrilir (hat onu
+    /// gösterilenin yerine koyar). Düzeltilen satır bir daha düzeltilmez. Windows
+    /// (SubtitleStabilizer.cs) ve Android (SubtitleStabilizer.kt) aynı kuralı uygular.
+    private mutating func corrected(_ text: String, _ rawText: String) -> String? {
+        guard sentReads > 0 else { return nil }
+        let shown = TextMatch.normalize(sentRaw)
+        if text == shown {
+            sentReads += 1
+            return nil
+        }
+        let raw = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let current = correction, current.text == text {
+            correction = (text, raw, current.count + 1)
+        } else {
+            correction = (text, raw, 1)
+        }
+        let words = text.split(separator: " ").map(String.init), old = shown.split(separator: " ").map(String.init)
+        guard let candidate = correction, candidate.count >= stableFrames, words.count == old.count,
+              OcrNoise.score(candidate.raw) > OcrNoise.score(sentRaw),
+              candidate.count > sentReads || Self.repairsWords(words, old) else { return nil }
+        sentRaw = candidate.raw
+        sent = TextMatch.normalizeRows(sentRaw)
+        // Düzeltme kesindir: aynı satır bir daha düzeltilmez (iki okuma arasında gidip gelmesin).
+        sentReads = 0
+        correction = nil
+        return sentRaw
+    }
+
+    /// Okumanın gönderilenden farklı her sözcüğü onun onarılmış hali mi: gönderilendeki sözcük ya sözcük değil
+    /// (`OcrNoise.isNonWord`: "ijz") ya da yenisinin baştan/sondan kesilmiş parçası ("eedboat" → "speedboat").
+    static func repairsWords(_ words: [String], _ old: [String]) -> Bool {
+        var changed = false
+        for (new, previous) in zip(words, old) where new != previous {
+            changed = true
+            let fragment = new.count > previous.count && (new.hasSuffix(previous) || new.hasPrefix(previous))
+            guard fragment || (OcrNoise.isNonWord(previous) && !OcrNoise.isNonWord(new)) else { return false }
+        }
+        return changed
     }
 
     /// Ekrandaki satır bu karede okundu: bölgenin izi ve satırın yeri saklanır (yer bilinmiyorsa hiçbiri).
@@ -189,6 +240,8 @@ public struct SubtitleStabilizer {
             sent = ""
             sentRaw = ""
         }
+        sentReads = 0
+        correction = nil
         lastSeen = nil
         clearPending = false
     }
@@ -246,6 +299,8 @@ public struct SubtitleStabilizer {
         let shouldClear = !sent.isEmpty || clearPending
         sent = ""
         sentRaw = ""
+        sentReads = 0
+        correction = nil
         clearPending = false
         return shouldClear ? .clear : .none
     }

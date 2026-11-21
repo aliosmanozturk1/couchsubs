@@ -43,6 +43,13 @@ struct Frame: Decodable {
     var mapCard: Bool?
     /// Ekran yazısı denetimi (menü, görev listesi; `ScreenExpectation`).
     var screen: ScreenExpectation?
+    /// Kare kaç okuma (100 ms) ekranda kalır; yoksa 10. Yazı belirirken tek iki karede bozuk okunan satır gibi kısa
+    /// durumlar için (GitHub #854).
+    var reads: Int?
+    /// Kareden sonra kaç boş okuma (100 ms) gelir; yoksa 6 (altyazı kalkar). 0: sonraki kare hemen gelir.
+    var blank: Int?
+    /// false: bu karede görev satırı (auto-mission) kendi yerinde açılmamalı (HUD kırıntısı görev sayılmasın, #882).
+    var mission: Bool?
 
     var cropRegion: CropRegion {
         guard let region, region.count == 4 else { return CropRegion() }

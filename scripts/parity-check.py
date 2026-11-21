@@ -96,6 +96,23 @@ CAPABILITIES = {
         ("windows", "windows/src/CouchSubs.Shell/AppController.cs", r"public bool XboxReadsWindow =>"),
         ("windows", "windows/src/CouchSubs.App/Views/Steps/XboxLoginStep.xaml.cs", r"Controller\.UseXboxWindow\(\)"),
     ],
+    # GitHub #854/#882: HUD kırıntısı görev sayılmaz, kırıntı konuşmayı attırmaz, ilk karede bozuk sözcük düzeltilir.
+    "Okuma kırıntısı (isCrumb) ve bozuk sözcük düzeltmesi (repairsWords)": [
+        ("mac", _CORE + "OcrNoise.swift", r"static func isCrumb\("),
+        ("windows", _WIN + "OcrNoise.cs", r"public static bool IsCrumb\("),
+        ("android", _DROID + "OcrNoise.kt", r"fun isCrumb\("),
+        ("mac", _CORE + "SubtitleStabilizer.swift", r"static func repairsWords\("),
+        ("windows", _WIN + "SubtitleStabilizer.cs", r"static bool RepairsWords\("),
+        ("android", _DROID + "SubtitleStabilizer.kt", r"fun repairsWords\("),
+        ("mac", _CORE + "MissionLine.swift", r"static func isCandidate\("),
+        ("windows", _WIN + "MissionLine.cs", r"static bool IsCandidate\("),
+        ("android", _DROID + "MissionLine.kt", r"fun isCandidate\("),
+    ],
+    "Ortak deneme dosyası ocr-crumbs.json": [
+        ("mac", _CORE_TESTS + "OcrCrumbsTests.swift", r"ocr-crumbs\.json"),
+        ("windows", _WIN_TESTS + "OcrCrumbsTests.cs", r"ocr-crumbs\.json"),
+        ("android", _DROID_TESTS + "OcrCrumbsTest.kt", r"ocr-crumbs\.json"),
+    ],
     "Gerçek kare ekran yazısı ölçütü (menü, görev listesi)": [
         ("mac", "tools/frame-regression/Sources/frame-regression/ScreenCheck.swift", r"func checkScreen\("),
         ("android", _DROID_TESTS + "ScreenFramesTest.kt", r"ocr/screen/"),

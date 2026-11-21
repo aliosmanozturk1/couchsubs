@@ -147,6 +147,9 @@ final class Runner {
         pipeline.holdReadings = false
         var log: [String] = []
         pipeline.onLog = { log.append($0) }
+        // Görev satırının kendi yerinde açılan bölgesi (auto-mission); karede açık kaldıysa not edilir.
+        var mission: CropRegion?
+        pipeline.onMissionChanged = { mission = $0 }
         for frame in frames {
             let image = images[frame.id]!
             let blank = Images.blank(width: image.width, height: image.height)
@@ -154,12 +157,14 @@ final class Runner {
             server.current = frame.id
             let before = server.sent.count
             let logBefore = log.count
-            for _ in 0..<10 {
+            var missionShown = false
+            for _ in 0..<(frame.reads ?? 10) {
                 await pipeline.process(image, region: region)
                 now += 100
+                if mission != nil { missionShown = true }
             }
             await pipeline.waitForTranslations()
-            for _ in 0..<6 {
+            for _ in 0..<(frame.blank ?? 6) {
                 await pipeline.process(blank, region: region)
                 now += 100
             }
@@ -178,11 +183,12 @@ final class Runner {
             }
             // Yanlış kabul: altyazısız karede gönderilen her satır, altyazılı karede tabela yazısı taşıyan satır.
             let signs = frame.signs ?? []
-            if frame.subtitle == nil || !signs.isEmpty {
+            if frame.subtitle == nil || !signs.isEmpty || frame.mission == false {
                 let wrong = sources.contains { source in
                     frame.subtitle == nil || signs.contains { mentions(source, $0) && !mentions(frame.subtitle ?? "", $0) }
                 }
-                result.falseAccept = !wrong
+                // HUD kırıntısı görev satırı sayılıp kendi yerinde çevrildiyse o da yanlış kabuldür.
+                result.falseAccept = !wrong && !(frame.mission == false && missionShown)
             }
             results[frame.id] = result
             if verbose {
