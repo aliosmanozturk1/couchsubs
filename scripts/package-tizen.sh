@@ -15,11 +15,9 @@ cp tv-webos/icon.png "$OUT/panel-icon.png"
 cp tv-tizen/platform.js tv-tizen/config.xml tv-tizen/icon.png "$OUT/"
 # Panel başlığındaki küçük simge webOS'taki gibi icon.png adını kullanamaz: Tizen'in simgesi büyüktür.
 # Samsung'un ürün API'leri (ekran koruyucuyu kapatmak için webapis.appcommon) platform.js'ten önce yüklenir.
-# Görünüm "width=device-width" olur: Samsung, 21:9 ekranda uygulama yüzeyini base_screen_resolution (config.xml) ile
-# birlikte ancak bu görünümde genişletir; sabit "width=1920" uygulamayı 16:9 kutuda bırakır (#304). Görünüm genişliğini
-# sonra platform.js verir (16:9 TV'de yine 1920).
+# Görünüm ortak sayfadaki gibi sabit "width=1920" kalır: Samsung UHD TV'de web uygulamasının standart çözünürlüğü
+# (0.9.55; config.xml'deki açıklama). Geniş yüzeyde görünümü platform.js genişletir.
 sed -e 's/src="icon.png"/src="panel-icon.png"/' \
-    -e 's|<meta name="viewport" content="width=1920">|<meta name="viewport" content="width=device-width">|' \
     -e 's|  <script src="platform.js"></script>|  <script src="$WEBAPIS/webapis/webapis.js"></script>\n  <script src="platform.js"></script>|' \
     tv-webos/index.html > "$OUT/index.html"
 # Masaüstü uygulamalarına gömülen imzasız paket: CouchSubs kurarken TV'ye özel sertifikayla imzalar.

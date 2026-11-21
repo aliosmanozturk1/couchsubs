@@ -104,14 +104,13 @@ gösterirse TV sdb bağlantısını keser.
 1. [Sürümler](https://github.com/yorulmazsinan/couchsubs/releases) sayfasından `CouchSubs-samsung-kaynak.zip`'i indirip
    boş bir klasöre açın (imzasız uygulama klasörü; `config.xml` doğrudan bu klasörde olmalı). İmzalı `.wgt`
    yayınlanmaz: Samsung paketi TV'ye göre imzalanır.
-2. `config.xml`'den Tizen 2.4'ün tanımadığı iki satırı silin (CouchSubs'ın 2016 TV'ler için yaptığıyla aynı,
-   `LegacyTizenPackage`):
+2. `config.xml`'den Tizen 2.4'ün tanımadığı satırı silin (CouchSubs'ın 2016 TV'ler için yaptığıyla aynı,
+   `LegacyTizenPackage`; 0.9.54 ve eskisinin paketinde `base_screen_resolution` satırı da vardı, o da silinir):
    ```xml
-   <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="fullscreen"/>
    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
    ```
    `network.public` Samsung'a özgü bir izindir; Tizen sertifikasıyla imzalanan pakette olmaması daha güvenli. #71'de
-   40KU7000'de elle kurulup çalışan paket bu iki satırı içermiyordu.
+   40KU7000'de elle kurulup çalışan paket bu satırı içermiyordu.
 
 ### 4. Tizen sertifika profili
 

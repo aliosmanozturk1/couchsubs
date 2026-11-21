@@ -45,7 +45,6 @@ class LegacyTizenPackageTest {
     @Test
     fun networkPublicVeEkranAyariCikar_digerIzinlerKalir() {
         assertTrue(config.contains("privilege/network.public\""))
-        assertTrue(config.contains("base_screen_resolution"))
         val adapted = configOf(LegacyTizenPackage.adapt(wgt(config)))
         val withoutComments = adapted.replace(Regex("<!--[\\s\\S]*?-->"), "")
         assertFalse(withoutComments.contains("network.public"))

@@ -33,7 +33,6 @@ final class LegacyTizenPackageTests: XCTestCase {
     func testNetworkPublicAndScreenSettingAreRemovedOtherPrivilegesStay() throws {
         let config = try repoConfig()
         XCTAssertTrue(config.contains("privilege/network.public\""))
-        XCTAssertTrue(config.contains("base_screen_resolution"))
         let adapted = try configOf(LegacyTizenPackage.adapt(wgt(config)))
         let withoutComments = adapted.replacingOccurrences(of: "<!--[\\s\\S]*?-->", with: "", options: .regularExpression)
         XCTAssertFalse(withoutComments.contains("network.public"))

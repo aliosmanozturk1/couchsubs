@@ -129,9 +129,9 @@ test('Samsung paketi: ultrawide ve 16:9 ekranda sayfa ekranın tamamına çizili
     const page = path.join(dist, 'tv-tizen', 'app', 'index.html');
     const html = fs.readFileSync(page, 'utf8');
 
-    await t.test('paketteki görünüm device-width (Samsung 21:9 desteğinin şartı), ortak sayfa 1920 kalır', () => {
-      assert.match(html, /<meta name="viewport" content="width=device-width">/);
-      assert.doesNotMatch(html, /content="width=1920"/);
+    await t.test('paketteki görünüm ortak sayfadaki gibi sabit 1920 (Samsung UHD TV standart çözünürlüğü, 0.9.55)', () => {
+      assert.match(html, /<meta name="viewport" content="width=1920">/);
+      assert.doesNotMatch(html, /device-width/);
       assert.match(fs.readFileSync(path.join(repo, 'tv-webos', 'index.html'), 'utf8'), /<meta name="viewport" content="width=1920">/);
     });
 
@@ -162,55 +162,34 @@ test('Samsung paketi: ultrawide ve 16:9 ekranda sayfa ekranın tamamına çizili
       assert.deepEqual(r.rects, [['0', '0', '100%', '100%']]);
     });
 
-    await t.test('3840x2160 (4K QN900A, pencere sayfa ölçüsünde sınırlı): yöntemler sırayla, sayfa düzeni değişmez', async () => {
-      // X'teki 4K Samsung: 'scr 3840x2160 dpr 1 page 1920x1080 vv 2'; 3840x2160 px reddedilir, '100%' sol üst çeyrek.
-      const [hold, zoom, page2] = await render(page, 3840, 2160, { cssBounds: true, yellow: 2 });
-      const FULL = ['0', '0', '100%', '100%'];
-      // Varsayılan (hold): fiziksel istek reddedilir, '100%' ekran genişliğindeki görünümde (3840) istenir, sayfa 1920'ye
-      // döner (visualViewport 2, eskisi gibi).
-      assert.deepEqual(hold.rects, [[...FULL, '@1920'], ['0px', '0px', '3840px', '2160px', '@1920'], [...FULL, '@3840']]);
-      assert.equal(hold.viewport, 'width=1920');
-      assert.deepEqual(hold.inner, [1920, 1080]);
-      assert.equal(hold.scale, 2);
-      // Sarı (zoom): sayfa ekran genişliğinde, CSS zoom 2; son '100%' 3840'lık sayfada. Panel ve altyazı ekranda aynı
-      // yerde (bu Chrome'da getBoundingClientRect zoom'lu ölçü verir: hold'daki CSS ölçüsü x visualViewport).
-      assert.equal(zoom.viewport, 'width=device-width');
-      assert.deepEqual(zoom.inner, [3840, 2160]);
-      assert.equal(zoom.zoom, '2');
-      assert.deepEqual(zoom.rects.at(-1), [...FULL, '@3840']);
-      // Panelin alt kenarı Pencere satırının uzunluğuna bağlı (yöntemler ve panel ölçüsü yazılır, satır kaydırılır).
-      for (const key of ['panel', 'subtitle']) {
-        for (const side of key === 'panel' ? ['left', 'right', 'top'] : ['left', 'right', 'top', 'bottom']) {
-          assert.ok(Math.abs(zoom[key][side] - hold[key][side] * hold.scale) < 2, key + ' ' + side + ' ' + JSON.stringify([hold, zoom]));
-        }
-      }
-      // Sarı (page): eski davranış, 1920'lik görünümde '100%'.
-      assert.equal(page2.viewport, 'width=1920');
-      assert.equal(page2.zoom, '');
-      assert.deepEqual(page2.rects.at(-1), [...FULL, '@1920']);
+    await t.test('8K/4K Samsung standart yüzeyde (QN900A, DISPLAY 7680x4320): tek 100% penceresi, Sarı listede', async () => {
+      const r = await render(page, 1920, 1080, { cssBounds: true, display: { resolutionWidth: 7680, resolutionHeight: 4320 } });
+      assert.deepEqual(r.rects, [['0', '0', '100%', '100%', '@1920']]);
+      assert.equal(r.viewport, 'width=1920');
+      assert.deepEqual(r.inner, [1920, 1080]);
+      assert.equal(r.scale, 1);
+      assert.equal(r.zoom, '');
+      assert.match(r.keys, /(Sarı|Yellow)/);
     });
 
-    await t.test('Ekranı 1920x1080 bildiren ultra geniş monitör (#304, DISPLAY 3440x1440): pencere 2560lık görünümde, tuş listesinde Sarı', async () => {
-      // 0.9.49 fotoğrafı: 'scr 1920x1080 dpr 1 page 1920x1080 vv 1 · 100% ok · area 0,0,1920,1080 · fit', listede Sarı yok.
-      const [hold, zoom] = await render(page, 1920, 1080,
-        { cssBounds: true, yellow: 1, display: { resolutionWidth: 3440, resolutionHeight: 1440 } });
+    await t.test('Ekranı 1920x1080 bildiren ultra geniş monitör (#304): Sarı listede, 21:9 tam genişlik denenir, sayfa 1920ye döner', async () => {
+      const [full, wide] = await render(page, 1920, 1080, { cssBounds: true, yellow: 1,
+        display: { resolutionWidth: 1920, resolutionHeight: 1080, physicalWidth: 154, physicalHeight: 87 } });
       const FULL = ['0', '0', '100%', '100%'];
-      // Panelin pikselindeki 16:9 kutu reddedilir; '100%' panelin 16:9 kutusunun genişliğindeki görünümde istenir.
-      assert.deepEqual(hold.rects, [[...FULL, '@1920'], ['440px', '0px', '2560px', '1440px', '@1920'], [...FULL, '@2560']]);
-      assert.equal(hold.viewport, 'width=1920');
-      assert.match(hold.keys, /(Sarı|Yellow)/);
-      // Sarı (zoom): sayfa 2560'lık görünümde 1,33 kat; panel ve altyazı aynı yerde.
-      assert.equal(zoom.viewport, 'width=2560');
-      assert.deepEqual(zoom.rects.at(-1), [...FULL, '@2560']);
+      assert.deepEqual(full.rects, [[...FULL, '@1920']]);
+      assert.match(full.keys, /(Sarı|Yellow)/);
+      // 2560x1080 dikdörtgen alanın dışında (reddedilir), sonra '100%' 2560'lık görünümde; görünüm 1920'ye döner.
+      assert.deepEqual(wide.rects.slice(1), [[...FULL, '@1920'], ['0px', '0px', '2560px', '1080px', '@1920'], [...FULL, '@2560']]);
+      assert.equal(wide.viewport, 'width=1920');
+      assert.deepEqual(wide.inner, [1920, 1080]);
       for (const side of ['left', 'right', 'top', 'bottom']) {
-        assert.ok(Math.abs(zoom.subtitle[side] - hold.subtitle[side] * 2560 / 1920) < 2, side + ' ' + JSON.stringify([hold, zoom]));
+        assert.ok(Math.abs(wide.subtitle[side] - full.subtitle[side]) < 2, side + ' ' + JSON.stringify([full, wide]));
       }
     });
 
-    await t.test('telefon ve Android uygulamasının paketleri de aynı görünümü yazar', () => {
+    await t.test('telefon ve Android uygulamasının paketleri de görünümü değiştirmez', () => {
       for (const file of ['scripts/ios-tv-packages.sh', 'couchsubs-android/app/build.gradle']) {
-        assert.match(fs.readFileSync(path.join(repo, file), 'utf8'),
-          /'<meta name="viewport" content="width=1920">', '<meta name="viewport" content="width=device-width">'/, file);
+        assert.doesNotMatch(fs.readFileSync(path.join(repo, file), 'utf8'), /device-width/, file);
       }
     });
   } finally {

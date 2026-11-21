@@ -6,13 +6,13 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.54';
+  var APP_VERSION = '0.9.55';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
   var KEY = { RED: 403, GREEN: 404, YELLOW: 405, BLUE: 406, LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, OK: 13, BACK: platform.backKey };
-  // Sayfa ölçüleri (innerWidth, clientWidth ...) window.COUCHSUBS_ZOOM'a bölünür: Samsung 4K'da sayfa HDMI görüntüsü
-  // için ekranın fiziksel genişliğinde açılıp CSS zoom ile 1920'lik ölçüye büyütülebilir (tv-tizen/platform.js).
+  // Sayfa ölçüleri (innerWidth, clientWidth ...) window.COUCHSUBS_ZOOM'a bölünür (platform sayfayı CSS zoom ile
+  // büyütürse; Samsung 0.9.55'ten beri büyütmez, değer tanımsız yani 1).
 
   var server = null;
   var eventSource = null;
@@ -2332,8 +2332,8 @@
     var el = $('keys');
     // Her seferinde i18n metninden kurulur: Samsung panelin ölçüsünü sonradan öğrenince liste yeniden kurulur.
     var text = t('keys');
-    // Geniş ekranlı Samsung'da (21:9, 32:9) Sarı tuş HDMI görüntüsünü sığdırır ya da ekranı doldurur (#304); 4K
-    // Samsung'da görüntü ekranı doldurmuyorsa sıradaki pencere yöntemini dener.
+    // Samsung'da Sarı her zaman listede: geniş yüzeyde (21:9, 32:9) HDMI görüntüsünü sığdırır ya da ekranı doldurur
+    // (#304); 16:9 yüzeyde sıradaki görüntü yöntemini (100%, 21:9 ve 32:9 tam genişlik) dener.
     var modes = pictureModes();
     if (modes) text += ' · ' + t(pictureStep(modes) ? 'keyPictureSize' : 'keyPicture');
     var parts = text.split(' · ');
@@ -2354,7 +2354,7 @@
     try { return typeof platform.pictureModes === 'function' ? platform.pictureModes() : null; } catch (e) { return null; }
   }
 
-  // 4K/8K Samsung'daki pencere yöntemleri (tv-tizen/platform.js): yöntemin sırası ve sayısı [1, 5]; geniş ekranın
+  // Samsung'un görüntü yöntemleri (tv-tizen/platform.js): yöntemin sırası ve sayısı [1, 3]; geniş ekranın
   // sığdır/doldur seçiminde null.
   function pictureStep(mode) {
     try {

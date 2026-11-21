@@ -53,7 +53,6 @@ public class LegacyTizenPackageTests
     {
         var config = Config();
         Assert.Contains("privilege/network.public\"", config);
-        Assert.Contains("base_screen_resolution", config);
         var wgt = Wgt(config);
         Assert.True(LegacyTizenPackage.Adapt(wgt));
         var adapted = Read(wgt, "config.xml");
