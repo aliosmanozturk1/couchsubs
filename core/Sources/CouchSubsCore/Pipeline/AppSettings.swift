@@ -118,8 +118,14 @@ public struct UserSettings: Codable, Equatable {
     /// kalır (oyunların çoğu altyazıyı ortalar). Kapalıysa yalnız tutulan kenar oynar (sola yaslı ya da köşedeki altyazı).
     /// Eski kayıtlarda yoktur; açık başlar (Windows: KeepAreaCentered, Android: keepAreaCentered).
     public var keepAreaCentered = true
-    /// Altyazının yanında sürekli okunan ek alanlar (görev, bildirim, telefon). Varsayılan: hiç yok.
+    /// Altyazının yanındaki ek alanlar (görev, bildirim, telefon; en çok üç). Sıra kısayolu belirler: 1. alan
+    /// "1. alanı çevir" (Num 1). Varsayılan: hiç yok.
     public var extraAreas: [ExtraArea] = []
+    /// Serbest alan çevirisinin (Num 5) sonucu nerede gösterilir (Windows: FreeAreaTarget).
+    public var freeAreaTarget = ResultTarget.tv
+    /// Kullanıcının değiştirdiği kısayollar (yalnız varsayılandan farklı olanlar; bkz. `HotkeyTable.assign`). Eski
+    /// kayıtlarda yoktur: bütün kısayollar varsayılanla açılır (Windows: Hotkeys).
+    public var hotkeys: [HotkeyChoice] = []
     public var style = SubtitleStyle()
     public var sourceLanguage = "en"
     public var targetLanguage = "tr"
@@ -243,6 +249,9 @@ public struct UserSettings: Codable, Equatable {
         aiInstruction = (try? values.decodeIfPresent(String.self, forKey: .aiInstruction)) ?? defaults.aiInstruction
         output = (try? values.decodeIfPresent(SubtitleOutput.self, forKey: .output)) ?? defaults.output
         overlayClickThrough = try values.decodeIfPresent(Bool.self, forKey: .overlayClickThrough) ?? defaults.overlayClickThrough
+        freeAreaTarget = (try? values.decodeIfPresent(ResultTarget.self, forKey: .freeAreaTarget)) ?? defaults.freeAreaTarget
+        // Bozuk tek bir kayıt bütün kısayolları silmesin: okunamayan seçimler atlanır.
+        hotkeys = ((try? values.decodeIfPresent([LossyHotkeyChoice].self, forKey: .hotkeys)) ?? []).compactMap(\.choice)
         gamePacks = try values.decodeIfPresent(Bool.self, forKey: .gamePacks) ?? defaults.gamePacks
         sharePool = try values.decodeIfPresent(Bool.self, forKey: .sharePool) ?? defaults.sharePool
         askGame = try values.decodeIfPresent(Bool.self, forKey: .askGame) ?? defaults.askGame
@@ -423,4 +432,10 @@ extension SubtitlePipeline {
         packWait = min(max(settings.misreadWaitMs, 0), UserSettings.maxWaitMs)
         cleanWait = min(max(settings.partialWaitMs, 0), UserSettings.maxWaitMs)
     }
+}
+
+/// Kısayol seçimini okur; okunamıyorsa (bilinmeyen iş, bozuk kayıt) nil, liste bozulmaz.
+private struct LossyHotkeyChoice: Decodable {
+    let choice: HotkeyChoice?
+    init(from decoder: Decoder) throws { choice = try? HotkeyChoice(from: decoder) }
 }

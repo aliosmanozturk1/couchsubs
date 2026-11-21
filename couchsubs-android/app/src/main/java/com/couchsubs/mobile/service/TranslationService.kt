@@ -123,7 +123,7 @@ class TranslationService : Service() {
         /**
          * "Ekranı çevir": PS5'in şu anki karesinin tamamı bir kez okunur, yazı grupları tek istekte çevrilir; sonuçlar
          * telefonda ve TV'de yazının yerinde görünür. Çeviri sürerken ya da sonuçlar ekrandayken yeniden çağrılmak onları
-         * kaldırır (Mac ⌥⌘T ve iPhone ile aynı). Çeviri çalışmıyorsa false.
+         * kaldırır (Mac'in ekranı çevir kısayolu ve iPhone ile aynı). Çeviri çalışmıyorsa false.
          */
         fun resolvePairing(id: String, accept: Boolean) {
             val pairing = liveServer?.pairing

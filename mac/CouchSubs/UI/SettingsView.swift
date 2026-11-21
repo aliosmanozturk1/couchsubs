@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 
 /// Ayarların bölümleri; solda kenar çubuğunda listelenir, sağda seçili olan gösterilir.
 enum SettingsSection: CaseIterable, Identifiable {
-    case appearance, dubbing, translation, packs, language, area, obs, console, source, ps5, about
+    case appearance, dubbing, translation, packs, language, area, shortcuts, obs, console, source, ps5, about
 
     var id: Self { self }
 
@@ -20,6 +20,7 @@ enum SettingsSection: CaseIterable, Identifiable {
         case .packs: "Game packs"
         case .language: "Language"
         case .area: "Subtitle area"
+        case .shortcuts: "Keyboard shortcuts"
         case .obs: "OBS overlay"
         case .console: "Console"
         case .source: "Picture source"
@@ -36,6 +37,7 @@ enum SettingsSection: CaseIterable, Identifiable {
         case .packs: "shippingbox"
         case .language: "character.bubble"
         case .area: "rectangle.dashed"
+        case .shortcuts: "keyboard"
         case .obs: "dot.radiowaves.left.and.right"
         case .console: "gamecontroller"
         case .source: "rectangle.on.rectangle"
@@ -146,6 +148,7 @@ private struct SettingsPage: View {
             case .packs: GamePacksPage()
             case .language: LanguageCard()
             case .area: AreaCards()
+            case .shortcuts: ShortcutsCard()
             case .obs: OBSCard()
             case .console: ConsoleSettingsCard()
             case .source:
@@ -288,6 +291,8 @@ private struct AreaCards: View {
             LiveRegionPreview(settings: $model.settings, preview: model.framePreview)
             if model.settings.areaPreset == .custom { CustomAreaSliders(settings: $model.settings) }
             SwitchRow(title: "Keep centered", isOn: $model.settings.keepAreaCentered)
+            Button(HotkeyText.title(model.settings, .snapshot, String(localized: "Refresh picture (%@)"))) { model.requestSnapshot() }
+                .buttonStyle(.secondary)
             HintText(text: "Adjust the frame so it covers where the game shows its subtitles.")
             // "Ortalı kalır" yalnız Ortada tut açıkken yazılır.
             if model.settings.keepAreaCentered {
@@ -311,8 +316,18 @@ private struct AreaCards: View {
             Divider().overlay(Color.csBorder)
             SwitchRow(title: "Automatically translate the GTA 6 phone (experimental)", isOn: $model.settings.autoReadGamePhone)
         }
-        Card(title: "Translate the screen (⌥⌘T)") {
-            HintText(text: "Press ⌥⌘T while playing: every text on the screen is translated once and shown on the TV in its own place. Press again to remove the translations.")
+        Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .screen, String(localized: "Translate the screen (%@)")))) {
+            HintText(text: LocalizedStringKey(HotkeyText.sentence(model.settings, .screen,
+                String(localized: "Press %@ while playing: every text on the screen is translated once and shown on the TV in its own place. Press again to remove the translations."))))
+        }
+        // Serbest alan (Windows: FreeAreaCard): görüntü donar, fareyle seçilen yer bir kez çevrilir.
+        Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .freeArea, String(localized: "Free area (%@)")))) {
+            HintText(text: LocalizedStringKey(HotkeyText.sentence(model.settings, .freeArea,
+                String(localized: "Press %@ while playing: the picture freezes on the PC, drag over any part of it to translate that part once. Esc closes."))))
+            ResultTargetPicker(target: $model.settings.freeAreaTarget)
+            HintText(text: LocalizedStringKey(HotkeyText.sentence(model.settings, .pauseSubtitles,
+                String(localized: "%@ pauses or resumes the live subtitle translation, which helps when you translate areas."))))
+            HintText(text: "The shortcuts work only while translating, so the keys stay free in other apps. You can change them under Keyboard shortcuts.")
         }
     }
 }
@@ -521,8 +536,8 @@ private struct ExtraAreaEditor: View {
                 HStack(spacing: Theme.space("m")) {
                     TextField("Area name", text: Binding(get: { area.name }, set: { name in settings.updateExtraArea(id: id) { $0.name = name } }))
                         .textFieldStyle(CSTextFieldStyle())
-                    Toggle("Read this area", isOn: Binding(get: { area.enabled },
-                                                           set: { on in settings.updateExtraArea(id: id) { $0.enabled = on } }))
+                    Toggle("Keep reading this area", isOn: Binding(get: { area.enabled },
+                                                                   set: { on in settings.updateExtraArea(id: id) { $0.enabled = on } }))
                         .toggleStyle(.switch)
                         .tint(Color.csAccent)
                         .fixedSize()
@@ -541,10 +556,35 @@ private struct ExtraAreaEditor: View {
                 ExtraAreaPreview(region: area.region, preview: preview) { region in
                     settings.updateExtraArea(id: id) { $0.region = region }
                 }
-                .opacity(area.enabled ? 1 : 0.5)
+                // Sürekli okunmayan alan kısayolla bir kez okunur; sonucun yeri seçilir (Windows: ek bölgenin "Sonucu göster"i).
+                ResultTargetPicker(target: Binding(get: { area.target }, set: { target in settings.updateExtraArea(id: id) { $0.target = target } }))
+                if let number = settings.extraAreas.firstIndex(where: { $0.id == id }).map({ $0 + 1 }),
+                   let action = HotkeyAction.areaActions.dropFirst(number - 1).first {
+                    HintText(text: LocalizedStringKey(HotkeyText.sentence(settings, action,
+                        String(localized: "Draw the area to translate, for example a quest panel. While you play, press its shortcut (%@) to read and translate it once. Choose where the result shows. It works even when CouchSubs is in the background."))))
+                }
             }
             .padding(Theme.space("m"))
             .background(Color.csSurface2, in: RoundedRectangle(cornerRadius: Theme.radius("inner"), style: .continuous))
+        }
+    }
+}
+
+/// "Sonucu göster": kısayolla bir kez okunan alanın çevirisi TV'de, bu Mac'te ya da ikisinde de (Windows ile aynı seçim).
+private struct ResultTargetPicker: View {
+    @Binding var target: ResultTarget
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.space("s")) {
+            Text("Show the result").font(.csBody)
+            Picker("Show the result", selection: $target) {
+                Text("On the TV").tag(ResultTarget.tv)
+                Text("On this Mac").tag(ResultTarget.pc)
+                Text("On both").tag(ResultTarget.both)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
         }
     }
 }

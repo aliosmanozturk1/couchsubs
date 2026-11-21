@@ -350,17 +350,23 @@ public final class SubtitleServer: @unchecked Sendable {
     /// `box`: oyundaki İngilizce altyazının ekrandaki yeri (kenarlara oranla); TV çeviriyi buna göre yerleştirir.
     /// `replaces`: çeviri, az önce gösterilen satırın uzamış ya da düzelmiş bir okumasından gelir (`TextMatch.isRevision`);
     /// TV onu öncekinin üstüne yığmaz, yerine koyar (`replace` alanı; eski TV uygulamaları yok sayar).
+    /// `paragraphs`: çok parçalı yazı (görev paneli: başlık, maddeler); TV satır satır, sola yaslı gösterir (Windows ile aynı).
     public func sendSubtitle(_ text: String, durationMs: Int = 15000, box: TextBox? = nil, replaces: Bool = false) {
+        sendSubtitle(text, durationMs: durationMs, box: box, replaces: replaces, paragraphs: false)
+    }
+
+    public func sendSubtitle(_ text: String, durationMs: Int, box: TextBox?, replaces: Bool = false, paragraphs: Bool) {
         let at = Int(Date().timeIntervalSince1970 * 1000)
         var json: [String: Any] = ["text": text, "duration": durationMs, "at": at]
         if let box { json["box"] = Self.json(box) }
+        if paragraphs { json["paragraphs"] = true }
         if replaces { json["replace"] = true }
         if speakerColors {
             let speakers = SpeakerColors.speakers(in: text, book: speakerBook)
             if !speakers.isEmpty { json["speakers"] = speakers.map { ["name": $0.name, "color": $0.color] } }
         }
         broadcast(event: "subtitle", json: json)
-        onEvent?(.subtitle(text: text, durationMs: durationMs, paragraphs: false, replaces: replaces, box: box))
+        onEvent?(.subtitle(text: text, durationMs: durationMs, paragraphs: paragraphs, replaces: replaces, box: box))
     }
 
     /// Dört basamağa yuvarlanır; Decimal, JSON'da 0.80000000000000004 yerine 0.8 yazılsın diye.

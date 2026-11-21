@@ -124,17 +124,8 @@ extension AppModel {
         if !settings.output.showsOnComputer { overlayAdjusting = false }
     }
 
-    /// ⌥⌘L ve menü çubuğundaki seçenek: tıklamaların geçmesini açar/kapatır.
+    /// Kısayol (varsayılan Num 7 / ⌃⇧7) ve menü çubuğundaki seçenek: tıklamaların geçmesini açar/kapatır.
     func toggleClickThrough() {
         settings.overlayClickThrough.toggle()
-    }
-
-    /// Kısayol yalnız çeviri sürerken ve altyazı bilgisayar ekranındayken tutulur.
-    func updateClickThroughHotkey() {
-        let wanted = isRunning && settings.output.showsOnComputer
-        if wanted, clickThroughHotkey == nil {
-            clickThroughHotkey = GlobalHotkey(.clickThrough) { [weak self] in self?.toggleClickThrough() }
-        }
-        clickThroughHotkey?.enabled = wanted
     }
 }

@@ -598,6 +598,7 @@ final class AppModel: ObservableObject {
                 server.sendStyle(settings.style)
             }
             if settings.autoScreenText != oldValue.autoScreenText { showsAutoScreenTextNotice = false }
+            if settings.hotkeys != oldValue.hotkeys { applyHotkeys() }
             if settings.usageData != oldValue.usageData {
                 usage.setEnabled(settings.usageData)
                 // Ayarı değiştiren notu görmüştür. didSet içindeki atama didSet'i yeniden çağırmaz; kayıt burada yinelenir.
@@ -643,6 +644,16 @@ final class AppModel: ObservableObject {
 
     // Çalışma durumu
     @Published var isRunning = false
+    /// Genel kısayollar (bkz. `applyHotkeys`).
+    lazy var hotkeys = GlobalHotkeys { [weak self] action in self?.hotkeyPressed(action) }
+    /// Ayarlar › Kısayollar yeni tuşu bekliyor: basılan tuş kısayol olarak çalışmasın, oraya gelsin.
+    @Published var hotkeysPaused = false {
+        didSet { if hotkeysPaused != oldValue { applyHotkeys() } }
+    }
+    /// Num 0 ile canlı altyazı çevirisi duraklatıldı (oturum bitince kalkar).
+    @Published private(set) var subtitlesPaused = false
+    /// Kısayolla tek seferlik alan okuması sürüyor; üst üste basılınca ikincisi başlamaz.
+    private var regionBusy = false
     @Published var isStarting = false
     /// Deneme modu: konsol yerine uygulamadaki örnek kareler okunur (`DemoFrameSource`); kurulum gerekmez.
     @Published private(set) var demoMode = false
@@ -1962,9 +1973,7 @@ final class AppModel: ObservableObject {
                                        engine: onlineTranslationActive ? settings.onlineEngine.rawValue : "free",
                                        packs: settings.gamePacks, console: usageConsole))
         }
-        if screenHotkey == nil { screenHotkey = GlobalHotkey(.translateScreen) { [weak self] in self?.translateScreen() } }
-        screenHotkey?.enabled = true
-        updateClickThroughHotkey()
+        applyHotkeys()
     }
 
     /// Konsola (PS5 ya da Xbox) bağlanan oturumu kurar; başlatmaz. "Çeviriyi başlat" ve "Yeniden bağlan" kullanır.
@@ -2109,7 +2118,6 @@ final class AppModel: ObservableObject {
             // Yayın penceresi açıksa satırları kalır; yalnız saydam pencerenin yer ayarı biter.
             if streamWindowOpen { overlayAdjusting = false } else { overlayHide() }
         }
-        updateClickThroughHotkey()
         guard isRunning else { return }
         keepAwake()
         if settings.output.showsOnTV {
@@ -2122,12 +2130,104 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: - Ekranı çevir
+    // MARK: - Kısayollar
 
-    /// ⌥⌘T yalnız çeviri sürerken tutulur.
-    private var screenHotkey: GlobalHotkey?
-    /// ⌥⌘L: altyazı penceresinde "Tıklamalar geçsin"i açar/kapatır; çeviri sürerken ve altyazı bilgisayardayken tutulur.
-    var clickThroughHotkey: GlobalHotkey?
+    /// Kısayollar yalnız çeviri sürerken ve Ayarlar yeni tuş beklemiyorken tutulur (Windows: ShellWindow.ApplyHotkeys).
+    func applyHotkeys() {
+        hotkeys.bindings = HotkeyTable.resolve(settings.hotkeys)
+        hotkeys.enabled = isRunning && !hotkeysPaused
+    }
+
+    /// Kısayola basıldı (Windows: ShellWindow.OnHotkey).
+    func hotkeyPressed(_ action: HotkeyAction) {
+        switch action {
+        case .extraRegion1, .extraRegion2, .extraRegion3:
+            if let number = action.areaNumber { Task { await translateExtraArea(number) } }
+        case .pauseSubtitles: toggleSubtitles()
+        case .snapshot: requestSnapshot()
+        case .freeArea: FreeAreaPanel.open(self)
+        case .screen: translateScreen()
+        case .clickThrough: toggleClickThrough()
+        }
+    }
+
+    /// Num 0: canlı altyazı çevirisini duraklatır ya da sürdürür. Alan çevirirken sürekli çeviri de TV'de görünüp
+    /// karışmasın diye kullanılır; duraklarken ek alanlar da okunmaz, kutuları kalkar. TV'de kısa bir bildirim çıkar.
+    /// Çeviri sürmüyorsa bir şey yapmaz (Windows: AppController.ToggleSubtitles).
+    func toggleSubtitles() {
+        guard isRunning else { return }
+        subtitlesPaused.toggle()
+        if subtitlesPaused {
+            pipeline?.reset()
+            regionWatcher?.reset()
+            server.clear()
+            server.clearRegions()
+        }
+        server.sendStyle(settings.style)
+        server.sendSubtitle(String(localized: subtitlesPaused ? "Subtitle translation paused" : "Subtitle translation resumed"),
+                            durationMs: 1800)
+    }
+
+    /// Num 8: Ayarlar'daki önizleme oyunun şu anki görüntüsünü yeniden alır (Windows: RequestSnapshot).
+    func requestSnapshot() {
+        framePreview.objectWillChange.send()
+    }
+
+    /// 1, 2 ya da 3. sıradaki ek alanı şimdi bir kez okuyup çevirir; sonuç alanın seçimindeki yere (TV, bu Mac ya da
+    /// ikisi) gider. Çeviri sürmüyorsa, o sırada alan yoksa ya da önceki istek bitmediyse bir şey yapılmaz (Windows:
+    /// AppController.TranslateExtraRegionAsync).
+    @discardableResult
+    func translateExtraArea(_ number: Int) async -> RegionTranslation.Outcome {
+        guard let area = settings.extraArea(at: number) else { return .notConfigured }
+        guard let frame = lastFrame else { return .notRunning }
+        return await translateRegion(frame, area.region, toTV: area.target.toTV, toComputer: area.target.toComputer).outcome
+    }
+
+    /// Serbest alan (Num 5): verilen karedeki alanı bir kez okuyup çevirir. Sonuç ayardaki hedefe göre TV'ye de gider;
+    /// bilgisayarda serbest alan penceresi kendisi gösterir (Windows: AppController.TranslateAreaAsync).
+    func translateFreeArea(_ frame: CGImage, _ region: CropRegion) async -> (outcome: RegionTranslation.Outcome, result: RegionTranslation.Result?) {
+        await translateRegion(frame, region, toTV: settings.freeAreaTarget.toTV, toComputer: false)
+    }
+
+    private func translateRegion(_ frame: CGImage, _ region: CropRegion, toTV: Bool,
+                                 toComputer: Bool) async -> (outcome: RegionTranslation.Outcome, result: RegionTranslation.Result?) {
+        guard isRunning else { return (.notRunning, nil) }
+        // Tuşa üst üste basılınca ikinci bir okuma başlamaz.
+        guard !regionBusy else { return (.busy, nil) }
+        regionBusy = true
+        defer { regionBusy = false }
+        let reader = VisionReader(language: settings.sourceLanguage)
+        let result: RegionTranslation.Result?
+        do {
+            result = try await RegionTranslation.translateOnce(frame, region: region, reader: reader, translator: makeTranslator())
+        } catch let error as TranslatorError {
+            translatorStatus = Self.translatorStatus(after: error)
+            return (.translatorUnavailable, nil)
+        } catch {
+            return (.failed, nil)
+        }
+        guard let result else {
+            let message = String(localized: "No text found in this area.")
+            if toTV {
+                server.sendStyle(settings.style)
+                server.sendSubtitle(message, durationMs: 2500,
+                                    box: TextBox(left: region.left, top: region.top, right: region.right, bottom: region.bottom))
+            }
+            if toComputer { ResultPanel.show(message, milliseconds: 2500) }
+            return (.noText, nil)
+        }
+        let milliseconds = RegionTranslation.displayMilliseconds(result.translation)
+        if toTV {
+            server.sendStyle(settings.style)
+            server.sendSubtitle(result.translation, durationMs: milliseconds, box: result.box, paragraphs: result.structured)
+        }
+        lastSource = result.source
+        lastTranslation = result.translation
+        if toComputer { ResultPanel.show(result.translation, milliseconds: milliseconds) }
+        return (.shown, result)
+    }
+
+    // MARK: - Ekranı çevir
     /// Süren "ekranı çevir" işi; yeniden basılınca iptal edilir.
     private var screenTask: Task<Void, Never>?
     /// TV'deki ekran çevirilerinin kalkacağı an; bu andan önce yeniden basınca ekran değişmediyse onlar kalkar.
@@ -2143,7 +2243,7 @@ final class AppModel: ObservableObject {
     private var screenMemory = PhoneChatMemory()
     private var screenMemoryKey = ""
 
-    /// ⌥⌘T: oyunun şu anki karesinin tamamını bir kez okur, her yazı grubunu ayrı çevirip TV'de kendi yerine koyar.
+    /// Num 9 / ⌃⇧9: oyunun şu anki karesinin tamamını bir kez okur, her yazı grubunu ayrı çevirip TV'de kendi yerine koyar.
     /// Çeviriler hazırlandıkça TV'ye gider. Çeviri sürerken yeniden basmak onu durdurur. Çeviriler ekrandayken yeniden
     /// basınca kare yine okunur: ekran değiştiyse (telefonda başka sohbet) yenisi çevrilir, değişmediyse çeviriler kalkar.
     /// Karede GTA 6 telefonu varsa kart ekrandayken telefon izlenir (`followPhone`): sohbet değişince kart kendiliğinden
@@ -2615,7 +2715,7 @@ final class AppModel: ObservableObject {
         // Yeni "Başlat" eski oturumdan kalan (belki takılmış) okumayı beklemeden temiz başlar.
         frameGate.reset()
         activeLanguages = nil
-        screenHotkey?.enabled = false
+        subtitlesPaused = false
         screenTask?.cancel()
         screenTask = nil
         if Date() < screenShownUntil { server.clearScreen() }
@@ -2637,7 +2737,8 @@ final class AppModel: ObservableObject {
         sessionIsConsole = false
         subtitleOffTip.reset()
         updateSubtitleOffTip()
-        updateClickThroughHotkey()
+        applyHotkeys()
+        FreeAreaPanel.close()
         overlayHide()
     }
 
@@ -2865,7 +2966,9 @@ final class AppModel: ObservableObject {
         lastFrame = frame
         subtitleOffTip.frameArrived(at: Date(), streaming: sessionState == .streaming)
         updateSubtitleOffTip()
-        guard pipeline != nil else { return }
+        // Num 0 ile duraklatıldı: altyazı da ek alanlar da okunmaz (kare yine alınır: kısayolla tek seferlik okuma ve
+        // serbest alan onu kullanır).
+        guard pipeline != nil, !subtitlesPaused else { return }
         // Ek alanlar altyazıyla aynı OCR kuyruğunu kullanır; saniyede bir tur yeterlidir.
         // Kullanıcının ek alanı yoksa bilinen oyunun hazır alanları (GameAreaPresets; ör. GTA 6 yardım kutusu ve mesajlar).
         let pose = gamePhoneTracker?.sample(frame, now: capturedAt).pose

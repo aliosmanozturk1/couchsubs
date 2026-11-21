@@ -179,8 +179,7 @@ karolar: PS5 ve TV durum karoları (altyazı yalnız bilgisayar ekranındaysa TV
 değilse "Kurulmadı" ve "TV bağla"), iki sütun genişliğinde "Altyazıyı göster: TV / Bilgisayar ekranı / İkisi de"
 karosu (bilgisayar ekranı seçiliyse "Tıklamalar geçsin" ve "Altyazı penceresini ayarla"), iki satırlı bilgi karosu:
 "Çeviri" (seçili motor ve `›`; Ayarlar › Çeviri'yi açar) ve "Ekranı çevir" (seçili kısayollar, her biri bir tuş:
-Windows'ta varsayılan `Num 9` ya da `Ctrl+Shift+9`, Ayarlar › Kısayollar'dan değişir, hiç yoksa "kısayol yok"; Mac'te
-`⌥⌘T`); gerekiyorsa uyarı karoları (dil paketi, çevrimiçi motor, yazı tanıma).
+varsayılan `Num 9` ya da `Ctrl+Shift+9`, Mac'te `⌃⇧9`; Ayarlar › Kısayollar'dan değişir, hiç yoksa "kısayol yok"); gerekiyorsa uyarı karoları (dil paketi, çevrimiçi motor, yazı tanıma).
 Sağ sütun: oyun paketleri açıksa (İngilizce→Türkçe, paket kurulu) paket karosu (mor paket simgesi) "Oyun paketleri
 açık · n oyunun çevirisi hazır"; altında kalan yüksekliği dolduran "Canlı altyazı" karosu: son çeviri 28 pt altyazı
 sarısında, altında özgün metin `caption`; önceki satırlar ayraçlarla, 17 pt ve kaydırılabilir. Yeni satır 0,18 sn
@@ -216,8 +215,8 @@ TV kurulumu atlanır, deneme adımı örnek altyazıyı bilgisayar ekranında g�
 Play dahil) üstünde; odağı almaz, görev çubuğunda / Dock'ta görünmez. Altyazı kutusu TV'dekinin aynısıdır (yazı boyu
 1080 satırlık ekrana göre ölçeklenir, beyaz ya da sarı yazı, siyah yarı saydam zemin, üstteki satırlar küçük ve soluk,
 en çok üç satır). Altyazı yokken pencere gizlenir. "Tıklamalar geçsin" kapalıyken yazıdan tutup sürüklenir; açıkken
-fare alttaki pencereye gider, geri almak için Mac'te ⌥⌘L ya da menü çubuğundaki CouchSubs simgesi, Windows'ta Num 7
-(ya da sayı tuş takımı olmayan klavyede Ctrl+Shift+7) ya da ana ekran. "Altyazı penceresini ayarla": `accent` kesik çizgili çerçeve (parıltısız), üstte açıklama ve "Bitti" (birincil),
+fare alttaki pencereye gider, geri almak için Num 7 (ya da sayı tuş takımı olmayan
+klavyede Ctrl+Shift+7, Mac'te ⌃⇧7; Ayarlar › Kısayollar'dan değişir), Mac'te menü çubuğundaki CouchSubs simgesi ya da ana ekran. "Altyazı penceresini ayarla": `accent` kesik çizgili çerçeve (parıltısız), üstte açıklama ve "Bitti" (birincil),
 iki yanda genişletme tutamakları; yer, genişlik ve ekran hatırlanır.
 
 **Hakkında**: 88 pt logo, ad, sürüm, lisans, teşekkür, bağlantılar, Sony ile ilişkisizlik notu.

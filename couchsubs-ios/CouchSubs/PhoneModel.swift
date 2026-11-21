@@ -1503,7 +1503,7 @@ final class PhoneModel: ObservableObject {
     /// "Ekranı çevir": PS5'in şu anki karesinin tamamı bir kez okunur, yazı grupları (menü, görev paneli, bilgi kutusu...)
     /// tek istekte çevrilir; sonuçlar telefonda ve TV'de yazının kendi yerinde, özgün stilinde görünür (GTA 6 telefonu
     /// yanında mesaj kartında). Çeviri sürerken yeniden dokunmak onu durdurur; sonuçlar ekrandayken dokununca kare yine
-    /// okunur: ekran değiştiyse (telefonda başka sohbet) yenisi çevrilir, değişmediyse sonuçlar kalkar (Mac ⌥⌘T ile aynı).
+    /// okunur: ekran değiştiyse (telefonda başka sohbet) yenisi çevrilir, değişmediyse sonuçlar kalkar (Mac'in ekranı çevir kısayoluyla aynı).
     /// Karede GTA 6 telefonu varsa kart ekrandayken telefon izlenir (`followPhone`): sohbet değişince kart kendiliğinden
     /// yenilenir, telefon kapanınca kalkar. `refresh`: bu izlemenin yenilemesi (dokunulmadı).
     func translateScreen(refresh: Bool = false) {

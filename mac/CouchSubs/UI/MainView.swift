@@ -174,7 +174,7 @@ struct MainControls: View {
                 InfoDivider()
                 InfoRow("Translation", value: engineName, action: { model.openSettings(.translation) })
                 InfoDivider()
-                InfoRow("Translate screen") { Keycap("⌥⌘T") }
+                InfoRow("Translate screen") { ScreenKeys(settings: model.settings) }
             }
             MainWarnings()
         }
@@ -530,5 +530,26 @@ private struct HistoryRow: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .textSelection(.enabled)
+    }
+}
+
+/// Bilgi karosunun "Ekranı çevir" satırı: Ayarlar › Kısayollar'da seçili her tuş bir Keycap, aralarında "ya da"; hiç
+/// kısayol yoksa "kısayol yok" (Windows: MainView.ShowScreenKeys).
+private struct ScreenKeys: View {
+    let settings: UserSettings
+
+    var body: some View {
+        let keys = HotkeyTable.keys(settings.hotkeys, .screen)
+        if keys.isEmpty {
+            Text("no shortcut").font(.csCaption).foregroundStyle(Color.csSecondary)
+        } else {
+            HStack(spacing: Theme.space("xs")) {
+                ForEach(Array(keys.enumerated()), id: \.offset) { index, key in
+                    if index > 0 { Text("or").font(.csCaption).foregroundStyle(Color.csSecondary) }
+                    Keycap(key.label)
+                }
+            }
+            .help(HotkeyText.title(settings, .screen, String(localized: "Translate the screen (%@)")))
+        }
     }
 }

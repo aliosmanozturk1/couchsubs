@@ -30,7 +30,8 @@ struct SubtitleOutputCard: View {
                 }
                 ComputerScreenOptions()
                 if detailed || model.settings.overlayClickThrough {
-                    HintText(text: "When on, clicks go through to the window below. Press ⌥⌘L or use the menu bar to turn it off.")
+                    HintText(text: LocalizedStringKey(HotkeyText.sentence(model.settings, .clickThrough,
+                        String(localized: "When on, clicks go through to the window below. Press %@ to turn it off."))))
                 }
             }
             // "Yalnız OBS (yayın)": TV aranmaz, bilgisayar ekranında pencere açılmaz; altyazı yalnız OBS katmanına gider.

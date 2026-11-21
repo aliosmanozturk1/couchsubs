@@ -9,9 +9,7 @@
       "CpuTranslationThreads": "Bilinçli: Windows'un ücretsiz çevirisi bu bilgisayardaki OPUS-MT modelidir (CPU iş parçacığı). Mac'te ücretsiz çeviri Apple Translation'dır; ayarı yoktur.",
       "TranslationDevice": "Bilinçli: OPUS-MT'nin CPU/GPU (CUDA) seçimi. Mac'te Apple Translation çalışır, cihaz seçimi yoktur.",
       "OcrEngine": "Bilinçli: Windows OCR'ı aydınlık sahnelerde zayıf olduğu için Gelişmiş (PP-OCR) seçeneği var. Mac Apple Vision kullanır.",
-      "XboxLegacyFrameRate": "Bilinçli: Windows Xbox görüntüsünü aralıkla yoklar (66/200 ms). Mac yerel XboxStreamSession'la her kareyi alır; yoklama aralığı yoktur.",
-      "Hotkeys": "AÇIK: Windows'ta 8 eylemli, ikişer yuvalı, değiştirilebilir kısayollar. Mac'te yalnız sabit ⌥⌘T ve ⌥⌘L var. Yeni alt sistem; ayrı PR.",
-      "FreeAreaTarget": "AÇIK: Serbest alan (görüntüyü dondur, sürükle, bir kez çevir) yalnız Windows'ta. Kısayollara bağlı; ayrı PR."
+      "XboxLegacyFrameRate": "Bilinçli: Windows Xbox görüntüsünü aralıkla yoklar (66/200 ms). Mac yerel XboxStreamSession'la her kareyi alır; yoklama aralığı yoktur."
     },
     "mac_only": {
       "areaPreset": "Bilinçli (model farkı): Windows hazır alanı bölge değerinden çıkarır (AreaPresets), ayrı alanda saklamaz.",
