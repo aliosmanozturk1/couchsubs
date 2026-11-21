@@ -57,6 +57,18 @@ object AutoScreenTextMigration {
 }
 
 /**
+ * "Bilinen oyunlarda hazır alanları kullan" ve "GTA 6 telefonunu otomatik çevir" bir kerelik göçü (Windows
+ * ScreenTextExtrasMigration, Mac/iPhone migratingScreenTextExtras ile aynı kural); [AutoScreenTextMigration]'dan sonra
+ * uygulanır. Hazır alanlar beta.63–68'de varsayılan açık geliyordu ve otomatik ekran yazısı kapalıyken de GTA 6'da menüyü
+ * ve bildirimleri çeviriyordu. İşaret varsa null (bir şey yapılmaz); yoksa işaret konur ve otomatik ekran yazısı
+ * kapalıysa ikisi de kapatılır (true); kullanıcı onu açmışsa dokunulmaz (false).
+ */
+object ScreenTextExtrasMigration {
+    /** [reset]: göç işareti; [autoScreenText]: otomatik ekran yazısı (önceki göçten sonraki) değeri. */
+    fun apply(reset: Boolean, autoScreenText: Boolean): Boolean? = if (reset) null else !autoScreenText
+}
+
+/**
  * Anahtarlar ve PS5 kaydı Android Keystore'daki (donanım destekli, dışarı çıkarılamayan) AES-GCM anahtarıyla şifrelenip
  * saklanır. Windows'taki SecureStore (DPAPI) ve Mac'teki Anahtar Zinciri karşılığı. Uygulama silinince gider.
  */
@@ -190,10 +202,12 @@ class AppSettings(context: Context) : AreaStore {
 
     /**
      * "Bilinen oyunlarda hazır alanları kullan": tabloda satırı olan oyunda (GTA 6) yardım kutusu ve mesajlar
-     * kendiliğinden okunur ([com.couchsubs.mobile.core.GameAreaPresets]). Eski kayıtlarda yoktur; açık başlar.
+     * kendiliğinden okunur ([com.couchsubs.mobile.core.GameAreaPresets]). Varsayılan kapalı (beta.63–68'de açık
+     * geliyordu: otomatik ekran yazısı kapalıyken de GTA 6'da menüyü ve bildirimleri çeviriyordu); kullanıcı açmadıkça
+     * altyazı alanı dışında hiçbir şey çevrilmez.
      */
     var gameAreaPresets: Boolean
-        get() = prefs.getBoolean("gameAreaPresets", true)
+        get() = prefs.getBoolean("gameAreaPresets", false)
         set(value) = prefs.edit().putBoolean("gameAreaPresets", value).apply()
 
     /**
@@ -240,6 +254,15 @@ class AppSettings(context: Context) : AreaStore {
 
     init {
         migrateAutoScreenText()
+        migrateScreenTextExtras()
+    }
+
+    /** Hazır alanlar ve GTA 6 telefonu bir kerelik göçü ([ScreenTextExtrasMigration]). */
+    private fun migrateScreenTextExtras() {
+        val turnOff = ScreenTextExtrasMigration.apply(prefs.getBoolean("screenTextExtrasReset", false), autoScreenText) ?: return
+        val edit = prefs.edit().putBoolean("screenTextExtrasReset", true)
+        if (turnOff) edit.putBoolean("gameAreaPresets", false).putBoolean("autoReadGamePhone", false)
+        edit.apply()
     }
 
     /**

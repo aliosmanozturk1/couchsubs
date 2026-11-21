@@ -153,6 +153,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         };
         // beta.63'te varsayılan açık gelen otomatik ekran yazısı bir kez kapatılır; açık olanlara bir kez söylenir.
         (settings, ShowsAutoScreenTextNotice) = AutoScreenTextMigration.Apply(settings);
+        // Otomatik ekran yazısı kapalıyken hazır alanlar ve GTA 6 telefonu da bir kez kapatılır (altyazı dışında çeviri yok).
+        settings = ScreenTextExtrasMigration.Apply(settings);
         // Uygulama oturum sürerken kapandıysa oyunun profili açık kalmış olabilir: açılışta genel alanlar geri gelir.
         if (settings.ActiveAreaProfile is not null || settings.GeneralAreas is not null) settings = settings.WithGeneralAreas();
         services.Translation.SelectCpuThreads(settings.CpuTranslationThreads);

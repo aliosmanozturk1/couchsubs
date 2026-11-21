@@ -215,6 +215,20 @@ public static class AutoScreenTextMigration
         : (settings with { AutoScreenText = false, AutoScreenTextReset = true }, settings.AutoScreenText);
 }
 
+/// <summary>
+/// "Bilinen oyunlarda hazır alanları kullan" ve "GTA 6 telefonunu otomatik çevir" bir kerelik göçü (Mac/iPhone
+/// migratingScreenTextExtras, Android aynı kural); <see cref="AutoScreenTextMigration"/>'dan sonra uygulanır. Hazır alanlar
+/// beta.63–68'de varsayılan açık geliyordu ve otomatik ekran yazısı kapalıyken de GTA 6'da menüyü ve bildirimleri
+/// çeviriyordu. İşaret yoksa: otomatik ekran yazısı kapalıysa ikisi de kapatılır; kullanıcı onu açmışsa dokunulmaz. Sonra
+/// işaret konur; kullanıcı ikisini bilerek yeniden açabilir.
+/// </summary>
+public static class ScreenTextExtrasMigration
+{
+    public static UserSettings Apply(UserSettings settings) => settings.ScreenTextExtrasReset ? settings
+        : settings.AutoScreenText ? settings with { ScreenTextExtrasReset = true }
+        : settings with { GameAreaPresets = false, AutoReadGamePhone = false, ScreenTextExtrasReset = true };
+}
+
 public sealed record UserSettings
 {
     public CropRegion Region { get; init; } = new();
@@ -281,6 +295,11 @@ public sealed record UserSettings
     /// </summary>
     public bool AutoScreenTextReset { get; init; }
     /// <summary>
+    /// Hazır alanlar ve GTA 6 telefonu bir kerelik göçü yapıldı (<see cref="ScreenTextExtrasMigration"/>). Eski dosyalarda
+    /// yoktur (false).
+    /// </summary>
+    public bool ScreenTextExtrasReset { get; init; }
+    /// <summary>
     /// Otomatik ekran yazısında hangi türler çevrilir (bkz. <see cref="ScreenTextKind"/>); yalnız <see cref="AutoScreenText"/>
     /// açıkken geçerli. Eski ayar dosyalarında yoktur; varsayılanla gelir: telefon, görev, yardım/eylemler açık; menüler ve
     /// diğerleri kapalı (kullanıcı isteği: "menülerde olmasını istemiyorum").
@@ -317,9 +336,11 @@ public sealed record UserSettings
     public bool SetTextApart { get; init; } = true;
     /// <summary>
     /// Bilinen oyunlarda hazır ek alanlar (<see cref="Core.GameAreaPresets"/>; ör. GTA 6'nın yardım kutusu ve mesajları)
-    /// kendiliğinden okunur. Kullanıcının kendi ek alanı varsa onunki kullanılır. Eski ayar dosyalarında yoktur; açık başlar.
+    /// kendiliğinden okunur. Kullanıcının kendi ek alanı varsa onunki kullanılır. Varsayılan kapalı (beta.63–68'de açık
+    /// geliyordu: otomatik ekran yazısı kapalıyken de GTA 6'da menüyü ve bildirimleri çeviriyordu); kullanıcı açmadıkça
+    /// altyazı alanı dışında hiçbir şey çevrilmez.
     /// </summary>
-    public bool GameAreaPresets { get; init; } = true;
+    public bool GameAreaPresets { get; init; }
     /// <summary>Altyazı okuyucusu. Gelişmiş seçili ama modeli inmemişse Windows'unki kullanılır.</summary>
     public OcrEngine OcrEngine { get; init; } = OcrEngine.Windows;
     public DubbingSettings Dubbing { get; init; } = new();

@@ -791,6 +791,8 @@ final class AppModel: ObservableObject {
         var curated = GameAreas.restored(loaded.withCuratedModels())
         // beta.63'te varsayılan açık gelen otomatik ekran yazısı bir kez kapatılır; açık olanlara bir kez söylenir.
         let autoScreenTextNotice = curated.migratingAutoScreenText()
+        // Otomatik ekran yazısı kapalıyken hazır alanlar ve GTA 6 telefonu da bir kez kapatılır (altyazı dışında çeviri yok).
+        curated.migratingScreenTextExtras()
         settings = curated
         showsAutoScreenTextNotice = autoScreenTextNotice
         streamBackground = StreamBackground(stored: defaults.string(forKey: StoreKey.streamBackground))

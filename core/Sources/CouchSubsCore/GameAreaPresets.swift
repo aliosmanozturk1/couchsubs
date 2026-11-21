@@ -3,7 +3,8 @@
 import Foundation
 
 /// Oyuna göre hazır ek alanlar: tabloda satırı olan oyun oynanırken o oyunun ipucu kutusu ve mesajları, kullanıcı ek
-/// alan tanımlamadan sürekli okunup yerinde çevrilir (ayar: `UserSettings.gameAreaPresets`). Alanlar çalışma anında
+/// alan tanımlamadan sürekli okunup yerinde çevrilir (ayar: `UserSettings.gameAreaPresets`, varsayılan kapalı; kullanıcı
+/// açmadıkça altyazı alanı dışında hiçbir şey çevrilmez). Alanlar çalışma anında
 /// hesaplanır, kayıtlı ayarlara yazılmaz; kullanıcının kendi etkin ek alanı ya da o oyun için etkin alan profili varsa
 /// hiç eklenmez. Yeni oyun tabloya bir satırdır. Windows (GameAreaPresets.cs) ve Android (GameAreaPresets.kt) aynı
 /// tabloyu ve kuralları uygular.

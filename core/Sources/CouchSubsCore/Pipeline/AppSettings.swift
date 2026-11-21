@@ -156,10 +156,12 @@ public struct UserSettings: Codable, Equatable {
     public var fastSubtitleDetection = false
     /// Yalnız GTA 6'nın lacivert altyazı zemini üstündeki yazıyı oku. Varsayılan kapalı.
     public var watchSubtitleBackground = false
-    /// Mac'te GTA 6 telefonu açıkken mesajları yerinde gösterir.
+    /// Mac'te GTA 6 telefonu açıkken mesajları yerinde gösterir. Varsayılan kapalı; kullanıcı açmadıkça telefon okunmaz.
     public var autoReadGamePhone = false
     /// Bilinen oyunlarda hazır ek alanlar (bkz. `GameAreaPresets`); kullanıcının kendi ek alanı varsa o kullanılır.
-    public var gameAreaPresets = true
+    /// Varsayılan kapalı (beta.63–68'de açık geliyordu: otomatik ekran yazısı kapalıyken de GTA 6'nın sol üstünde menüyü,
+    /// sağda bildirimleri çeviriyordu). Kullanıcı açmadıkça altyazı alanı dışında hiçbir şey çevrilmez.
+    public var gameAreaPresets = false
     /// "Ekran yazılarını altyazıdan ayır": ek alan ve otomatik ekran yazısı kutuları özgün rengini ve zeminini korur,
     /// altyazı kutusuna benzemez (zemin yoksa zeminsiz, koyu gölgeli). Eski kayıtlarda yoktur; açık başlar.
     public var setTextApart = true
@@ -169,6 +171,8 @@ public struct UserSettings: Codable, Equatable {
     public var autoScreenText = false
     /// Bir kerelik göç yapıldı (bkz. `migratingAutoScreenText()`). Eski kayıtlarda yoktur (false).
     public var autoScreenTextReset = false
+    /// Hazır alanlar ve GTA 6 telefonu bir kerelik göçü yapıldı (bkz. `migratingScreenTextExtras()`). Eski kayıtlarda yoktur.
+    public var screenTextExtrasReset = false
     /// Otomatik ekran yazısında hangi türler çevrilir (bkz. `ScreenTextKind`); yalnız `autoScreenText` açıkken geçerli.
     /// Eski kayıtlarda yoktur; varsayılanla gelir: telefon, görev, yardım/eylemler açık; menüler ve diğerleri kapalı
     /// (kullanıcı isteği: "menülerde olmasını istemiyorum").
@@ -234,6 +238,7 @@ public struct UserSettings: Codable, Equatable {
         setTextApart = try values.decodeIfPresent(Bool.self, forKey: .setTextApart) ?? defaults.setTextApart
         autoScreenText = try values.decodeIfPresent(Bool.self, forKey: .autoScreenText) ?? defaults.autoScreenText
         autoScreenTextReset = try values.decodeIfPresent(Bool.self, forKey: .autoScreenTextReset) ?? defaults.autoScreenTextReset
+        screenTextExtrasReset = try values.decodeIfPresent(Bool.self, forKey: .screenTextExtrasReset) ?? defaults.screenTextExtrasReset
         screenTextPhone = try values.decodeIfPresent(Bool.self, forKey: .screenTextPhone) ?? defaults.screenTextPhone
         screenTextMission = try values.decodeIfPresent(Bool.self, forKey: .screenTextMission) ?? defaults.screenTextMission
         screenTextHelp = try values.decodeIfPresent(Bool.self, forKey: .screenTextHelp) ?? defaults.screenTextHelp
@@ -360,5 +365,21 @@ extension UserSettings {
         autoScreenText = false
         autoScreenTextReset = true
         return wasOn
+    }
+
+    /// Hazır alanlar ("Bilinen oyunlarda hazır alanları kullan") ve "GTA 6 telefonunu otomatik çevir" bir kerelik göçü
+    /// (Windows ScreenTextExtrasMigration, Android aynı kural). `migratingAutoScreenText()`'ten sonra çağrılır. Hazır
+    /// alanlar beta.63–68'de varsayılan açık geliyordu ve otomatik ekran yazısı kapalıyken de GTA 6'da menüyü ve
+    /// bildirimleri çeviriyordu. İşaret yoksa: otomatik ekran yazısı kapalıysa ikisi de kapatılır; kullanıcı otomatik ekran
+    /// yazısını açmışsa dokunulmaz. Sonra işaret konur; kullanıcı ikisini bilerek yeniden açabilir. Dönüş: ayar değişti.
+    @discardableResult
+    public mutating func migratingScreenTextExtras() -> Bool {
+        guard !screenTextExtrasReset else { return false }
+        screenTextExtrasReset = true
+        guard !autoScreenText else { return false }
+        let changed = gameAreaPresets || autoReadGamePhone
+        gameAreaPresets = false
+        autoReadGamePhone = false
+        return changed
     }
 }

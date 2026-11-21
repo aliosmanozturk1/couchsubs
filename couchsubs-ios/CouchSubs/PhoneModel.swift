@@ -262,9 +262,11 @@ final class PhoneModel: ObservableObject {
         var curated = GameAreas.restored((loaded ?? UserSettings()).withCuratedModels())
         // beta.63'te varsayılan açık gelen otomatik ekran yazısı bir kez kapatılır; açık olanlara bir kez söylenir.
         let autoScreenTextNotice = curated.migratingAutoScreenText()
+        // Otomatik ekran yazısı kapalıyken hazır alanlar ve GTA 6 telefonu da bir kez kapatılır (altyazı dışında çeviri yok).
+        curated.migratingScreenTextExtras()
         settings = curated
         showsAutoScreenTextNotice = autoScreenTextNotice
-        if loaded?.autoScreenTextReset != true, let data = try? JSONEncoder().encode(curated) {
+        if loaded?.autoScreenTextReset != true || loaded?.screenTextExtrasReset != true, let data = try? JSONEncoder().encode(curated) {
             defaults.set(data, forKey: StoreKey.settings)
         }
         // "Şimdilik geç" ile PSN ve PS5 atlandıysa PS5'siz ana ekrana gidilir; altyazı hedefi seçilmediyse oradan sürer.

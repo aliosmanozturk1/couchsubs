@@ -16,6 +16,9 @@ final class GameAreaPresetsTests: XCTestCase {
 
     func testPresetsAreUsedOnlyWithoutOwnAreas() {
         var settings = UserSettings()
+        // Varsayılan kapalı: kullanıcı açmadıkça GTA 6'da da hazır alan okunmaz.
+        XCTAssertTrue(settings.watchedExtraAreas(game: "GTA 6").isEmpty)
+        settings.gameAreaPresets = true
         XCTAssertEqual(settings.watchedExtraAreas(game: "GTA 6").map(\.id), ["preset-help", "preset-phone"])
         // Oyun değişince kalkar.
         XCTAssertTrue(settings.watchedExtraAreas(game: "Red Dead Redemption 2").isEmpty)
@@ -42,9 +45,10 @@ final class GameAreaPresetsTests: XCTestCase {
         XCTAssertTrue(settings.watchedExtraAreas(game: "GTA 6").isEmpty)
     }
 
-    func testOldSettingsTurnPresetsOn() throws {
+    func testPresetsAreOffByDefaultAndInOldSettings() throws {
+        XCTAssertFalse(UserSettings().gameAreaPresets)
         let old = try JSONDecoder().decode(UserSettings.self, from: Data(#"{"showSpeakerNames": false}"#.utf8))
-        XCTAssertTrue(old.gameAreaPresets)
+        XCTAssertFalse(old.gameAreaPresets)
         XCTAssertFalse(old.showSpeakerNames)
     }
 }
