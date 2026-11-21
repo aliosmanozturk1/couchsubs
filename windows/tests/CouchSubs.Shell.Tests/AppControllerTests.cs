@@ -1495,6 +1495,31 @@ public class AppControllerRunTests
     }
 
     [Fact]
+    public async Task TvRetryReplacesTheShownRequest()
+    {
+        // TV'de Tamam ile yeniden denenince bekleyen istek yenisiyle değişir; eski pencereden verilen onay yok sayılır,
+        // yeni istek bekler ve onaylanınca anahtar TV'ye döner (Mac ve iPhone ile aynı).
+        var controller = AppControllerTests.Make();
+        var asked = new List<SubtitlePairing.Ticket>();
+        controller.TvPairingRequested += asked.Add;
+        await controller.OpenTvPairingAsync();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{controller.ServerPort}") };
+        using (var first = await http.PostAsync("/pair", null)) Assert.Equal(200, (int)first.StatusCode);
+        using (var tooSoon = await http.PostAsync("/pair", null)) Assert.Equal(409, (int)tooSoon.StatusCode);
+        await Task.Delay(TimeSpan.FromMilliseconds(SubtitlePairing.SupersedeAfterMs + 100));
+        using var second = await http.PostAsync("/pair", null);
+        Assert.Equal(200, (int)second.StatusCode);
+        Assert.Equal(2, asked.Count);
+        Assert.Equal(asked[1], controller.PendingTvPairing);
+        Assert.False(controller.ResolveTvPairing(asked[0].Id, true));
+        Assert.Equal(asked[1], controller.PendingTvPairing);
+        Assert.True(controller.ResolveTvPairing(asked[1].Id, true));
+        Assert.Null(controller.PendingTvPairing);
+        Assert.Contains("approved", await http.GetStringAsync("/pair?id=" + asked[1].Id));
+        controller.Dispose();
+    }
+
+    [Fact]
     public void SettingsArePersistedOutsideTheSecureStore()
     {
         var store = new MemoryStore();

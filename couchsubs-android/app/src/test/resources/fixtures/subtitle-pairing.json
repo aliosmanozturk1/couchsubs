@@ -247,5 +247,166 @@
         "state": "expired"
       }
     ]
+  },
+  {
+    "name": "supersede-unanswered",
+    "steps": [
+      {
+        "op": "session",
+        "value": true
+      },
+      {
+        "op": "begin",
+        "ok": true
+      },
+      {
+        "op": "advance",
+        "ms": 1999
+      },
+      {
+        "op": "begin",
+        "ok": false
+      },
+      {
+        "op": "pending",
+        "state": "current"
+      },
+      {
+        "op": "advance",
+        "ms": 1
+      },
+      {
+        "op": "begin",
+        "ok": true
+      },
+      {
+        "op": "pending",
+        "state": "current"
+      },
+      {
+        "op": "poll",
+        "previous": true,
+        "state": "expired"
+      },
+      {
+        "op": "resolve",
+        "previous": true,
+        "accept": true,
+        "ok": false
+      },
+      {
+        "op": "poll",
+        "state": "pending"
+      },
+      {
+        "op": "resolve",
+        "accept": true,
+        "ok": true
+      },
+      {
+        "op": "pending",
+        "state": "none"
+      }
+    ]
+  },
+  {
+    "name": "approved-until-delivered",
+    "steps": [
+      {
+        "op": "session",
+        "value": true
+      },
+      {
+        "op": "begin",
+        "ok": true
+      },
+      {
+        "op": "resolve",
+        "accept": true,
+        "ok": true
+      },
+      {
+        "op": "advance",
+        "ms": 2000
+      },
+      {
+        "op": "begin",
+        "ok": false
+      },
+      {
+        "op": "poll",
+        "state": "approved"
+      },
+      {
+        "op": "begin",
+        "ok": true
+      },
+      {
+        "op": "poll",
+        "previous": true,
+        "state": "expired"
+      },
+      {
+        "op": "pending",
+        "state": "current"
+      }
+    ]
+  },
+  {
+    "name": "cooldown-from-deadline",
+    "steps": [
+      {
+        "op": "session",
+        "value": true
+      },
+      {
+        "op": "begin",
+        "ok": true
+      },
+      {
+        "op": "advance",
+        "ms": 130000
+      },
+      {
+        "op": "pending",
+        "state": "none"
+      },
+      {
+        "op": "begin",
+        "ok": true
+      }
+    ]
+  },
+  {
+    "name": "open-state",
+    "steps": [
+      {
+        "op": "isOpen",
+        "value": false
+      },
+      {
+        "op": "open"
+      },
+      {
+        "op": "isOpen",
+        "value": true
+      },
+      {
+        "op": "advance",
+        "ms": 120000
+      },
+      {
+        "op": "isOpen",
+        "value": false
+      },
+      {
+        "op": "session",
+        "value": true
+      },
+      {
+        "op": "isOpen",
+        "value": true
+      }
+    ]
   }
 ]

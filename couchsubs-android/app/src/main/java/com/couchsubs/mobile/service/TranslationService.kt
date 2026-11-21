@@ -30,6 +30,7 @@ import com.couchsubs.mobile.packs.PackStore
 import com.couchsubs.mobile.core.PackLookup
 import com.couchsubs.mobile.core.ScreenTranslation
 import com.couchsubs.mobile.core.SubtitleEvent
+import com.couchsubs.mobile.core.SubtitlePairing
 import com.couchsubs.mobile.core.SubtitlePipeline
 import com.couchsubs.mobile.core.SubtitleServer
 import com.couchsubs.mobile.core.TextTranslator
@@ -112,8 +113,41 @@ class TranslationService : Service() {
          * kaldırır (Mac ⌥⌘T ve iPhone ile aynı). Çeviri çalışmıyorsa false.
          */
         fun resolvePairing(id: String, accept: Boolean) {
-            val resolved = liveServer?.pairing?.resolve(id, accept) == true
-            LiveState.update { it.copy(pairing = null, error = if (accept && !resolved) current?.getString(R.string.tv_pair_expired) else it.error) }
+            val pairing = liveServer?.pairing
+            val resolved = pairing?.resolve(id, accept) == true
+            Log.i(TAG, "TV eşleştirme isteği ${if (accept) "onaylandı" else "reddedildi"}${if (resolved) "" else " (istek artık geçerli değil)"}")
+            // Onaylanan istek geçersizdiyse (süresi doldu, TV yeniden denedi) bekleyen yeni istek hemen gösterilir; yeni
+            // istek yoksa "süresi doldu" yazılır (iPhone ve Mac ile aynı).
+            val pending = pairing?.pending
+            LiveState.update { it.copy(pairing = pending, error = if (accept && !resolved && pending == null) current?.getString(R.string.tv_pair_expired) else it.error) }
+            if (pairing != null) syncPairing(pairing)
+        }
+
+        @Volatile private var pairingWatch: Thread? = null
+
+        /**
+         * Arayüzdeki isteği sunucudaki bekleyen istekle eşitler. İstek geldiğinde, bir ekran öne geldiğinde ve istek
+         * beklerken saniyede bir çağrılır: gösterilemeyen istek kaybolmaz, süresi dolan ya da yerini yenisi alan istek
+         * ekranda kalmaz (iPhone'daki `syncTVPairing` ile aynı). Çeviri durunca sunucu eşleştirmeyi kapatır, izleme biter.
+         */
+        fun syncPairing(pairing: SubtitlePairing? = liveServer?.pairing) {
+            val pending = pairing?.pending
+            LiveState.update { if (it.pairing != pending) it.copy(pairing = pending) else it }
+            if (pairing == null || pending == null) return
+            synchronized(this) {
+                if (pairingWatch != null) return
+                pairingWatch = Thread({
+                    try {
+                        while (true) {
+                            Thread.sleep(1000)
+                            val waiting = pairing.pending
+                            LiveState.update { if (it.pairing != waiting) it.copy(pairing = waiting) else it }
+                            if (waiting == null) break
+                        }
+                    } catch (_: InterruptedException) {
+                    } finally { synchronized(this) { pairingWatch = null } }
+                }, "CouchSubs TV pairing").apply { isDaemon = true; start() }
+            }
         }
         fun viewerAddress(): String? {
             val host = java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
@@ -425,7 +459,10 @@ class TranslationService : Service() {
         val translator = engineTranslator(free)
         val subtitleServer = SubtitleServer(instanceId = installationId(this), key = settings.subtitleAccessKey, obsOverlay = assets.open("obs-overlay.html").bufferedReader().use { it.readText() }).also { server = it }
         subtitleServer.pairing.setSession(true)
-        subtitleServer.onPairingRequest = { ticket -> LiveState.update { it.copy(pairing = ticket) } }
+        subtitleServer.onPairingRequest = { _ ->
+            Log.i(TAG, "TV eşleştirme istedi; onay bekleniyor")
+            syncPairing(subtitleServer.pairing)
+        }
         subtitleServer.onLegacyClient = { LiveState.update { it.copy(legacyTv = true) }; Log.i(TAG, "TV uygulamasını güncelleyin; geçiş bağlantısı.") }
         subtitleServer.sendsToTv = settings.target.showsOnTv
         subtitleServer.speakerColors = settings.speakerColors

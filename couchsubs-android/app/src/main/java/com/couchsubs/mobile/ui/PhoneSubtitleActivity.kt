@@ -91,7 +91,6 @@ class PhoneSubtitleActivity : ComponentActivity() {
         setContent {
             CouchSubsTheme {
                 val status by LiveState.status.collectAsState()
-                TvPairingDialog(status.pairing)
                 Box(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().padding(Tokens.Space.screen)) {
                     Row(Modifier.fillMaxWidth().align(Alignment.TopCenter), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
@@ -167,8 +166,15 @@ class PhoneSubtitleActivity : ComponentActivity() {
                         }
                     }
                 }
+                // TV'nin eşleştirme isteği tam ekran altyazıdayken de görünür (onay penceresi ve üstte onay satırı).
+                TvPairingPrompt(status.pairing)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        TranslationService.syncPairing()
     }
 }
 

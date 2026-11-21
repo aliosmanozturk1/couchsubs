@@ -6,9 +6,11 @@ ulaştırabiliyorsa ek işlem gerekmez. Android TV veya yalnız ağ taramasıyla
 TV, iki ekranda aynı altı haneli kodu gösterir. **Kodu karşılaştırıp bilgisayar veya
 telefondan onaylayın.** Kumandayla kod girilmez. Tanımadığınız isteği reddedin.
 
-Eşleştirme isteği iki dakika geçerlidir; aynı anda bir istek bekler. Ret veya süre
-sonundan sonra on saniyelik bekleme vardır. TV'de süre dolduysa uygulamayı yeniden
-açıp deneyin. Mac/Windows/iPhone ayarlarındaki “TV eşleştir”, çeviri çalışmadan da
+Eşleştirme isteği iki dakika geçerlidir; aynı anda bir istek bekler. TV'de yeniden
+denenen istek (Tamam'a basmak, uygulamayı yeniden açmak) iki saniyeden eski onaysız
+isteğin yerini alır; onay penceresi yeni kodla açılır. Ret sonrasında ve süre dolduğu
+andan itibaren on saniyelik bekleme vardır. Onay bekleyen istek, sunucu yeniden açılsa
+ya da port değişse de korunur. Mac/Windows/iPhone ayarlarındaki “TV eşleştir”, çeviri çalışmadan da
 iki dakikalık eşleştirme penceresi açar. Android telefonda çeviri oturumu açık olmalıdır.
 Android TV'de eşleştirme için sürekli ADB veya geliştirici bağlantısı gerekmez.
 

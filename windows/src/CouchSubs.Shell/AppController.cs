@@ -213,13 +213,33 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     }
 
     public event Action<SubtitlePairing.Ticket>? TvPairingRequested;
+    /// <summary>
+    /// TV'nin eşleştirme isteği. Arayüze sunucudaki bekleyen istek verilir: olay arayüze ulaşana kadar istek yerini
+    /// yenisine bıraktıysa (TV'de Tamam ile yeniden denendi) yenisi gösterilir.
+    /// </summary>
     private void OnPairingRequest(SubtitlePairing.Ticket ticket) => post(() => {
-        if (server.Pairing.Poll(ticket.Id) == "pending") TvPairingRequested?.Invoke(ticket);
+        SubtitleLog.Write("TV eşleştirme istedi; onay bekleniyor");
+        if (server.Pairing.Pending is { } pending) TvPairingRequested?.Invoke(pending);
     });
-    public bool ResolveTvPairing(string id, bool accept) => server.Pairing.Resolve(id, accept);
+    public bool ResolveTvPairing(string id, bool accept)
+    {
+        var resolved = server.Pairing.Resolve(id, accept);
+        SubtitleLog.Write($"TV eşleştirme isteği {(accept ? "onaylandı" : "reddedildi")}{(resolved ? "" : " (istek artık geçerli değil)")}");
+        return resolved;
+    }
+    /// <summary>
+    /// Onay bekleyen istek (yoksa null). Onaylanan istek artık geçerli değilse (süresi doldu, TV yeniden denedi) arayüz
+    /// bekleyen yeni isteği buradan gösterir (Mac ile aynı).
+    /// </summary>
+    public SubtitlePairing.Ticket? PendingTvPairing => server.Pairing.Pending;
     /// <summary>Onay penceresini olay anında açamayan arayüzler (Linux paneli) isteğin hâlâ beklediğini buradan sorar.</summary>
-    public bool IsTvPairingPending(string id) => server.Pairing.Poll(id) == "pending";
-    public async Task OpenTvPairingAsync() { await StartServerAsync(); server.Pairing.Open(); }
+    public bool IsTvPairingPending(string id) => server.Pairing.Pending?.Id == id;
+    public async Task OpenTvPairingAsync()
+    {
+        await StartServerAsync();
+        server.Pairing.Open();
+        SubtitleLog.Write($"TV eşleştirme elle açıldı (2 dk); port={ServerPort}");
+    }
     public bool LegacyTvWarning => server.HasLegacyClient;
     public string ObsAddress => $"http://localhost:{ServerPort}/obs?k={server.AccessKey}";
 
@@ -2922,7 +2942,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         {
             preferredPortApplied = true;
             DetachServer();
-            server = new SubtitleServer(preferred, key: server.AccessKey);
+            // Eşleştirme durumu yeni örneğe taşınır (bekleyen istek, "TV eşleştir" süresi; Mac ile aynı).
+            server = new SubtitleServer(preferred, key: server.AccessKey, pairing: server.Pairing);
             AttachServer();
         }
         try
@@ -2933,7 +2954,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         {
             // 8787 başka bir uygulamada; TV'ye adres her seferinde bildirildiği için herhangi bir boş port olur.
             DetachServer();
-            server = new SubtitleServer(0, key: server.AccessKey);
+            server = new SubtitleServer(0, key: server.AccessKey, pairing: server.Pairing);
             AttachServer();
             ServerPort = await server.StartAsync();
         }

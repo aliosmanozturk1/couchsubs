@@ -106,10 +106,12 @@ public sealed record SubtitleEvent(SubtitleEventKind Kind, string Text = "", int
 /// <c>GET /events</c> akışında <c>subtitle</c>, <c>clear</c> ve <c>style</c> olaylarını yayınlar.
 /// </summary>
 public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = null, string? key = null,
-    bool allowLegacy = SubtitleAccess.AllowLegacyClients) : ISubtitleSender, IRegionSender, IDisposable
+    bool allowLegacy = SubtitleAccess.AllowLegacyClients, SubtitlePairing? pairing = null) : ISubtitleSender, IRegionSender, IDisposable
 {
     private string accessKey = key ?? SubtitleAccess.CreateKey();
-    public SubtitlePairing Pairing { get; } = new();
+    /// <summary>Eşleştirme durumu. Sunucu yeni örnekle yeniden kurulunca (port değişti) eskisininki verilir: onay bekleyen
+    /// istek, "TV eşleştir" süresi ve onaylanmış istek taşınır (Mac/iPhone ve Android ile aynı).</summary>
+    public SubtitlePairing Pairing { get; } = pairing ?? new();
     public event Action<SubtitlePairing.Ticket>? PairingRequested;
     private int legacySeen;
     public event Action? LegacyClientConnected;
@@ -250,9 +252,13 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
         return Task.FromResult(((IPEndPoint)listener.LocalEndpoint).Port);
     }
 
-    public void Stop()
+    /// <summary>
+    /// <paramref name="keepPairing"/>: sunucu hemen yeniden açılacaksa (port değişiyor) eşleştirme durumu korunur. Sıradan
+    /// kapanış (çeviri durdu) onay bekleyen isteği ve "TV eşleştir" süresini siler.
+    /// </summary>
+    public void Stop(bool keepPairing = false)
     {
-        Pairing.SetSession(false);
+        if (!keepPairing) Pairing.SetSession(false);
         pingTimer?.Dispose();
         pingTimer = null;
         listener?.Stop();

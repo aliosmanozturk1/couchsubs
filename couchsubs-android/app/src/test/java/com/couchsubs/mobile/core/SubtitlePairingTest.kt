@@ -10,19 +10,24 @@ class SubtitlePairingTest {
             var time = 1000L
             val pairing = SubtitlePairing { time }
             var id = ""
+            var previous = ""
+            val name = scenarios.getJSONObject(i).getString("name")
             val steps = scenarios.getJSONObject(i).getJSONArray("steps")
             for (j in 0 until steps.length()) {
                 val step = steps.getJSONObject(j)
-                val who = if (step.optBoolean("wrong")) "not-the-request-secret" else id
-                when (step.getString("op")) {
+                val who = if (step.optBoolean("wrong")) "not-the-request-secret" else if (step.optBoolean("previous")) previous else id
+                when (val op = step.getString("op")) {
                     "session" -> pairing.setSession(step.getBoolean("value"))
                     "open" -> pairing.open()
                     "reset" -> pairing.reset()
                     "advance" -> time += step.getLong("ms")
-                    "begin" -> { val ticket = pairing.begin(); assertEquals(step.getBoolean("ok"), ticket != null)
-                        if (ticket != null) { assertEquals(22, ticket.id.length); assertEquals(6, ticket.code.length); id = ticket.id } }
-                    "resolve" -> assertEquals(step.getBoolean("ok"), pairing.resolve(who, step.getBoolean("accept")))
-                    "poll" -> assertEquals(step.getString("state"), pairing.poll(who))
+                    "begin" -> { val ticket = pairing.begin(); assertEquals(name, step.getBoolean("ok"), ticket != null)
+                        if (ticket != null) { assertEquals(22, ticket.id.length); assertEquals(6, ticket.code.length); previous = id; id = ticket.id } }
+                    "resolve" -> assertEquals(name, step.getBoolean("ok"), pairing.resolve(who, step.getBoolean("accept")))
+                    "poll" -> assertEquals(name, step.getString("state"), pairing.poll(who))
+                    "pending" -> assertEquals(name, if (step.getString("state") == "current") id else null, pairing.pending?.id)
+                    "isOpen" -> assertEquals(name, step.getBoolean("value"), pairing.isOpen)
+                    else -> fail("Bilinmeyen adım: $op")
                 }
             }
         }
@@ -50,6 +55,37 @@ class SubtitlePairingTest {
             assertFalse(call("GET", "/pair?id=$id").contains(server.accessKey))
             assertTrue(call("GET", "/pair?id=$id").contains("expired"))
         } finally { server.stop() }
+    }
+
+    private fun call(port: Int, method: String, path: String): String = java.net.Socket("127.0.0.1", port).use { socket ->
+        socket.soTimeout = 5000
+        socket.getOutputStream().write("$method $path HTTP/1.1\r\nHost: localhost:$port\r\n\r\n".toByteArray())
+        socket.getInputStream().readBytes().toString(Charsets.UTF_8)
+    }
+
+    /**
+     * Sunucu yeni örnekle yeniden kurulunca (port değişti) eşleştirme durumu ve anahtar taşınır: TV'nin bekleyen isteği
+     * onaylanabilir, anahtar TV'ye döner (Mac/iPhone: testReplacementServerSharesPairingAndKey). Sıradan kapanış
+     * eşleştirmeyi kapatır.
+     */
+    @Test fun replacementServerKeepsPendingRequestAndKey() {
+        val first = SubtitleServer(0, allowLegacy = false)
+        val firstPort = first.start()
+        first.pairing.open()
+        val id = org.json.JSONObject(call(firstPort, "POST", "/pair").substringAfter("\r\n\r\n")).getString("id")
+        first.stop(keepPairing = true)
+        assertEquals(id, first.pairing.pending?.id)
+        val second = SubtitleServer(0, key = first.accessKey, allowLegacy = false, pairing = first.pairing)
+        val port = second.start()
+        try {
+            assertTrue(call(port, "GET", "/pair?id=$id").contains("pending"))
+            assertTrue(second.pairing.resolve(id, true))
+            assertTrue(call(port, "GET", "/pair?id=$id").contains(first.accessKey))
+            // "TV eşleştir"in iki dakikası da taşındı: yeni TV isteği kabul edilir.
+            assertTrue(call(port, "POST", "/pair").startsWith("HTTP/1.1 200"))
+        } finally { second.stop() }
+        assertFalse(second.pairing.isOpen)
+        assertNull(second.pairing.pending)
     }
 
     @Test fun obsPageIsPublicButItsEventsNeedTheKeyOutsideTransition() {

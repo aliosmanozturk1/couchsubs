@@ -612,6 +612,7 @@
     <string name="tv_pair_code">TV code: %1$s. You don\'t type this code anywhere: if your TV shows the same code, approve it here.</string>
     <string name="tv_pair_approve">Approve</string>
     <string name="tv_pair_reject">Reject</string>
+    <string name="tv_pair_banner">A TV wants to pair</string>
     <string name="tv_key_renew">Renew access key</string>
     <string name="tv_legacy_warning">The TV app is old. Update it.</string>
     <string name="obs_overlay">OBS overlay</string>

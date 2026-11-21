@@ -83,10 +83,14 @@ class SubtitleServer(
     key: String = SubtitleAccess.createKey(),
     private val allowLegacy: Boolean = SubtitleAccess.ALLOW_LEGACY_CLIENTS,
     private val obsOverlay: String = "",
+    /**
+     * Eşleştirme durumu. Sunucu yeni örnekle yeniden kurulunca (port değişti) eskisininki verilir: onay bekleyen istek,
+     * "TV eşleştir" süresi ve onaylanmış istek taşınır (Mac/iPhone ve Windows ile aynı).
+     */
+    val pairing: SubtitlePairing = SubtitlePairing(),
 ) : SubtitleSender, RegionSender {
     @Volatile var accessKey: String = key
         private set
-    val pairing = SubtitlePairing()
     var onPairingRequest: ((SubtitlePairing.Ticket) -> Unit)? = null
     @Volatile var hasLegacyClient = false
         private set
@@ -272,8 +276,12 @@ class SubtitleServer(
         return socket.localPort
     }
 
-    fun stop() {
-        pairing.setSession(false)
+    /**
+     * `keepPairing`: sunucu hemen yeniden açılacaksa eşleştirme durumu korunur. Sıradan kapanış (çeviri durdu) onay
+     * bekleyen isteği ve "TV eşleştir" süresini siler.
+     */
+    fun stop(keepPairing: Boolean = false) {
+        if (!keepPairing) pairing.setSession(false)
         pinger?.shutdownNow()
         pinger = null
         try {

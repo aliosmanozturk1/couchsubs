@@ -9,8 +9,10 @@ final class SubtitlePairingTests: XCTestCase {
             var time: Int64 = 1000
             let pairing = SubtitlePairing(clock: { time })
             var id = ""
+            var previous = ""
+            let name = scenario["name"] as! String
             for step in scenario["steps"] as! [[String: Any]] {
-                let who = step["wrong"] as? Bool == true ? "not-the-request-secret" : id
+                let who = step["wrong"] as? Bool == true ? "not-the-request-secret" : step["previous"] as? Bool == true ? previous : id
                 switch step["op"] as! String {
                 case "session": pairing.setSession(step["value"] as! Bool)
                 case "open": pairing.open()
@@ -18,10 +20,12 @@ final class SubtitlePairingTests: XCTestCase {
                 case "advance": time += Int64(step["ms"] as! Int)
                 case "begin":
                     let ticket = pairing.begin()
-                    XCTAssertEqual(ticket != nil, step["ok"] as! Bool, scenario["name"] as! String)
-                    if let ticket { XCTAssertEqual(ticket.id.count, 22); XCTAssertEqual(ticket.code.count, 6); id = ticket.id }
-                case "resolve": XCTAssertEqual(pairing.resolve(who, accept: step["accept"] as! Bool), step["ok"] as! Bool)
-                case "poll": XCTAssertEqual(pairing.poll(who), step["state"] as! String)
+                    XCTAssertEqual(ticket != nil, step["ok"] as! Bool, name)
+                    if let ticket { XCTAssertEqual(ticket.id.count, 22); XCTAssertEqual(ticket.code.count, 6); previous = id; id = ticket.id }
+                case "resolve": XCTAssertEqual(pairing.resolve(who, accept: step["accept"] as! Bool), step["ok"] as! Bool, name)
+                case "poll": XCTAssertEqual(pairing.poll(who), step["state"] as! String, name)
+                case "pending": XCTAssertEqual(pairing.pending?.id, step["state"] as! String == "current" ? id : nil, name)
+                case "isOpen": XCTAssertEqual(pairing.isOpen, step["value"] as! Bool, name)
                 default: XCTFail("Bilinmeyen adım")
                 }
             }

@@ -58,14 +58,33 @@ public partial class ShellWindow : Window
         ShowScreen(force: true);
     }
 
+    private bool pairingShown;
+
+    /// <summary>
+    /// "Bu TV eşleşsin mi?" penceresi. Pencere açıkken gelen yeni istek (TV'de Tamam ile yeniden denendi, TV uygulaması
+    /// yeniden açıldı) ikinci pencere açmaz; pencere kapanınca bekleyen istek yeni koduyla gösterilir. Eskiden eski koddan
+    /// verilen onay "süresi doldu" deyip bitiyordu, TV'nin bekleyen yeni isteği bilgisayarda hiç görünmüyordu (Mac ile aynı).
+    /// </summary>
     private void OnTvPairing(SubtitlePairing.Ticket ticket)
     {
-        var text = Localizer.Current;
-        var message = text.Format("TV code: %@. You don't type this code anywhere: if your TV shows the same code, approve it here.", ticket.Code);
-        var approved = MessageBox.Show(this, message, text["Pair this TV?"], MessageBoxButton.YesNo,
-            MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
-        if (!controller.ResolveTvPairing(ticket.Id, approved) && approved)
-            MessageBox.Show(this, text["The pairing request expired. Try again on the TV."], "CouchSubs");
+        if (pairingShown) return;
+        pairingShown = true;
+        try
+        {
+            var text = Localizer.Current;
+            for (var current = ticket; ;)
+            {
+                var message = text.Format("TV code: %@. You don't type this code anywhere: if your TV shows the same code, approve it here.", current.Code);
+                var approved = MessageBox.Show(this, message, text["Pair this TV?"], MessageBoxButton.YesNo,
+                    MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+                var resolved = controller.ResolveTvPairing(current.Id, approved);
+                if (controller.PendingTvPairing is { } next && next.Id != current.Id) { current = next; continue; }
+                if (!resolved && approved)
+                    MessageBox.Show(this, text["The pairing request expired. Try again on the TV."], "CouchSubs");
+                break;
+            }
+        }
+        finally { pairingShown = false; }
     }
 
     private void OnChanged(object? sender, PropertyChangedEventArgs e)

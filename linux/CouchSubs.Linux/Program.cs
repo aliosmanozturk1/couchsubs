@@ -276,9 +276,9 @@ internal sealed class TvPairingPrompt
     {
         get
         {
-            if (ticket is { } current && controller.IsTvPairingPending(current.Id)) return current.Code;
-            ticket = null;
-            return null;
+            // Gösterilen istek yerini yenisine bıraktıysa (TV'de yeniden denendi) bekleyen yeni istek gösterilir.
+            if (ticket is not { } current || !controller.IsTvPairingPending(current.Id)) ticket = controller.PendingTvPairing;
+            return ticket?.Code;
         }
     }
 

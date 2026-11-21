@@ -621,6 +621,7 @@
     <string name="tv_pair_code">TV kodu: %1$s. Bu kod bir yere yazılmaz: TV ekranınızdaki kod aynıysa burada onaylayın.</string>
     <string name="tv_pair_approve">Onayla</string>
     <string name="tv_pair_reject">Reddet</string>
+    <string name="tv_pair_banner">TV eşleşmek istiyor</string>
     <string name="tv_key_renew">Erişim anahtarını yenile</string>
     <string name="tv_legacy_warning">TV uygulaması eski. Güncelleyin.</string>
     <string name="obs_overlay">OBS katmanı</string>
