@@ -80,14 +80,15 @@ function redPixels(image) {
   let red = 0;
   const { width, height, channels, pixels } = image;
   for (let i = 0; i < width * height * channels; i += channels) {
-    if (pixels[i] > 150 && pixels[i + 1] < 90 && pixels[i + 2] < 90) red++;
+    if (pixels[i] > 200 && pixels[i + 1] < 40 && pixels[i + 2] < 40) red++;
   }
   return red;
 }
 
 function run(args, temp) {
   const result = spawnSync(browser, ['--headless=new', '--disable-gpu', '--disable-background-networking', '--no-first-run',
-    '--no-default-browser-check', '--hide-scrollbars', '--force-device-scale-factor=1', '--window-size=1920,1080',
+    // LCD (alt piksel) yazı yumuşatması Linux'ta beyaz harflerin kenarına kırmızı saçak koyar; İngilizce altyazı sanılmasın.
+    '--no-default-browser-check', '--hide-scrollbars', '--force-device-scale-factor=1', '--window-size=1920,1080', '--disable-lcd-text',
     ...(process.platform === 'linux' ? ['--no-sandbox'] : []), '--user-data-dir=' + path.join(temp, 'profile'), ...args],
   { encoding: 'utf8', timeout: 60000, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
   assert.equal(result.status, 0, String(result.error || result.stderr));
