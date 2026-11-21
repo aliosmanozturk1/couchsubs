@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.sp
 import com.couchsubs.mobile.service.LiveStatus
 import com.couchsubs.mobile.service.TranslationService
@@ -126,9 +127,14 @@ class PhoneSubtitleActivity : ComponentActivity() {
                     }
                     Text(stringResource(R.string.subtitle_screen_note), style = Tokens.Type.caption, color = Tokens.Color.secondary,
                         modifier = Modifier.align(Alignment.BottomCenter))
-                    // "Ekranı çevir" sonuçları: her çeviri kendi yazısının yerinde ve aynı boyda (TV'deki gibi).
+                    // "Ekranı çevir" sonuçları: her çeviri kendi yazısının yerinde, aynı boyda ve özgün yazının stilinde
+                    // (TV'deki gibi); GTA 6 telefonunun yazıları yanında mesaj kartı olarak gelir.
                     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
                         status.screen.forEach { item ->
+                            if (item.surface != null) {
+                                StyledBlock(item, maxWidth, maxHeight, fill = com.couchsubs.mobile.core.ScreenPhoneCard.isBackdrop(item))
+                                return@forEach
+                            }
                             val box = item.box
                             val width = maxOf(60.dp, maxWidth * (box.right - box.left).toFloat())
                             val size = (maxHeight.value * item.lineHeight * 0.8).coerceIn(10.0, 28.0).toFloat()
@@ -184,7 +190,11 @@ class PhoneSubtitleActivity : ComponentActivity() {
  * küçülür (TV ile aynı kural).
  */
 @androidx.compose.runtime.Composable
-private fun StyledBlock(item: com.couchsubs.mobile.core.ScreenTranslation.Item, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) {
+private fun StyledBlock(
+    item: com.couchsubs.mobile.core.ScreenTranslation.Item, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp,
+    /** Kutu özgün yüksekliğinde dolu (telefon kartının zemini). */
+    fill: Boolean = false,
+) {
     val surface = item.surface ?: return
     val look = item.look
     fun color(hex: String, alpha: Float = 1f) = runCatching { Color(android.graphics.Color.parseColor(hex)).copy(alpha = alpha) }.getOrDefault(Color.Black)
@@ -205,6 +215,7 @@ private fun StyledBlock(item: com.couchsubs.mobile.core.ScreenTranslation.Item, 
         modifier = Modifier
             .offset(x = width * box.left.toFloat(), y = height * box.top.toFloat())
             .width(boxWidth)
+            .then(if (fill) Modifier.height(height * (box.bottom - box.top).toFloat()) else Modifier)
             .background(color(surface.background, if (surface.flat) 1f else 0.85f))
             .padding(horizontal = 2.dp))
 }

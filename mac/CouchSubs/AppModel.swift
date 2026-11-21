@@ -739,6 +739,12 @@ final class AppModel: ObservableObject {
     /// Penceredeki ek alan çevirileri (yukarıdan aşağı).
     @Published var overlayRegions: [OverlayRegion] = []
     @Published var overlayPhoneItems: [ScreenTranslation.Item] = []
+    /// "Ekranı çevir" çevirileri yerleri ve özgün stilleriyle: yayın penceresi onları kendi yerlerinde çizer ve yığındaki
+    /// düz listeyi (`overlayScreenText` satırı) göstermez; saydam pencere listeyi gösterir (oyunun üstünde değil).
+    @Published var overlayScreenItems: [ScreenTranslation.Item] = []
+    var overlayScreenText = ""
+    /// Yerindeki "Ekranı çevir" çevirilerini süresi dolunca kaldırır (TV'deki gibi yeni altyazı onları kaldırmaz).
+    var overlayScreenExpiry: Task<Void, Never>?
     /// Pencerenin yeri ve genişliği ayarlanıyor: örnek yazı görünür, tıklamalar geçmez.
     @Published var overlayAdjusting = false
     var overlayStack = SubtitleStack()
@@ -1951,11 +1957,14 @@ final class AppModel: ObservableObject {
     var clickThroughHotkey: GlobalHotkey?
     /// Süren "ekranı çevir" işi; yeniden basılınca iptal edilir.
     private var screenTask: Task<Void, Never>?
-    /// TV'deki ekran çevirilerinin kalkacağı an; bu andan önce yeniden basmak onları kaldırır.
+    /// TV'deki ekran çevirilerinin kalkacağı an; bu andan önce yeniden basınca ekran değişmediyse onlar kalkar.
     private var screenShownUntil = Date.distantPast
+    /// Ekrandaki çevirilerin okunduğu karenin yazı izi (`ScreenTranslation.fingerprint`).
+    private var screenFingerprint = ""
 
     /// ⌥⌘T: oyunun şu anki karesinin tamamını bir kez okur, her yazı grubunu ayrı çevirip TV'de kendi yerine koyar.
-    /// Çeviriler hazırlandıkça TV'ye gider. Çeviri sürerken ya da çeviriler TV'deyken yeniden basmak onları kaldırır.
+    /// Çeviriler hazırlandıkça TV'ye gider. Çeviri sürerken yeniden basmak onu durdurur. Çeviriler ekrandayken yeniden
+    /// basınca kare yine okunur: ekran değiştiyse (telefonda başka sohbet) yenisi çevrilir, değişmediyse çeviriler kalkar.
     func translateScreen() {
         guard isRunning else { return }
         guard let frame = lastFrame else {
@@ -1969,12 +1978,10 @@ final class AppModel: ObservableObject {
             hideScreen()
             return
         }
-        if Date() < screenShownUntil {
-            hideScreen()
-            return
-        }
+        let wasShown = Date() < screenShownUntil
+        let previous = screenFingerprint
         server.sendStyle(settings.style)
-        server.sendSubtitle(String(localized: "Translating the screen…"), durationMs: 2500)
+        if !wasShown { server.sendSubtitle(String(localized: "Translating the screen…"), durationMs: 2500) }
         let reader = VisionReader(language: settings.sourceLanguage)
         let translator = makeTranslator()
         let server = self.server
@@ -1986,8 +1993,20 @@ final class AppModel: ObservableObject {
                 // Altyazı zaten kendi yerinde çevriliyor: ekran çevirisinde ikinci kez çizilmez (bkz. SubtitleEcho).
                 let echo = SubtitleEcho.shared
                 let reading = echo.filter(read, geometry: echo.hasRecent)
+                let fingerprint = ScreenTranslation.fingerprint(reading)
+                if wasShown {
+                    guard !Task.isCancelled else { return }
+                    if ScreenTranslation.isSameScreen(fingerprint, previous) {
+                        self?.screenTask = nil
+                        self?.hideScreen()
+                        return
+                    }
+                    server.sendSubtitle(String(localized: "Translating the screen…"), durationMs: 2500)
+                }
+                self?.screenFingerprint = fingerprint
                 // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AITranslationCore.translateAll). Yazının
-                // içindeki kumanda simgeleri okunan kareden kesilip TV'de çevirinin içine konur (ButtonIcons).
+                // içindeki kumanda simgeleri okunan kareden kesilip TV'de çevirinin içine konur (ButtonIcons). Çeviriler
+                // özgün yazının stilinde kendi yerlerine çizilir; GTA 6 telefonunun yazıları yanında mesaj kartında.
                 let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame) { shown in
                     guard !Task.isCancelled else { return }
                     let milliseconds = ScreenTranslation.displayMilliseconds(shown)
@@ -1995,7 +2014,11 @@ final class AppModel: ObservableObject {
                     self?.screenShownUntil = Date().addingTimeInterval(Double(milliseconds) / 1000)
                 }
                 server.clear()
-                if items.isEmpty { server.sendSubtitle(String(localized: "No text found on the screen."), durationMs: 2500) }
+                if items.isEmpty {
+                    // Yeni karede yazı yok: önceki ekranın çevirileri de kalkar.
+                    if wasShown { self?.hideScreen() }
+                    server.sendSubtitle(String(localized: "No text found on the screen."), durationMs: 2500)
+                }
             } catch is CancellationError {
                 return
             } catch let error as TranslatorError {
@@ -2034,6 +2057,7 @@ final class AppModel: ObservableObject {
 
     private func hideScreen() {
         screenShownUntil = .distantPast
+        screenFingerprint = ""
         server.clearScreen()
         server.clear()
     }

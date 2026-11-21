@@ -23,8 +23,10 @@ public static class ScreenTranslation
                               IReadOnlyList<IconPlacement>? Icons = null)
     {
         public PhoneTextStyle? Style { get; init; }
-        /// <summary>Otomatik ekran yazısında özgün yazının görünüşü; TV ve masaüstü çeviriyi bu stilde çizer.</summary>
+        /// <summary>Özgün yazının görünüşü (otomatik ekran yazısı ve "Ekranı çevir"); TV ve masaüstü çeviriyi bu stilde çizer.</summary>
         public TextLook? Look { get; init; }
+        /// <summary>Çevirisi aslıyla aynı (ad, "ok"): yalnız telefon kartında gösterilir, başka yerde atılır (<see cref="ScreenPhoneCard"/>).</summary>
+        internal bool Unchanged { get; init; }
         /// <summary>Birden çok parça var: TV satır satır, sola yaslı gösterir.</summary>
         public bool Paragraphs => Translation.Contains('\n');
     }
@@ -53,18 +55,30 @@ public static class ScreenTranslation
         Frame frame, ITextReader reader, ITextTranslator translator, SubtitleEcho? echo,
         Action<IReadOnlyList<Item>>? progress = null, CancellationToken cancellationToken = default)
     {
+        var reading = await ReadAsync(frame, reader, echo, cancellationToken).ConfigureAwait(false);
+        return await TranslateAsync(reading, translator, progress, cancellationToken, frame).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Karenin bütün yazılarını okur; <paramref name="echo"/> verilirse altyazı hattının okuduğu satırlar atılır. Çeviriler
+    /// ekrandayken tuşa yeniden basınca önce bu okunur ve izi (<see cref="Fingerprint"/>) öncekiyle karşılaştırılır.
+    /// </summary>
+    public static async Task<Reading> ReadAsync(Frame frame, ITextReader reader, SubtitleEcho? echo, CancellationToken cancellationToken = default)
+    {
         // Küçük karede (720p) köşe yazıları birkaç piksel boyundadır; büyütmek yazı tanımanın onları da bulmasını sağlar.
         // ReadScreen: altyazıya göre seçilmiş hazırlık değil, karenin bütün yazıları (bkz. ITextReader.ReadScreen).
         var reading = await Task.Run(() => reader.ReadScreen(frame.Height < 900 ? frame.Scaled(2) : frame), cancellationToken)
             .ConfigureAwait(false);
-        if (echo is not null) reading = echo.Filter(reading, geometry: echo.HasRecent);
-        return await TranslateAsync(reading, translator, progress, cancellationToken, frame).ConfigureAwait(false);
+        return echo is null ? reading : echo.Filter(reading, geometry: echo.HasRecent);
     }
 
     /// <summary>
     /// Okunmuş karenin gruplarını çevirir. Çevirmen parçaları tek istekte çevirebiliyorsa (yapay zekâ) ekranın bütün
     /// parçaları birlikte gider ve sonuç bir kerede gelir; yoksa gruplar sırayla çevrilip hazırlandıkça bildirilir.
-    /// <paramref name="frame"/> okunan kareyse yazıların içindeki kumanda simgeleri ondan kesilip çeviriye konur.
+    /// <paramref name="frame"/> okunan kareyse yazıların içindeki kumanda simgeleri ondan kesilip çeviriye konur, her
+    /// çeviri özgün yazının stilinde (zemin ve yazı rengi, kalınlık, hiza, BÜYÜK HARF; otomatik ekran yazısıyla aynı,
+    /// <see cref="TextStyleSampler"/>) kendi kutusunun yerine çizilir; karede GTA 6 telefonu varsa telefonun yazıları
+    /// yanında bir mesaj kartında dizilir (<see cref="ScreenPhoneCard"/>).
     /// </summary>
     public static async Task<IReadOnlyList<Item>> TranslateAsync(
         Reading reading, ITextTranslator translator,
@@ -72,6 +86,8 @@ public static class ScreenTranslation
     {
         var items = new List<Item>();
         var groups = ReadGroups(reading, false, frame);
+        var phone = frame is null ? null : ScreenPhoneCard.Phone(frame);
+        var keep = phone is not null;
         if (frame is not null)
             groups = [.. groups.Select(group => group.Icons is null ? group
                 : group with { Icons = [.. group.Icons.Select(icons => ButtonIcons.WithImages(icons, frame))] })];
@@ -90,10 +106,11 @@ public static class ScreenTranslation
                 var translated = Enumerable.Range(next, group.Paragraphs.Count)
                     .Select(i => i < translations.Count ? translations[i] : "").ToList();
                 next += group.Paragraphs.Count;
-                if (Build(group, protectedGroups[g], translated) is { } item) items.Add(item);
+                if (Build(group, protectedGroups[g], translated, keep) is { } item) items.Add(Styled(item, frame));
             }
-            if (items.Count > 0) progress?.Invoke([.. items]);
-            return items;
+            var all = Present(items, phone);
+            if (all.Count > 0) progress?.Invoke(all);
+            return all;
         }
         for (var g = 0; g < groups.Count; g++)
         {
@@ -102,16 +119,52 @@ public static class ScreenTranslation
             var translated = new List<string>(group.Paragraphs.Count);
             foreach (var paragraph in protectedGroups[g])
                 translated.Add(await translator.TranslateAsync(paragraph.Text, cancellationToken).ConfigureAwait(false));
-            if (Build(group, protectedGroups[g], translated) is not { } item) continue;
-            items.Add(item);
-            progress?.Invoke([.. items]);
+            if (Build(group, protectedGroups[g], translated, keep) is not { } item) continue;
+            items.Add(Styled(item, frame));
+            var shown = Present(items, phone);
+            if (shown.Count > 0) progress?.Invoke(shown);
         }
-        return items;
+        return Present(items, phone);
     }
+
+    /// <summary>
+    /// Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de
+    /// büyütülür. Önceden "Ekranı çevir" her yazıyı aynı siyah kutuda gösteriyordu, otomatik ekran yazısı ise özgün
+    /// stilde; kullanıcılar çevirinin "ayrı bir kutuda" durduğunu söylüyordu.
+    /// </summary>
+    internal static Item Styled(Item item, Frame? frame)
+    {
+        if (frame is null) return item;
+        var (surface, look) = TextStyleSampler.Sample(frame, item.Box, [], item.Source);
+        return item with
+        {
+            Style = surface, Look = look,
+            Translation = look.Upper ? TextStyleSampler.TurkishUpper(item.Translation) : item.Translation,
+        };
+    }
+
+    /// <summary>Gösterilecek öğeler: telefon varsa kartı dizilir; çevirisi aslıyla aynı öğeler (kart dışında) atılır.</summary>
+    internal static IReadOnlyList<Item> Present(IReadOnlyList<Item> items, TextBox? phone) =>
+        [.. (phone is { } box ? ScreenPhoneCard.Layout(items, box) : items).Where(item => !item.Unchanged)];
+
+    /// <summary>Aynı ekranın iki okuması en az bu kadar benzer; yeni bir mesajın eklenmesi bile ekranı "değişmiş" yapar.</summary>
+    public const double SameScreenSimilarity = 0.95;
+
+    /// <summary>Ekranın yazılarının izi: tuşa yeniden basınca ekranın değişip değişmediği buna bakılarak anlaşılır.</summary>
+    public static string Fingerprint(Reading reading) =>
+        TextMatch.Normalize(string.Join(' ', Groups(reading).SelectMany(group => group.Paragraphs).Select(IconText.Plain)));
+
+    /// <summary>
+    /// İki iz aynı ekranın mı. Çeviriler ekrandayken tuşa yeniden basmak önceden hep onları kaldırıyordu: telefonda başka
+    /// bir sohbete geçip basınca yeni sohbet çevrilmiyor, ekran boşalıyordu. Artık ekran değiştiyse yeni kare çevrilir,
+    /// değişmediyse çeviriler kalkar (Mac ve Android ile aynı).
+    /// </summary>
+    public static bool IsSameScreen(string a, string b) =>
+        a.Length == 0 || b.Length == 0 ? a == b : TextMatch.IsSimilar(a, b, SameScreenSimilarity);
 
     /// <summary>Grubun gösterilecek çevirisi; çevirisi aslıyla aynıysa (ad, sayı, zaten Türkçe yazı) null.</summary>
     private static Item? Build(Group group, IReadOnlyList<(string Text, IReadOnlyList<string> Names)> prepared,
-                               IReadOnlyList<string> translations)
+                               IReadOnlyList<string> translations, bool keepUnchanged = false)
     {
         var changed = false;
         var texts = new List<string>(group.Paragraphs.Count);
@@ -125,10 +178,10 @@ public static class ScreenTranslation
             texts.Add(text);
             slots.AddRange(group.Icons is { } all && i < all.Count ? all[i] : []);
         }
-        if (!changed) return null;
+        if (!changed && !keepUnchanged) return null;
         var (translation, placements) = IconText.Render(string.Join('\n', texts), slots);
         return new Item(string.Join('\n', group.Paragraphs.Select(IconText.Plain)), translation, group.Box, group.LineHeight,
-                        placements.Count > 0 ? placements : null);
+                        placements.Count > 0 ? placements : null) { Unchanged = !changed };
     }
 
     /// <summary>

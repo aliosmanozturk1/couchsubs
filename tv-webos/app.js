@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.49';
+  var APP_VERSION = '0.9.50';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -1012,9 +1012,12 @@
           el.style.backgroundColor = surface.background;
           el.style.color = surface.foreground;
         }
-      } else if (setApart && regionId && (regionId.indexOf('auto-') === 0 || (item.style && typeof item.style === 'object'))) {
+      } else if (setApart && (regionId ? (regionId.indexOf('auto-') === 0 || (item.style && typeof item.style === 'object'))
+        : (item.style && typeof item.style === 'object'))) {
         // Yalnız özgün görünüşü taşıyan bloklar: elle tanımlanmış ek alanların kutusu eskisi gibi siyah kalır.
-        // "Ekran yazılarını altyazıdan ayır" kapalıysa (setApart: false) bunlar da altyazı gibi siyah kutuda.
+        // "Ekranı çevir" öğeleri de artık özgün görünüşüyle gelir (eski bilgisayar göndermez): otomatik ekran yazısı gibi
+        // çizilir; GTA 6 telefon kartının zemini ve balonları da bunlardır. "Ekran yazılarını altyazıdan ayır" kapalıysa
+        // (setApart: false) bunlar da altyazı gibi siyah kutuda.
         styled = applyLook(el, item);
       }
       fillText(el, item.text, item.icons);

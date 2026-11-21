@@ -144,6 +144,8 @@ final class PhoneModel: ObservableObject {
     @Published private(set) var screenState: ScreenState = .idle
 
     enum ScreenState: Equatable { case idle, working, shown }
+    /// Ekrandaki sonuçların okunduğu karenin yazı izi (`ScreenTranslation.fingerprint`).
+    private var screenFingerprint = ""
 
     struct PhoneRegion: Identifiable, Equatable {
         let id: String
@@ -1287,21 +1289,27 @@ final class PhoneModel: ObservableObject {
     // MARK: - Ekranı çevir
 
     /// "Ekranı çevir": PS5'in şu anki karesinin tamamı bir kez okunur, yazı grupları (menü, görev paneli, bilgi kutusu...)
-    /// tek istekte çevrilir; sonuçlar telefonda ve TV'de yazının kendi yerinde görünür. Çeviri sürerken ya da sonuçlar
-    /// ekrandayken yeniden dokunmak onları kaldırır (Mac ⌥⌘T ile aynı).
+    /// tek istekte çevrilir; sonuçlar telefonda ve TV'de yazının kendi yerinde, özgün stilinde görünür (GTA 6 telefonu
+    /// yanında mesaj kartında). Çeviri sürerken yeniden dokunmak onu durdurur; sonuçlar ekrandayken dokununca kare yine
+    /// okunur: ekran değiştiyse (telefonda başka sohbet) yenisi çevrilir, değişmediyse sonuçlar kalkar (Mac ⌥⌘T ile aynı).
     func translateScreen() {
         guard isRunning else { return }
-        if screenState != .idle {
+        if screenState == .working {
             hideScreen()
             return
         }
+        let wasShown = screenState == .shown
+        let previous = screenFingerprint
         guard let frame = framePreview.image else {
             server.sendSubtitle(String(localized: "Couldn't capture the screen: no picture from the PS5 yet."), durationMs: 4000)
             return
         }
+        // Yeniden okunurken önceki sonuçların süresi dolup yeni çeviriyi iptal etmesin.
+        screenExpiry?.cancel()
+        screenExpiry = nil
         screenState = .working
         server.sendStyle(settings.style)
-        server.sendSubtitle(String(localized: "Translating the screen…"), durationMs: 2500)
+        if !wasShown { server.sendSubtitle(String(localized: "Translating the screen…"), durationMs: 2500) }
         let reader = VisionReader(language: settings.sourceLanguage)
         let translator = makeTranslator()
         let server = self.server
@@ -1313,6 +1321,17 @@ final class PhoneModel: ObservableObject {
                 // Altyazı zaten kendi yerinde çevriliyor: ekran çevirisinde ikinci kez çizilmez (bkz. SubtitleEcho).
                 let echo = SubtitleEcho.shared
                 let reading = echo.filter(read, geometry: echo.hasRecent)
+                let fingerprint = ScreenTranslation.fingerprint(reading)
+                if wasShown {
+                    guard !Task.isCancelled else { return }
+                    if ScreenTranslation.isSameScreen(fingerprint, previous) {
+                        self?.screenTask = nil
+                        self?.hideScreen()
+                        return
+                    }
+                    server.sendSubtitle(String(localized: "Translating the screen…"), durationMs: 2500)
+                }
+                self?.screenFingerprint = fingerprint
                 let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame) { shown in
                     guard !Task.isCancelled else { return }
                     let milliseconds = ScreenTranslation.displayMilliseconds(shown)
@@ -1322,6 +1341,7 @@ final class PhoneModel: ObservableObject {
                 guard !Task.isCancelled else { return }
                 server.clear()
                 if items.isEmpty {
+                    if wasShown { self?.hideScreen() }
                     self?.screenState = .idle
                     server.sendSubtitle(String(localized: "No text found on the screen."), durationMs: 2500)
                 }
@@ -1354,6 +1374,7 @@ final class PhoneModel: ObservableObject {
         screenExpiry = nil
         screenItems = []
         screenState = .idle
+        screenFingerprint = ""
         server.clearScreen()
         server.clear()
     }

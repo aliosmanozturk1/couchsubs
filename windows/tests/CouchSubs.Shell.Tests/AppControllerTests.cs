@@ -95,10 +95,11 @@ internal sealed class FakeTranslation : ITranslationModel
     }
 }
 
-internal sealed class FakeReader(Reading? lines = null) : ITextReader
+/// <summary>Okuma anındaki <c>ReaderLines</c>'ı verir; test okuyucu kurulduktan sonra ekranı değiştirebilir.</summary>
+internal sealed class FakeReader(Func<Reading?> lines) : ITextReader
 {
-    public string Read(Frame image) => lines?.Text ?? "";
-    public Reading ReadLines(Frame image, bool deep) => lines ?? Reading.Empty;
+    public string Read(Frame image) => lines()?.Text ?? "";
+    public Reading ReadLines(Frame image, bool deep) => lines() ?? Reading.Empty;
 }
 
 internal sealed class FakeServices : IAppServices
@@ -339,7 +340,7 @@ internal sealed class FakeServices : IAppServices
     public ITextReader? MakeReader(string language)
     {
         ReaderLanguages.Add(language);
-        return HasOcr ? new FakeReader(ReaderLines) : null;
+        return HasOcr ? new FakeReader(() => ReaderLines) : null;
     }
     public List<OcrEngine> ReaderEngines { get; } = [];
     public ITextReader? MakeReader(string language, OcrEngine engine)

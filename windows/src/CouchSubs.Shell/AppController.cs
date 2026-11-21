@@ -1473,12 +1473,16 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     /// <summary>Süren "ekranı çevir" işi; yeniden basılınca iptal edilir.</summary>
     private CancellationTokenSource? screenWork;
-    /// <summary>TV'deki ekran çevirilerinin kalkacağı an; bu andan önce yeniden basmak onları kaldırır.</summary>
+    /// <summary>TV'deki ekran çevirilerinin kalkacağı an; bu andan önce yeniden basınca ekran değişmediyse onlar kalkar.</summary>
     private DateTime screenShownUntil;
+    /// <summary>Ekrandaki çevirilerin okunduğu karenin yazı izi (<see cref="ScreenTranslation.Fingerprint"/>).</summary>
+    private string screenFingerprint = "";
 
     /// <summary>
-    /// Num 9: oyunun şu anki karesinin tamamını bir kez okur, her yazı grubunu ayrı çevirip TV'de kendi yerine koyar.
-    /// Çeviriler hazırlandıkça TV'ye gider. Çeviri sürerken ya da çeviriler TV'deyken yeniden basmak onları kaldırır.
+    /// Num 9: oyunun şu anki karesinin tamamını bir kez okur, her yazı grubunu ayrı çevirip TV'de kendi yerine, özgün
+    /// stilinde koyar (GTA 6 telefonunun yazıları yanında mesaj kartında). Çeviriler hazırlandıkça TV'ye gider. Çeviri
+    /// sürerken yeniden basmak onu durdurur. Çeviriler ekrandayken yeniden basınca kare yine okunur: ekran değiştiyse
+    /// (telefonda başka sohbet) yenisi çevrilir, değişmediyse çeviriler kalkar.
     /// </summary>
     public async Task<ScreenOutcome> TranslateScreenAsync()
     {
@@ -1497,32 +1501,44 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             HideScreen();
             return ScreenOutcome.Cleared;
         }
-        if (DateTime.UtcNow < screenShownUntil)
-        {
-            HideScreen();
-            return ScreenOutcome.Cleared;
-        }
+        var wasShown = DateTime.UtcNow < screenShownUntil;
+        var previous = screenFingerprint;
 
         using var work = new CancellationTokenSource();
         screenWork = work;
         server.SendStyle(settings.Style);
-        server.SendSubtitle(text["Translating the screen…"], 2500);
+        if (!wasShown) server.SendSubtitle(text["Translating the screen…"], 2500);
         ITextTranslator? translator = null;
         try
         {
             translator = MakeTranslator();
-            // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AiTranslator.TranslateAllAsync).
             // Altyazı zaten kendi yerinde çevriliyor: ekran çevirisinde ikinci kez çizilmez (bkz. SubtitleEcho).
-            var echo = SubtitleEcho;
-            var items = await ScreenTranslation.TranslateAsync(frame, reader, translator, echo, shown =>
+            var reading = await ScreenTranslation.ReadAsync(frame, reader, SubtitleEcho, work.Token);
+            var fingerprint = ScreenTranslation.Fingerprint(reading);
+            if (wasShown)
+            {
+                work.Token.ThrowIfCancellationRequested();
+                if (ScreenTranslation.IsSameScreen(fingerprint, previous))
+                {
+                    if (screenWork == work) screenWork = null;
+                    HideScreen();
+                    return ScreenOutcome.Cleared;
+                }
+                server.SendSubtitle(text["Translating the screen…"], 2500);
+            }
+            screenFingerprint = fingerprint;
+            // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AiTranslator.TranslateAllAsync).
+            var items = await ScreenTranslation.TranslateAsync(reading, translator, shown =>
             {
                 if (work.IsCancellationRequested) return;
                 server.SendScreen(shown, ScreenTranslation.DisplayMilliseconds(shown));
                 screenShownUntil = DateTime.UtcNow.AddMilliseconds(ScreenTranslation.DisplayMilliseconds(shown));
-            }, work.Token);
+            }, work.Token, frame);
             server.Clear();
             if (items.Count == 0)
             {
+                // Yeni karede yazı yok: önceki ekranın çevirileri de kalkar.
+                if (wasShown) HideScreen();
                 server.SendSubtitle(text["No text found on the screen."], 2500);
                 return ScreenOutcome.NoText;
             }
@@ -1579,6 +1595,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private void HideScreen()
     {
         screenShownUntil = default;
+        screenFingerprint = "";
         server.ClearScreen();
         server.Clear();
     }

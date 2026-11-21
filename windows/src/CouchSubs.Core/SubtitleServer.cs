@@ -350,8 +350,10 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
         Broadcast(Frame("screen", new SortedDictionary<string, object> { ["duration"] = durationMs, ["items"] = list }), subtitle: true);
         // Altyazı yalnız bilgisayardaysa (TV yok) çeviriler başka hiçbir yere gitmiyordu: tuşa basınca yalnız
         // "Ekran çevriliyor…" görünüyordu.
-        EventSent?.Invoke(new SubtitleEvent(SubtitleEventKind.Screen, string.Join('\n', items.Select(item => item.Translation)), durationMs,
-                                            Paragraphs: true));
+        // Telefon kartının zemini (ScreenPhoneCard.BackdropText) düz metne girmez; öğeler yerleri ve stilleriyle de gider.
+        EventSent?.Invoke(new SubtitleEvent(SubtitleEventKind.Screen,
+                                            string.Join('\n', items.Where(item => !ScreenPhoneCard.IsBackdrop(item)).Select(item => item.Translation)),
+                                            durationMs, Paragraphs: true, Blocks: items));
     }
 
     /// <summary>

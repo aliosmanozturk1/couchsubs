@@ -435,19 +435,34 @@ struct SubtitleScreen: View {
                 }
             }
             .allowsHitTesting(false)
-            // "Ekranı çevir" sonuçları: her çeviri kendi yazısının yerinde ve aynı boyda (TV'deki gibi).
+            // "Ekranı çevir" sonuçları: her çeviri kendi yazısının yerinde, aynı boyda ve özgün yazının stilinde (zemin ve
+            // yazı rengi, kalınlık, hiza; TV'deki gibi). GTA 6 telefonunun yazıları yanında mesaj kartı olarak gelir.
             GeometryReader { proxy in
                 ForEach(Array(model.screenItems.enumerated()), id: \.offset) { _, item in
                     let box = item.box
-                    let width = max(60, proxy.size.width * (box.right - box.left))
+                    let backdrop = ScreenPhoneCard.isBackdrop(item)
+                    let width = backdrop ? proxy.size.width * (box.right - box.left) : max(60, proxy.size.width * (box.right - box.left))
+                    let height = proxy.size.height * (box.bottom - box.top)
                     let size = max(10, min(28, proxy.size.height * item.lineHeight * 0.8))
-                    Text(verbatim: item.translation)
-                        .font(.system(size: size, weight: .semibold))
-                        .foregroundStyle(Mobile.Palette.text)
-                        .multilineTextAlignment(.leading)
+                    let alignment: TextAlignment = switch item.look?.align {
+                    case .center: .center
+                    case .right: .trailing
+                    default: .leading
+                    }
+                    let frameAlignment: Alignment = switch item.look?.align {
+                    case .center: .center
+                    case .right: .trailing
+                    default: .leading
+                    }
+                    Text(verbatim: backdrop ? "" : item.translation)
+                        .font(.system(size: size, weight: item.look?.bold == true ? .bold : .semibold))
+                        .foregroundStyle(Self.screenColor(item.style?.foreground) ?? Mobile.Palette.text)
+                        .multilineTextAlignment(alignment)
                         .padding(4)
-                        .frame(width: width, alignment: .leading)
-                        .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 4))
+                        .frame(width: width, alignment: frameAlignment)
+                        .frame(minHeight: backdrop ? height : 0)
+                        .background((Self.screenColor(item.style?.background) ?? .black).opacity(item.look?.flat == false ? 0.94 : (item.look == nil ? 0.85 : 1)),
+                                    in: RoundedRectangle(cornerRadius: 4))
                         .fixedSize(horizontal: false, vertical: true)
                         .position(x: proxy.size.width * box.left + width / 2,
                                   y: proxy.size.height * (box.top + box.bottom) / 2)
@@ -502,6 +517,12 @@ struct SubtitleScreen: View {
     }
 
     private var scale: Double { Double(model.settings.style.fontSize) / Double(SubtitleStyle().fontSize) }
+
+    /// "#RRGGBB" → renk; geçersizse nil.
+    private static func screenColor(_ hex: String?) -> Color? {
+        guard let hex, let rgb = SpeakerColors.rgb(hex) else { return nil }
+        return Color(.sRGB, red: rgb.red, green: rgb.green, blue: rgb.blue)
+    }
 
     private var textColor: Color {
         switch model.settings.style.textColor {

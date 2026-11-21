@@ -776,10 +776,14 @@ class TranslationService : Service() {
     @Volatile private var screenTask: java.util.concurrent.Future<*>? = null
     @Volatile private var screenReader: SubtitleReader? = null
 
+    /**
+     * Çeviri sürerken basmak onu durdurur. Sonuçlar ekrandayken basınca kare yine okunur: ekran değiştiyse (telefonda
+     * başka sohbet) yenisi çevrilir, değişmediyse sonuçlar kalkar (Mac/iPhone ve Windows ile aynı).
+     */
     private fun toggleScreen() {
         val server = server ?: return
         val state = LiveState.status.value.screenState
-        if (state != LiveStatus.ScreenState.IDLE) {
+        if (state == LiveStatus.ScreenState.WORKING) {
             hideScreen()
             return
         }
@@ -787,17 +791,27 @@ class TranslationService : Service() {
             server.sendSubtitle(getString(R.string.screen_no_picture), 4000)
             return
         }
+        val shown = state == LiveStatus.ScreenState.SHOWN
+        screenRecheck = shown
+        // Yeni kuşak: önceki sonuçların süresi dolup yeni okumayı kesmez.
         screenGeneration.incrementAndGet()
         LiveState.update { it.copy(screenState = LiveStatus.ScreenState.WORKING) }
         server.sendStyle(settings.style)
-        server.sendSubtitle(getString(R.string.screen_translating), 2500)
+        if (!shown) server.sendSubtitle(getString(R.string.screen_translating), 2500)
         screenRequested.set(true)
     }
+
+    /** Sonuçlar ekrandayken basıldı: okunan kare öncekiyle aynıysa sonuçlar kalkar. */
+    @Volatile private var screenRecheck = false
+    /** Ekrandaki sonuçların okunduğu karenin yazı izi ([ScreenTranslation.fingerprint]). */
+    @Volatile private var screenFingerprint = ""
 
     /** Çeviriyi durdurur, sonuçları telefondan ve TV'den kaldırır. */
     private fun hideScreen() {
         screenGeneration.incrementAndGet()
         screenRequested.set(false)
+        screenRecheck = false
+        screenFingerprint = ""
         screenTask?.cancel(true)
         screenTask = null
         server?.clearScreen()
@@ -826,10 +840,26 @@ class TranslationService : Service() {
                 // Altyazı zaten kendi yerinde çevriliyor: ekran çevirisinde ikinci kez çizilmez (bkz. SubtitleEcho).
                 val echo = com.couchsubs.mobile.core.SubtitleEcho.shared
                 val reading = echo.filter(read, geometry = echo.hasRecent)
+                val fingerprint = ScreenTranslation.fingerprint(reading)
+                if (screenRecheck) {
+                    if (screenGeneration.get() != generation) return@Runnable
+                    if (ScreenTranslation.isSameScreen(fingerprint, screenFingerprint)) {
+                        hideScreen()
+                        return@Runnable
+                    }
+                    server.sendSubtitle(getString(R.string.screen_translating), 2500)
+                }
+                val wasShown = screenRecheck
+                screenRecheck = false
+                screenFingerprint = fingerprint
                 // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AiTranslator.translateAll).
                 val translator = engineTranslator(free.separate())
-                // Yazıların içindeki kumanda simgeleri okunan kareden kesilir (ButtonIcons).
-                val items = ScreenTranslation.translate(reading, translator, { screenGeneration.get() != generation }, pixels.gray) { shown ->
+                // Yazıların içindeki kumanda simgeleri okunan kareden kesilir (ButtonIcons). Çeviriler özgün yazının
+                // stilinde kendi yerlerine çizilir; GTA 6 telefonunun yazıları yanında mesaj kartında (ScreenPhoneCard).
+                val phone = com.couchsubs.mobile.core.ScreenPhoneCard.phone(
+                    com.couchsubs.mobile.ocr.CopiedPhoneImage(pixels.width, pixels.height, pixels))
+                val items = ScreenTranslation.translate(reading, translator, { screenGeneration.get() != generation }, pixels.gray,
+                    pixels.color, phone) { shown ->
                     if (screenGeneration.get() != generation) return@translate
                     val milliseconds = ScreenTranslation.displayMilliseconds(shown)
                     server.sendScreen(shown, milliseconds)
@@ -838,6 +868,8 @@ class TranslationService : Service() {
                 if (screenGeneration.get() != generation) return@Runnable
                 server.clear()
                 if (items.isEmpty()) {
+                    // Yeni karede yazı yok: önceki ekranın sonuçları da kalkar.
+                    if (wasShown) hideScreen()
                     LiveState.update { it.copy(screenState = LiveStatus.ScreenState.IDLE) }
                     server.sendSubtitle(getString(R.string.screen_none), 2500)
                 }

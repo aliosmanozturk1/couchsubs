@@ -34,6 +34,8 @@ public sealed class StreamWindow : Window
     private readonly Border linesHost;
     private readonly Dictionary<int, Border> boxes = [];
     private double screenUntil;
+    /// <summary>Stilli "Ekranı çevir" kutularının kalkacağı an; yoksa 0 (yeni altyazı onları kaldırmaz, TV'deki gibi).</summary>
+    private double screenRegionUntil;
 
     private double Now => clock.Elapsed.TotalSeconds;
 
@@ -134,12 +136,22 @@ public sealed class StreamWindow : Window
                 stack.Show(e.Text, e.DurationMs, e.Paragraphs, Now, e.Replaces);
                 break;
             case SubtitleEventKind.Screen:
+                // Özgün stiliyle gelen çeviriler ekran yazısı gibi stilli kutularda (telefon kartı balonlarıyla);
+                // "Ekran yazılarını altyazıdan ayır" kapalıysa eskisi gibi satır satır.
+                if (ScreenRegions.Styled(e, controller.Settings.SetTextApart) is { } styled)
+                {
+                    regions[ScreenRegions.Id] = styled;
+                    screenRegionUntil = Now + e.DurationMs / 1000.0;
+                    break;
+                }
                 stack.Show(e.Text, e.DurationMs, paragraphs: true, Now);
                 screenUntil = Now + e.DurationMs / 1000.0;
                 break;
             case SubtitleEventKind.ScreenClear:
                 if (screenUntil > Now) stack.Hide();
                 screenUntil = 0;
+                regions.Remove(ScreenRegions.Id);
+                screenRegionUntil = 0;
                 break;
             // Ek alan olayı altyazıya dokunmaz: önceden "temizle" sayılıp yayındaki altyazıyı siliyordu ve çeviri hiç
             // görünmüyordu.
@@ -168,6 +180,11 @@ public sealed class StreamWindow : Window
     private void Refresh()
     {
         var now = Now;
+        if (screenRegionUntil > 0 && screenRegionUntil <= now)
+        {
+            regions.Remove(ScreenRegions.Id);
+            screenRegionUntil = 0;
+        }
         var lines = stack.Lines(now).ToList();
         regionsPanel.ShowRegions(regions, MakeRegionBox);
         linesPanel.Children.Clear();
@@ -187,7 +204,7 @@ public sealed class StreamWindow : Window
             linesPanel.Children.Add(box);
         }
         timer.Stop();
-        if (stack.NextChange(now) is { } next)
+        if (ScreenRegions.NextChange(stack.NextChange(now), screenRegionUntil) is { } next)
         {
             timer.Interval = TimeSpan.FromSeconds(Math.Max(0.01, next - now));
             timer.Start();

@@ -28,8 +28,10 @@ public enum ScreenTranslation {
         /// Çevirinin içindeki kumanda simgeleri (kareden kesilmiş); TV `translation`'ın o yerine koyar.
         public var icons: [IconPlacement]?
         public var style: PhoneTextStyle?
-        /// Otomatik ekran yazısında özgün yazının görünüşü; TV ve masaüstü çeviriyi bu stilde çizer.
+        /// Özgün yazının görünüşü (otomatik ekran yazısı ve "Ekranı çevir"); TV ve masaüstü çeviriyi bu stilde çizer.
         public var look: TextLook?
+        /// Çevirisi aslıyla aynı (ad, "ok"): yalnız telefon kartında gösterilir, başka yerde atılır (`ScreenPhoneCard`).
+        var unchanged = false
 
         public init(source: String, translation: String, box: TextBox, lineHeight: Double, icons: [IconPlacement]? = nil) {
             self.source = source
@@ -50,19 +52,25 @@ public enum ScreenTranslation {
     /// Grupları sırayla çevirir; her grup çevrilince o ana kadarki sonuçlarla `progress` çağrılır. Çevirisi aslıyla
     /// aynı olan (ad, sayı, zaten Türkçe yazı) grup gösterilmez. `frame` okunan kareyse yazıların içindeki kumanda
     /// simgeleri ondan kesilip çeviriye konur; simgelerin yeri çeviride uydurma adlarla korunur (`IconText`).
+    ///
+    /// Kare verilince her çeviri özgün yazının stilinde (zemin ve yazı rengi, kalınlık, hiza, BÜYÜK HARF; otomatik ekran
+    /// yazısıyla aynı, `TextStyleSampler`) kendi kutusunun yerine çizilir; karede GTA 6 telefonu varsa telefonun yazıları
+    /// yanında bir mesaj kartında dizilir (`ScreenPhoneCard`).
     public static func translate(_ reading: Reading, using translate: (String) async throws -> String,
                                  frame: CGImage? = nil, progress: ([Item]) -> Void = { _ in }) async throws -> [Item] {
+        let phone = frame.flatMap(ScreenPhoneCard.phone(in:))
         var items: [Item] = []
         for group in withImages(groups(reading, frame: frame), from: frame) {
             try Task.checkCancellation()
             let prepared = group.paragraphs.map(IconText.protect)
             var translated: [String] = []
             for paragraph in prepared { translated.append(try await translate(paragraph.text)) }
-            guard let item = item(group, prepared, translated) else { continue }
-            items.append(item)
-            progress(items)
+            guard let item = item(group, prepared, translated, keepUnchanged: phone != nil) else { continue }
+            items.append(styled(item, frame: frame))
+            let shown = present(items, phone: phone)
+            if !shown.isEmpty { progress(shown) }
         }
-        return items
+        return present(items, phone: phone)
     }
 
     /// Çevirmen parçaları tek istekte çevirebiliyorsa (yapay zekâ) ekranın bütün parçaları birlikte gider ve sonuç bir
@@ -73,6 +81,7 @@ public enum ScreenTranslation {
             return try await translate(reading, using: { try await translator.translate($0) }, frame: frame, progress: progress)
         }
         let groups = withImages(groups(reading, frame: frame), from: frame)
+        let phone = frame.flatMap(ScreenPhoneCard.phone(in:))
         let prepared = groups.map { group in group.paragraphs.map(IconText.protect) }
         let paragraphs = prepared.flatMap { list in list.map { $0.text } }
         guard !paragraphs.isEmpty else { return [] }
@@ -84,10 +93,48 @@ public enum ScreenTranslation {
             let count = group.paragraphs.count
             let translated = (next..<next + count).map { $0 < translations.count ? translations[$0] : "" }
             next += count
-            if let item = item(group, prepared[index], translated) { items.append(item) }
+            if let item = item(group, prepared[index], translated, keepUnchanged: phone != nil) {
+                items.append(styled(item, frame: frame))
+            }
         }
-        if !items.isEmpty { progress(items) }
-        return items
+        let shown = present(items, phone: phone)
+        if !shown.isEmpty { progress(shown) }
+        return shown
+    }
+
+    /// Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de
+    /// büyütülür. Önceden "Ekranı çevir" her yazıyı aynı siyah kutuda gösteriyordu, otomatik ekran yazısı ise özgün
+    /// stilde; kullanıcılar çevirinin "ayrı bir kutuda" durduğunu söylüyordu.
+    static func styled(_ item: Item, frame: CGImage?) -> Item {
+        guard let frame else { return item }
+        var styled = item
+        let (surface, look) = TextStyleSampler.sample(frame, box: item.box, lines: [], source: item.source)
+        styled.style = surface
+        styled.look = look
+        if look.upper { styled.translation = TextStyleSampler.turkishUpper(item.translation) }
+        return styled
+    }
+
+    /// Gösterilecek öğeler: telefon varsa kartı dizilir; çevirisi aslıyla aynı öğeler (kart dışında) atılır.
+    static func present(_ items: [Item], phone: TextBox?) -> [Item] {
+        let laid = phone.map { ScreenPhoneCard.layout(items, phone: $0) } ?? items
+        return laid.filter { !$0.unchanged }
+    }
+
+    /// Ekranın yazılarının izi: tuşa yeniden basınca ekranın değişip değişmediği buna bakılarak anlaşılır (`isSameScreen`).
+    public static func fingerprint(_ reading: Reading) -> String {
+        TextMatch.normalize(groups(reading).flatMap(\.paragraphs).map(IconText.plain).joined(separator: " "))
+    }
+
+    /// İki iz aynı ekranın mı. Çeviriler ekrandayken tuşa yeniden basmak önceden hep onları kaldırıyordu: telefonda başka
+    /// bir sohbete geçip basınca yeni sohbet çevrilmiyor, ekran boşalıyordu. Artık ekran değiştiyse yeni kare çevrilir,
+    /// değişmediyse çeviriler kalkar (Windows ve Android ile aynı).
+    /// Aynı ekranın iki okuması en az bu kadar benzer; yeni bir mesajın eklenmesi bile ekranı "değişmiş" yapar.
+    public static let sameScreenSimilarity = 0.95
+
+    public static func isSameScreen(_ a: String, _ b: String) -> Bool {
+        if a.isEmpty || b.isEmpty { return a == b }
+        return TextMatch.isSimilar(a, b, threshold: sameScreenSimilarity)
     }
 
     /// Simgelerin resimleri kareden kesilir; kare yoksa gruplar olduğu gibi kalır (simge okunan haliyle yazılır).
@@ -103,7 +150,8 @@ public enum ScreenTranslation {
 
     /// Grubun gösterilecek çevirisi; çevirisi aslıyla aynıysa (ad, sayı, zaten Türkçe yazı) nil. Boş çeviride parçanın
     /// aslı gösterilir; simgeler TV'de çevirinin içindeki yerlerine konur.
-    static func item(_ group: Group, _ prepared: [IconText.Protected], _ translations: [String]) -> Item? {
+    static func item(_ group: Group, _ prepared: [IconText.Protected], _ translations: [String],
+                     keepUnchanged: Bool = false) -> Item? {
         var changed = false
         var texts: [String] = []
         var slots: [IconSlot] = []
@@ -116,10 +164,12 @@ public enum ScreenTranslation {
             texts.append(text)
             if let all = group.icons, index < all.count { slots += all[index] }
         }
-        guard changed else { return nil }
+        guard changed || keepUnchanged else { return nil }
         let rendered = IconText.render(texts.joined(separator: "\n"), slots: slots)
-        return Item(source: group.paragraphs.map(IconText.plain).joined(separator: "\n"), translation: rendered.text,
-                    box: group.box, lineHeight: group.lineHeight, icons: rendered.icons.isEmpty ? nil : rendered.icons)
+        var item = Item(source: group.paragraphs.map(IconText.plain).joined(separator: "\n"), translation: rendered.text,
+                        box: group.box, lineHeight: group.lineHeight, icons: rendered.icons.isEmpty ? nil : rendered.icons)
+        item.unchanged = !changed
+        return item
     }
 
     /// Satırları gruplara toplar. Yazının içindeki kumanda simgeleri işaretlenir (`ButtonIcons`); kumanda ipuçları ve

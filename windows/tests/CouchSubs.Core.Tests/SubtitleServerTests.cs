@@ -319,9 +319,18 @@ public class SubtitleServerTests
         var received = new List<SubtitleEvent>();
         server.EventSent += received.Add;
         var box = new TextBox(0.1, 0.1, 0.4, 0.2);
-        server.SendScreen([new ScreenTranslation.Item("Map\nInventory", "Harita\nEnvanter", box, 0.03), new ScreenTranslation.Item("Leave", "Ayrıl", box, 0.03)], 12000);
+        ScreenTranslation.Item[] items =
+        [
+            new("Map\nInventory", "Harita\nEnvanter", box, 0.03), new("", ScreenPhoneCard.BackdropText, box, 0.03),
+            new("Leave", "Ayrıl", box, 0.03),
+        ];
+        server.SendScreen(items, 12000);
         server.ClearScreen();
-        Assert.Equal([new SubtitleEvent(SubtitleEventKind.Screen, "Harita\nEnvanter\nAyrıl", 12000, Paragraphs: true), new SubtitleEvent(SubtitleEventKind.ScreenClear)], received);
+        // Telefon kartının zemini düz metne girmez; öğeler yerleriyle pencereye de gider.
+        Assert.Equal(2, received.Count);
+        Assert.Equal(new SubtitleEvent(SubtitleEventKind.Screen, "Harita\nEnvanter\nAyrıl", 12000, Paragraphs: true), received[0] with { Blocks = null });
+        Assert.Equal(items, received[0].Blocks);
+        Assert.Equal(new SubtitleEvent(SubtitleEventKind.ScreenClear), received[1]);
     }
 
     [Fact]

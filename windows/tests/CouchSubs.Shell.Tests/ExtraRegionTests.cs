@@ -361,6 +361,25 @@ public class ScreenTranslationControllerTests
     }
 
     /// <summary>
+    /// Bildirilen hata (GTA 6): telefonda başka bir sohbete geçip tuşa basınca çeviriler kalkıyor, yeni sohbet hiç
+    /// çevrilmiyordu. Ekran değiştiyse ikinci basış yeni ekranı çevirir; değişmediyse çevirileri kaldırır.
+    /// </summary>
+    [Fact]
+    public async Task SecondPressOnAChangedScreenTranslatesTheNewOne()
+    {
+        var (controller, services) = Ready();
+        controller.SubtitleEcho = null;
+        services.ReaderLines = new Reading([new TextLine("Where are you man", new TextBox(0.74, 0.40, 0.94, 0.44))]);
+        await controller.StartAsync();
+        services.Streams[0].Emit(Frame.Blank(64, 64));
+        Assert.Equal(ScreenOutcome.Shown, await controller.TranslateScreenAsync());
+        services.ReaderLines = new Reading([new TextLine("Did you get the money", new TextBox(0.74, 0.40, 0.94, 0.44))]);
+        Assert.Equal(ScreenOutcome.Shown, await controller.TranslateScreenAsync());
+        Assert.Equal(ScreenOutcome.Cleared, await controller.TranslateScreenAsync());
+        controller.Stop();
+    }
+
+    /// <summary>
     /// Bildirilen hata: altyazı yalnız bilgisayar ekranındayken (TV yok, PS Remote Play monitörde) çeviriler yalnız TV'ye
     /// giden "screen" olayıyla gidiyor, altyazı penceresine hiç ulaşmıyordu; yalnız "Ekran çevriliyor…" görünüyordu.
     /// </summary>

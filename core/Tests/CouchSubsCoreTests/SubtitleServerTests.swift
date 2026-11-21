@@ -368,10 +368,13 @@ final class SubtitleServerTests: XCTestCase {
         let received = LockedEvents()
         server.onEvent = { received.append($0) }
         let box = TextBox(left: 0.1, top: 0.1, right: 0.4, bottom: 0.2)
-        server.sendScreen([ScreenTranslation.Item(source: "Map\nInventory", translation: "Harita\nEnvanter", box: box, lineHeight: 0.03),
-                           ScreenTranslation.Item(source: "Leave", translation: "Ayrıl", box: box, lineHeight: 0.03)], durationMs: 12000)
+        let items = [ScreenTranslation.Item(source: "Map\nInventory", translation: "Harita\nEnvanter", box: box, lineHeight: 0.03),
+                     ScreenTranslation.Item(source: "", translation: ScreenPhoneCard.backdropText, box: box, lineHeight: 0.03),
+                     ScreenTranslation.Item(source: "Leave", translation: "Ayrıl", box: box, lineHeight: 0.03)]
+        server.sendScreen(items, durationMs: 12000)
         server.clearScreen()
-        XCTAssertEqual(received.all, [.screen(text: "Harita\nEnvanter\nAyrıl", durationMs: 12000), .screenClear])
+        // Telefon kartının zemini düz metne girmez; öğeler yerleriyle pencereye de gider.
+        XCTAssertEqual(received.all, [.screen(text: "Harita\nEnvanter\nAyrıl", durationMs: 12000, items: items), .screenClear])
     }
 
     func testHelloIdentifiesTheApp() async throws {

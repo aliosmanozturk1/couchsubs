@@ -77,7 +77,10 @@ struct StreamWindowView: View {
                 .padding(.top, 16 * scale)
                 Spacer(minLength: 0)
                 VStack(spacing: 14 * scale) {
-                    ForEach(model.overlayLines) { line(line: $0, scale: scale) }
+                    // "Ekranı çevir" çevirileri aşağıda kendi yerlerinde: yığındaki düz listeleri gösterilmez.
+                    ForEach(Self.lines(model.overlayLines, without: model.overlayScreenItems.isEmpty ? nil : model.overlayScreenText)) {
+                        line(line: $0, scale: scale)
+                    }
                 }
                 .background(GeometryReader { lines in
                     Color.clear.preference(key: SubtitleFrameKey.self,
@@ -89,13 +92,19 @@ struct StreamWindowView: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
             .background {
                 if !model.overlayPhoneItems.isEmpty { GamePhoneBlocks(items: model.overlayPhoneItems) }
-                let screenText = model.overlayRegions.flatMap { $0.items ?? [] }
+                let screenText = model.overlayRegions.flatMap { $0.items ?? [] } + model.overlayScreenItems
                 if !screenText.isEmpty { ScreenTextBlocks(items: screenText, avoiding: subtitleFrame) }
             }
         }
         .coordinateSpace(name: "stream")
         .onPreferenceChange(SubtitleFrameKey.self) { subtitleFrame = $0 }
         .background(Self.color(model.streamBackground))
+    }
+
+    /// Yığının satırları; `screen` verilirse o metinli ("Ekranı çevir" listesi) satır atlanır.
+    static func lines(_ lines: [SubtitleStack.Line], without screen: String?) -> [SubtitleStack.Line] {
+        guard let screen, !screen.isEmpty else { return lines }
+        return lines.filter { $0.text != screen }
     }
 
     static func color(_ background: StreamBackground) -> Color {

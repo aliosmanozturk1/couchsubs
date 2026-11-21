@@ -142,6 +142,19 @@ function render(width, height) {
             lead:el.firstChild && el.firstChild.nodeType === 3 ? el.firstChild.textContent : ''};
         });
       }
+      // "Ekranı çevir" öğeleri özgün görünüşüyle: GTA 6 telefon kartı (zemin + balon) ve stilsiz eski öğe (siyah kutu).
+      var flat = {bold:false, condensed:false, align:'left', upper:false};
+      showScreen([
+        {text:'\u00a0', box:{left:.45,top:.30,right:.69,bottom:.92}, line:.025, surface:{background:'#f2f2f7',foreground:'#1c1c1e',flat:true}, style:flat},
+        {text:'Neredesin adamım', box:{left:.462,top:.45,right:.654,bottom:.48}, line:.025,
+          surface:{background:'#ffffff',foreground:'#1c1c1e',flat:true}, style:flat},
+        {text:'Yoldayım', box:{left:.486,top:.55,right:.678,bottom:.58}, line:.025,
+          surface:{background:'#0a84ff',foreground:'#ffffff',flat:true}, style:{bold:false, condensed:false, align:'right', upper:false}},
+        {text:'Arabayı bul', box:{left:.10,top:.10,right:.30,bottom:.13}, line:.03}], 10000);
+      result.card = Array.from($('screen').children).map(function (el) {
+        var cs = getComputedStyle(el), b = el.getBoundingClientRect();
+        return {background:cs.backgroundColor, color:cs.color, top:b.top, bottom:b.bottom, left:b.left, right:b.right, align:cs.textAlign};
+      });
       hideScreen(); result.hidden = $('screen').className; result.count = $('screen').children.length;
       result.viewport = {width:innerWidth,height:innerHeight}; result.hideReasons = hidden;
       $('result').textContent = btoa(unescape(encodeURIComponent(JSON.stringify(result))));
@@ -304,6 +317,20 @@ test('TV ekran çevirisi: ' + width + '×' + height, {skip: !browser && 'Chrome/
     assert.equal(body.align, 'left');
     // Özgün blok genişliğini aşmaz (en çok iç pay kadar).
     assert.ok(body.width <= (.25 - .05 + 2 * .004) * r.viewport.width + 1, JSON.stringify(body));
+  });
+  await t.test('ekran çevirisi özgün stilde; telefon kartının zemini telefon boyunda, balonlar üstünde', () => {
+    const [card, incoming, outgoing, plain] = r.card;
+    assert.equal(card.background, 'rgb(242, 242, 247)');
+    assert.ok(card.bottom - card.top >= .6 * r.viewport.height, JSON.stringify(card));
+    assert.equal(incoming.background, 'rgb(255, 255, 255)');
+    assert.equal(incoming.color, 'rgb(28, 28, 30)');
+    assert.equal(outgoing.background, 'rgb(10, 132, 255)');
+    assert.equal(outgoing.align, 'right');
+    assert.ok(incoming.left >= card.left && outgoing.right <= card.right + 1, JSON.stringify(r.card));
+    assert.ok(incoming.bottom <= outgoing.top + 1, JSON.stringify(r.card));
+    // Stil taşımayan öğe (eski bilgisayar) eskisi gibi koyu kutuda.
+    assert.notEqual(plain.background, 'rgb(255, 255, 255)');
+    assert.notEqual(plain.background, 'rgba(0, 0, 0, 0)');
   });
 });
 

@@ -45,12 +45,24 @@ extension AppModel {
             overlayStack.show(text, durationMs: durationMs, paragraphs: paragraphs, replaces: replaces, now: now)
         // "Ekranı çevir": çeviriler satır satır gösterilir. Hemen ardından gelen "temizle" ("Ekran çevriliyor…" yazısı
         // için) onları kaldırmaz; yeniden basmak ya da yeni altyazı kaldırır.
-        case .screen(let text, let durationMs):
+        case .screen(let text, let durationMs, let items):
             overlayStack.show(text, durationMs: durationMs, paragraphs: true, now: now)
             overlayScreenUntil = now + Double(durationMs) / 1000
+            // Stilli öğeler (özgün görünüşüyle) yayın penceresinde kendi yerlerinde çizilir; "Ekran yazılarını altyazıdan
+            // ayır" kapalıysa eskisi gibi liste.
+            let styled = settings.setTextApart && items.contains { $0.look != nil }
+            overlayScreenText = styled ? text : ""
+            if overlayScreenItems != (styled ? items : []) { overlayScreenItems = styled ? items : [] }
+            overlayScreenExpiry?.cancel()
+            overlayScreenExpiry = styled ? Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(durationMs))
+                guard !Task.isCancelled else { return }
+                self?.overlayScreenItems = []
+            } : nil
         case .screenClear:
             if overlayScreenUntil > now { overlayStack.hide() }
             overlayScreenUntil = 0
+            if !overlayScreenItems.isEmpty { overlayScreenItems = [] }
         case .clear:
             if overlayScreenUntil <= now { overlayStack.clear(now: now) }
         // Ek alanların çevirisi altyazının üstünde, alanın bulunduğu yana yaslı küçük kutularda durur.
@@ -97,6 +109,7 @@ extension AppModel {
     /// Penceredeki her şeyi hemen kaldırır (çeviri durdu ya da altyazı artık bilgisayarda gösterilmiyor).
     func overlayHide() {
         overlayStack.hide()
+        if !overlayScreenItems.isEmpty { overlayScreenItems = [] }
         if !overlayPhoneItems.isEmpty { overlayPhoneItems = [] }
         overlayTimer?.cancel()
         overlayTimer = nil

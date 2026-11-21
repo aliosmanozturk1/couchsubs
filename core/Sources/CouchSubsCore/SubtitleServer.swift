@@ -99,8 +99,9 @@ public enum SubtitleEvent: Equatable, Sendable {
     /// `replaces`: satır öncekinin uzamış ya da düzelmiş okumasıdır; öncekinin üstüne yığılmaz, yerine geçer.
     case subtitle(text: String, durationMs: Int, paragraphs: Bool, replaces: Bool = false)
     case clear
-    /// "Ekranı çevir" sonuçları: grupların çevirisi, yukarıdan aşağı, her biri ayrı satırda.
-    case screen(text: String, durationMs: Int)
+    /// "Ekranı çevir" sonuçları: grupların çevirisi, yukarıdan aşağı, her biri ayrı satırda; `items` her birini yeri ve
+    /// özgün stiliyle taşır (yayın penceresi onları kendi yerinde çizer, telefon kartı dahil).
+    case screen(text: String, durationMs: Int, items: [ScreenTranslation.Item] = [])
     /// "Ekranı çevir" çevirileri kaldırıldı.
     case screenClear
     /// Ek alanın (görev, telefon, bildirim) çevirisi; `text` boşsa o alanın kutusu kalkar.
@@ -428,7 +429,9 @@ public final class SubtitleServer: @unchecked Sendable {
         broadcast(event: "screen", json: ["duration": durationMs, "items": items.map { Self.json($0) }])
         // Altyazı yalnız bilgisayardaysa (TV yok) çeviriler başka hiçbir yere gitmiyordu: tuşa basınca yalnız
         // "Ekran çevriliyor…" görünüyordu.
-        onEvent?(.screen(text: items.map(\.translation).joined(separator: "\n"), durationMs: durationMs))
+        // Telefon kartının zemini (`ScreenPhoneCard.backdropText`) düz metne girmez.
+        let text = items.filter { !ScreenPhoneCard.isBackdrop($0) }.map(\.translation).joined(separator: "\n")
+        onEvent?(.screen(text: text, durationMs: durationMs, items: items))
     }
 
     /// Ek alanın çevirisi: `region` olayı alanın kimliğini (`id`), çeviriyi (`text`; boşsa kutu kalkar), yazının karedeki

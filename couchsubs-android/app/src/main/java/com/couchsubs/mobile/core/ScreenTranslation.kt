@@ -31,6 +31,8 @@ object ScreenTranslation {
         val surface: TextSurface? = null,
         /** Özgün yazının görünüşü (kalın, dar, hizalama, büyük harf); `style` alanıyla gider. */
         val look: TextLook? = null,
+        /** Çevirisi aslıyla aynı (ad, "ok"): yalnız telefon kartında gösterilir, başka yerde atılır ([ScreenPhoneCard]). */
+        val unchanged: Boolean = false,
     ) {
         /** Birden çok parça var: satır satır, sola yaslı gösterilir. */
         val paragraphs: Boolean get() = translation.contains('\n')
@@ -49,31 +51,36 @@ object ScreenTranslation {
      */
     fun translateGroups(
         reading: Reading, translate: (String) -> String, cancelled: () -> Boolean = { false }, frame: GrayFrame? = null,
-        progress: (List<Item>) -> Unit = {},
+        color: ((Int, Int) -> Int)? = null, phone: TextBox? = null, progress: (List<Item>) -> Unit = {},
     ): List<Item> {
         val items = mutableListOf<Item>()
         for (group in withImages(groups(reading), frame)) {
-            if (cancelled()) return items
+            if (cancelled()) return present(items, phone)
             // Simgeler çeviride uydurma adlarla korunur (IconText).
             val prepared = group.paragraphs.map { IconText.protect(it) }
             val translated = prepared.map { translate(it.text) }
-            val item = item(group, prepared, translated) ?: continue
-            items.add(item)
-            progress(items.toList())
+            val item = item(group, prepared, translated, keepUnchanged = phone != null) ?: continue
+            items.add(styled(item, frame, color))
+            val shown = present(items, phone)
+            if (shown.isNotEmpty()) progress(shown)
         }
-        return items
+        return present(items, phone)
     }
 
     /**
      * Çevirmen parçaları tek istekte çevirebiliyorsa (yapay zekâ) ekranın bütün parçaları birlikte gider ve sonuç bir
      * kerede gelir; yoksa gruplar sırayla çevrilip hazırlandıkça bildirilir. [frame] okunan kareyse yazıların içindeki
-     * kumanda simgeleri ondan kesilip çeviriye konur.
+     * kumanda simgeleri ondan kesilip çeviriye konur ve her çeviri özgün yazının stilinde (zemin ve yazı rengi —
+     * [color] verilirse gerçek renk —, kalınlık, hiza, BÜYÜK HARF; otomatik ekran yazısıyla aynı, [TextStyleSampler])
+     * kendi kutusunun yerine çizilir. [phone]: karede bulunan GTA 6 telefonu; yazıları yanında bir mesaj kartında
+     * dizilir ([ScreenPhoneCard]).
      */
     fun translate(
         reading: Reading, translator: TextTranslator, cancelled: () -> Boolean = { false }, frame: GrayFrame? = null,
-        progress: (List<Item>) -> Unit = {},
+        color: ((Int, Int) -> Int)? = null, phone: TextBox? = null, progress: (List<Item>) -> Unit = {},
     ): List<Item> {
-        if (!translator.translatesTogether) return translateGroups(reading, { translator.translate(it) }, cancelled, frame, progress)
+        if (!translator.translatesTogether)
+            return translateGroups(reading, { translator.translate(it) }, cancelled, frame, color, phone, progress)
         val groups = withImages(groups(reading), frame)
         // Simgeler çeviride uydurma adlarla korunur (IconText).
         val prepared = groups.map { group -> group.paragraphs.map { IconText.protect(it) } }
@@ -88,11 +95,48 @@ object ScreenTranslation {
             // Gelmeyen çeviri boş kalır: parça aslıyla gösterilir.
             val translated = (next until next + count).map { if (it < translations.size) translations[it] else "" }
             next += count
-            item(group, prepared[index], translated)?.let(items::add)
+            item(group, prepared[index], translated, keepUnchanged = phone != null)?.let { items.add(styled(it, frame, color)) }
         }
-        if (items.isNotEmpty()) progress(items.toList())
-        return items
+        val shown = present(items, phone)
+        if (shown.isNotEmpty()) progress(shown)
+        return shown
     }
+
+    /**
+     * Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de
+     * büyütülür. Önceden "Ekranı çevir" her yazıyı aynı siyah kutuda gösteriyordu, otomatik ekran yazısı ise özgün
+     * stilde; kullanıcılar çevirinin "ayrı bir kutuda" durduğunu söylüyordu.
+     */
+    internal fun styled(item: Item, frame: GrayFrame?, color: ((Int, Int) -> Int)?): Item {
+        if (frame == null) return item
+        val box = item.box
+        val style = TextStyleSampler.sample(
+            frame, (box.left * frame.width).toInt(), (box.top * frame.height).toInt(),
+            kotlin.math.ceil(box.right * frame.width).toInt(), kotlin.math.ceil(box.bottom * frame.height).toInt(),
+            item.lineHeight * frame.height, item.source, emptyList(), color,
+        ) ?: return item
+        val translation = if (style.look.upper) TextStyleSampler.upper(item.translation) else item.translation
+        return item.copy(translation = translation, surface = style.surface, look = style.look)
+    }
+
+    /** Gösterilecek öğeler: telefon varsa kartı dizilir; çevirisi aslıyla aynı öğeler (kart dışında) atılır. */
+    internal fun present(items: List<Item>, phone: TextBox?): List<Item> =
+        (if (phone != null) ScreenPhoneCard.layout(items, phone) else items).filter { !it.unchanged }
+
+    /** Aynı ekranın iki okuması en az bu kadar benzer; yeni bir mesajın eklenmesi bile ekranı "değişmiş" yapar. */
+    const val SAME_SCREEN_SIMILARITY = 0.95
+
+    /** Ekranın yazılarının izi: düğmeye yeniden basınca ekranın değişip değişmediği buna bakılarak anlaşılır. */
+    fun fingerprint(reading: Reading): String =
+        TextMatch.normalize(groups(reading).flatMap { it.paragraphs }.joinToString(" ") { IconText.plain(it) })
+
+    /**
+     * İki iz aynı ekranın mı. Çeviriler ekrandayken düğmeye yeniden basmak önceden hep onları kaldırıyordu: telefonda
+     * başka bir sohbete geçip basınca yeni sohbet çevrilmiyor, ekran boşalıyordu. Artık ekran değiştiyse yeni kare
+     * çevrilir, değişmediyse çeviriler kalkar (Mac ve Windows ile aynı).
+     */
+    fun isSameScreen(a: String, b: String): Boolean =
+        if (a.isEmpty() || b.isEmpty()) a == b else TextMatch.isSimilar(a, b, SAME_SCREEN_SIMILARITY)
 
     /** Simgeli grupların simgeleri [frame]'den kesilir; kare yoksa gruplar olduğu gibi kalır. */
     internal fun withImages(groups: List<Group>, frame: GrayFrame?): List<Group> {
@@ -104,7 +148,7 @@ object ScreenTranslation {
     }
 
     /** Grubun gösterilecek çevirisi; çevirisi aslıyla aynıysa (ad, sayı, zaten Türkçe yazı) null. */
-    internal fun item(group: Group, prepared: List<IconText.Protected>, translations: List<String>): Item? {
+    internal fun item(group: Group, prepared: List<IconText.Protected>, translations: List<String>, keepUnchanged: Boolean = false): Item? {
         var changed = false
         val texts = mutableListOf<String>()
         val slots = mutableListOf<IconSlot>()
@@ -117,10 +161,10 @@ object ScreenTranslation {
             texts.add(text)
             group.icons?.getOrNull(i)?.let { slots.addAll(it) }
         }
-        if (!changed) return null
+        if (!changed && !keepUnchanged) return null
         val rendered = IconText.render(texts.joinToString("\n"), slots)
         return Item(group.paragraphs.joinToString("\n") { IconText.plain(it) }, rendered.text, group.box, group.lineHeight,
-            rendered.icons.takeIf { it.isNotEmpty() })
+            rendered.icons.takeIf { it.isNotEmpty() }, unchanged = !changed)
     }
 
     /**

@@ -146,12 +146,22 @@ public sealed partial class SubtitleOverlayWindow : Window
             // "Ekranı çevir": çeviriler satır satır gösterilir. Hemen ardından gelen "temizle" ("Ekran çevriliyor…"
             // yazısı için) onları kaldırmaz; yeniden basmak (ScreenClear) ya da yeni altyazı kaldırır.
             case SubtitleEventKind.Screen:
+                // Özgün stiliyle gelen çeviriler ekran yazısı gibi stilli kutularda (telefon kartı balonlarıyla);
+                // "Ekran yazılarını altyazıdan ayır" kapalıysa eskisi gibi satır satır.
+                if (ScreenRegions.Styled(e, controller.Settings.SetTextApart) is { } styled)
+                {
+                    regions[ScreenRegions.Id] = styled;
+                    screenRegionUntil = Now + e.DurationMs / 1000.0;
+                    break;
+                }
                 stack.Show(e.Text, e.DurationMs, paragraphs: true, Now);
                 screenUntil = Now + e.DurationMs / 1000.0;
                 break;
             case SubtitleEventKind.ScreenClear:
                 if (screenUntil > Now) stack.Hide();
                 screenUntil = 0;
+                regions.Remove(ScreenRegions.Id);
+                screenRegionUntil = 0;
                 break;
             // Ek alanların çevirisi altyazının üstünde, alanın bulunduğu yana yaslı küçük kutularda durur.
             case SubtitleEventKind.Region:
@@ -175,6 +185,8 @@ public sealed partial class SubtitleOverlayWindow : Window
 
     /// <summary>"Ekranı çevir" çevirilerinin pencerede kalacağı an (<see cref="Now"/> saatiyle); yoksa 0.</summary>
     private double screenUntil;
+    /// <summary>Stilli "Ekranı çevir" kutularının kalkacağı an; yoksa 0 (yeni altyazı onları kaldırmaz, TV'deki gibi).</summary>
+    private double screenRegionUntil;
 
     /// <summary>Ek alanların penceredeki çevirileri (kimlik → metin ve oyundaki yeri).</summary>
     private readonly Dictionary<string, (string Text, CouchSubs.Core.TextBox? Box, IReadOnlyList<ScreenTranslation.Item>? Blocks)> regions = [];
@@ -218,6 +230,11 @@ public sealed partial class SubtitleOverlayWindow : Window
     private void Refresh()
     {
         var now = Now;
+        if (screenRegionUntil > 0 && screenRegionUntil <= now)
+        {
+            regions.Remove(ScreenRegions.Id);
+            screenRegionUntil = 0;
+        }
         var lines = stack.Lines(now).ToList();
         var adjusting = controller.OverlayAdjusting;
         if (lines.Count == 0 && adjusting)
@@ -250,7 +267,7 @@ public sealed partial class SubtitleOverlayWindow : Window
         if (visible) topmost.RaiseThrottled();
 
         timer.Stop();
-        if (stack.NextChange(now) is { } next)
+        if (ScreenRegions.NextChange(stack.NextChange(now), screenRegionUntil) is { } next)
         {
             timer.Interval = TimeSpan.FromSeconds(Math.Max(0.01, next - now));
             timer.Start();
