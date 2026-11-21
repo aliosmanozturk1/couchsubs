@@ -211,7 +211,7 @@ internal static class CrashWatch
             case "kisa-kare":
                 // #587 için sınanan varsayım: AutoLevel'da dizinin dışına taşan bir yönetilen istisna, Parallel.For iş
                 // parçacığında dağıtılırken erişim ihlaline dönüşüyor mu? Eski AutoLevel döngüsü kısa diziyle binlerce kez
-                // paralel çalıştırılır; her biri IndexOutOfRangeException olmalı, süreç çökmemeli. Ardından bugünkü okuma
+                // paralel çalıştırılır; her tur IndexOutOfRangeException atmalı, süreç çökmemeli. Ardından bugünkü okuma
                 // aynı kısa kareyi atlamalı (istisnasız, boş okuma).
                 var thrown = 0;
                 for (var round = 0; round < 200; round++)
@@ -232,7 +232,8 @@ internal static class CrashWatch
                 var screen = reader.ReadScreen(shortFrame);
                 Console.WriteLine($"kisa-kare: {thrown} IndexOutOfRangeException, okuma {reading.Lines.Count} satır, ekran {screen.Lines.Count} satır");
                 CrashRecords.EndSession(folder, Environment.ProcessId);
-                return thrown == 200 * 16 && reading.Lines.Count == 0 && screen.Lines.Count == 0 ? 0 : 7;
+                // İlk istisnadan sonra Parallel.For yeni tur başlatmaz; her turda en az bir istisna atılmış olmalı.
+                return thrown >= 200 && reading.Lines.Count == 0 && screen.Lines.Count == 0 ? 0 : 7;
             case "bos":
                 try
                 {
