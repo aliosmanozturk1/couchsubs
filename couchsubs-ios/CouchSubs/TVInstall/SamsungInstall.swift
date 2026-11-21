@@ -604,6 +604,14 @@ final class SamsungInstaller {
     static func needsDeviceProfile(_ platform: String) -> Bool {
         !platform.isEmpty && !isTooOld(platform) && !Versions.isNewer(platform, than: deviceProfileUpTo)
     }
+    /// Tizen 2.x'te cihaz profilinin konduğu klasör (Tizen Studio ve Apps2Samsung ile aynı).
+    static let legacyDeviceProfileDirectory = "/home/developer"
+    /// Cihaz profilinin TV'deki yolu: Tizen 3.0–4.0'da `sdk_toolpath`, Tizen 2.x'te (2016) `/home/developer`. 2.4 TV profili
+    /// yalnız orada arar; #71'de çalışan kurulum (Apps2Samsung) oraya gönderiyordu, profili `/opt/usr/apps/tmp`'ye gönderen
+    /// her 2.4 kurulumu `install failed[118]` verdi (#890). Windows/Mac ve Android ile aynı.
+    static func deviceProfileRemotePath(_ platform: String, toolPath: String) -> String {
+        (LegacyTizenPackage.applies(platform) ? legacyDeviceProfileDirectory : toolPath) + "/device-profile.xml"
+    }
     /// `0 getduid` yanıtının ilk dolu satırı geçerli DUID ise onu verir. TV satırı CRLF ile bitirebilir
     /// (ör. "XTCK7KNUEHTUM\r\nXTCK7KNUEHTUM"); `split(separator: "\n")` bunu bölmediği için `deviceLines`.
     static func duid(fromGetduid output: String) -> String? {
@@ -695,17 +703,18 @@ final class SamsungInstaller {
             log.write("Yeni sertifika: \(profile.describe(duid))")
         }
 
-        if Self.needsDeviceProfile(platform) { pushDeviceProfile(device, profile, toolPath) }
+        if Self.needsDeviceProfile(platform) { pushDeviceProfile(device, profile, platform, toolPath) }
 
         progress(.signing)
         let key = try profile.privateKey()
-        // Tizen 2.x (2016): #71'de çalışan config.xml ve SHA-256 imza; TV yine yalın [118] derse yalın paket (#638).
+        // Tizen 2.x (2016): #71'de çalışan paket: o config.xml ve SHA-512 imza (Apps2Samsung'un TizenSdb'si, #890);
+        // TV yine yalın [118] derse SHA-256 imzalı yalın paket (#638).
         let legacy = LegacyTizenPackage.applies(platform)
         let author = WgtSigner.Signer(key: key, chain: SamsungCertificates.chain(try profile.author()))
         let distributor = WgtSigner.Signer(key: key, chain: SamsungCertificates.chain(try profile.distributor()))
         let original = try wgt()
-        func sign(_ unsigned: [UInt8]) throws -> [UInt8] {
-            try WgtSigner.sign(unsigned, author: author, distributor: distributor, digest: legacy ? .sha256 : .sha512)
+        func sign(_ unsigned: [UInt8], digest: WgtSigner.Digest = .sha512) throws -> [UInt8] {
+            try WgtSigner.sign(unsigned, author: author, distributor: distributor, digest: digest)
         }
         // 21:9 / 32:9 Samsung monitör: geniş uygulama yüzeyi (#886; TV'lerde ve Tizen 2.x'te paket değişmez).
         var wide = false
@@ -718,19 +727,19 @@ final class SamsungInstaller {
         let signed = try sign(legacy ? LegacyTizenPackage.adapt(original) : wide ? WideScreenPackage.adapt(original) : original)
         if legacy {
             log.write("Tizen \(platform): paketten network.public izni ve ultra geniş ekran ayarı çıkarıldı (#621).")
-            log.write("Tizen \(platform): imza SHA-256 ile üretildi (rsa-sha256, sha256 özet; yeni TV'lerde SHA-512).")
+            log.write("Tizen \(platform): imza SHA-512 ile üretildi (#71'de çalışan paketle aynı).")
         }
         log.write("Paket imzalandı (\(signed.count) bayt).")
         progress(.installing)
         do {
             var lean = false
             try installWithRecovery(device, signed, toolPath, alternative: !legacy ? nil : {
-                let package = try sign(LegacyTizenPackage.adapt(original, lean: true))
+                let package = try sign(LegacyTizenPackage.adapt(original, lean: true), digest: .sha256)
                 lean = true
                 self.log.write("Tizen \(platform): yalın paket hazırlandı (\(LegacyTizenPackage.leanRemovedNames) de çıkarıldı), imza SHA-256.")
                 return ("yalın paket", package)
             }, keepExisting: legacy && (onTv != nil || !listRead))
-            if legacy { log.write("Tizen \(platform): \(lean ? "yalın paket" : "tam paket") SHA-256 imzayla kuruldu.") }
+            if legacy { log.write("Tizen \(platform): \(lean ? "yalın paket SHA-256" : "tam paket SHA-512") imzayla kuruldu.") }
         } catch let failure as SamsungInstallFailure {
             if failure.error == .certificateRejected {
                 profile.discard()
@@ -836,17 +845,23 @@ final class SamsungInstaller {
         log.write("Uygulama açılıyor: \(output.trimmingCharacters(in: .whitespacesAndNewlines))")
     }
 
-    private func pushDeviceProfile(_ device: SdbConnection, _ profile: SigningProfile, _ toolPath: String) {
+    /// Tizen 2.4–4.0: cihaz profili TV'ye gönderilir (`deviceProfileRemotePath`); Tizen 2.x'te `/home/developer`'a
+    /// gönderilemezse `sdk_toolpath` denenir.
+    private func pushDeviceProfile(_ device: SdbConnection, _ profile: SigningProfile, _ platform: String, _ toolPath: String) {
         guard let data = try? Data(contentsOf: profile.deviceProfileFile) else {
             log.write("Cihaz profili (device-profile.xml) yok; gönderilmeden kuruluyor.")
             return
         }
-        let remote = "\(toolPath)/device-profile.xml"
-        do {
-            try device.push(Array(data), to: remote)
-            log.write("Cihaz profili gönderildi: \(remote)")
-        } catch {
-            log.write("Cihaz profili gönderilemedi (\(remote)): \(error)")
+        let remote = Self.deviceProfileRemotePath(platform, toolPath: toolPath)
+        let fallback = "\(toolPath)/device-profile.xml"
+        for target in remote == fallback ? [remote] : [remote, fallback] {
+            do {
+                try device.push(Array(data), to: target)
+                log.write("Cihaz profili gönderildi: \(target)")
+                return
+            } catch {
+                log.write("Cihaz profili gönderilemedi (\(target)): \(error)")
+            }
         }
     }
 
