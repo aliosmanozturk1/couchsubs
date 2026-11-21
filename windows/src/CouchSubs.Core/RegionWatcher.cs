@@ -141,6 +141,8 @@ public sealed partial class RegionWatcher
         /// <summary>Yazının sadeleştirilmiş hâli (simgeler dahil, yerleşim hariç); okumaları karşılaştırmak için.</summary>
         public string Text { get; init; } = "";
         public GamePhonePage? PhonePage { get; init; }
+        /// <summary>Otomatik alanda haritanın görev kartı var (yardım köşesinde değil): türü "Görev ve hedef yazısı".</summary>
+        public bool MissionCard { get; init; }
     }
 
     /// <summary>
@@ -289,7 +291,7 @@ public sealed partial class RegionWatcher
     {
         if (Volatile.Read(ref session) != started) return;
         // Ayarlar'da kapalı türün alanı (menü, hazır yardım/mesaj alanı, görev satırı) okunmaz; kutusu kalkar.
-        var areas = Allows is { } allows ? [.. all.Where(area => ScreenTextKinds.Of(area) is not { } kind || allows(kind))] : all;
+        var areas = Allows is { } allows ? [.. all.Where(area => ScreenTextKinds.Reads(area, allows))] : all;
         var map = states;
         if (regularDue || phoneDue) Interlocked.Increment(ref passes);
         var ids = areas.Select(area => area.Id).ToHashSet();
@@ -547,8 +549,10 @@ public sealed partial class RegionWatcher
         // eskisi gibi tek kutu. Anahtar grup yapısını da içerir: aynı yazı farklı gruplanırsa bloklar yeniden kurulur.
         IReadOnlyList<Block>? blocks = null;
         var key = TextKey(paragraphs);
+        var cards = auto && !phone && lines.Count > 0 && boxes.Count == lines.Count
+            ? CouchSubs.Core.MissionCard.Find(lines, place) : [];
         var groups = (phone || auto || lines.Count > 1) && boxes.Count == lines.Count
-            ? (phone ? GamePhoneText.Groups(reading) : auto ? AutoGroups(lines, menuRows, menu) : ScreenTranslation.GroupsFromLines(lines, menuRows)) : [];
+            ? (phone ? GamePhoneText.Groups(reading) : auto ? AutoGroups(lines, menuRows, menu, cards) : ScreenTranslation.GroupsFromLines(lines, menuRows)) : [];
         if (((phone || auto) && groups.Count > 0) || groups.Count is > 1 and < ScreenTranslation.MaxGroups)
         {
             paragraphs = [.. groups.SelectMany(group => group.Paragraphs)];
@@ -577,28 +581,40 @@ public sealed partial class RegionWatcher
             : [.. icons.Select(list => ButtonIcons.WithImages(list, frame))];
         if (phone && paragraphs.Count > 0)
             key = string.Join('\n', paragraphs) + (blocks is null ? "" : "|" + string.Join(',', blocks.Select(block => block.Count)));
-        return new Candidate(paragraphs, box, lineHeight, key, cut, blocks) { Text = TextKey(paragraphs) };
+        var missionCard = cards.Any(card =>
+        {
+            var own = card.All.Select(i => lines[i].Box!.Value).ToList();
+            return !CouchSubs.Core.MissionCard.InHelpCorner(own.Skip(1).Aggregate(own[0], (a, b) => a.Union(b)).PlacedIn(place));
+        });
+        return new Candidate(paragraphs, box, lineHeight, key, cut, blocks) { Text = TextKey(paragraphs), MissionCard = missionCard };
     }
 
     /// <summary>
     /// Otomatik alanın grupları: kısa etiket satırları (menü satırı, tuş etiketi) her biri kendi bloğudur; stili (seçili
     /// satırın ters rengi) satır başına çıkarılır. Uzun yazı satırları eskisi gibi paragraflara toplanır.
     /// </summary>
-    private static List<ScreenTranslation.Group> AutoGroups(List<TextLine> lines, bool menuRows, bool menu = false)
+    /// <remarks>
+    /// <paramref name="cards"/>: satırlardaki görev kartları (<see cref="CouchSubs.Core.MissionCard.Find"/>); kartın parçaları
+    /// kendi bloklarıdır (başlık, alt başlık, açıklama, ayrıntı), kalan satırlar her zamanki gibi.
+    /// </remarks>
+    private static List<ScreenTranslation.Group> AutoGroups(List<TextLine> lines, bool menuRows, bool menu = false,
+                                                            IReadOnlyList<CouchSubs.Core.MissionCard.Card>? cards = null)
     {
         // Gruplar önce birlikte kurulur. Bütün satırları kısa etiket olan grup (menü, tuş çubuğu) satır satır blok olur;
         // uzun satırı olan grup paragraf kalır, baştaki BÜYÜK HARF başlığı ayrı blok olur ("ROB VICKI'S BOSS" + gövde; gövdenin
         // kısa son satırı "cash. Meet her at Delights." ayrı çevrilmiyordu).
-        var result = new List<ScreenTranslation.Group>();
+        var result = (cards ?? []).SelectMany(card => CouchSubs.Core.MissionCard.Groups(card, lines)).ToList();
+        var taken = (cards ?? []).SelectMany(card => card.All).ToHashSet();
+        var rest = Enumerable.Range(0, lines.Count).Where(i => !taken.Contains(i)).Select(i => lines[i]).ToList();
         static ScreenTranslation.Group Single(TextLine line)
         {
             var icons = ScreenTranslation.ParagraphIcons([line]);
             return new ScreenTranslation.Group(ScreenTranslation.Paragraphs([line]), line.Box!.Value,
                 line.Box!.Value.Bottom - line.Box!.Value.Top, icons.Any(list => list.Count > 0) ? icons : null);
         }
-        foreach (var group in ScreenTranslation.GroupsFromLines(lines, menuRows))
+        foreach (var group in ScreenTranslation.GroupsFromLines(rest, menuRows))
         {
-            var members = lines.Where(line => Inside(line.Box!.Value, group.Box)).OrderBy(line => line.Box!.Value.Top).ToList();
+            var members = rest.Where(line => Inside(line.Box!.Value, group.Box)).OrderBy(line => line.Box!.Value.Top).ToList();
             if (members.Count == 0) { result.Add(group); continue; }
             if (members.All(IsLabelLine))
             {
@@ -662,12 +678,22 @@ public sealed partial class RegionWatcher
     private static bool SameLayout(IReadOnlyList<Block>? a, IReadOnlyList<Block>? b) =>
         a is null ? b is null : b is not null && a.SequenceEqual(b);
 
+    /// <summary>
+    /// Otomatik alandaki yazının türü: haritanın görev kartı (menüde de) görevdir; yoksa alanın yerinden (hazır alan, görev
+    /// satırı, menü) ya da okunan yazıdan çıkar. Kullanıcının kendi alanı null (her zaman çevrilir).
+    /// </summary>
+    internal static ScreenTextKind? Kind(WatchedArea area, Candidate candidate)
+    {
+        if (area.Auto && candidate.MissionCard) return ScreenTextKind.Mission;
+        if (ScreenTextKinds.Of(area) is { } kind) return kind;
+        return area.Auto ? ScreenTextKinds.Of(candidate.Paragraphs) : null;
+    }
+
     private async Task CommitAsync(Candidate candidate, WatchedArea area, State state, int started)
     {
         // Menü dışındaki otomatik alanın türü okunan yazıdan çıkar (yardım/eylem ya da diğer); kapalı tür gürültü gibi
         // çizilmez, dedektöre bildirilir.
-        var unwanted = area.Auto && Allows is { } allows && ScreenTextKinds.Of(area) is null
-                       && !allows(ScreenTextKinds.Of(candidate.Paragraphs));
+        var unwanted = area.Auto && Allows is { } allows && Kind(area, candidate) is { } kind && !allows(kind);
         if (area.Auto && (candidate.Key.Length == 0 || ScreenTextNoise.IsNoise(string.Join(' ', candidate.Paragraphs), area.Menu)
                           || (!area.Menu && IsWorldText(candidate)) || unwanted))
         {

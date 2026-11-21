@@ -8,7 +8,8 @@ import Foundation
 public enum ScreenTextKind: String, CaseIterable, Sendable {
     /// GTA 6 telefonu (telefon okuyucusu) ve hazır mesaj kartı alanı.
     case phone
-    /// Görev ve hedef yazısı (altyazıdan ayrılan görev satırı, `MissionLine`).
+    /// Görev ve hedef yazısı (altyazıdan ayrılan görev satırı, `MissionLine`) ve haritada basılan görevin/konumun bilgi
+    /// kartı (`MissionCard`; menüde açılsa da bu türdendir, ayrı anahtarı yoktur).
     case mission
     /// Yardım ve ipucu kutuları, eylemler: tuş ipuçları, etkileşim istemleri; hazır yardım kutusu alanı.
     case help
@@ -26,6 +27,17 @@ public enum ScreenTextKind: String, CaseIterable, Sendable {
         case MissionLine.areaId: return .mission
         default: return area.auto && area.menu ? .menu : nil
         }
+    }
+
+    /// Pas turunda alan okunur mu: türü açık ya da yerinden belli değil. Menüler kapalıyken de kart boyundaki menü alanı
+    /// (en çok `MissionCard.maxWidth` genişlik, ekranın yarısı yükseklik) "Görev ve hedef yazısı" açıksa okunur: haritada
+    /// açılan görev kartı menü sayılan ekranda durur; kart değilse çizilmez (bkz. `RegionWatcher.kind`).
+    public static func reads(_ area: ExtraArea, allows: (ScreenTextKind) -> Bool) -> Bool {
+        guard let kind = of(area) else { return true }
+        if allows(kind) { return true }
+        let region = area.region
+        return kind == .menu && allows(.mission)
+            && region.right - region.left <= MissionCard.maxWidth && region.bottom - region.top <= 0.5
     }
 
     /// Kısa etiketten uzun sayılan yazı (yardım kutusu cümlesi) en az bu kadar sözcük.

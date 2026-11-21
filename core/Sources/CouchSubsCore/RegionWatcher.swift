@@ -107,6 +107,8 @@ public final class RegionWatcher {
         var blocks: [Block]? = nil
         /// Yazının sadeleştirilmiş hâli (simgeler dahil, yerleşim hariç); okumaları karşılaştırmak için.
         var text = ""
+        /// Otomatik alanda haritanın görev kartı var (yardım köşesinde değil): türü "Görev ve hedef yazısı".
+        var missionCard = false
     }
 
     /// Sadeleştirilmiş yazı; tuş simgeleri `ButtonIcons.marker` olarak kalır. Simgesi sonradan bulunan okuma
@@ -211,7 +213,7 @@ public final class RegionWatcher {
         let started = session
         passes += 1
         // Ayarlar'da kapalı türün alanı (menü, hazır yardım/mesaj alanı, görev satırı) okunmaz; kutusu kalkar.
-        let areas = all.filter { area in ScreenTextKind.of(area).map(allows) ?? true }
+        let areas = all.filter { area in ScreenTextKind.reads(area, allows: allows) }
         let ids = Set(areas.map(\.id))
         for (id, state) in states where !ids.contains(id) {
             if !state.shown.isEmpty { server.sendRegion(id: id, text: "", box: nil, lineHeight: nil) }
@@ -384,8 +386,9 @@ public final class RegionWatcher {
         // gibi gruplanır; her grubun çevirisi TV'de kendi yerine konur. Tek grupta (ya da yeri bilinmeyen satır varsa)
         // eskisi gibi tek kutu. Anahtar grup yapısını da içerir: aynı yazı farklı gruplanırsa bloklar yeniden kurulur.
         var blocks: [Block]?
+        let cards = auto && !lines.isEmpty && boxes.count == lines.count ? MissionCard.find(lines, place: place) : []
         let groups = (auto || lines.count > 1) && !lines.isEmpty && boxes.count == lines.count
-            ? (auto ? autoGroups(lines, menu: menu) : ScreenTranslation.groups(from: lines)) : []
+            ? (auto ? autoGroups(lines, menu: menu, cards: cards) : ScreenTranslation.groups(from: lines)) : []
         if (auto && !groups.isEmpty) || (groups.count > 1 && groups.count < ScreenTranslation.maxGroups) {
             paragraphs = groups.flatMap(\.paragraphs)
             icons = groups.flatMap { $0.icons ?? $0.paragraphs.map { _ in [IconSlot]() } }
@@ -411,8 +414,12 @@ public final class RegionWatcher {
         if let frame, icons.contains(where: { !$0.isEmpty }) {
             cut = icons.map { ButtonIcons.withImages($0, frame: frame) }
         }
+        let missionCard = cards.contains { card in
+            let own = card.all.compactMap { lines[$0].box }
+            return !MissionCard.inHelpCorner(own.dropFirst().reduce(own[0]) { $0.union($1) }.placed(in: place))
+        }
         return Candidate(paragraphs: paragraphs, box: box, lineHeight: lineHeight, key: key, icons: cut, blocks: blocks,
-                         text: textKey(paragraphs))
+                         text: textKey(paragraphs), missionCard: missionCard)
     }
 
     /// Kısa etiket satırı (menü satırı, tuş etiketi): en çok bu kadar sözcük (Windows: ScreenTranslation.MenuLabelWords).
@@ -420,7 +427,10 @@ public final class RegionWatcher {
 
     /// Otomatik alanın grupları: kısa etiket satırları (menü satırı, tuş etiketi) her biri kendi bloğudur; stili (seçili
     /// satırın ters rengi) satır başına çıkarılır. Uzun yazı satırları eskisi gibi paragraflara toplanır.
-    static func autoGroups(_ lines: [TextLine], menu: Bool = false) -> [ScreenTranslation.Group] {
+    ///
+    /// `cards`: satırlardaki görev kartları (`MissionCard.find`); kartın parçaları kendi bloklarıdır (başlık, alt başlık,
+    /// açıklama, ayrıntı), kalan satırlar her zamanki gibi.
+    static func autoGroups(_ lines: [TextLine], menu: Bool = false, cards: [MissionCard.Card] = []) -> [ScreenTranslation.Group] {
         func isLabel(_ line: TextLine) -> Bool { line.text.split(whereSeparator: \.isWhitespace).count <= labelWords }
         func isTitle(_ line: TextLine) -> Bool { line.text.contains(where: \.isLetter) && !line.text.contains(where: \.isLowercase) }
         func single(_ line: TextLine) -> ScreenTranslation.Group {
@@ -432,9 +442,11 @@ public final class RegionWatcher {
         // Gruplar önce birlikte kurulur (gerçek kare doğrulaması: sarılmış cümlenin kısa son satırı "cash. Meet her at
         // Delights." ayrı blok olup ayrı çevriliyordu). Bütün satırları kısa etiket olan grup (menü sütunu) satır satır
         // bloktur; uzun satırı olan grup paragraftır, başındaki BÜYÜK HARF başlık ise kendi bloğudur (stili ayrı).
-        var groups: [ScreenTranslation.Group] = []
-        for group in ScreenTranslation.groups(from: lines) {
-            let own = lines.filter { inside($0.box!, group.box) }
+        var groups = cards.flatMap { MissionCard.groups($0, lines) }
+        let taken = Set(cards.flatMap(\.all))
+        let rest = lines.indices.filter { !taken.contains($0) }.map { lines[$0] }
+        for group in ScreenTranslation.groups(from: rest) {
+            let own = rest.filter { inside($0.box!, group.box) }
             if own.allSatisfy(isLabel) {
                 groups += own.map(single)
                 continue
@@ -485,12 +497,20 @@ public final class RegionWatcher {
         return x >= group.left - 1e-6 && x <= group.right + 1e-6 && y >= group.top - 1e-6 && y <= group.bottom + 1e-6
     }
 
+    /// Otomatik alandaki yazının türü: haritanın görev kartı (menüde de) görevdir; yoksa alanın yerinden (hazır alan, görev
+    /// satırı, menü) ya da okunan yazıdan çıkar. Kullanıcının kendi alanı nil (her zaman çevrilir).
+    static func kind(_ area: ExtraArea, _ candidate: Candidate) -> ScreenTextKind? {
+        if area.auto, candidate.missionCard { return .mission }
+        if let kind = ScreenTextKind.of(area) { return kind }
+        return area.auto ? ScreenTextKind.of(paragraphs: candidate.paragraphs) : nil
+    }
+
     /// Kararlı yazı: öncekinden farklıysa çevrilip gönderilir, boşsa kutu kalkar.
     private func commit(_ candidate: Candidate, area: ExtraArea) async {
         guard var state = states[area.id] else { return }
         // Menü dışındaki otomatik alanın türü okunan yazıdan çıkar (yardım/eylem ya da diğer); kapalı tür gürültü gibi
         // çizilmez, dedektöre bildirilir.
-        let unwanted = area.auto && ScreenTextKind.of(area) == nil && !allows(ScreenTextKind.of(paragraphs: candidate.paragraphs))
+        let unwanted = area.auto && (Self.kind(area, candidate).map { !allows($0) } ?? false)
         if area.auto, candidate.key.isEmpty || ScreenTextNoise.isNoise(candidate.paragraphs.joined(separator: " "), menu: area.menu)
             || (!area.menu && isWorldText(candidate)) || unwanted {
             // Kendiliğinden bulunan alanda yazı yok ya da gürültü (sayaç, harita, kısa etiket): çevrilmez, dedektöre

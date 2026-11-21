@@ -11,7 +11,10 @@ public enum ScreenTextKind
 {
     /// <summary>GTA 6 telefonu (telefon okuyucusu) ve hazır mesaj kartı alanı.</summary>
     Phone,
-    /// <summary>Görev ve hedef yazısı (altyazıdan ayrılan görev satırı, <see cref="MissionLine"/>).</summary>
+    /// <summary>
+    /// Görev ve hedef yazısı (altyazıdan ayrılan görev satırı, <see cref="MissionLine"/>) ve haritada basılan görevin/konumun
+    /// bilgi kartı (<see cref="MissionCard"/>; menüde açılsa da bu türdendir, ayrı anahtarı yoktur).
+    /// </summary>
     Mission,
     /// <summary>Yardım ve ipucu kutuları, eylemler: tuş ipuçları, etkileşim istemleri; hazır yardım kutusu alanı.</summary>
     Help,
@@ -38,6 +41,19 @@ public static class ScreenTextKinds
         MissionLine.AreaId => ScreenTextKind.Mission,
         _ => area.Auto && area.Menu ? ScreenTextKind.Menu : null,
     };
+
+    /// <summary>
+    /// Pas turunda alan okunur mu: türü açık ya da yerinden belli değil. Menüler kapalıyken de kart boyundaki menü alanı
+    /// (en çok <see cref="MissionCard.MaxWidth"/> genişlik, ekranın yarısı yükseklik) "Görev ve hedef yazısı" açıksa okunur:
+    /// haritada açılan görev kartı menü sayılan ekranda durur; kart değilse çizilmez (bkz. RegionWatcher.Kind).
+    /// </summary>
+    public static bool Reads(WatchedArea area, Func<ScreenTextKind, bool> allows)
+    {
+        if (Of(area) is not { } kind || allows(kind)) return true;
+        var region = area.Region;
+        return kind == ScreenTextKind.Menu && allows(ScreenTextKind.Mission)
+               && region.Right - region.Left <= MissionCard.MaxWidth && region.Bottom - region.Top <= 0.5;
+    }
 
     /// <summary>
     /// Menü dışındaki otomatik alanın türü: tuş simgesi ya da tuş ipucu ("Press ✕ to jump", "R2 Aim") taşıyan, birden çok

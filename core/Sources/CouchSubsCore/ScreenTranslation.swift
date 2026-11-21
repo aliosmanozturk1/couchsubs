@@ -233,10 +233,23 @@ public enum ScreenTranslation {
             .filter { $0.box != nil && isWords($0.text) }
             // Aynı satırdaki parçalar (tuş çubuğunun etiketleri) soldan sağa; sıralama kararlı değildir.
             .sorted { $0.box!.top != $1.box!.top ? $0.box!.top < $1.box!.top : $0.box!.left < $1.box!.left }
-        guard let handset else { return groups(from: lines) }
+        // "Ekranı çevir": haritanın görev kartı kendi parçalarına ayrılır (başlık, açıklama, ayrıntılar; `MissionCard`).
+        let plain = { (lines: [TextLine]) in wholeScreen ? withMissionCards(lines, frame: frame) : groups(from: lines) }
+        guard let handset else { return plain(lines) }
         let onPhone = lines.filter { PhoneChat.onScreen(handset.flat($0.box!)) }
-        guard !onPhone.isEmpty else { return groups(from: lines) }
-        return groups(from: lines.filter { !PhoneChat.onScreen(handset.flat($0.box!)) }) + PhoneChat.groups(onPhone, handset: handset)
+        guard !onPhone.isEmpty else { return plain(lines) }
+        return plain(lines.filter { !PhoneChat.onScreen(handset.flat($0.box!)) }) + PhoneChat.groups(onPhone, handset: handset)
+    }
+
+    /// Satırlardaki görev kartları kendi gruplarıyla (kare varsa yalnız düz panelin üstündekiler), kalanlar her zamanki
+    /// gibi. Kart tanınmadan başlık açıklamanın ilk cümlesine katılıyor, beş-altı sözcüklük başlık cümleyle birlikte
+    /// çevriliyordu.
+    static func withMissionCards(_ lines: [TextLine], frame: CGImage?) -> [Group] {
+        let cards = MissionCard.find(lines).filter { card in frame.map { MissionCard.onPanel($0, card.all.map { lines[$0] }) } ?? true }
+        guard !cards.isEmpty else { return groups(from: lines) }
+        let taken = Set(cards.flatMap(\.all))
+        let rest = lines.indices.filter { !taken.contains($0) }.map { lines[$0] }
+        return (groups(from: rest) + cards.flatMap { MissionCard.groups($0, lines) }).sorted { $0.box.top < $1.box.top }
     }
 
     /// Satırın ve sözcüklerinin fiyat düzeltmesi (uzunluk değişmez).

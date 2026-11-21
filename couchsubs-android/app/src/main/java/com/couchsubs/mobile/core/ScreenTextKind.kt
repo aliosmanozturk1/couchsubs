@@ -10,7 +10,10 @@ package com.couchsubs.mobile.core
 enum class ScreenTextKind {
     /** GTA 6 telefonu (telefon okuyucusu) ve hazır mesaj kartı alanı. */
     PHONE,
-    /** Görev ve hedef yazısı (altyazıdan ayrılan görev satırı, [MissionLine]). */
+    /**
+     * Görev ve hedef yazısı (altyazıdan ayrılan görev satırı, [MissionLine]) ve haritada basılan görevin/konumun bilgi
+     * kartı ([MissionCard]; menüde açılsa da bu türdendir, ayrı anahtarı yoktur).
+     */
     MISSION,
     /** Yardım ve ipucu kutuları, eylemler: tuş ipuçları, etkileşim istemleri; hazır yardım kutusu alanı. */
     HELP,
@@ -20,6 +23,19 @@ enum class ScreenTextKind {
     OTHER;
 
     companion object {
+        /**
+         * Pas turunda alan okunur mu: türü açık ya da yerinden belli değil. Menüler kapalıyken de kart boyundaki menü
+         * alanı (en çok [MissionCard.MAX_WIDTH] genişlik, ekranın yarısı yükseklik) "Görev ve hedef yazısı" açıksa okunur:
+         * haritada açılan görev kartı menü sayılan ekranda durur; kart değilse çizilmez (bkz. [RegionWatcher.kind]).
+         */
+        fun reads(area: ExtraArea, allows: (ScreenTextKind) -> Boolean): Boolean {
+            val kind = of(area) ?: return true
+            if (allows(kind)) return true
+            val region = area.region
+            return kind == MENU && allows(MISSION) &&
+                region.right - region.left <= MissionCard.MAX_WIDTH && region.bottom - region.top <= 0.5
+        }
+
         /** Kısa etiketten uzun sayılan yazı (yardım kutusu cümlesi) en az bu kadar sözcük. */
         const val HELP_WORDS = 8
 

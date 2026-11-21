@@ -336,10 +336,22 @@ class RegionWatcher(
             candidate.paragraphs.sumOf { paragraph -> paragraph.count { it == ButtonIcons.MARKER } }
 
         /**
+         * Otomatik alandaki yazının türü: haritanın görev kartı (menüde de) görevdir; yoksa alanın yerinden (hazır alan,
+         * görev satırı, menü) ya da okunan yazıdan çıkar. Kullanıcının kendi alanı null (her zaman çevrilir).
+         */
+        fun kind(area: ExtraArea, candidate: Candidate): ScreenTextKind? {
+            if (area.auto && candidate.missionCard) return ScreenTextKind.MISSION
+            ScreenTextKind.of(area)?.let { return it }
+            return if (area.auto) ScreenTextKind.ofParagraphs(candidate.paragraphs) else null
+        }
+
+        /**
          * Okumadan çevrilecek parçalar, kutusu (kareye oranla) ve satır yüksekliği. Yazının içindeki kumanda simgeleri
          * [frame]'den (okunan alan) kesilir; çeviride yerleri korunur.
          */
-        fun candidate(reading: Reading, region: CropRegion, frame: GrayFrame? = null, keepPrompts: Boolean = false): Candidate {
+        fun candidate(
+            reading: Reading, region: CropRegion, frame: GrayFrame? = null, keepPrompts: Boolean = false, auto: Boolean = false,
+        ): Candidate {
             val marked = reading.withButtonIcons()
             // Menüdeki tuş etiketleri ("HOLSTER (L1)", "SELECT ✕") menü durumunda çevrilir; başka yerde kısa ipucu atılır.
             val lines = (if (keepPrompts) marked else marked.withoutButtonPrompts()).withoutOcrNoise().lines
@@ -358,7 +370,18 @@ class RegionWatcher(
             // satır varsa) eskisi gibi tek kutu. Anahtar grup yapısını da içerir: aynı yazı farklı gruplanırsa bloklar
             // yeniden kurulur.
             var blocks: List<Block>? = null
-            val groups = if (lines.size > 1 && boxes.size == lines.size) ScreenTranslation.groups(reading, keepPrompts) else emptyList()
+            // Otomatik alanda haritanın görev kartı kendi parçalarına ayrılır (başlık, alt başlık, açıklama, ayrıntı;
+            // [MissionCard]); kalan satırlar her zamanki gibi.
+            val cards = if (auto && lines.isNotEmpty() && boxes.size == lines.size) MissionCard.find(lines, region.box) else emptyList()
+            val groups = when {
+                cards.isNotEmpty() -> {
+                    val taken = cards.flatMap { it.all }.toSet()
+                    val rest = lines.indices.filter { it !in taken }.map { lines[it] }
+                    (ScreenTranslation.groupLines(rest) + cards.flatMap { MissionCard.groups(it, lines) }).sortedBy { it.box.top }
+                }
+                lines.size > 1 && boxes.size == lines.size -> ScreenTranslation.groups(reading, keepPrompts)
+                else -> emptyList()
+            }
             if (groups.size > 1 && groups.size < ScreenTranslation.MAX_GROUPS) {
                 paragraphs = groups.flatMap { it.paragraphs }
                 icons = groups.flatMap { group -> group.icons ?: group.paragraphs.map { emptyList<IconSlot>() } }
@@ -371,7 +394,10 @@ class RegionWatcher(
                 key = textKey(paragraphs) + "|" + list.joinToString(",") { it.count.toString() }
             }
             val cut = if (frame == null || icons.all { it.isEmpty() }) null else icons.map { ButtonIcons.withImages(it, frame) }
-            return Candidate(paragraphs, box, lineHeight, key, cut, blocks, textKey(paragraphs))
+            val missionCard = cards.any { card ->
+                !MissionCard.inHelpCorner(card.all.map { lines[it].box!! }.reduce { a, b -> a.union(b) }.placedIn(region.box))
+            }
+            return Candidate(paragraphs, box, lineHeight, key, cut, blocks, textKey(paragraphs), missionCard = missionCard)
         }
 
         /**
@@ -518,6 +544,8 @@ class RegionWatcher(
         val styles: List<TextStyleSampler.Style?>? = null,
         /** Otomatik ekran yazısı: kısa etiketler sözlük, oturum terimleri ve toplu istekle çevrilir ([translateAuto]). */
         val auto: Boolean = false,
+        /** Otomatik alanda haritanın görev kartı var (yardım köşesinde değil): türü "Görev ve hedef yazısı". */
+        val missionCard: Boolean = false,
     )
 
     private class State {
@@ -614,7 +642,7 @@ class RegionWatcher(
     @Volatile var allows: (ScreenTextKind) -> Boolean = { true }
 
     /** Ayarlar'da kapalı türün alanı (menü, hazır yardım/mesaj alanı, görev satırı) okunmaz; kutusu kalkar. */
-    private fun wanted(area: ExtraArea): Boolean = ScreenTextKind.of(area)?.let(allows) ?: true
+    private fun wanted(area: ExtraArea): Boolean = ScreenTextKind.reads(area, allows)
 
     /** Otomatik alan okundu ama yazı yok ya da gürültü ([ScreenTextNoise]): bulucu o karoları reddeder. */
     @Volatile var onAutoRejected: ((String) -> Unit)? = null
@@ -748,11 +776,11 @@ class RegionWatcher(
         val geometry = (area.auto || GameAreaPresets.isPreset(area.id)) && !area.menu && area.id != MissionLine.AREA_ID
         val own = subtitleEcho?.filter(reading, area.region.box, geometry) ?: reading
         val text = if (area.auto) AutoText.clean(own, area.menu) else own
-        var candidate = candidate(text, area.region, crop.frame, keepPrompts = area.menu)
+        var candidate = candidate(text, area.region, crop.frame, keepPrompts = area.menu, auto = area.auto)
         if (area.auto) {
             // Menü dışındaki otomatik alanın türü okunan yazıdan çıkar (yardım/eylem ya da diğer); kapalı tür gürültü gibi
             // çizilmez, bulucuya bildirilir.
-            val unwanted = ScreenTextKind.of(area) == null && !allows(ScreenTextKind.ofParagraphs(candidate.paragraphs))
+            val unwanted = kind(area, candidate)?.let { !allows(it) } ?: false
             if (candidate.key.isEmpty() || ScreenTextNoise.isNoise(candidate.paragraphs.joinToString(" ") { IconText.plain(it) }, area.menu) ||
                 (!area.menu && isWorldText(candidate)) || unwanted) {
                 // Sayaç, harita, kısa etiket ya da yazısız kutu: çevrilmez; alan bir sonraki turda listeden çıkar.

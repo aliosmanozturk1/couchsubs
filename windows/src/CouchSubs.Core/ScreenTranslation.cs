@@ -254,16 +254,36 @@ public static class ScreenTranslation
             .Where(line => line.Box is not null && IsWords(line.Text))
             .OrderBy(line => line.Box!.Value.Top).ThenBy(line => line.Box!.Value.Left)
             .ToList();
-        if (handset is null) return GroupsFromLines(lines, menuRows);
+        // "Ekranı çevir": haritanın görev kartı kendi parçalarına ayrılır (başlık, açıklama, ayrıntılar; MissionCard).
+        IReadOnlyList<Group> Plain(IReadOnlyList<TextLine> all) =>
+            wholeScreen ? WithMissionCards(all, menuRows, frame) : GroupsFromLines(all, menuRows);
+        if (handset is null) return Plain(lines);
         var onPhone = lines.Where(line => PhoneChat.OnScreen(handset.Flat(line.Box!.Value))).ToList();
-        if (onPhone.Count == 0) return GroupsFromLines(lines, menuRows);
-        return [.. GroupsFromLines([.. lines.Where(line => !PhoneChat.OnScreen(handset.Flat(line.Box!.Value)))], menuRows),
+        if (onPhone.Count == 0) return Plain(lines);
+        return [.. Plain([.. lines.Where(line => !PhoneChat.OnScreen(handset.Flat(line.Box!.Value)))]),
                 .. PhoneChat.Groups(onPhone, handset)];
     }
 
-    /// <summary>"Ekranı çevir"in grupları; karede telefon varsa ekranının satırları ayrı gruplanır (sınamalar için).</summary>
-    internal static IReadOnlyList<Group> ScreenGroups(Reading reading, ScreenPhoneCard.Handset? handset) =>
+    /// <summary>"Ekranı çevir"in grupları (kare olmadan); karede telefon varsa ekranının satırları ayrı gruplanır (sınamalar için).</summary>
+    internal static IReadOnlyList<Group> ScreenGroups(Reading reading, ScreenPhoneCard.Handset? handset = null) =>
         ReadGroups(reading, false, null, wholeScreen: true, handset: handset);
+
+    /// <summary>
+    /// Satırlardaki görev kartları kendi gruplarıyla (kare varsa yalnız düz panelin üstündekiler), kalanlar her zamanki
+    /// gibi. Kart tanınmadan başlık açıklamanın ilk cümlesine katılıyor, beş-altı sözcüklük başlık cümleyle birlikte
+    /// çevriliyordu.
+    /// </summary>
+    internal static IReadOnlyList<Group> WithMissionCards(IReadOnlyList<TextLine> lines, bool menuRows, Frame? frame)
+    {
+        var cards = MissionCard.Find(lines)
+            .Where(card => frame is null || MissionCard.OnPanel(frame, [.. card.All.Select(i => lines[i])])).ToList();
+        if (cards.Count == 0) return GroupsFromLines(lines, menuRows);
+        var taken = cards.SelectMany(card => card.All).ToHashSet();
+        var rest = Enumerable.Range(0, lines.Count).Where(i => !taken.Contains(i)).Select(i => lines[i]).ToList();
+        return [.. GroupsFromLines(rest, menuRows).Concat(cards.SelectMany(card => MissionCard.Groups(card, lines)))
+            .OrderBy(group => group.Box.Top)];
+    }
+
 
     /// <summary>Satırın ve sözcüklerinin fiyat düzeltmesi (uzunluk değişmez).</summary>
     internal static TextLine Repaired(TextLine line) => line with

@@ -58,7 +58,7 @@ object ScreenTranslation {
         color: ((Int, Int) -> Int)? = null, phone: ScreenPhoneCard.Handset? = null, progress: (List<Item>) -> Unit = {},
     ): List<Item> {
         val items = mutableListOf<Item>()
-        for (group in withImages(groups(reading, wholeScreen = true, handset = phone), frame)) {
+        for (group in withImages(groups(reading, wholeScreen = true, handset = phone, frame = frame), frame)) {
             if (cancelled()) return present(items, phone)
             // Simgeler çeviride uydurma adlarla korunur (IconText); sözlükteki kısa etiketler çevirmene gitmez, fiyatlar
             // adla korunur (PriceText).
@@ -88,7 +88,7 @@ object ScreenTranslation {
     ): List<Item> {
         if (!translator.translatesTogether)
             return translateGroups(reading, { translator.translate(it) }, cancelled, frame, color, phone, progress)
-        val groups = withImages(groups(reading, wholeScreen = true, handset = phone), frame)
+        val groups = withImages(groups(reading, wholeScreen = true, handset = phone, frame = frame), frame)
         // Simgeler çeviride uydurma adlarla korunur (IconText). Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND",
         // "BACK") ve telefondaki kişi adları çevirmene gitmez; fiyatlar adla korunur (PriceText).
         val prepared = groups.map { group -> group.paragraphs.map { IconText.protect(it) } }
@@ -200,6 +200,7 @@ object ScreenTranslation {
     fun groups(
         reading: Reading, keepPrompts: Boolean = false, keepIdentifiers: Boolean = false, wholeScreen: Boolean = false,
         handset: ScreenPhoneCard.Handset? = null,
+        frame: GrayFrame? = null,
     ): List<Group> {
         var marked = (if (wholeScreen) Reading(reading.lines.map(::repaired)) else reading).withButtonIcons()
         // "Ekranı çevir": tuş çubukları atılmaz, etiketlerine bölünür ([promptPieces]); fiyatlar düzelir ([PriceText.repair]).
@@ -210,16 +211,31 @@ object ScreenTranslation {
         val lines = (if (keepPrompts) marked else marked.withoutButtonPrompts()).withoutOcrNoise(keepIdentifiers).lines
             .filter { it.box != null && ScreenText.isWords(it.text) }
             .sortedWith(compareBy<TextLine>({ it.box!!.top }, { it.box!!.left }))
+        // "Ekranı çevir": haritanın görev kartı kendi parçalarına ayrılır (başlık, açıklama, ayrıntılar; [MissionCard]).
+        val plain = { all: List<TextLine> -> if (wholeScreen) withMissionCards(all, frame) else groupLines(all) }
         // [handset]: karede GTA 6 telefonu varsa ekranındaki satırlar ayrı gruplanır ([PhoneChat]: balon, başlık, liste).
         if (handset != null) {
             val (onPhone, rest) = lines.partition { PhoneChat.onScreen(handset.flat(it.box!!)) }
-            if (onPhone.isNotEmpty()) return groupLines(rest) + PhoneChat.groups(onPhone, handset)
+            if (onPhone.isNotEmpty()) return plain(rest) + PhoneChat.groups(onPhone, handset)
         }
-        return groupLines(lines)
+        return plain(lines)
+    }
+
+    /**
+     * Satırlardaki görev kartları kendi gruplarıyla (kare varsa yalnız düz panelin üstündekiler), kalanlar her zamanki
+     * gibi. Kart tanınmadan başlık açıklamanın ilk cümlesine katılıyor, beş-altı sözcüklük başlık cümleyle birlikte
+     * çevriliyordu.
+     */
+    internal fun withMissionCards(lines: List<TextLine>, frame: GrayFrame?): List<Group> {
+        val cards = MissionCard.find(lines).filter { card -> frame == null || MissionCard.onPanel(frame, card.all.map { lines[it] }) }
+        if (cards.isEmpty()) return groupLines(lines)
+        val taken = cards.flatMap { it.all }.toSet()
+        val rest = lines.indices.filter { it !in taken }.map { lines[it] }
+        return (groupLines(rest) + cards.flatMap { MissionCard.groups(it, lines) }).sortedBy { it.box.top }
     }
 
     /** Kutuları bilinen, süzülmüş ve sıralı satırları gruplar. */
-    private fun groupLines(lines: List<TextLine>): List<Group> {
+    internal fun groupLines(lines: List<TextLine>): List<Group> {
         val groups = mutableListOf<MutableList<TextLine>>()
         for (line in lines) {
             var index = groups.indexOfLast { belongs(line.box!!, it.last().box!!) }
