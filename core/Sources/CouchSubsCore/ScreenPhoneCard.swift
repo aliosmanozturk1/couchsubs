@@ -38,9 +38,13 @@ public enum ScreenPhoneCard {
         case note
         /// Sohbet listesi: kişi adı (çevrilmez), son mesaj önizlemesi, bölüm başlığı ("Messages").
         case contact, preview, heading
+        /// Ana ekranın yazısı (bileşen, bildirim): sohbet değildir, karta girmez; kendi yerinde, özgün stilinde çizilir.
+        case home
 
         /// Çevirmene gitmez, aslıyla gösterilir (ad).
         var keepsText: Bool { self == .header || self == .contact }
+        /// Kartta dizilir (ana ekranın yazıları yerinde kalır).
+        var inCard: Bool { self != .home }
     }
 
     /// Telefondaki bir grubun rolü ve düz ekrandaki yeri (0–1).
@@ -138,7 +142,7 @@ public enum ScreenPhoneCard {
     /// Telefondaki öğeleri (`phone` bilgisi olanlar) kart olarak dizer. Telefonda çevrilmiş öğe yoksa liste olduğu gibi
     /// döner. Çevrilmemiş öğeler (`unchanged`: kişi adı, "ok") kartta aslıyla görünür; kart dışındakiler sonra atılır.
     public static func layout(_ items: [ScreenTranslation.Item], handset: Handset) -> [ScreenTranslation.Item] {
-        let onPhone = items.filter { $0.phone != nil }.sorted { $0.phone!.spot.top < $1.phone!.spot.top }
+        let onPhone = items.filter { $0.phone?.role.inCard == true }.sorted { $0.phone!.spot.top < $1.phone!.spot.top }
         guard onPhone.contains(where: { !$0.unchanged }) else { return items }
         let card = cardBox(handset.bounds)
         let cardWidth = card.right - card.left
@@ -147,7 +151,7 @@ public enum ScreenPhoneCard {
         let pad = cardWidth * 0.05, padY = line * 0.4, spacing = line * 0.35
         let flat = { (align: TextLook.Align, bold: Bool) in TextLook(bold: bold, condensed: false, align: align, upper: false, flat: true) }
 
-        var result = items.filter { $0.phone == nil }
+        var result = items.filter { $0.phone?.role.inCard != true }
         var backdrop = ScreenTranslation.Item(source: "", translation: backdropText, box: card, lineHeight: line)
         backdrop.style = cardColor
         backdrop.look = flat(.left, false)

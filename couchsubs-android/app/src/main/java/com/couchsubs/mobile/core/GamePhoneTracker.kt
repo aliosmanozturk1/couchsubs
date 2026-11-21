@@ -132,9 +132,68 @@ object GamePhoneGeometry {
     private fun rounded(value: Double): Int = Math.rint(value).toInt()
     private fun limit(n: Int, low: Int, high: Int): Int = minOf(high, maxOf(low, n))
 
+    /** Karenin içindeki dikdörtgen (piksel). */
+    data class Area(val x: Int, val y: Int, val width: Int, val height: Int)
+
+    /** Simsiyah şerit: örneklerin hepsi bu tondan koyu (0–255). */
+    const val DARK_TONE = 24
+
+    private fun widescreen(width: Int, height: Int) = abs(width.toDouble() / height - 400.0 / 225) <= 0.04
+
+    /**
+     * Karedeki 16:9 oyun görüntüsü (piksel). Pencereden okunan kare (PS Remote Play, chiaki-ng, OBS penceresi) başlık
+     * çubuğunu ve pencere görüntüden farklı oransa siyah şeritleri de taşır; önceden telefon yalnız tam 16:9 karede
+     * aranıyordu, pencerede hiç bulunmuyordu (ne otomatik telefon okuması ne "Ekranı çevir"in telefon kartı). Alttaki ve
+     * yanlardaki simsiyah şeritler atılır, görüntü kalan genişliğin 16:9'u kadar yüksekliktedir ve alta yaslıdır (başlık
+     * çubuğu üstte). Kare zaten 16:9 ise tamamı; görüntü bulunamazsa null (Mac/iPhone ve Windows ile aynı kural). Android
+     * kendi akışını okur (hep 16:9); kural platformlar aynı kalsın diye burada da var.
+     */
+    fun picture(width: Int, height: Int, tone: (Int, Int) -> Int): Area? {
+        if (width < 400 || height < 225) return null
+        if (widescreen(width, height)) return Area(0, 0, width, height)
+        val columns = IntArray(64) { minOf(width - 1, ((it + 0.5) * width / 64).toInt()) }
+        fun darkRow(y: Int) = columns.all { tone(it, y) < DARK_TONE }
+        var bottom = height
+        while (bottom > height / 2 && darkRow(bottom - 1)) bottom--
+        // Yan şeritlere başlık çubuğunun altından bakılır (başlık çubuğu bütün genişlikte uzanır).
+        val from = height * 2 / 5
+        val rows = IntArray(48) { from + ((it + 0.5) * (bottom - from) / 48).toInt() }
+        fun darkColumn(x: Int) = rows.all { tone(x, it) < DARK_TONE }
+        var left = 0
+        var right = width
+        while (left < width / 4 && darkColumn(left)) left++
+        while (right > width * 3 / 4 && darkColumn(right - 1)) right--
+        var w = right - left
+        var h = Math.round(w * 9 / 16.0).toInt()
+        if (h > bottom) {
+            h = bottom
+            w = Math.round(h * 16 / 9.0).toInt()
+            left = (left + right - w) / 2
+        }
+        if (w < 400 || h < 225 || left < 0 || left + w > width) return null
+        return Area(left, bottom - h, w, h)
+    }
+
+    /** Karenin bir parçası, kendi başına bir kare gibi. */
+    private class Cropped(private val image: PhoneImage, private val area: Area) : PhoneImage {
+        override val width: Int get() = area.width
+        override val height: Int get() = area.height
+        override fun tone(x: Int, y: Int): Int = image.tone(area.x + x, area.y + y)
+        override fun rgb(x: Int, y: Int): Int = image.rgb(area.x + x, area.y + y)
+    }
+
     fun locate(image: PhoneImage): Pose? {
-        if (image.width < 400 || image.height < 225 ||
-            abs(image.width.toDouble() / image.height - 400.0 / 225) > 0.04) return null
+        if (image.width < 400 || image.height < 225) return null
+        if (widescreen(image.width, image.height)) return locatePicture(image)
+        val area = picture(image.width, image.height) { x, y -> image.tone(x, y) shr 8 } ?: return null
+        val pose = locatePicture(Cropped(image, area)) ?: return null
+        fun x(value: Double) = (area.x + value * area.width) / image.width
+        fun y(value: Double) = (area.y + value * area.height) / image.height
+        return Pose(x(pose.topX), y(pose.topY), x(pose.bottomX), y(pose.bottomY))
+    }
+
+    private fun locatePicture(image: PhoneImage): Pose? {
+        if (image.width < 400 || image.height < 225 || !widescreen(image.width, image.height)) return null
         val grid = Grid(image)
         // Olağan oyun görüntüsü burada biter. Gövdeye ancak üst bantta hem hoparlör hem kamera görülünce bakılır.
         val upper = slots(grid, 17 until 75, 8..19, 12).filter { hasCamera(grid, it) }

@@ -69,6 +69,52 @@ public class GamePhoneTrackerTests
         Assert.False(GamePhoneGeometry.TryLocate(frame, out _));
     }
 
+    /// <summary>
+    /// PS Remote Play / chiaki-ng / OBS penceresinden okunan kare 16:9 değildir (başlık çubuğu, siyah şeritler). Telefon
+    /// önceden yalnız tam 16:9 karede aranıyordu; pencerede hiç bulunmuyordu. Şimdi oyun görüntüsü karenin içinde bulunur,
+    /// telefonun yeri karenin tamamına göre verilir (Mac ve Android'de aynı deneme).
+    /// </summary>
+    [Theory]
+    [InlineData(400, 256, 31, 0, 31)]   // başlık çubuğu + tam oturan görüntü
+    [InlineData(400, 300, 31, 0, 56)]   // başlık çubuğu + üstte ve altta siyah şerit
+    [InlineData(470, 256, 31, 35, 31)]  // başlık çubuğu + yanlarda siyah şerit
+    public void FindsThePhoneInsideARemotePlayWindow(int width, int height, int title, int left, int top)
+    {
+        Assert.True(GamePhoneGeometry.TryLocate(PhoneFrame(), out var direct));
+        var frame = WindowFrame(width, height, title, left, top);
+        int Tone(int x, int y)
+        {
+            var p = y * frame.Stride + x * 4;
+            return (frame.Pixels[p] * 29 + frame.Pixels[p + 1] * 150 + frame.Pixels[p + 2] * 77) >> 8;
+        }
+        Assert.Equal((left, top, 400, 225), GamePhoneGeometry.Picture(width, height, Tone));
+        Assert.True(GamePhoneGeometry.TryLocate(frame, out var pose));
+        Assert.Equal(left + direct.TopX * 400, pose.TopX * width, 0.5);
+        Assert.Equal(top + direct.TopY * 225, pose.TopY * height, 0.5);
+        Assert.Equal(top + direct.BottomY * 225, pose.BottomY * height, 0.5);
+        Assert.NotNull(ScreenPhoneCard.Phone(frame));
+        // Telefonsuz görüntü pencerede de telefon sayılmaz.
+        var empty = WindowFrame(width, height, title, left, top, phone: false);
+        Assert.False(GamePhoneGeometry.TryLocate(empty, out _));
+    }
+
+    /// <summary>Pencere karesi: üstte açık renk başlık çubuğu (üstünde koyu yazı), 400×225 görüntü, kalan yer simsiyah.</summary>
+    internal static Frame WindowFrame(int width, int height, int title, int left, int top, bool phone = true)
+    {
+        var frame = Frame.Blank(width, height);
+        for (int y = 0; y < title; y++)
+            for (int x = 0; x < width; x++)
+            {
+                var ink = x is >= 8 and < 120 && y >= title / 3 && y < title * 2 / 3 && x % 4 < 2 ? (byte)30 : (byte)220;
+                Array.Fill(frame.Pixels, ink, y * frame.Stride + x * 4, 4);
+            }
+        var picture = PhoneFrame();
+        if (!phone) Array.Fill(picture.Pixels, (byte)85);
+        for (int y = 0; y < 225; y++)
+            Buffer.BlockCopy(picture.Pixels, y * picture.Stride, frame.Pixels, (top + y) * frame.Stride + left * 4, 400 * 4);
+        return frame;
+    }
+
     internal static Frame PhoneFrame(byte casing = 110, byte slot = 25)
     {
         var frame = Frame.Blank(400, 225);

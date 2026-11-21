@@ -49,10 +49,15 @@ public static class ScreenPhoneCard
         Preview,
         /// <summary>Sohbet listesinde bölüm başlığı ("Messages").</summary>
         Heading,
+        /// <summary>Ana ekranın yazısı (bileşen, bildirim): sohbet değildir, karta girmez; kendi yerinde, özgün stilinde çizilir.</summary>
+        Home,
     }
 
     /// <summary>Çevirmene gitmez, aslıyla gösterilir (ad).</summary>
     internal static bool KeepsText(this Role role) => role is Role.Header or Role.Contact;
+
+    /// <summary>Kartta dizilir (ana ekranın yazıları yerinde kalır).</summary>
+    internal static bool InCard(this Role role) => role != Role.Home;
 
     /// <summary>Telefondaki bir grubun rolü ve düz ekrandaki yeri (0–1).</summary>
     public sealed record Placement(Role Role, TextBox Spot);
@@ -159,7 +164,7 @@ public static class ScreenPhoneCard
     /// </summary>
     public static IReadOnlyList<ScreenTranslation.Item> Layout(IReadOnlyList<ScreenTranslation.Item> items, Handset handset)
     {
-        var onPhone = items.Where(item => item.Phone is not null).OrderBy(item => item.Phone!.Spot.Top).ToList();
+        var onPhone = items.Where(item => item.Phone?.Role.InCard() == true).OrderBy(item => item.Phone!.Spot.Top).ToList();
         if (!onPhone.Any(item => !item.Unchanged)) return items;
         var card = CardBox(handset.Bounds);
         var cardWidth = card.Right - card.Left;
@@ -168,7 +173,7 @@ public static class ScreenPhoneCard
         double pad = cardWidth * 0.05, padY = line * 0.4, spacing = line * 0.35;
         static TextLook Flat(string align, bool bold) => new(bold, false, align, false, true);
 
-        var result = items.Where(item => item.Phone is null).ToList();
+        var result = items.Where(item => item.Phone?.Role.InCard() != true).ToList();
         result.Add(new ScreenTranslation.Item("", BackdropText, card, line) { Style = CardColor, Look = Flat("left", false) });
 
         var bodyTop = card.Top + padY;

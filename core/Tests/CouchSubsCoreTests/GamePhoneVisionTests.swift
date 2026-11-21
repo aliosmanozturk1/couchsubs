@@ -25,15 +25,34 @@ enum GamePhoneTestFrame {
 
     static func phone(casing: UInt8 = 110, slot: UInt8 = 25, camera: Bool = true, patch: CGRect? = nil) -> CGImage {
         image(width: 400, height: 225) { x,y in
-            var gray: UInt8 = 85
-            if (160..<244).contains(x), (22..<201).contains(y) { gray = casing }
-            if (164..<240).contains(x), (40..<181).contains(y) { gray = 195 }
-            if (196..<209).contains(x), (33..<35).contains(y) { gray = slot }
-            if camera, (212..<215).contains(x), (33..<36).contains(y) { gray = slot }
-            if (198..<207).contains(x), (189..<191).contains(y) { gray = slot }
-            if (198..<207).contains(x), (170..<172).contains(y) { gray = 24 }
-            if let patch, patch.contains(CGPoint(x: x, y: y)) { gray = 35 }
+            let gray = phoneGray(x, y, casing: casing, slot: slot, camera: camera, patch: patch)
             return (gray,gray,gray)
+        }
+    }
+
+    static func phoneGray(_ x: Int, _ y: Int, casing: UInt8 = 110, slot: UInt8 = 25, camera: Bool = true, patch: CGRect? = nil) -> UInt8 {
+        var gray: UInt8 = 85
+        if (160..<244).contains(x), (22..<201).contains(y) { gray = casing }
+        if (164..<240).contains(x), (40..<181).contains(y) { gray = 195 }
+        if (196..<209).contains(x), (33..<35).contains(y) { gray = slot }
+        if camera, (212..<215).contains(x), (33..<36).contains(y) { gray = slot }
+        if (198..<207).contains(x), (189..<191).contains(y) { gray = slot }
+        if (198..<207).contains(x), (170..<172).contains(y) { gray = 24 }
+        if let patch, patch.contains(CGPoint(x: x, y: y)) { gray = 35 }
+        return gray
+    }
+
+    /// Pencereden okunan kare: üstte `title` piksellik açık renk başlık çubuğu (üstünde koyu yazı), 400×225 oyun görüntüsü
+    /// (`left`, `top`) noktasında, kalan yer simsiyah şerit.
+    static func window(width: Int, height: Int, title: Int, left: Int, top: Int) -> CGImage {
+        image(width: width, height: height) { x, y in
+            if y < title {
+                let ink: UInt8 = (8..<120).contains(x) && (title / 3..<title * 2 / 3).contains(y) && x % 4 < 2 ? 30 : 220
+                return (ink, ink, ink)
+            }
+            guard (left..<left + 400).contains(x), (top..<top + 225).contains(y) else { return (0, 0, 0) }
+            let gray = phoneGray(x - left, y - top)
+            return (gray, gray, gray)
         }
     }
 }
@@ -73,6 +92,37 @@ final class GamePhoneTrackerTests: XCTestCase {
             XCTAssertTrue((188...191).contains(pose.bottomY * 225))
             XCTAssertNil(GamePhoneGeometry.locate(GamePhoneTestFrame.phone(casing: casing, slot: slot, camera: false)))
         }
+    }
+
+    /// PS Remote Play / chiaki-ng / OBS penceresinden okunan kare 16:9 değildir (başlık çubuğu, siyah şeritler). Telefon
+    /// önceden yalnız tam 16:9 karede aranıyordu; pencerede hiç bulunmuyordu. Şimdi oyun görüntüsü karenin içinde bulunur,
+    /// telefonun yeri karenin tamamına göre verilir (Windows ve Android'de aynı deneme).
+    func testPhoneIsFoundInsideARemotePlayWindow() throws {
+        let direct = try XCTUnwrap(GamePhoneGeometry.locate(GamePhoneTestFrame.phone()))
+        // Başlık çubuğu + tam oturan görüntü; başlık çubuğu + üstte/altta siyah şerit; başlık çubuğu + yanlarda şerit.
+        let layouts: [(width: Int, height: Int, title: Int, left: Int, top: Int)] = [
+            (400, 256, 31, 0, 31), (400, 300, 31, 0, 56), (470, 256, 31, 35, 31),
+        ]
+        for layout in layouts {
+            let frame = GamePhoneTestFrame.window(width: layout.width, height: layout.height, title: layout.title,
+                                                  left: layout.left, top: layout.top)
+            let area = try XCTUnwrap(GamePhoneGeometry.picture(width: layout.width, height: layout.height) { x, y in
+                guard y >= layout.title else { return 220 }
+                return (layout.left..<layout.left + 400).contains(x) && (layout.top..<layout.top + 225).contains(y)
+                    ? Int(GamePhoneTestFrame.phoneGray(x - layout.left, y - layout.top)) : 0
+            })
+            XCTAssertEqual([area.x, area.y, area.width, area.height], [layout.left, layout.top, 400, 225], "\(layout)")
+            let pose = try XCTUnwrap(GamePhoneGeometry.locate(frame), "\(layout)")
+            let w = Double(layout.width), h = Double(layout.height)
+            XCTAssertEqual(pose.topX * w, Double(layout.left) + direct.topX * 400, accuracy: 0.5)
+            XCTAssertEqual(pose.topY * h, Double(layout.top) + direct.topY * 225, accuracy: 0.5)
+            XCTAssertEqual(pose.bottomY * h, Double(layout.top) + direct.bottomY * 225, accuracy: 0.5)
+            XCTAssertNotNil(ScreenPhoneCard.phone(in: frame), "\(layout)")
+        }
+        // Kamerası olmayan (telefon olmayan) görüntü pencerede de telefon sayılmaz.
+        XCTAssertNil(GamePhoneGeometry.locate(GamePhoneTestFrame.image(width: 400, height: 256) { _, y in
+            y < 31 ? (220, 220, 220) : (85, 85, 85)
+        }))
     }
 }
 

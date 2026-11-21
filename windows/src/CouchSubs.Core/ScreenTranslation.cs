@@ -260,8 +260,10 @@ public static class ScreenTranslation
         if (handset is null) return Plain(lines);
         var onPhone = lines.Where(line => PhoneChat.OnScreen(handset.Flat(line.Box!.Value))).ToList();
         if (onPhone.Count == 0) return Plain(lines);
+        // Süzülmemiş satırlar da gider: harfsiz hava durumu satırı ("76°") ana ekranı belli eder.
+        var raw = reading.Lines.Where(line => line.Box is { } box && PhoneChat.OnScreen(handset.Flat(box))).ToList();
         return [.. Plain([.. lines.Where(line => !PhoneChat.OnScreen(handset.Flat(line.Box!.Value)))]),
-                .. PhoneChat.Groups(onPhone, handset)];
+                .. PhoneChat.Groups(onPhone, handset, raw)];
     }
 
     /// <summary>"Ekranı çevir"in grupları (kare olmadan); karede telefon varsa ekranının satırları ayrı gruplanır (sınamalar için).</summary>

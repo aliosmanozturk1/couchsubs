@@ -664,6 +664,194 @@
      "Look what I found"
     ]
    ]
+  },
+  {
+   "name": "ana ekran: bildirim bileşeni yerinde, saat ve hava atlanır, uygulama adı çevrilmez",
+   "pose": [
+    0.78,
+    0.17,
+    0.78,
+    0.85
+   ],
+   "aspect": 1.777778,
+   "lines": [
+    {
+     "text": "14:36",
+     "box": [
+      0.6925,
+      0.2034,
+      0.7203,
+      0.219
+     ]
+    },
+    {
+     "text": "76°",
+     "box": [
+      0.8397,
+      0.2034,
+      0.8635,
+      0.219
+     ]
+    },
+    {
+     "text": "Reminders",
+     "box": [
+      0.7004,
+      0.2719,
+      0.7601,
+      0.2893
+     ]
+    },
+    {
+     "text": "10 Notifications",
+     "box": [
+      0.7004,
+      0.2936,
+      0.784,
+      0.3092
+     ]
+    },
+    {
+     "text": "WhatUp",
+     "box": [
+      0.7561,
+      0.7323,
+      0.8039,
+      0.7478
+     ]
+    }
+   ],
+   "groups": [
+    [
+     "home",
+     "Reminders"
+    ],
+    [
+     "home",
+     "10 Notifications"
+    ]
+   ]
+  },
+  {
+   "name": "ana ekran: simge ızgarası etiketleri çevrilmez, bildirim metni çevrilir",
+   "pose": [
+    0.76,
+    0.17,
+    0.82,
+    0.85
+   ],
+   "aspect": 1.777778,
+   "lines": [
+    {
+     "text": "Lucia",
+     "box": [
+      0.6883,
+      0.2655,
+      0.7295,
+      0.288
+     ]
+    },
+    {
+     "text": "Where are you? Call me",
+     "box": [
+      0.6901,
+      0.27,
+      0.8307,
+      0.3081
+     ]
+    },
+    {
+     "text": "back when you can",
+     "box": [
+      0.6918,
+      0.2955,
+      0.7967,
+      0.3282
+     ]
+    },
+    {
+     "text": "Camera",
+     "box": [
+      0.6976,
+      0.4863,
+      0.7386,
+      0.5074
+     ]
+    },
+    {
+     "text": "Maps",
+     "box": [
+      0.7493,
+      0.479,
+      0.7784,
+      0.4979
+     ]
+    },
+    {
+     "text": "Music",
+     "box": [
+      0.799,
+      0.4699,
+      0.8281,
+      0.4887
+     ]
+    },
+    {
+     "text": "Settings",
+     "box": [
+      0.8388,
+      0.4605,
+      0.8798,
+      0.4813
+     ]
+    },
+    {
+     "text": "Contacts",
+     "box": [
+      0.7049,
+      0.5924,
+      0.7499,
+      0.6148
+     ]
+    },
+    {
+     "text": "Email",
+     "box": [
+      0.7586,
+      0.5845,
+      0.7897,
+      0.6042
+     ]
+    },
+    {
+     "text": "Notes",
+     "box": [
+      0.8064,
+      0.5751,
+      0.8374,
+      0.5947
+     ]
+    },
+    {
+     "text": "WhatUp",
+     "box": [
+      0.7857,
+      0.7271,
+      0.8349,
+      0.7531
+     ]
+    }
+   ],
+   "groups": [
+    [
+     "home",
+     "Lucia"
+    ],
+    [
+     "home",
+     "Where are you? Call me back when you can"
+    ]
+   ]
   }
  ],
  "outside": {

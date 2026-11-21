@@ -5,7 +5,8 @@ import Foundation
 /// "Ekranı çevir"de GTA 6 telefonunun ekranındaki satırlar: önce telefonun düz ekranına taşınır (`ScreenPhoneCard.Handset`,
 /// eğik telefonda da sol/sağ kenar ekranın kenarına göre ölçülür), sonra ekranın ne olduğu çıkarılır. Sohbet ekranında
 /// her balon bir parça olur (balonun satırları birleşir); balon telefonun hangi kenarına yaslıysa gelen ya da giden
-/// mesajdır. Sohbet listesinde kişi adları çevrilmez, son mesaj önizlemeleri çevrilir. Windows (PhoneChat.cs) ve Android
+/// mesajdır. Sohbet listesinde kişi adları çevrilmez, son mesaj önizlemeleri çevrilir. Ana ekran (hava durumu, bildirim
+/// sayacı, simge ızgarası) sohbet değildir: yazıları yerinde çevrilir, uygulama adları çevrilmez. Windows (PhoneChat.cs) ve Android
 /// (PhoneChat.kt) aynı kuralları ve eşikleri uygular; ortak deneme dosyası Fixtures/phone-chat.json.
 enum PhoneChat {
     /// Satır, merkezi düz ekranda bu payla dışarıda kalsa da telefonundur (kutular kenarda biraz taşabilir).
@@ -51,14 +52,32 @@ enum PhoneChat {
             && spot.left >= -outsideReach && spot.right <= 1 + outsideReach
     }
 
-    /// Telefonun satırlarını (kutuları bilinen, süzülmüş) parçalara ayırır; her grup `phone` bilgisini taşır.
-    static func groups(_ lines: [TextLine], handset: ScreenPhoneCard.Handset) -> [ScreenTranslation.Group] {
-        var rows = joinedRows(lines.compactMap { line in
+    /// Ana ekranda yan yana okunan parçalar yalnız bu kadar yakınsa birleşir (simge etiketleri arasında daha geniş boşluk var).
+    static let homeJoin = 1.0
+    /// Ana ekranda bir bloğun (bileşen başlığı ve içeriği, bildirimin satırları) iki satırı arasındaki boşluk ortanca satırın
+    /// bu kadarından az.
+    static let homeGap = 0.8
+    /// Simge ızgarası: aynı hizada en az bu kadar uygulama adı.
+    static let gridLabels = 3
+    /// Hava durumu ("76°", "24 °C") ve bildirim sayacı ("10 Notifications", "3 new messages"): yalnız ana ekranda olur.
+    private static let weather = try! NSRegularExpression(pattern: #"^[-−]?\d{1,3}\s?[°º˚]\s?[CFcf]?$"#)
+    private static let counter = try! NSRegularExpression(
+        pattern: #"^\d{1,3}\s+(?:new\s+)?(?:notifications?|reminders?|alerts?|messages?|missed\s+calls?|e-?mails?|updates?)$"#,
+        options: .caseInsensitive)
+
+    /// Telefonun satırlarını (kutuları bilinen, süzülmüş) parçalara ayırır; her grup `phone` bilgisini taşır. `raw`:
+    /// telefondaki süzülmemiş satırlar (harfsiz satırlar da: hava durumu ana ekranı belli eder).
+    static func groups(_ lines: [TextLine], handset: ScreenPhoneCard.Handset, raw: [TextLine] = []) -> [ScreenTranslation.Group] {
+        let single = lines.compactMap { line in
             line.box.map { Row(lines: [line], spot: handset.flat($0), text: clean(line.text)) }
-        }.filter { $0.text.filter(\.isLetter).count >= 2 }.sorted { $0.spot.top < $1.spot.top })
+        }.filter { $0.text.filter(\.isLetter).count >= 2 }.sorted { $0.spot.top < $1.spot.top }
+        var rows = joinedRows(single)
         guard !rows.isEmpty else { return [] }
         let median = rows.map(\.height).sorted()[rows.count / 2]
         rows.removeAll { $0.spot.top < -edgeCut || $0.spot.bottom > 1 + edgeCut }
+        // Ana ekran (saat, hava, bileşenler, simge ızgarası) sohbet değildir: kart kurulmaz, yazılar yerinde çevrilir.
+        let home = joinedRows(single, join: homeJoin).filter { $0.spot.top >= -edgeCut && $0.spot.bottom <= 1 + edgeCut }
+        if isHome(home, raw: raw) { return homeGroups(home, median: median, handset: handset) }
         var header: Row?
         if let first = rows.first, isHeader(first) {
             header = first
@@ -103,10 +122,10 @@ enum PhoneChat {
     }
 
     /// Aynı yükseklikte yan yana okunmuş parçalar (arada emoji ya da simge) tek satır olur.
-    static func joinedRows(_ rows: [Row]) -> [Row] {
+    static func joinedRows(_ rows: [Row], join: Double = rowJoin) -> [Row] {
         var result: [Row] = []
         for row in rows {
-            if let index = result.lastIndex(where: { sameRow($0, row) }) {
+            if let index = result.lastIndex(where: { sameRow($0, row, join: join) }) {
                 let (a, b) = result[index].spot.left <= row.spot.left ? (result[index], row) : (row, result[index])
                 result[index] = Row(lines: a.lines + b.lines, spot: a.spot.union(b.spot), text: a.text + " " + b.text)
             } else {
@@ -116,12 +135,68 @@ enum PhoneChat {
         return result.sorted { $0.spot.top < $1.spot.top }
     }
 
-    private static func sameRow(_ a: Row, _ b: Row) -> Bool {
-        let overlap = min(a.spot.bottom, b.spot.bottom) - max(a.spot.top, b.spot.top)
-        guard overlap >= min(a.height, b.height) * 0.5 else { return false }
+    private static func sameRow(_ a: Row, _ b: Row, join: Double) -> Bool {
+        guard sameBand(a, b) else { return false }
         let gap = max(a.spot.left, b.spot.left) - min(a.spot.right, b.spot.right)
         // Yatay boşluk ekran genişliğine, satır yüksekliği ekran yüksekliğine oranla; ikisi aynı ölçüye çevrilir.
-        return gap * ScreenPhoneCard.Handset.screenShape <= max(a.height, b.height) * rowJoin
+        return gap * ScreenPhoneCard.Handset.screenShape <= max(a.height, b.height) * join
+    }
+
+    /// İki satır aynı yükseklikte (dikeyde en az yarı yarıya üst üste).
+    private static func sameBand(_ a: Row, _ b: Row) -> Bool {
+        min(a.spot.bottom, b.spot.bottom) - max(a.spot.top, b.spot.top) >= min(a.height, b.height) * 0.5
+    }
+
+    /// Ana ekran mı: hava durumu satırı, bildirim sayacı ("10 Notifications") ya da aynı hizada en az üç uygulama adı
+    /// (simge ızgarası). Sohbette bunların hiçbiri olmaz; tek başına kısa bir yanıt ("Ok") ana ekran sayılmaz.
+    static func isHome(_ rows: [Row], raw: [TextLine]) -> Bool {
+        if raw.contains(where: { matches(weather, $0.text.trimmingCharacters(in: .whitespaces)) }) { return true }
+        if rows.contains(where: { matches(counter, $0.text) }) { return true }
+        let labels = rows.filter { isAppLabel($0.text) && ($0.spot.top + $0.spot.bottom) / 2 >= headerBand }
+        return labels.contains { label in labels.filter { sameBand($0, label) }.count >= gridLabels }
+    }
+
+    private static func matches(_ pattern: NSRegularExpression, _ text: String) -> Bool {
+        pattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+    }
+
+    /// Uygulama adı gibi: bir-iki sözcük, hepsi harf ve büyük harfle başlıyor, rakam ve noktalama yok ("WhatUp", "Camera").
+    static func isAppLabel(_ text: String) -> Bool {
+        let words = text.split(whereSeparator: \.isWhitespace)
+        guard (1...2).contains(words.count) else { return false }
+        return words.allSatisfy { word in
+            word.first?.isUppercase == true && word.allSatisfy { $0.isLetter || $0 == "-" || $0 == "'" || $0 == "&" }
+        }
+    }
+
+    /// Ana ekranın yazıları: bir arada duran satırlar (bileşenin başlığı ve içeriği, bildirimin satırları) birer blok, her
+    /// satır kendi yerinde ayrı çevrilir (alt satıra sarılmış cümle birleşir). Tek başına duran kısa ad (simge etiketi,
+    /// "WhatUp") uygulamanın adıdır, çevrilmez; saat ve hava zaten harfsiz satırlarla birlikte atılmıştır. Gruplar `home`
+    /// rolündedir: kart kurulmaz, özgün stilinde yerinde çizilir.
+    static func homeGroups(_ rows: [Row], median: Double, handset: ScreenPhoneCard.Handset) -> [ScreenTranslation.Group] {
+        var blocks: [[Row]] = []
+        for row in rows {
+            if let last = blocks.last?.last, let first = blocks.last?.first, row.spot.top - last.spot.bottom < median * homeGap,
+               row.spot.top >= last.spot.top, abs(row.spot.left - first.spot.left) <= leftAlign, !sameBand(row, last) {
+                blocks[blocks.count - 1].append(row)
+            } else {
+                blocks.append([row])
+            }
+        }
+        var result: [ScreenTranslation.Group] = []
+        for block in blocks {
+            if block.count == 1, isAppLabel(block[0].text) { continue }
+            var piece: [Row] = []
+            for row in block {
+                if let last = piece.last, !(row.text.first(where: \.isLetter)?.isLowercase == true && !endsSentence(last.text)) {
+                    result.append(group(piece, role: .home, handset: handset))
+                    piece.removeAll()
+                }
+                piece.append(row)
+            }
+            if !piece.isEmpty { result.append(group(piece, role: .home, handset: handset)) }
+        }
+        return result
     }
 
     /// Başlık: ekranın en üstündeki kısa, cümle olmayan satır; ortalı ya da (solda avatarın yanında) ad gibi yazılmış.

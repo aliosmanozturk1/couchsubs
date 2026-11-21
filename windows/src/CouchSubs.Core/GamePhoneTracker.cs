@@ -92,13 +92,70 @@ internal static class GamePhoneGeometry
 
     internal static CropRegion? Locate(Frame frame) => TryLocate(frame, out var pose) ? pose.Bounds : null;
 
+    /// <summary>Simsiyah şerit: örneklerin hepsi bu tondan koyu (0–255).</summary>
+    internal const int DarkTone = 24;
+
+    private static bool Widescreen(int width, int height) => Math.Abs(width / (double)height - Width / (double)Height) <= .04;
+
+    /// <summary>
+    /// Karedeki 16:9 oyun görüntüsü (piksel). Pencereden okunan kare (PS Remote Play, chiaki-ng, OBS penceresi) başlık
+    /// çubuğunu ve pencere görüntüden farklı oransa siyah şeritleri de taşır; önceden telefon yalnız tam 16:9 karede
+    /// aranıyordu, pencerede hiç bulunmuyordu (ne otomatik telefon okuması ne "Ekranı çevir"in telefon kartı). Alttaki ve
+    /// yanlardaki simsiyah şeritler atılır, görüntü kalan genişliğin 16:9'u kadar yüksekliktedir ve alta yaslıdır (başlık
+    /// çubuğu üstte). Kare zaten 16:9 ise tamamı; görüntü bulunamazsa null (Mac/iPhone ve Android ile aynı kural).
+    /// </summary>
+    internal static (int X, int Y, int Width, int Height)? Picture(int width, int height, Func<int, int, int> tone)
+    {
+        if (width < Width || height < Height) return null;
+        if (Widescreen(width, height)) return (0, 0, width, height);
+        var columns = Enumerable.Range(0, 64).Select(i => Math.Min(width - 1, (int)((i + 0.5) * width / 64))).ToArray();
+        bool DarkRow(int y) => columns.All(x => tone(x, y) < DarkTone);
+        var bottom = height;
+        while (bottom > height / 2 && DarkRow(bottom - 1)) bottom--;
+        // Yan şeritlere başlık çubuğunun altından bakılır (başlık çubuğu bütün genişlikte uzanır).
+        var from = height * 2 / 5;
+        var rows = Enumerable.Range(0, 48).Select(i => from + (int)((i + 0.5) * (bottom - from) / 48)).ToArray();
+        bool DarkColumn(int x) => rows.All(y => tone(x, y) < DarkTone);
+        int left = 0, right = width;
+        while (left < width / 4 && DarkColumn(left)) left++;
+        while (right > width * 3 / 4 && DarkColumn(right - 1)) right--;
+        var w = right - left;
+        var h = (int)Math.Round(w * 9 / 16.0, MidpointRounding.AwayFromZero);
+        if (h > bottom)
+        {
+            h = bottom;
+            w = (int)Math.Round(h * 16 / 9.0, MidpointRounding.AwayFromZero);
+            left = (left + right - w) / 2;
+        }
+        if (w < Width || h < Height || left < 0 || left + w > width) return null;
+        return (left, bottom - h, w, h);
+    }
+
     internal static bool TryLocate(Frame frame, out Pose pose)
     {
         pose = default;
-        if (frame.Width < Width || frame.Height < Height ||
-            Math.Abs(frame.Width / (double)frame.Height - Width / (double)Height) > .04) return false;
+        if (frame.Width < Width || frame.Height < Height) return false;
+        if (Widescreen(frame.Width, frame.Height)) return TryLocate(frame, (0, 0, frame.Width, frame.Height), out pose);
+        if (!frame.IsConsistent) return false;
+        int Tone(int x, int y)
+        {
+            var p = (y * frame.Stride) + (x * 4);
+            return (frame.Pixels[p] * 29 + frame.Pixels[p + 1] * 150 + frame.Pixels[p + 2] * 77) >> 8;
+        }
+        if (Picture(frame.Width, frame.Height, Tone) is not { } area || !TryLocate(frame, area, out var inside)) return false;
+        double X(double value) => (area.X + value * area.Width) / frame.Width;
+        double Y(double value) => (area.Y + value * area.Height) / frame.Height;
+        pose = new Pose(X(inside.TopX), Y(inside.TopY), X(inside.BottomX), Y(inside.BottomY));
+        return true;
+    }
+
+    // Telefon karenin içindeki 16:9 görüntüde (area) aranır; yer görüntüye göre 0..1.
+    private static bool TryLocate(Frame frame, (int X, int Y, int Width, int Height) area, out Pose pose)
+    {
+        pose = default;
+        if (area.Width < Width || area.Height < Height || !Widescreen(area.Width, area.Height)) return false;
         Span<int> columns = stackalloc int[Width * 2];
-        var grid = new Samples(frame, columns);
+        var grid = new Samples(frame, columns, area);
         Span<Slot> upper = stackalloc Slot[12], lower = stackalloc Slot[16];
         int tops = FindSlots(grid, 17, 75, 8, 19, upper);
         if (tops < 1) return false;
@@ -253,15 +310,18 @@ internal static class GamePhoneGeometry
     {
         private readonly Frame frame;
         private readonly Span<int> x1, x2;
-        internal Samples(Frame frame, Span<int> columns)
+        private readonly int top, height;
+        internal Samples(Frame frame, Span<int> columns, (int X, int Y, int Width, int Height) area)
         {
             this.frame = frame;
+            top = area.Y;
+            height = area.Height;
             x1 = columns[..Width];
             x2 = columns[Width..];
             for (int x = 0; x < Width; x++)
             {
-                x1[x] = (4 * x + 1) * frame.Width / (4 * Width) * 4;
-                x2[x] = (4 * x + 3) * frame.Width / (4 * Width) * 4;
+                x1[x] = (area.X + (4 * x + 1) * area.Width / (4 * Width)) * 4;
+                x2[x] = (area.X + (4 * x + 3) * area.Width / (4 * Width)) * 4;
             }
         }
 
@@ -279,8 +339,8 @@ internal static class GamePhoneGeometry
         }
 
         private (int, int) Rows(int y) => (
-            (4 * y + 1) * frame.Height / (4 * Height) * frame.Stride,
-            (4 * y + 3) * frame.Height / (4 * Height) * frame.Stride);
+            (top + (4 * y + 1) * height / (4 * Height)) * frame.Stride,
+            (top + (4 * y + 3) * height / (4 * Height)) * frame.Stride);
 
         private int Sample(int x, int row1, int row2)
         {

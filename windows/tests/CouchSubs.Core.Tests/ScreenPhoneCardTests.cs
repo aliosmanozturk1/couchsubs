@@ -154,6 +154,40 @@ public class ScreenPhoneCardTests
     }
 
     [Fact]
+    public void HomeScreenIsTranslatedInPlaceWithoutACard()
+    {
+        // Telefonun ana ekranı sohbet değildir: kart kurulmaz, bileşenin yazıları kendi yerinde kalır, uygulama adı ("WhatUp")
+        // çevrilmez. Önceden ana ekran sohbet kartı sayılıyor, çeviri telefonun yanında tek blok oluyordu (X'teki bildirim).
+        var vector = Vectors().GetProperty("cases").EnumerateArray().First(c => c.GetProperty("name").GetString()!.StartsWith("ana ekran: bildirim"));
+        var phone = Handset(Numbers(vector.GetProperty("pose")), vector.GetProperty("aspect").GetDouble());
+        var reading = new Reading(vector.GetProperty("lines").EnumerateArray()
+            .Select(line => new TextLine(line.GetProperty("text").GetString()!, Box(Numbers(line.GetProperty("box"))))));
+        var groups = ScreenTranslation.ScreenGroups(reading, phone);
+        var words = new Dictionary<string, string> { ["Reminders"] = "Hatırlatıcılar", ["10 Notifications"] = "10 Bildirim" };
+        var items = groups.Select(group => new ScreenTranslation.Item(group.Paragraphs[0], words[group.Paragraphs[0]], group.Box, group.LineHeight)
+        {
+            Phone = group.Phone,
+        }).ToList();
+        var shown = ScreenTranslation.Present(items, phone);
+        Assert.Equal(["Hatırlatıcılar", "10 Bildirim"], shown.Select(item => item.Translation));
+        Assert.DoesNotContain(shown, ScreenPhoneCard.IsBackdrop);
+        Assert.Equal(groups.Select(group => group.Box), shown.Select(item => item.Box));
+        Assert.All(shown, item => Assert.True(item.Box.Left >= phone.Bounds.Left && item.Box.Right <= phone.Bounds.Right));
+    }
+
+    [Fact]
+    public void ShortChatReplyIsNotAHomeScreen()
+    {
+        var vector = Vectors().GetProperty("cases")[0];
+        var lines = vector.GetProperty("lines").EnumerateArray()
+            .Select(line => new TextLine(line.GetProperty("text").GetString()!, Box(Numbers(line.GetProperty("box"))))).ToList();
+        lines.Add(new TextLine("Ok", new TextBox(0.84, 0.60, 0.86, 0.617)));
+        var groups = ScreenTranslation.ScreenGroups(new Reading(lines), Handset(Upright));
+        Assert.DoesNotContain(groups, group => group.Phone?.Role == ScreenPhoneCard.Role.Home);
+        Assert.Equal(ScreenPhoneCard.Role.Header, groups[0].Phone!.Role);
+    }
+
+    [Fact]
     public void CardGoesRightWhenThePhoneIsOnTheLeft()
     {
         var left = Handset([0.20, 0.17, 0.20, 0.85]);

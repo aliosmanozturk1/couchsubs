@@ -140,6 +140,38 @@ final class ScreenPhoneCardTests: XCTestCase {
         XCTAssertEqual(laid[4].style, ScreenPhoneCard.cardColor)
     }
 
+    /// Telefonun ana ekranı sohbet değildir: kart kurulmaz, bileşenin yazıları kendi yerinde kalır, uygulama adı ("WhatUp")
+    /// çevrilmez. Önceden ana ekran sohbet kartı sayılıyor, "Hatırlatıcılar / 10 Bildirim / Ne haber!" telefonun yanında
+    /// tek blok oluyordu (X'teki bildirim).
+    func testHomeScreenIsTranslatedInPlaceWithoutACard() async throws {
+        let vector = try XCTUnwrap(try vectors().cases.first { $0.name.hasPrefix("ana ekran: bildirim") })
+        let reading = Reading(lines: vector.lines.map { TextLine($0.text, box: box($0.box)) })
+        let phone = handset(vector.pose, vector.aspect)
+        let groups = ScreenTranslation.groups(reading, wholeScreen: true, handset: phone)
+        var items: [ScreenTranslation.Item] = []
+        for group in groups {
+            let translated = ["Reminders": "Hatırlatıcılar", "10 Notifications": "10 Bildirim"][group.paragraphs[0]]!
+            if let item = ScreenTranslation.item(group, group.paragraphs.map(IconText.protect), [translated], keepUnchanged: true) {
+                items.append(item)
+            }
+        }
+        let shown = ScreenTranslation.present(items, phone: phone)
+        XCTAssertEqual(shown.map(\.translation), ["Hatırlatıcılar", "10 Bildirim"])
+        XCTAssertFalse(shown.contains(where: ScreenPhoneCard.isBackdrop))
+        for (item, group) in zip(shown, groups) { XCTAssertEqual(item.box, group.box) }
+        XCTAssertTrue(shown.allSatisfy { $0.box.left >= phone.bounds.left && $0.box.right <= phone.bounds.right })
+    }
+
+    /// Sohbetin son kısa yanıtı ("Ok") ana ekran sayılmaz; sohbet yine kart olur.
+    func testShortChatReplyIsNotAHomeScreen() throws {
+        let vector = try vectors().cases[0]
+        var lines = vector.lines.map { TextLine($0.text, box: box($0.box)) }
+        lines.append(TextLine("Ok", box: TextBox(left: 0.84, top: 0.60, right: 0.86, bottom: 0.617)))
+        let groups = ScreenTranslation.groups(Reading(lines: lines), wholeScreen: true, handset: handset(vector.pose))
+        XCTAssertFalse(groups.contains { $0.phone?.role == .home })
+        XCTAssertEqual(groups.first?.phone?.role, .header)
+    }
+
     func testCardGoesRightWhenThePhoneIsOnTheLeft() {
         let left = handset([0.20, 0.17, 0.20, 0.85])
         let laid = ScreenPhoneCard.layout([item("Where are you man", "Neredesin adamım", role: .incoming, top: 0.3)], handset: left)

@@ -104,7 +104,58 @@ public enum GamePhoneGeometry {
     private static func rounded(_ value: Double) -> Int { Int(value.rounded(.toNearestOrEven)) }
     private static func limit(_ n: Int, _ low: Int, _ high: Int) -> Int { min(high, max(low, n)) }
 
+    /// Karedeki 16:9 oyun görüntüsü (piksel). Pencereden okunan kare (PS Remote Play, chiaki-ng, OBS penceresi) başlık
+    /// çubuğunu ve pencere görüntüden farklı oransa siyah şeritleri de taşır; önceden telefon yalnız tam 16:9 karede
+    /// aranıyordu, pencerede hiç bulunmuyordu (ne otomatik telefon okuması ne "Ekranı çevir"in telefon kartı). Alttaki ve
+    /// yanlardaki simsiyah şeritler atılır, görüntü kalan genişliğin 16:9'u kadar yüksekliktedir ve alta yaslıdır (başlık
+    /// çubuğu üstte). Kare zaten 16:9 ise tamamı; görüntü bulunamazsa nil (Windows ve Android ile aynı kural).
+    static func picture(width: Int, height: Int, tone: (Int, Int) -> Int) -> (x: Int, y: Int, width: Int, height: Int)? {
+        guard width >= 400, height >= 225 else { return nil }
+        if abs(Double(width) / Double(height) - 400.0 / 225) <= 0.04 { return (0, 0, width, height) }
+        let columns = (0..<64).map { min(width - 1, Int((Double($0) + 0.5) * Double(width) / 64)) }
+        func darkRow(_ y: Int) -> Bool { columns.allSatisfy { tone($0, y) < darkTone } }
+        var bottom = height
+        while bottom > height / 2, darkRow(bottom - 1) { bottom -= 1 }
+        // Yan şeritlere başlık çubuğunun altından bakılır (başlık çubuğu bütün genişlikte uzanır).
+        let from = height * 2 / 5
+        let rows = (0..<48).map { from + Int((Double($0) + 0.5) * Double(bottom - from) / 48) }
+        func darkColumn(_ x: Int) -> Bool { rows.allSatisfy { tone(x, $0) < darkTone } }
+        var left = 0, right = width
+        while left < width / 4, darkColumn(left) { left += 1 }
+        while right > width * 3 / 4, darkColumn(right - 1) { right -= 1 }
+        var w = right - left, h = Int((Double(w) * 9 / 16).rounded())
+        if h > bottom {
+            h = bottom
+            w = Int((Double(h) * 16 / 9).rounded())
+            left = (left + right - w) / 2
+        }
+        guard w >= 400, h >= 225, left >= 0, left + w <= width else { return nil }
+        return (left, bottom - h, w, h)
+    }
+
+    /// Simsiyah şerit: örneklerin hepsi bu tondan koyu (0–255).
+    static let darkTone = 24
+
     public static func locate(_ image: CGImage) -> Pose? {
+        guard image.width >= 400, image.height >= 225 else { return nil }
+        if abs(Double(image.width) / Double(image.height) - 400.0 / 225) <= 0.04 { return locatePicture(image) }
+        // Kare küçültülerek okunur (en çok 960 piksel genişlik); şeritlerin yeri piksel piksel gerekmez.
+        let scale = min(1, 960 / Double(image.width))
+        let sw = max(1, Int((Double(image.width) * scale).rounded())), sh = max(1, Int((Double(image.height) * scale).rounded()))
+        guard let small = GamePhonePixels(image, width: sw, height: sh),
+              let area = picture(width: image.width, height: image.height, tone: { x, y in
+                  let p = (min(sh - 1, Int(Double(y) * scale)) * sw + min(sw - 1, Int(Double(x) * scale))) * 4
+                  return (77 * Int(small.bytes[p]) + 150 * Int(small.bytes[p + 1]) + 29 * Int(small.bytes[p + 2])) >> 8
+              }),
+              let cropped = image.cropping(to: CGRect(x: area.x, y: area.y, width: area.width, height: area.height)),
+              let pose = locatePicture(cropped) else { return nil }
+        let w = Double(image.width), h = Double(image.height)
+        func x(_ value: Double) -> Double { (Double(area.x) + value * Double(area.width)) / w }
+        func y(_ value: Double) -> Double { (Double(area.y) + value * Double(area.height)) / h }
+        return Pose(topX: x(pose.topX), topY: y(pose.topY), bottomX: x(pose.bottomX), bottomY: y(pose.bottomY))
+    }
+
+    private static func locatePicture(_ image: CGImage) -> Pose? {
         guard image.width >= 400, image.height >= 225,
               abs(Double(image.width) / Double(image.height) - 400.0 / 225) <= 0.04,
               let topBand = Grid(image, columns: 80..<320, height: 90) else { return nil }

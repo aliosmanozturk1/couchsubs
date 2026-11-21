@@ -151,6 +151,37 @@ class ScreenPhoneCardTest {
         assertEquals(ScreenPhoneCard.CARD, laid[4].surface)
     }
 
+    /**
+     * Telefonun ana ekranı sohbet değildir: kart kurulmaz, bileşenin yazıları kendi yerinde kalır, uygulama adı ("WhatUp")
+     * çevrilmez. Önceden ana ekran sohbet kartı sayılıyor, çeviri telefonun yanında tek blok oluyordu (X'teki bildirim).
+     */
+    @Test
+    fun homeScreenIsTranslatedInPlaceWithoutACard() {
+        val cases = root.getJSONArray("cases")
+        val vector = (0 until cases.length()).map { cases.getJSONObject(it) }.first { it.getString("name").startsWith("ana ekran: bildirim") }
+        val phone = handset(doubles(vector.getJSONArray("pose")), vector.getDouble("aspect"))
+        val groups = caseGroups(vector)
+        val words = mapOf("Reminders" to "Hatırlatıcılar", "10 Notifications" to "10 Bildirim")
+        val items = groups.map { ScreenTranslation.Item(it.paragraphs[0], words.getValue(it.paragraphs[0]), it.box, it.lineHeight, phone = it.phone) }
+        val shown = ScreenTranslation.present(items, phone)
+        assertEquals(listOf("Hatırlatıcılar", "10 Bildirim"), shown.map { it.translation })
+        assertTrue(shown.none(ScreenPhoneCard::isBackdrop))
+        assertEquals(groups.map { it.box }, shown.map { it.box })
+        assertTrue(shown.all { it.box.left >= phone.bounds.left && it.box.right <= phone.bounds.right })
+    }
+
+    /** Sohbetin son kısa yanıtı ("Ok") ana ekran sayılmaz; sohbet yine kart olur. */
+    @Test
+    fun shortChatReplyIsNotAHomeScreen() {
+        val vector = root.getJSONArray("cases").getJSONObject(0)
+        val lines = vector.getJSONArray("lines").let { all ->
+            (0 until all.length()).map { all.getJSONObject(it) }.map { TextLine(it.getString("text"), box(it.getJSONArray("box"))) }
+        } + TextLine("Ok", TextBox(0.84, 0.60, 0.86, 0.617))
+        val groups = ScreenTranslation.groups(Reading(lines), wholeScreen = true, handset = handset(upright))
+        assertTrue(groups.none { it.phone?.role == ScreenPhoneCard.Role.HOME })
+        assertEquals(ScreenPhoneCard.Role.HEADER, groups[0].phone?.role)
+    }
+
     @Test
     fun cardGoesRightWhenThePhoneIsOnTheLeft() {
         val left = handset(listOf(0.20, 0.17, 0.20, 0.85))

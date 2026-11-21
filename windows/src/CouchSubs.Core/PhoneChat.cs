@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+using System.Text.RegularExpressions;
+
 namespace CouchSubs.Core;
 
 /// <summary>
 /// "Ekranı çevir"de GTA 6 telefonunun ekranındaki satırlar: önce telefonun düz ekranına taşınır
 /// (<see cref="ScreenPhoneCard.Handset"/>, eğik telefonda da sol/sağ kenar ekranın kenarına göre ölçülür), sonra ekranın ne
 /// olduğu çıkarılır. Sohbet ekranında her balon bir parça olur (balonun satırları birleşir); balon telefonun hangi kenarına
-/// yaslıysa gelen ya da giden mesajdır. Sohbet listesinde kişi adları çevrilmez, son mesaj önizlemeleri çevrilir. Mac/iPhone
+/// yaslıysa gelen ya da giden mesajdır. Sohbet listesinde kişi adları çevrilmez, son mesaj önizlemeleri çevrilir. Ana ekran
+/// (hava durumu, bildirim sayacı, simge ızgarası) sohbet değildir: yazıları yerinde çevrilir, uygulama adları çevrilmez. Mac/iPhone
 /// (PhoneChat.swift) ve Android (PhoneChat.kt) aynı kuralları ve eşikleri uygular; ortak deneme dosyası
 /// core/Tests/CouchSubsCoreTests/Fixtures/phone-chat.json.
 /// </summary>
@@ -55,16 +58,40 @@ internal static class PhoneChat
             && spot.Left >= -OutsideReach && spot.Right <= 1 + OutsideReach;
     }
 
-    /// <summary>Telefonun satırlarını (kutuları bilinen, süzülmüş) parçalara ayırır; her grup <c>Phone</c> bilgisini taşır.</summary>
-    internal static IReadOnlyList<ScreenTranslation.Group> Groups(IReadOnlyList<TextLine> lines, ScreenPhoneCard.Handset handset)
+    /// <summary>Ana ekranda yan yana okunan parçalar yalnız bu kadar yakınsa birleşir (simge etiketleri arasında daha geniş boşluk var).</summary>
+    internal const double HomeJoin = 1.0;
+    /// <summary>
+    /// Ana ekranda bir bloğun (bileşen başlığı ve içeriği, bildirimin satırları) iki satırı arasındaki boşluk ortanca satırın
+    /// bu kadarından az.
+    /// </summary>
+    internal const double HomeGap = 0.8;
+    /// <summary>Simge ızgarası: aynı hizada en az bu kadar uygulama adı.</summary>
+    internal const int GridLabels = 3;
+    /// <summary>Hava durumu ("76°", "24 °C") ve bildirim sayacı ("10 Notifications", "3 new messages"): yalnız ana ekranda olur.</summary>
+    private static readonly Regex Weather = new(@"^[-−]?\d{1,3}\s?[°º˚]\s?[CFcf]?$", RegexOptions.CultureInvariant);
+    private static readonly Regex Counter = new(
+        @"^\d{1,3}\s+(?:new\s+)?(?:notifications?|reminders?|alerts?|messages?|missed\s+calls?|e-?mails?|updates?)$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Telefonun satırlarını (kutuları bilinen, süzülmüş) parçalara ayırır; her grup <c>Phone</c> bilgisini taşır.
+    /// <paramref name="raw"/>: telefondaki süzülmemiş satırlar (harfsiz satırlar da: hava durumu ana ekranı belli eder).
+    /// </summary>
+    internal static IReadOnlyList<ScreenTranslation.Group> Groups(IReadOnlyList<TextLine> lines, ScreenPhoneCard.Handset handset,
+                                                                  IReadOnlyList<TextLine>? raw = null)
     {
-        var rows = JoinedRows([.. lines.Where(line => line.Box is not null)
+        List<Row> single = [.. lines.Where(line => line.Box is not null)
             .Select(line => new Row([line], handset.Flat(line.Box!.Value), Clean(line.Text)))
             .Where(row => row.Text.Count(char.IsLetter) >= 2)
-            .OrderBy(row => row.Spot.Top)]);
+            .OrderBy(row => row.Spot.Top)];
+        var rows = JoinedRows(single);
         if (rows.Count == 0) return [];
         var median = rows.Select(row => row.Height).OrderBy(h => h).ElementAt(rows.Count / 2);
         rows.RemoveAll(row => row.Spot.Top < -EdgeCut || row.Spot.Bottom > 1 + EdgeCut);
+        // Ana ekran (saat, hava, bileşenler, simge ızgarası) sohbet değildir: kart kurulmaz, yazılar yerinde çevrilir.
+        var home = JoinedRows(single, HomeJoin);
+        home.RemoveAll(row => row.Spot.Top < -EdgeCut || row.Spot.Bottom > 1 + EdgeCut);
+        if (IsHome(home, raw ?? [])) return HomeGroups(home, median, handset);
         Row? header = null;
         if (rows.Count > 0 && IsHeader(rows[0]))
         {
@@ -115,12 +142,12 @@ internal static class PhoneChat
     }
 
     /// <summary>Aynı yükseklikte yan yana okunmuş parçalar (arada emoji ya da simge) tek satır olur.</summary>
-    internal static List<Row> JoinedRows(IReadOnlyList<Row> rows)
+    internal static List<Row> JoinedRows(IReadOnlyList<Row> rows, double join = RowJoin)
     {
         var result = new List<Row>();
         foreach (var row in rows)
         {
-            var index = result.FindLastIndex(other => SameRow(other, row));
+            var index = result.FindLastIndex(other => SameRow(other, row, join));
             if (index >= 0)
             {
                 var (a, b) = result[index].Spot.Left <= row.Spot.Left ? (result[index], row) : (row, result[index]);
@@ -134,13 +161,75 @@ internal static class PhoneChat
         return [.. result.OrderBy(row => row.Spot.Top)];
     }
 
-    private static bool SameRow(Row a, Row b)
+    private static bool SameRow(Row a, Row b, double join)
     {
-        var overlap = Math.Min(a.Spot.Bottom, b.Spot.Bottom) - Math.Max(a.Spot.Top, b.Spot.Top);
-        if (overlap < Math.Min(a.Height, b.Height) * 0.5) return false;
+        if (!SameBand(a, b)) return false;
         var gap = Math.Max(a.Spot.Left, b.Spot.Left) - Math.Min(a.Spot.Right, b.Spot.Right);
         // Yatay boşluk ekran genişliğine, satır yüksekliği ekran yüksekliğine oranla; ikisi aynı ölçüye çevrilir.
-        return gap * ScreenPhoneCard.Handset.ScreenShape <= Math.Max(a.Height, b.Height) * RowJoin;
+        return gap * ScreenPhoneCard.Handset.ScreenShape <= Math.Max(a.Height, b.Height) * join;
+    }
+
+    /// <summary>İki satır aynı yükseklikte (dikeyde en az yarı yarıya üst üste).</summary>
+    private static bool SameBand(Row a, Row b) =>
+        Math.Min(a.Spot.Bottom, b.Spot.Bottom) - Math.Max(a.Spot.Top, b.Spot.Top) >= Math.Min(a.Height, b.Height) * 0.5;
+
+    /// <summary>
+    /// Ana ekran mı: hava durumu satırı, bildirim sayacı ("10 Notifications") ya da aynı hizada en az üç uygulama adı (simge
+    /// ızgarası). Sohbette bunların hiçbiri olmaz; tek başına kısa bir yanıt ("Ok") ana ekran sayılmaz.
+    /// </summary>
+    internal static bool IsHome(IReadOnlyList<Row> rows, IReadOnlyList<TextLine> raw)
+    {
+        if (raw.Any(line => Weather.IsMatch(line.Text.Trim(' ', '\t')))) return true;
+        if (rows.Any(row => Counter.IsMatch(row.Text))) return true;
+        var labels = rows.Where(row => IsAppLabel(row.Text) && (row.Spot.Top + row.Spot.Bottom) / 2 >= HeaderBand).ToList();
+        return labels.Any(label => labels.Count(other => SameBand(other, label)) >= GridLabels);
+    }
+
+    /// <summary>Uygulama adı gibi: bir-iki sözcük, hepsi harf ve büyük harfle başlıyor, rakam ve noktalama yok ("WhatUp", "Camera").</summary>
+    internal static bool IsAppLabel(string text)
+    {
+        var words = WordsOf(text);
+        return words.Length is >= 1 and <= 2
+            && words.All(word => char.IsUpper(word[0]) && word.All(c => char.IsLetter(c) || c is '-' or '\'' or '&'));
+    }
+
+    /// <summary>
+    /// Ana ekranın yazıları: bir arada duran satırlar (bileşenin başlığı ve içeriği, bildirimin satırları) birer blok, her
+    /// satır kendi yerinde ayrı çevrilir (alt satıra sarılmış cümle birleşir). Tek başına duran kısa ad (simge etiketi,
+    /// "WhatUp") uygulamanın adıdır, çevrilmez; saat ve hava zaten harfsiz satırlarla birlikte atılmıştır. Gruplar
+    /// <see cref="ScreenPhoneCard.Role.Home"/> rolündedir: kart kurulmaz, özgün stilinde yerinde çizilir.
+    /// </summary>
+    internal static IReadOnlyList<ScreenTranslation.Group> HomeGroups(IReadOnlyList<Row> rows, double median, ScreenPhoneCard.Handset handset)
+    {
+        var blocks = new List<List<Row>>();
+        foreach (var row in rows)
+        {
+            if (blocks.Count > 0 && blocks[^1][^1] is var last && blocks[^1][0] is var first
+                && row.Spot.Top - last.Spot.Bottom < median * HomeGap && row.Spot.Top >= last.Spot.Top
+                && Math.Abs(row.Spot.Left - first.Spot.Left) <= LeftAlign && !SameBand(row, last))
+                blocks[^1].Add(row);
+            else
+                blocks.Add([row]);
+        }
+        var result = new List<ScreenTranslation.Group>();
+        foreach (var block in blocks)
+        {
+            if (block.Count == 1 && IsAppLabel(block[0].Text)) continue;
+            var piece = new List<Row>();
+            foreach (var row in block)
+            {
+                var continues = row.Text.FirstOrDefault(char.IsLetter) is var letter && char.IsLower(letter)
+                    && piece.Count > 0 && !EndsSentence(piece[^1].Text);
+                if (piece.Count > 0 && !continues)
+                {
+                    result.Add(Group(piece, ScreenPhoneCard.Role.Home, handset));
+                    piece = [];
+                }
+                piece.Add(row);
+            }
+            if (piece.Count > 0) result.Add(Group(piece, ScreenPhoneCard.Role.Home, handset));
+        }
+        return result;
     }
 
     /// <summary>Başlık: ekranın en üstündeki kısa, cümle olmayan satır; ortalı ya da (solda avatarın yanında) ad gibi yazılmış.</summary>

@@ -216,7 +216,9 @@ object ScreenTranslation {
         // [handset]: karede GTA 6 telefonu varsa ekranındaki satırlar ayrı gruplanır ([PhoneChat]: balon, başlık, liste).
         if (handset != null) {
             val (onPhone, rest) = lines.partition { PhoneChat.onScreen(handset.flat(it.box!!)) }
-            if (onPhone.isNotEmpty()) return plain(rest) + PhoneChat.groups(onPhone, handset)
+            // Süzülmemiş satırlar da gider: harfsiz hava durumu satırı ("76°") ana ekranı belli eder.
+            val raw = reading.lines.filter { line -> line.box?.let { PhoneChat.onScreen(handset.flat(it)) } ?: false }
+            if (onPhone.isNotEmpty()) return plain(rest) + PhoneChat.groups(onPhone, handset, raw)
         }
         return plain(lines)
     }

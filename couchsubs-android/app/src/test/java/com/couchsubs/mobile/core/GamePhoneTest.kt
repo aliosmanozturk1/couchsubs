@@ -89,6 +89,38 @@ class GamePhoneTrackerTest {
         val large = TestPhoneImage(1600, 900) { x, y -> small.rgb(x / 4, y / 4) }
         assertEquals(GamePhoneGeometry.locate(small), GamePhoneGeometry.locate(large))
     }
+
+    /**
+     * PS Remote Play / chiaki-ng / OBS penceresinden okunan kare 16:9 değildir (başlık çubuğu, siyah şeritler). Telefon
+     * önceden yalnız tam 16:9 karede aranıyordu; pencerede hiç bulunmuyordu. Şimdi oyun görüntüsü karenin içinde bulunur,
+     * telefonun yeri karenin tamamına göre verilir (Mac ve Windows'ta aynı deneme).
+     */
+    @Test
+    fun phoneIsFoundInsideARemotePlayWindow() {
+        val phone = TestPhoneImage.phone()
+        val direct = GamePhoneGeometry.locate(phone)!!
+        // Başlık çubuğu + tam oturan görüntü; başlık çubuğu + üstte/altta siyah şerit; başlık çubuğu + yanlarda şerit.
+        for (layout in listOf(intArrayOf(400, 256, 31, 0, 31), intArrayOf(400, 300, 31, 0, 56), intArrayOf(470, 256, 31, 35, 31))) {
+            val (width, height, title, left) = layout
+            val top = layout[4]
+            fun window(picture: PhoneImage) = TestPhoneImage(width, height) { x, y ->
+                when {
+                    y < title -> TestPhoneImage.gray(if (x in 8 until 120 && y in title / 3 until title * 2 / 3 && x % 4 < 2) 30 else 220)
+                    x in left until left + 400 && y in top until top + 225 -> picture.rgb(x - left, y - top)
+                    else -> 0
+                }
+            }
+            val frame = window(phone)
+            assertEquals(layout.toList().toString(), GamePhoneGeometry.Area(left, top, 400, 225),
+                GamePhoneGeometry.picture(width, height) { x, y -> frame.tone(x, y) shr 8 })
+            val pose = GamePhoneGeometry.locate(frame)!!
+            assertEquals(left + direct.topX * 400, pose.topX * width, 0.5)
+            assertEquals(top + direct.topY * 225, pose.topY * height, 0.5)
+            assertEquals(top + direct.bottomY * 225, pose.bottomY * height, 0.5)
+            // Telefonsuz görüntü pencerede de telefon sayılmaz.
+            assertNull(GamePhoneGeometry.locate(window(TestPhoneImage(400, 225) { _, _ -> TestPhoneImage.gray(85) })))
+        }
+    }
 }
 
 /** Mac/iPhone ve Windows GamePhoneFalsePositiveTests ile aynı vektörler (büyük kutu koruması: SubtitleServerTest). */

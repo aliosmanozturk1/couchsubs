@@ -7,7 +7,8 @@ import kotlin.math.abs
  * "Ekranı çevir"de GTA 6 telefonunun ekranındaki satırlar: önce telefonun düz ekranına taşınır ([ScreenPhoneCard.Handset],
  * eğik telefonda da sol/sağ kenar ekranın kenarına göre ölçülür), sonra ekranın ne olduğu çıkarılır. Sohbet ekranında
  * her balon bir parça olur (balonun satırları birleşir); balon telefonun hangi kenarına yaslıysa gelen ya da giden
- * mesajdır. Sohbet listesinde kişi adları çevrilmez, son mesaj önizlemeleri çevrilir. Mac/iPhone (PhoneChat.swift) ve
+ * mesajdır. Sohbet listesinde kişi adları çevrilmez, son mesaj önizlemeleri çevrilir. Ana ekran (hava durumu, bildirim
+ * sayacı, simge ızgarası) sohbet değildir: yazıları yerinde çevrilir, uygulama adları çevrilmez. Mac/iPhone (PhoneChat.swift) ve
  * Windows (PhoneChat.cs) aynı kuralları ve eşikleri uygular; ortak deneme dosyası fixtures/phone-chat.json.
  */
 object PhoneChat {
@@ -54,13 +55,35 @@ object PhoneChat {
             spot.left >= -OUTSIDE_REACH && spot.right <= 1 + OUTSIDE_REACH
     }
 
-    /** Telefonun satırlarını (kutuları bilinen, süzülmüş) parçalara ayırır; her grup `phone` bilgisini taşır. */
-    fun groups(lines: List<TextLine>, handset: ScreenPhoneCard.Handset): List<ScreenTranslation.Group> {
-        val rows = joinedRows(lines.mapNotNull { line -> line.box?.let { Row(listOf(line), handset.flat(it), clean(line.text)) } }
-            .filter { row -> row.text.count { it.isLetter() } >= 2 }.sortedBy { it.spot.top }).toMutableList()
+    /** Ana ekranda yan yana okunan parçalar yalnız bu kadar yakınsa birleşir (simge etiketleri arasında daha geniş boşluk var). */
+    const val HOME_JOIN = 1.0
+    /**
+     * Ana ekranda bir bloğun (bileşen başlığı ve içeriği, bildirimin satırları) iki satırı arasındaki boşluk ortanca satırın
+     * bu kadarından az.
+     */
+    const val HOME_GAP = 0.8
+    /** Simge ızgarası: aynı hizada en az bu kadar uygulama adı. */
+    const val GRID_LABELS = 3
+    /** Hava durumu ("76°", "24 °C") ve bildirim sayacı ("10 Notifications", "3 new messages"): yalnız ana ekranda olur. */
+    private val WEATHER = Regex("""^[-−]?\d{1,3}\s?[°º˚]\s?[CFcf]?$""")
+    private val COUNTER = Regex(
+        """^\d{1,3}\s+(?:new\s+)?(?:notifications?|reminders?|alerts?|messages?|missed\s+calls?|e-?mails?|updates?)$""",
+        RegexOption.IGNORE_CASE)
+
+    /**
+     * Telefonun satırlarını (kutuları bilinen, süzülmüş) parçalara ayırır; her grup `phone` bilgisini taşır. [raw]:
+     * telefondaki süzülmemiş satırlar (harfsiz satırlar da: hava durumu ana ekranı belli eder).
+     */
+    fun groups(lines: List<TextLine>, handset: ScreenPhoneCard.Handset, raw: List<TextLine> = emptyList()): List<ScreenTranslation.Group> {
+        val single = lines.mapNotNull { line -> line.box?.let { Row(listOf(line), handset.flat(it), clean(line.text)) } }
+            .filter { row -> row.text.count { it.isLetter() } >= 2 }.sortedBy { it.spot.top }
+        val rows = joinedRows(single).toMutableList()
         if (rows.isEmpty()) return emptyList()
         val median = rows.map { it.height }.sorted()[rows.size / 2]
         rows.removeAll { it.spot.top < -EDGE_CUT || it.spot.bottom > 1 + EDGE_CUT }
+        // Ana ekran (saat, hava, bileşenler, simge ızgarası) sohbet değildir: kart kurulmaz, yazılar yerinde çevrilir.
+        val home = joinedRows(single, HOME_JOIN).filter { it.spot.top >= -EDGE_CUT && it.spot.bottom <= 1 + EDGE_CUT }
+        if (isHome(home, raw)) return homeGroups(home, median, handset)
         var header: Row? = null
         if (rows.isNotEmpty() && isHeader(rows[0])) header = rows.removeAt(0)
         if (rows.size >= 3) rows.removeAll { it.height > median * PHOTO_HEIGHT }
@@ -104,10 +127,10 @@ object PhoneChat {
     }
 
     /** Aynı yükseklikte yan yana okunmuş parçalar (arada emoji ya da simge) tek satır olur. */
-    internal fun joinedRows(rows: List<Row>): List<Row> {
+    internal fun joinedRows(rows: List<Row>, join: Double = ROW_JOIN): List<Row> {
         val result = mutableListOf<Row>()
         for (row in rows) {
-            val index = result.indexOfLast { sameRow(it, row) }
+            val index = result.indexOfLast { sameRow(it, row, join) }
             if (index >= 0) {
                 val (a, b) = if (result[index].spot.left <= row.spot.left) result[index] to row else row to result[index]
                 result[index] = Row(a.lines + b.lines, a.spot.union(b.spot), a.text + " " + b.text)
@@ -118,12 +141,69 @@ object PhoneChat {
         return result.sortedBy { it.spot.top }
     }
 
-    private fun sameRow(a: Row, b: Row): Boolean {
-        val overlap = minOf(a.spot.bottom, b.spot.bottom) - maxOf(a.spot.top, b.spot.top)
-        if (overlap < minOf(a.height, b.height) * 0.5) return false
+    private fun sameRow(a: Row, b: Row, join: Double): Boolean {
+        if (!sameBand(a, b)) return false
         val gap = maxOf(a.spot.left, b.spot.left) - minOf(a.spot.right, b.spot.right)
         // Yatay boşluk ekran genişliğine, satır yüksekliği ekran yüksekliğine oranla; ikisi aynı ölçüye çevrilir.
-        return gap * ScreenPhoneCard.Handset.SCREEN_SHAPE <= maxOf(a.height, b.height) * ROW_JOIN
+        return gap * ScreenPhoneCard.Handset.SCREEN_SHAPE <= maxOf(a.height, b.height) * join
+    }
+
+    /** İki satır aynı yükseklikte (dikeyde en az yarı yarıya üst üste). */
+    private fun sameBand(a: Row, b: Row): Boolean =
+        minOf(a.spot.bottom, b.spot.bottom) - maxOf(a.spot.top, b.spot.top) >= minOf(a.height, b.height) * 0.5
+
+    /**
+     * Ana ekran mı: hava durumu satırı, bildirim sayacı ("10 Notifications") ya da aynı hizada en az üç uygulama adı (simge
+     * ızgarası). Sohbette bunların hiçbiri olmaz; tek başına kısa bir yanıt ("Ok") ana ekran sayılmaz.
+     */
+    internal fun isHome(rows: List<Row>, raw: List<TextLine>): Boolean {
+        if (raw.any { WEATHER.matches(it.text.trim(' ', '\t')) }) return true
+        if (rows.any { COUNTER.matches(it.text) }) return true
+        val labels = rows.filter { isAppLabel(it.text) && (it.spot.top + it.spot.bottom) / 2 >= HEADER_BAND }
+        return labels.any { label -> labels.count { sameBand(it, label) } >= GRID_LABELS }
+    }
+
+    /** Uygulama adı gibi: bir-iki sözcük, hepsi harf ve büyük harfle başlıyor, rakam ve noktalama yok ("WhatUp", "Camera"). */
+    fun isAppLabel(text: String): Boolean {
+        val words = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        return words.size in 1..2 && words.all { word ->
+            word[0].isUpperCase() && word.all { it.isLetter() || it == '-' || it == '\'' || it == '&' }
+        }
+    }
+
+    /**
+     * Ana ekranın yazıları: bir arada duran satırlar (bileşenin başlığı ve içeriği, bildirimin satırları) birer blok, her
+     * satır kendi yerinde ayrı çevrilir (alt satıra sarılmış cümle birleşir). Tek başına duran kısa ad (simge etiketi,
+     * "WhatUp") uygulamanın adıdır, çevrilmez; saat ve hava zaten harfsiz satırlarla birlikte atılmıştır. Gruplar
+     * [ScreenPhoneCard.Role.HOME] rolündedir: kart kurulmaz, özgün stilinde yerinde çizilir.
+     */
+    internal fun homeGroups(rows: List<Row>, median: Double, handset: ScreenPhoneCard.Handset): List<ScreenTranslation.Group> {
+        val blocks = mutableListOf<MutableList<Row>>()
+        for (row in rows) {
+            val block = blocks.lastOrNull()
+            if (block != null && row.spot.top - block.last().spot.bottom < median * HOME_GAP && row.spot.top >= block.last().spot.top &&
+                abs(row.spot.left - block[0].spot.left) <= LEFT_ALIGN && !sameBand(row, block.last())) {
+                block.add(row)
+            } else {
+                blocks.add(mutableListOf(row))
+            }
+        }
+        val result = mutableListOf<ScreenTranslation.Group>()
+        for (block in blocks) {
+            if (block.size == 1 && isAppLabel(block[0].text)) continue
+            val piece = mutableListOf<Row>()
+            for (row in block) {
+                val continues = row.text.firstOrNull { it.isLetter() }?.isLowerCase() == true &&
+                    piece.isNotEmpty() && !endsSentence(piece.last().text)
+                if (piece.isNotEmpty() && !continues) {
+                    result.add(group(piece.toList(), ScreenPhoneCard.Role.HOME, handset))
+                    piece.clear()
+                }
+                piece.add(row)
+            }
+            if (piece.isNotEmpty()) result.add(group(piece.toList(), ScreenPhoneCard.Role.HOME, handset))
+        }
+        return result
     }
 
     /** Başlık: ekranın en üstündeki kısa, cümle olmayan satır; ortalı ya da (solda avatarın yanında) ad gibi yazılmış. */

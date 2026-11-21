@@ -238,7 +238,9 @@ public enum ScreenTranslation {
         guard let handset else { return plain(lines) }
         let onPhone = lines.filter { PhoneChat.onScreen(handset.flat($0.box!)) }
         guard !onPhone.isEmpty else { return plain(lines) }
-        return plain(lines.filter { !PhoneChat.onScreen(handset.flat($0.box!)) }) + PhoneChat.groups(onPhone, handset: handset)
+        // Süzülmemiş satırlar da gider: harfsiz hava durumu satırı ("76°") ana ekranı belli eder.
+        let raw = reading.lines.filter { $0.box.map { PhoneChat.onScreen(handset.flat($0)) } ?? false }
+        return plain(lines.filter { !PhoneChat.onScreen(handset.flat($0.box!)) }) + PhoneChat.groups(onPhone, handset: handset, raw: raw)
     }
 
     /// Satırlardaki görev kartları kendi gruplarıyla (kare varsa yalnız düz panelin üstündekiler), kalanlar her zamanki

@@ -40,10 +40,14 @@ object ScreenPhoneCard {
         /** Ortalı kısa satır: saat, "Today", "Delivered". */
         NOTE("note"),
         /** Sohbet listesi: kişi adı (çevrilmez), son mesaj önizlemesi, bölüm başlığı ("Messages"). */
-        CONTACT("contact"), PREVIEW("preview"), HEADING("heading");
+        CONTACT("contact"), PREVIEW("preview"), HEADING("heading"),
+        /** Ana ekranın yazısı (bileşen, bildirim): sohbet değildir, karta girmez; kendi yerinde, özgün stilinde çizilir. */
+        HOME("home");
 
         /** Çevirmene gitmez, aslıyla gösterilir (ad). */
         val keepsText: Boolean get() = this == HEADER || this == CONTACT
+        /** Kartta dizilir (ana ekranın yazıları yerinde kalır). */
+        val inCard: Boolean get() = this != HOME
     }
 
     /** Telefondaki bir grubun rolü ve düz ekrandaki yeri (0–1). */
@@ -144,7 +148,7 @@ object ScreenPhoneCard {
      * dışındakiler sonra atılır.
      */
     fun layout(items: List<ScreenTranslation.Item>, handset: Handset): List<ScreenTranslation.Item> {
-        val onPhone = items.filter { it.phone != null }.sortedBy { it.phone!!.spot.top }
+        val onPhone = items.filter { it.phone?.role?.inCard == true }.sortedBy { it.phone!!.spot.top }
         if (onPhone.none { !it.unchanged }) return items
         val card = cardBox(handset.bounds)
         val cardWidth = card.right - card.left
@@ -155,7 +159,7 @@ object ScreenPhoneCard {
         val spacing = line * 0.35
         fun flat(align: String, bold: Boolean) = TextLook(bold, false, align, false)
 
-        val result = items.filter { it.phone == null }.toMutableList()
+        val result = items.filter { it.phone?.role?.inCard != true }.toMutableList()
         result.add(ScreenTranslation.Item("", BACKDROP_TEXT, card, line, surface = CARD, look = flat("left", false)))
 
         var bodyTop = card.top + padY
