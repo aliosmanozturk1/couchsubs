@@ -485,6 +485,14 @@ struct DetailedError: LocalizedError, Equatable {
     }
 }
 
+/// TV'ye bağlı uygulama bu cihazdaki TV paketinden eski (#884, #891).
+struct TVAppOutdated: Equatable {
+    /// 0.9.69'den eski TV uygulamaları sürüm bildirmez; ekranda böyle görünür.
+    static let unreported = SubtitleServer.unreportedTVAppVersion
+    let installed: String
+    let bundled: String
+}
+
 /// TV uygulamasının kurulum durumu.
 enum TVAppState: Equatable {
     /// Bilinmiyor ya da yapılacak bir şey yok (ör. uygulama açılıyor ama anahtar yok).
@@ -553,7 +561,17 @@ final class AppModel: ObservableObject {
     @Published var tv: LGTV?
     /// TV'nin eşleşme anahtarı kayıtlı.
     @Published private var tvKeySaved: Bool
-    @Published var tvApp = TVAppState.unknown
+    @Published var tvApp = TVAppState.unknown {
+        didSet {
+            // Kurulum ya da sürüm denetimi TV'deki uygulamayı güncel buldu: "TV uygulamasını güncelle" kalkar.
+            if case .upToDate(let version) = tvApp, let outdated = tvAppOutdated,
+               !DevModeInstaller.isNewer(outdated.bundled, than: version) { tvAppOutdated = nil }
+        }
+    }
+    /// TV'ye bağlı uygulama bu Mac'teki TV paketinden eski (sürümü altyazı akışıyla öğrenilir; bildirmeyen TV 0.9.69'den
+    /// eskidir). LG'de geliştirici modu kapalıyken ya da anahtar bu Mac'te değilken TV'deki sürüm başka yoldan okunamıyor,
+    /// TV uygulaması eski kalıyor ve hiç uyarı çıkmıyordu (GitHub #884, #891). Ana ekrandaki TV kartı güncellemeyi önerir.
+    @Published private(set) var tvAppOutdated: TVAppOutdated?
     /// LG geliştirici modunun kalan süresi (saat); CouchSubs uzattıktan sonra bilinir.
     @Published var devModeHoursLeft: Int?
     /// Son eşleşmede TV uygulaması açılamadı.
@@ -1117,6 +1135,10 @@ final class AppModel: ObservableObject {
             }
         }
 
+        server.onTVAppVersion = { [weak self] version in
+            Task { @MainActor [weak self] in self?.tvAppReported(version) }
+        }
+
         server.onClientsChanged = { [weak self] count in
             if let self, self.tvClients == 0, count > 0, self.isRunning {
                 self.usage.record(.tvConnected(count: count, brand: self.tv?.brand.rawValue ?? "unknown"))
@@ -1465,6 +1487,37 @@ final class AppModel: ObservableObject {
             // Samsung girişi ya da Android onayı dakikalar sürebilir; eşleşme beklemesin.
             Task { await refreshTVApp() }
         }
+    }
+
+    // MARK: - TV uygulamasının sürümü
+
+    /// Bu Mac'teki TV paketinin sürümü (seçili TV'nin markası için); paket yoksa nil.
+    private var bundledVersionForTV: String? {
+        guard let tv else { return nil }
+        return tv.brand == .lg ? services.bundledTVAppVersion : services.bundledApp(for: tv.brand)?.version
+    }
+
+    /// TV uygulaması altyazı akışına bağlandı ve sürümünü bildirdi (boş: 0.9.69'den eski, sürüm bildirmeyen uygulama).
+    /// Eskiyse ana ekran "TV uygulamasını güncelle" der; geliştirici modu açık ve anahtar kayıtlıysa (LG) ya da TV'ye
+    /// ulaşılıyorsa (Samsung, Android TV) güncelleme hemen, sorulmadan kurulur (önceki sürüm denetimiyle aynı yol).
+    func tvAppReported(_ version: String) {
+        guard let bundled = bundledVersionForTV, SubtitleServer.isTVAppOutdated(reported: version, bundled: bundled) else {
+            tvAppOutdated = nil
+            return
+        }
+        let installed = version.isEmpty ? TVAppOutdated.unreported : version
+        let first = tvAppOutdated == nil
+        tvAppOutdated = TVAppOutdated(installed: installed, bundled: bundled)
+        guard first else { return }
+        SubtitleLog.write("TV uygulaması eski: TV \(installed), bu Mac'teki paket \(bundled); güncelleme deneniyor.")
+        Task { await refreshTVApp() }
+    }
+
+    /// Ana ekrandaki "TV uygulamasını güncelle": TV adımı açılır ve uygulama yeniden kurulur. LG'de kayıtlı anahtar varsa
+    /// Passphrase sorulmaz; yoksa TV kartı Developer Mode / Passphrase adımlarını gösterir.
+    func updateTVApp() async {
+        step = .tv
+        await reinstallTVApp()
     }
 
     // MARK: - TV uygulamasını kurma

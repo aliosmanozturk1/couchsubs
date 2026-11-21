@@ -264,7 +264,15 @@ private struct TVStatusTile: View {
 
     var body: some View {
         if model.hasTV {
-            if model.canReinstallTVApp {
+            if let outdated = model.tvAppOutdated {
+                // TV'deki uygulama bu Mac'teki paketten eski (#884, #891): TV adımı açılır, uygulama yeniden kurulur.
+                StatusTile(symbol: "tv", title: "TV",
+                           value: String(format: String(localized: "TV app is out of date (%@ → %@)"), outdated.installed, outdated.bundled),
+                           tone: .warning) {
+                    Button("Update the TV app") { Task { await model.updateTVApp() } }.buttonStyle(.secondary)
+                    changeTV
+                }
+            } else if model.canReinstallTVApp {
                 // TV uygulaması bağlanmıyor (ör. TV'den kaldırıldı): TV adımı açılır, uygulama yeniden kurulur ya da açılır.
                 StatusTile(symbol: "tv", title: "TV", value: String(localized: "Waiting for the TV app"),
                            tone: AppModel.tvTone(clients: model.tvClients, running: model.isRunning)) {

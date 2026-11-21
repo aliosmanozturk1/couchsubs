@@ -81,6 +81,35 @@ public class SubtitleServerTests
         Assert.Equal(4, SubtitleServer.ParseHdmiPort("4"));
     }
 
+    /// TV uygulaması sürümünü akışla bildirir; bildirmeyen TV (0.9.69'den eski) eski sayılır, OBS sayılmaz (#884, #891).
+    [Fact]
+    public async Task RemembersTheTvAppVersionAndTreatsSilentTvsAsOld()
+    {
+        using var server = new SubtitleServer(0);
+        var port = await server.StartAsync();
+        Assert.Null(server.TvAppVersion);
+        using (var obs = await Http.GetAsync($"http://127.0.0.1:{port}/events?viewer=obs", HttpCompletionOption.ResponseHeadersRead))
+        {
+            await Task.Delay(100);
+            Assert.Null(server.TvAppVersion);
+        }
+        using (var old = await Http.GetAsync($"http://127.0.0.1:{port}/events?hdmi=2", HttpCompletionOption.ResponseHeadersRead))
+        {
+            await WaitUntil(() => server.TvAppVersion is not null);
+            Assert.Equal("", server.TvAppVersion);
+        }
+        using (var fresh = await Http.GetAsync($"http://127.0.0.1:{port}/events?v=0.9.69&hdmi=2", HttpCompletionOption.ResponseHeadersRead))
+        {
+            await WaitUntil(() => server.TvAppVersion == "0.9.69");
+        }
+        Assert.Equal("", SubtitleServer.ParseTvAppVersion("0.9.70<script>"));
+        Assert.True(SubtitleServer.IsTvAppOutdated("", "0.9.69"));
+        Assert.True(SubtitleServer.IsTvAppOutdated("0.9.49", "0.9.69"));
+        Assert.False(SubtitleServer.IsTvAppOutdated("0.9.69", "0.9.69"));
+        Assert.False(SubtitleServer.IsTvAppOutdated("0.9.70", "0.9.69"));
+        Assert.False(SubtitleServer.IsTvAppOutdated("", ""));
+    }
+
     /// Konuşana göre renk açıkken adlı satır "speakers" alanını taşır; kapalıyken ve adsız satırda alan yoktur.
     [Fact]
     public async Task SubtitleCarriesSpeakerColorsOnlyWhenEnabled()

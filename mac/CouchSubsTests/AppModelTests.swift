@@ -1262,6 +1262,43 @@ final class TVAppInstallTests: XCTestCase {
         XCTAssertEqual(model.tvApp, .unknown)
     }
 
+    /// #884, #891: anahtar bu Mac'te yokken TV'deki LG uygulaması eski kalıyor, hiç uyarı çıkmıyordu. TV sürümünü
+    /// altyazı akışıyla bildirir (bildirmeyen eski sayılır); ana ekran "TV uygulamasını güncelle" der.
+    func testOldLGAppReportedOnTheStreamAsksForAnUpdate() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        let model = model(services)
+        try await model.pair(tv)
+        XCTAssertEqual(model.tvApp, .unknown)
+        model.tvAppReported("")
+        XCTAssertEqual(model.tvAppOutdated, TVAppOutdated(installed: TVAppOutdated.unreported, bundled: "0.6.1"))
+        model.tvAppReported("0.5.0")
+        XCTAssertEqual(model.tvAppOutdated, TVAppOutdated(installed: "0.5.0", bundled: "0.6.1"))
+        await model.updateTVApp()
+        XCTAssertEqual(model.step, .tv)
+        XCTAssertEqual(model.tvApp, .needsPassphrase(error: nil))
+        await model.installTVApp(passphrase: "ABC123")
+        XCTAssertEqual(services.installs, 1)
+        XCTAssertNil(model.tvAppOutdated)
+        model.tvAppReported("0.6.1")
+        XCTAssertNil(model.tvAppOutdated)
+    }
+
+    func testOldLGAppReportedOnTheStreamIsUpdatedWithTheSavedKey() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        services.appOnTV = "0.5.0"
+        let store = MemoryStore()
+        store.save("dev-key", for: StoreKey.tvDevKey)
+        let model = model(services, store: store)
+        model.tv = tv
+        model.tvAppReported("")
+        for _ in 0..<200 where services.installs == 0 || model.tvApp == .working { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(services.installs, 1)
+        XCTAssertEqual(model.tvApp, .upToDate("0.6.1"))
+        XCTAssertNil(model.tvAppOutdated)
+    }
+
     func testOtherBrandsAreNotInstalledThroughLGDeveloperMode() async throws {
         let services = FakeServices()
         services.appOnTV = nil

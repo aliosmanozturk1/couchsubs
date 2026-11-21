@@ -95,7 +95,10 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
       // Bildirilen HDMI girişi (?hdmi=2) ayrı tutulur; adres karşılaştırmaları onsuz yapılır.
       const parsed = new URL(url);
       this.hdmi = parsed.searchParams.get('hdmi');
+      // TV uygulamasının sürümü (?v=0.9.69) de ayrı tutulur (GitHub #884, #891).
+      this.version = parsed.searchParams.get('v');
       parsed.searchParams.delete('hdmi');
+      parsed.searchParams.delete('v');
       url = parsed.toString().replace(/\/events\?$/, '/events');
       this.url = url;
       this.readyState = 0;
@@ -229,6 +232,8 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
     lastOpened: () => opened[opened.length - 1],
     // Son açılan akışın bildirdiği HDMI girişi (yoksa null).
     lastHdmi: () => streams[streams.length - 1].hdmi,
+    // Son açılan akışın bildirdiği TV uygulaması sürümü (?v=).
+    lastVersion: () => streams[streams.length - 1].version,
     streamCount: () => streams.length,
     // Açık akış arka planda kopar ve tarayıcı yeniden denemeye düşer (readyState 0) ya da tümüyle kapanır (2).
     dropStream(state) { const s = streams[streams.length - 1]; s.readyState = state; if (s.onerror) s.onerror({}); },
@@ -279,6 +284,25 @@ test('LG: kayıtlı adres yanıt vermezse aynı ağda yeni kaynak bulunur, kayı
   assert.strictEqual(tv.lastOpened(), 'http://192.168.1.42:8787/events');
   assert.strictEqual(tv.saved(), 'http://192.168.1.42:8787');
   assert.strictEqual(tv.server(), 'http://192.168.1.42:8787');
+});
+
+// #884, #891: LG'de geliştirici modu kapalıyken ya da anahtar bu bilgisayarda değilken CouchSubs TV'deki sürümü
+// okuyamıyor, TV uygulaması eski kalıyor ve hiç uyarı çıkmıyordu. TV sürümünü altyazı akışıyla kendisi bildirir.
+test('altyazı akışı TV uygulamasının sürümünü (appinfo.json ile aynı) bildirir', () => {
+  const tv = startTv({
+    saved: 'http://192.168.1.42:8787',
+    alive: new Set(['http://192.168.1.42:8787']),
+    hasLocalAddress: true,
+    localIp: null
+  });
+  tv.clock.advance(5000);
+  assert.strictEqual(tv.lastOpened(), 'http://192.168.1.42:8787/events');
+  const appinfo = JSON.parse(fs.readFileSync(path.join(root, 'appinfo.json'), 'utf8'));
+  assert.strictEqual(tv.lastVersion(), appinfo.version);
+  const tizen = fs.readFileSync(path.join(root, '..', 'tv-tizen', 'config.xml'), 'utf8');
+  assert.ok(tizen.includes('version="' + appinfo.version + '"'), 'tv-tizen/config.xml sürümü');
+  const gradle = fs.readFileSync(path.join(root, '..', 'tv-android', 'app', 'build.gradle'), 'utf8');
+  assert.ok(gradle.includes("versionName '" + appinfo.version + "'"), 'tv-android versionName');
 });
 
 test('platform adres söyleyemiyorsa (localAddress yok) da kayıtlı adresin ağı taranır', () => {

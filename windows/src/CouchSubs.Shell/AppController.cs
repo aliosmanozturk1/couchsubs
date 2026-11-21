@@ -202,6 +202,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         server.ClientsChanged += OnClientsChanged;
         server.EventSent += OnSubtitleEvent;
         server.LegacyClientConnected += OnLegacyClient;
+        server.TvAppVersionReported += OnTvAppVersion;
         server.PairingRequested += OnPairingRequest;
         server.SendsToTv = settings.Output.ShowsOnTv();
         server.SpeakerColors = settings.SpeakerColors;
@@ -213,6 +214,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         server.ClientsChanged -= OnClientsChanged;
         server.EventSent -= OnSubtitleEvent;
         server.LegacyClientConnected -= OnLegacyClient;
+        server.TvAppVersionReported -= OnTvAppVersion;
         server.PairingRequested -= OnPairingRequest;
     }
 
@@ -281,6 +283,64 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         Changed(nameof(LegacyTvWarning));
         _ = RefreshTvAppAsync();
     });
+
+    private void OnTvAppVersion(string version) => post(() => TvAppReported(version));
+
+    private TvAppOutdated? tvAppOutdated;
+
+    /// <summary>
+    /// TV'ye bağlı uygulama bu bilgisayardaki TV paketinden eski (sürümü altyazı akışıyla öğrenilir; bildirmeyen TV
+    /// 0.9.69'den eskidir). LG'de geliştirici modu kapalıyken ya da anahtar bu bilgisayarda değilken TV'deki sürüm başka
+    /// yoldan okunamıyor, TV uygulaması eski kalıyor ve hiç uyarı çıkmıyordu (GitHub #884, #891). Ana ekrandaki TV kartı
+    /// güncellemeyi önerir (Mac ile aynı).
+    /// </summary>
+    public TvAppOutdated? TvAppOutdated
+    {
+        get => tvAppOutdated;
+        private set
+        {
+            if (tvAppOutdated == value) return;
+            tvAppOutdated = value;
+            Changed(nameof(TvAppOutdated), nameof(ShowTvAppUpdate), nameof(TvStatusText), nameof(TvTone));
+        }
+    }
+
+    /// <summary>Ana ekranda "TV uygulamasını güncelle" görünür.</summary>
+    public bool ShowTvAppUpdate => HasTv && tvAppOutdated is not null;
+
+    /// <summary>Bu bilgisayardaki TV paketinin sürümü (seçili TV'nin markası için); paket yoksa null.</summary>
+    private string? BundledVersionForTv => tv is not { } target ? null
+        : target.Brand == TvBrand.Lg ? services.BundledTvAppVersion : services.BundledApp(target.Brand)?.Version;
+
+    /// <summary>
+    /// TV uygulaması altyazı akışına bağlandı ve sürümünü bildirdi (boş: 0.9.69'den eski, sürüm bildirmeyen uygulama).
+    /// Eskiyse ana ekran "TV uygulamasını güncelle" der; geliştirici modu açık ve anahtar kayıtlıysa (LG) ya da TV'ye
+    /// ulaşılıyorsa (Samsung, Android TV) güncelleme hemen, sorulmadan kurulur (önceki sürüm denetimiyle aynı yol).
+    /// </summary>
+    public void TvAppReported(string version)
+    {
+        if (BundledVersionForTv is not { } bundled || !SubtitleServer.IsTvAppOutdated(version, bundled))
+        {
+            TvAppOutdated = null;
+            return;
+        }
+        var installed = version.Length == 0 ? Shell.TvAppOutdated.Unreported : version;
+        var first = tvAppOutdated is null;
+        TvAppOutdated = new TvAppOutdated(installed, bundled);
+        if (!first) return;
+        SubtitleLog.Write($"TV uygulaması eski: TV {installed}, bu bilgisayardaki paket {bundled}; güncelleme deneniyor.");
+        _ = RefreshTvAppAsync();
+    }
+
+    /// <summary>
+    /// Ana ekrandaki "TV uygulamasını güncelle": TV adımı açılır ve uygulama yeniden kurulur. LG'de kayıtlı anahtar varsa
+    /// Passphrase sorulmaz; yoksa TV kartı Developer Mode / Passphrase adımlarını gösterir.
+    /// </summary>
+    public async Task UpdateTvAppAsync()
+    {
+        Step = OnboardingStep.Tv;
+        await ReinstallTvAppAsync();
+    }
 
     public void RotateSubtitleKey()
     {
@@ -564,8 +624,10 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private bool TestTvNotConnected { get => testTvNotConnected; set => Set(ref testTvNotConnected, value, [nameof(ShowTestTvHint)]); }
 
     private bool testTvNotConnected;
-    public StatusTone TvTone => HasTv ? TvToneFor(tvClients, isRunning) : StatusTone.Idle;
-    public string TvStatusText => !HasTv ? text["Not set up"] : tvClients > 0 ? text["Connected"] : text["Waiting for the TV app"];
+    public StatusTone TvTone => !HasTv ? StatusTone.Idle : tvAppOutdated is not null ? StatusTone.Warning : TvToneFor(tvClients, isRunning);
+    public string TvStatusText => !HasTv ? text["Not set up"]
+        : tvAppOutdated is { } outdated ? text.Format("TV app is out of date (%@ → %@)", outdated.Installed, outdated.Bundled)
+        : tvClients > 0 ? text["Connected"] : text["Waiting for the TV app"];
     /// <summary>Eşleşmiş bir TV var.</summary>
     public bool HasTv => tv is not null && store.Load<string>(StoreKeys.TvKey) is not null;
     /// <summary>Ana ekranda TV durumu gösterilir mi (altyazı yalnız bilgisayar ekranındaysa gösterilmez).</summary>
@@ -1021,6 +1083,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         {
             tvApp = value;
             Changed(nameof(TvApp));
+            // Kurulum ya da sürüm denetimi TV'deki uygulamayı güncel buldu: "TV uygulamasını güncelle" kalkar.
+            if (value is { Kind: TvAppKind.UpToDate, Version: { } current } && tvAppOutdated is { } outdated
+                && !DevModeInstaller.IsNewer(outdated.Bundled, current)) TvAppOutdated = null;
         }
     }
 

@@ -113,6 +113,19 @@ CAPABILITIES = {
         ("windows", _WIN_TESTS + "OcrCrumbsTests.cs", r"ocr-crumbs\.json"),
         ("android", _DROID_TESTS + "OcrCrumbsTest.kt", r"ocr-crumbs\.json"),
     ],
+    # GitHub #884/#891: TV uygulaması sürümünü altyazı akışıyla bildirir (/events?v=); eskiyse dört platformda da ana
+    # ekranda "TV uygulamasını güncelle" çıkar (LG geliştirici modu kapalı / anahtar başka cihazdayken de).
+    "Eski TV uygulamasını akıştaki sürümden tanıma ve ana ekranda güncelleme önerisi": [
+        ("mac", _CORE + "SubtitleServer.swift", r"static func isTVAppOutdated\("),
+        ("windows", _WIN + "SubtitleServer.cs", r"public static bool IsTvAppOutdated\("),
+        ("android", _DROID + "SubtitleServer.kt", r"fun isTvAppOutdated\("),
+        ("mac", "mac/CouchSubs/AppModel.swift", r"func tvAppReported\("),
+        ("mac", "mac/CouchSubs/UI/MainView.swift", r"model\.updateTVApp\(\)"),
+        ("windows", "windows/src/CouchSubs.Shell/AppController.cs", r"public void TvAppReported\("),
+        ("windows", "windows/src/CouchSubs.App/Views/MainView.xaml.cs", r"controller\.UpdateTvAppAsync\(\)"),
+        ("ios", "couchsubs-ios/CouchSubs/PhoneModel.swift", r"func tvAppReported\("),
+        ("android", "couchsubs-android/app/src/main/java/com/couchsubs/mobile/tv/TvAppUpdate.kt", r"fun reported\("),
+    ],
     "Gerçek kare ekran yazısı ölçütü (menü, görev listesi)": [
         ("mac", "tools/frame-regression/Sources/frame-regression/ScreenCheck.swift", r"func checkScreen\("),
         ("android", _DROID_TESTS + "ScreenFramesTest.kt", r"ocr/screen/"),

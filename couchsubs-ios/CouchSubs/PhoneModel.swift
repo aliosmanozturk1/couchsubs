@@ -498,6 +498,9 @@ final class PhoneModel: ObservableObject {
                 SubtitleLog.write("TV bağlantısı geçiş izniyle anahtarsız açıldı; TV uygulamasını güncelleyin.")
             }
         }
+        server.onTVAppVersion = { [weak self] version in
+            Task { @MainActor [weak self] in self?.tvAppReported(version) }
+        }
 
         server.onClientsChanged = { [weak self] count in
             DispatchQueue.main.async {
@@ -1822,6 +1825,31 @@ final class PhoneModel: ObservableObject {
             tvAppUpdate = nil
         }
         saveInstalledTVApp(InstalledTVApp(brand: target.0, host: target.1, port: target.2, version: version))
+    }
+
+    /// TV uygulaması altyazı akışına bağlanıp sürümünü bildirdi (boş: 0.9.69'den eski, sürüm bildirmeyen uygulama). LG'de
+    /// geliştirici modu kapalıyken ya da anahtar bu telefonda değilken `checkTVApp` TV'deki sürümü okuyamıyor, TV uygulaması
+    /// eski kalıyor ve hiç öneri çıkmıyordu (GitHub #884, #891). Eskiyse ana ekran "TV uygulamasını güncelle" önerir.
+    func tvAppReported(_ version: String) {
+        let target: (TVBrand, String, UInt16?)
+        if let installed = installedTVApp {
+            target = (installed.brand, installed.host, installed.port)
+        } else if let tv, !tv.host.isEmpty {
+            target = (tv.brand, tv.host, nil)
+        } else {
+            return
+        }
+        guard let bundled = TVPackages.version(for: target.0) else { return }
+        if SubtitleServer.isTVAppOutdated(reported: version, bundled: bundled) {
+            let installed = version.isEmpty ? SubtitleServer.unreportedTVAppVersion : version
+            if tvAppUpdate == nil { SubtitleLog.write("TV uygulaması eski: TV \(installed), bu telefondaki paket \(bundled).") }
+            tvAppUpdate = TVAppUpdate(brand: target.0, host: target.1, port: target.2, installed: installed, bundled: bundled)
+        } else {
+            tvAppUpdate = nil
+            if !version.isEmpty, installedTVApp?.version != version, let installed = installedTVApp {
+                saveInstalledTVApp(InstalledTVApp(brand: installed.brand, host: installed.host, port: installed.port, version: version))
+            }
+        }
     }
 
     /// Telefondan kurulum ya da sürüm denetimi bitti: TV hatırlanır. Android TV onaysız eşlendiği için altyazı hedefi olur.

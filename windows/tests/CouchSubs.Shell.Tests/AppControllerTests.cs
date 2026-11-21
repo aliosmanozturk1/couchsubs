@@ -2802,6 +2802,50 @@ public class TvAppInstallTests
         Assert.Equal(TvAppKind.Unknown, controller.TvApp.Kind);
     }
 
+    /// <summary>#884, #891: anahtar bu bilgisayarda yokken TV'deki LG uygulaması eski kalıyor, hiç uyarı çıkmıyordu. TV
+    /// sürümünü altyazı akışıyla bildirir (bildirmeyen eski sayılır); ana ekran "TV uygulamasını güncelle" der.</summary>
+    [Fact]
+    public async Task OldLgAppReportedOnTheStreamAsksForAnUpdate()
+    {
+        var services = new FakeServices { DevMode = true };
+        var controller = Make(services);
+        await controller.PairAsync(Tv);
+        Assert.Equal(TvAppKind.Unknown, controller.TvApp.Kind);
+        controller.TvAppReported("");
+        await Task.Yield();
+        Assert.Equal(new TvAppOutdated(TvAppOutdated.Unreported, "0.6.1"), controller.TvAppOutdated);
+        Assert.True(controller.ShowTvAppUpdate);
+        Assert.Equal(StatusTone.Warning, controller.TvTone);
+        Assert.Equal("TV app is out of date (< 0.9.69 → 0.6.1)", controller.TvStatusText);
+        controller.TvAppReported("0.5.0");
+        Assert.Equal(new TvAppOutdated("0.5.0", "0.6.1"), controller.TvAppOutdated);
+        await controller.UpdateTvAppAsync();
+        Assert.Equal(OnboardingStep.Tv, controller.Step);
+        Assert.Equal(TvAppKind.NeedsPassphrase, controller.TvApp.Kind);
+        await controller.InstallTvAppAsync("ABC123");
+        Assert.Equal(1, services.Installs);
+        Assert.Null(controller.TvAppOutdated);
+        controller.TvAppReported("0.6.1");
+        Assert.Null(controller.TvAppOutdated);
+        Assert.False(controller.ShowTvAppUpdate);
+    }
+
+    [Fact]
+    public async Task OldLgAppReportedOnTheStreamIsUpdatedWithTheSavedKey()
+    {
+        var services = new FakeServices { DevMode = true, AppOnTv = "0.5.0" };
+        var store = new MemoryStore();
+        store.Save(StoreKeys.TvDevKey, "dev-key");
+        var controller = Make(services, store);
+        await controller.PairAsync(Tv);
+        Assert.Equal(1, services.Installs);
+        services.AppOnTv = "0.6.1";
+        controller.TvAppReported("");
+        for (var i = 0; i < 200 && controller.TvApp.Kind == TvAppKind.Working; i++) await Task.Delay(10);
+        Assert.Equal(new TvAppState(TvAppKind.UpToDate, "0.6.1"), controller.TvApp);
+        Assert.Null(controller.TvAppOutdated);
+    }
+
     [Fact]
     public async Task OtherBrandsAreNotInstalledThroughLgDeveloperMode()
     {

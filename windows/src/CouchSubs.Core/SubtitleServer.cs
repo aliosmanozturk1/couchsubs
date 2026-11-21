@@ -245,6 +245,31 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
         get { lock (gate) return consolePort; }
     }
 
+    private string? tvAppVersion;
+
+    /// <summary>
+    /// Bağlanan TV uygulamasının altyazı akışıyla bildirdiği sürüm (<c>/events?v=0.9.69</c>). null: bu çalışmada henüz TV
+    /// bağlanmadı. Boş: bağlanan TV sürüm bildirmedi, yani 0.9.69'den eski bir TV uygulaması. LG'de geliştirici modu
+    /// kapalıyken ya da anahtar bu bilgisayarda değilken TV'deki sürüm başka yoldan okunamıyor, TV uygulaması eski kalıyor
+    /// ve hiç "TV uygulamasını güncelle" çıkmıyordu (GitHub #884, #891). Mac ve Android ile aynı.
+    /// </summary>
+    public string? TvAppVersion
+    {
+        get { lock (gate) return tvAppVersion; }
+    }
+
+    /// <summary>TV uygulaması altyazı akışına her bağlandığında bildirdiği sürümle (boş: eski TV uygulaması) çağrılır
+    /// (iş parçacığı havuzunda).</summary>
+    public event Action<string>? TvAppVersionReported;
+
+    /// <summary><c>v</c> parametresi: yalnız rakam ve nokta, en çok 20 karakter; yoksa ya da bozuksa boş (eski TV sayılır).</summary>
+    public static string ParseTvAppVersion(string? value) =>
+        value is { Length: > 0 and <= 20 } && value.All(c => c is (>= '0' and <= '9') or '.') ? value : "";
+
+    /// <summary>TV'nin bildirdiği sürüm (boş: sürüm bildirmeyen eski TV uygulaması) bu cihazdaki TV paketinden eski mi?</summary>
+    public static bool IsTvAppOutdated(string reported, string bundled) =>
+        bundled.Length > 0 && (reported.Length == 0 || global::CouchSubs.Core.LgTv.DevModeInstaller.IsNewer(bundled, reported));
+
     /// <summary><c>hdmi</c> parametresi: 1-4 arası tek rakam, değilse null.</summary>
     public static int? ParseHdmiPort(string? value) =>
         value is { Length: 1 } && value[0] is >= '1' and <= '4' ? value[0] - '0' : null;
@@ -590,6 +615,12 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
                 var obs = request.Parameter("viewer") is "obs" or SecondScreen.Viewer;
                 // Anahtarsız OBS sayfası eski bir OBS adresidir; TV uygulamasının eski olduğu anlamına gelmez.
                 if (legacy && !obs && Interlocked.Exchange(ref legacySeen, 1) == 0) LegacyClientConnected?.Invoke();
+                if (!obs)
+                {
+                    var version = ParseTvAppVersion(request.Parameter("v"));
+                    lock (gate) tvAppVersion = version;
+                    TvAppVersionReported?.Invoke(version);
+                }
                 await OpenStream(tcp, obs, cors, checkedKey, obs ? null : ParseHdmiPort(request.Parameter("hdmi")));
             }
             else if (method == "GET" && path == "/obs") await RespondAndClose(tcp, ObsOverlay, "text/html; charset=utf-8", cors);

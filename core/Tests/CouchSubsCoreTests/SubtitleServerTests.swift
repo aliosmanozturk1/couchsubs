@@ -61,6 +61,29 @@ final class SubtitleServerTests: XCTestCase {
         XCTAssertEqual(SubtitleServer.hdmiPort("4"), 4)
     }
 
+    /// TV uygulaması sürümünü akışla bildirir; bildirmeyen TV (0.9.69'den eski) eski sayılır, OBS sayılmaz (#884, #891).
+    func testRemembersTheTVAppVersionAndTreatsSilentTVsAsOld() async throws {
+        let server = SubtitleServer(port: 0)
+        let port = try await server.start()
+        defer { server.stop() }
+        XCTAssertNil(server.tvAppVersion)
+        let (obs, _) = try await URLSession.shared.bytes(from: URL(string: "http://127.0.0.1:\(port)/events?viewer=obs")!)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertNil(server.tvAppVersion)
+        let (old, _) = try await URLSession.shared.bytes(from: URL(string: "http://127.0.0.1:\(port)/events?hdmi=2")!)
+        try await waitUntil { server.tvAppVersion != nil }
+        XCTAssertEqual(server.tvAppVersion, "")
+        let (fresh, _) = try await URLSession.shared.bytes(from: URL(string: "http://127.0.0.1:\(port)/events?v=0.9.69&hdmi=2")!)
+        try await waitUntil { server.tvAppVersion == "0.9.69" }
+        obs.task.cancel(); old.task.cancel(); fresh.task.cancel()
+        XCTAssertEqual(SubtitleServer.tvAppVersion("0.9.70<script>"), "")
+        XCTAssertTrue(SubtitleServer.isTVAppOutdated(reported: "", bundled: "0.9.69"))
+        XCTAssertTrue(SubtitleServer.isTVAppOutdated(reported: "0.9.49", bundled: "0.9.69"))
+        XCTAssertFalse(SubtitleServer.isTVAppOutdated(reported: "0.9.69", bundled: "0.9.69"))
+        XCTAssertFalse(SubtitleServer.isTVAppOutdated(reported: "0.9.70", bundled: "0.9.69"))
+        XCTAssertFalse(SubtitleServer.isTVAppOutdated(reported: "", bundled: ""))
+    }
+
     /// Konuşana göre renk açıkken adlı satır `speakers` alanını taşır; adsız satırda ve ayar kapalıyken alan yoktur.
     func testSubtitleCarriesSpeakerColorsWhenEnabled() async throws {
         let server = SubtitleServer(port: 0)

@@ -236,6 +236,32 @@ public final class SubtitleServer: @unchecked Sendable {
     /// başka girişe geçmesinden bununla ayırır (Windows ve Android ile aynı). Eski TV uygulaması bildirmez: nil.
     public var consolePort: Int? { queue.sync { reportedPort } }
 
+    private var reportedVersion: String?
+
+    /// Bağlanan TV uygulamasının altyazı akışıyla bildirdiği sürüm (`/events?v=0.9.69`). nil: bu çalışmada henüz TV
+    /// bağlanmadı. Boş: bağlanan TV sürüm bildirmedi, yani 0.9.69'den eski bir TV uygulaması. LG'de geliştirici modu
+    /// kapalıyken ya da anahtar bu cihazda değilken TV'deki sürüm başka yoldan okunamıyor, TV uygulaması eski kalıyor ve
+    /// hiç "TV uygulamasını güncelle" çıkmıyordu (GitHub #884, #891). Windows ve Android ile aynı.
+    public var tvAppVersion: String? { queue.sync { reportedVersion } }
+
+    /// TV uygulaması altyazı akışına her bağlandığında bildirdiği sürümle (boş: eski TV uygulaması) ana iş parçacığında çağrılır.
+    public var onTVAppVersion: (@Sendable (String) -> Void)?
+
+    /// `v` parametresi: yalnız rakam ve nokta, en çok 20 karakter; yoksa ya da bozuksa boş (eski TV sayılır).
+    static func tvAppVersion(_ value: String?) -> String {
+        guard let value, !value.isEmpty, value.count <= 20, value.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }) else { return "" }
+        return value
+    }
+
+    /// 0.9.69'den eski TV uygulamaları sürüm bildirmez; ekranda böyle görünür.
+    public static let unreportedTVAppVersion = "< 0.9.69"
+
+    /// TV'nin bildirdiği sürüm (boş: sürüm bildirmeyen eski TV uygulaması) bu cihazdaki TV paketinden eski mi?
+    public static func isTVAppOutdated(reported: String, bundled: String) -> Bool {
+        guard !bundled.isEmpty else { return false }
+        return reported.isEmpty || DevModeInstaller.isNewer(bundled, than: reported)
+    }
+
     /// `hdmi` parametresi: 1-4 arası tek rakam, değilse nil.
     static func hdmiPort(_ value: String?) -> Int? {
         guard let value, value.count == 1, let port = Int(value), (1...4).contains(port) else { return nil }
@@ -617,6 +643,11 @@ public final class SubtitleServer: @unchecked Sendable {
                 if let handler = onLegacyClient { DispatchQueue.main.async { handler() } }
             }
             if !obs, let port = Self.hdmiPort(request.parameter("hdmi")) { reportedPort = port }
+            if !obs {
+                let version = Self.tvAppVersion(request.parameter("v"))
+                reportedVersion = version
+                if let handler = onTVAppVersion { DispatchQueue.main.async { handler(version) } }
+            }
             openStream(connection, viewer: obs, cors: cors)
         } else if method == "GET" && path == "/obs" {
             respondAndClose(connection, status: "200 OK", data: Self.obsOverlay, type: "text/html; charset=utf-8", cors: cors)

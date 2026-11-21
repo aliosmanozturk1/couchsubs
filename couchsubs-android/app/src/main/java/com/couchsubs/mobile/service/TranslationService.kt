@@ -645,6 +645,11 @@ class TranslationService : Service() {
             syncPairing(subtitleServer.pairing)
         }
         subtitleServer.onLegacyClient = { LiveState.update { it.copy(legacyTv = true) }; Log.i(TAG, "TV uygulamasını güncelleyin; geçiş bağlantısı.") }
+        // TV uygulaması sürümünü akışla bildirir; eskiyse ana ekran "TV uygulamasını güncelle" der (#884, #891).
+        subtitleServer.onTvAppVersion = { version ->
+            runCatching { com.couchsubs.mobile.tv.TvAppUpdate.reported(applicationContext, version) }
+                .onFailure { Log.w(TAG, "TV uygulaması sürümü işlenemedi: ${it.message}") }
+        }
         subtitleServer.sendsToTv = settings.target.showsOnTv
         subtitleServer.speakerColors = settings.speakerColors
         subtitleServer.setApart = settings.setTextApart

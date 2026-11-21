@@ -116,6 +116,24 @@ class SubtitleServer(
         /** Oyun içi telefonun çevirisini taşıyan ek alanın kimliği (Mac/iPhone ve Windows ile aynı). */
         const val GAME_PHONE_ID = "game-phone"
 
+        /** `v` parametresi: yalnız rakam ve nokta, en çok 20 karakter; yoksa ya da bozuksa boş (eski TV sayılır). */
+        fun tvAppVersion(value: String?): String =
+            value?.takeIf { it.isNotEmpty() && it.length <= 20 && it.all { c -> c in '0'..'9' || c == '.' } } ?: ""
+
+        /** TV'nin bildirdiği sürüm (boş: sürüm bildirmeyen eski TV uygulaması) bu cihazdaki TV paketinden eski mi? */
+        fun isTvAppOutdated(reported: String, bundled: String): Boolean {
+            if (bundled.isEmpty()) return false
+            if (reported.isEmpty()) return true
+            val x = bundled.split('.').map { it.toIntOrNull() ?: 0 }
+            val y = reported.split('.').map { it.toIntOrNull() ?: 0 }
+            for (i in 0 until maxOf(x.size, y.size)) {
+                val left = x.getOrElse(i) { 0 }
+                val right = y.getOrElse(i) { 0 }
+                if (left != right) return left > right
+            }
+            return false
+        }
+
         /** `hdmi` parametresi: 1-4 arası tek rakam, değilse null. */
         fun hdmiPort(value: String?): Int? = value?.singleOrNull()?.takeIf { it in '1'..'4' }?.let { it - '0' }
 
@@ -285,6 +303,18 @@ class SubtitleServer(
     @Volatile var consolePort: Int? = null
         private set
 
+    /**
+     * Bağlanan TV uygulamasının altyazı akışıyla bildirdiği sürüm (`/events?v=0.9.69`). null: bu çalışmada henüz TV
+     * bağlanmadı. Boş: bağlanan TV sürüm bildirmedi, yani 0.9.69'den eski bir TV uygulaması. LG'de geliştirici modu
+     * kapalıyken ya da anahtar bu telefonda değilken TV'deki sürüm başka yoldan okunamıyor, TV uygulaması eski kalıyor ve
+     * hiç "TV uygulamasını güncelle" çıkmıyordu (GitHub #884, #891). Windows ve Mac/iPhone ile aynı.
+     */
+    @Volatile var tvAppVersion: String? = null
+        private set
+
+    /** TV uygulaması altyazı akışına her bağlandığında bildirdiği sürümle (boş: eski TV uygulaması) çağrılır (sunucunun iş parçacığında). */
+    @Volatile var onTvAppVersion: ((String) -> Unit)? = null
+
     /** Sunucuyu başlatır ve dinlenen portu döner (port 0 ise rastgele seçilen). */
     fun start(): Int {
         val socket = ServerSocket()
@@ -452,6 +482,11 @@ class SubtitleServer(
                     val notify = synchronized(lock) { (access.legacy && !obs && !hasLegacyClient).also { if (it) hasLegacyClient = true } }
                     if (notify) onLegacyClient?.invoke()
                     if (!obs) hdmiPort(request.parameter("hdmi"))?.let { consolePort = it }
+                    if (!obs) {
+                        val version = tvAppVersion(request.parameter("v"))
+                        tvAppVersion = version
+                        onTvAppVersion?.invoke(version)
+                    }
                     openStream(socket, obs, cors, checkedKey)
                 }
                 // TV uygulaması ağdaki CouchSubs'ı bu yanıtla tanır.

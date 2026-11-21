@@ -305,6 +305,8 @@ public partial class MainView : UserControl
         await controller.ReinstallTvAppAsync();
     }
 
+    private async void OnUpdateTvApp(object sender, RoutedEventArgs e) => await controller.UpdateTvAppAsync();
+
     private void OnDownload(object sender, RoutedEventArgs e) => controller.StartModelDownload();
 
     /// <summary>

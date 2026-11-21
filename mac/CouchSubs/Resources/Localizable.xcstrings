@@ -13985,6 +13985,22 @@
         }
       }
     },
+    "TV app is out of date (%@ → %@)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV app is out of date (%@ → %@)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TV uygulaması eski (%@ → %@)"
+          }
+        }
+      }
+    },
     "TV: %@ → this phone: %@": {
       "localizations": {
         "en": {

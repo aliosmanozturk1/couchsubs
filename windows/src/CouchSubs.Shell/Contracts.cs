@@ -939,6 +939,13 @@ public enum TvAppKind { Unknown, Working, UpToDate, DevModeOff, NeedsPassphrase,
 /// <param name="HostPcIp">HostPcMismatch'te TV'deki "Host PC IP".</param>
 /// <param name="ComputerAddress">HostPcMismatch'te TV'nin göreceği bu bilgisayar adresi.</param>
 /// <param name="Hosts">ChooseAndroidTv'de bulunan TV'lerin adresleri.</param>
+/// <summary>TV'ye bağlı uygulama bu cihazdaki TV paketinden eski (#884, #891).</summary>
+public sealed record TvAppOutdated(string Installed, string Bundled)
+{
+    /// <summary>0.9.69'den eski TV uygulamaları sürüm bildirmez; ekranda böyle görünür.</summary>
+    public const string Unreported = "< 0.9.69";
+}
+
 public sealed record TvAppState(TvAppKind Kind, string? Version = null, DevModeError? Error = null, Uri? Url = null, string? Reason = null,
     string? HostPcIp = null, string? ComputerAddress = null, IReadOnlyList<string>? Hosts = null)
 {

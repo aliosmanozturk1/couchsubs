@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.68';
+  var APP_VERSION = '0.9.69';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -1815,7 +1815,10 @@
     }
     setStatus('st-conn', t('connecting'), 'muted');
     streamPort = shownPort;
-    eventSource = new EventSource(authenticatedUrl(address, '/events' + (shownPort ? '?hdmi=' + shownPort : '')));
+    // Sürüm (v) akışla bildirilir: bilgisayar ve telefon TV'deki uygulamanın eski kaldığını LG geliştirici moduna
+    // bağlanamasa da bununla anlar ve "TV uygulamasını güncelle" der (GitHub #884, #891). 0.9.69'den eski TV
+    // uygulamaları v göndermez; CouchSubs v'siz TV'yi eski sayar.
+    eventSource = new EventSource(authenticatedUrl(address, '/events?v=' + APP_VERSION + (shownPort ? '&hdmi=' + shownPort : '')));
     lastActivity = Date.now();
     eventSource.onopen = function () {
       lastActivity = Date.now();
