@@ -16,6 +16,41 @@
     return wired.ipAddress || wifi.ipAddress || null;
   }
 
+  // --- Konsolun girişi ---
+  // luna://com.webos.service.eim/getAllInputStatus LG'nin TV belgelerinde yok (LG'nin geliştirici forumu: "giriş durumunu
+  // veren bir API sağlanmıyor"); yanıtta yalnız bu uygulamanın 0.9'dan beri okuduğu alanlar kullanılır: id (HDMI_n),
+  // port, label, activate (girişte sinyal var), spdSourceDeviceInfo (HDMI SPD bilgisi: 'GAME') ve
+  // spdProductDescription (SPD'deki ürün adı). Başka alan varsayılmaz; alan yoksa sıra yine kurulur.
+  // X'te LG OLED C2: PS5 soundbar üzerinden bağlı (soundbar TV'nin eARC girişinde, HDMI 2), çeviri başlayınca siyah
+  // ekran. Sıra: konsol (sinyalli, sonra sinyalsiz), sinyalli başka cihaz, sinyalli ses cihazı (soundbar, AV alıcı;
+  // görüntüyü konsoldan geçiriyor olabilir ama kendi adıyla görünüyorsa sona), en son sinyalsizler (aday değil).
+  // İlk adayda görüntü gelmezse app.js sıradakini dener.
+  var RANK_NONE = 4;
+  var CONSOLE_NAME = /playstation|ps5|ps4|xbox/i;
+  var AUDIO_NAME = /sound ?bar|receiver|\bavr\b|home ?(theat|cinema)|\bbar\b|sonos|bose|denon|marantz|onkyo|yamaha|harman|\bjbl\b|polk|klipsch|sennheiser|\bhw-|\bht-/i;
+  var knownInputs = [];
+
+  // devices: getAllInputStatus yanıtındaki liste. Dönen: HDMI girişleri {port, label, rank} sıralı (aynı sırada giriş
+  // numarası küçük olan önce).
+  function rankInputs(devices) {
+    var out = [];
+    for (var i = 0; i < (devices || []).length; i++) {
+      var d = devices[i] || {};
+      if (!/^HDMI_/.test(d.id || '')) continue;
+      var port = Number(d.port) || Number(String(d.id).replace('HDMI_', '')) || 0;
+      if (port < 1) continue;
+      var name = (d.label || '') + ' ' + (d.spdProductDescription || '');
+      var isConsole = d.spdSourceDeviceInfo === 'GAME' || CONSOLE_NAME.test(name);
+      var rank;
+      if (isConsole) rank = d.activate ? 0 : 1;
+      else if (d.activate) rank = AUDIO_NAME.test(name) ? 3 : 2;
+      else rank = RANK_NONE;
+      out.push({ port: port, label: d.label || ('HDMI ' + port), rank: rank });
+    }
+    out.sort(function (a, b) { return a.rank - b.rank || a.port - b.port; });
+    return out;
+  }
+
   // --- HDMI görüntüsünün gözcüsü ---
   // HDMI girişi <video> ile (ext://hdmi) gösterilir. Görüntü oyunun ortasında kesilirse (ekran siyah, altyazı geliyor,
   // oyun arkada sürüyor) ya da uygulama arka plandan dönünce <video> kendiliğinden toparlanmıyordu; görüntü oynamayınca TV
@@ -673,28 +708,36 @@
       return hdmiText() + ' · ' + systemText();
     },
 
-    // TV'nin giriş listesinden oyun konsolunun bağlı olduğu HDMI portunu bulur.
-    // Bulamazsa callback'i null ile çağırır.
+    // Birim testi için (scripts/tv-webos-hdmi.test.js).
+    rankInputs: rankInputs,
+
+    // Son okunan giriş listesindeki etiket (bilgi panelinde "HDMI 2 — PS5"); bilinmiyorsa ''.
+    inputLabel: function (port) {
+      for (var i = 0; i < knownInputs.length; i++) if (knownInputs[i].port === port) return knownInputs[i].label;
+      return '';
+    },
+
+    // TV'nin giriş listesinden oyun konsolunun bağlı olduğu HDMI portunu bulur (sıralama: rankInputs).
+    // callback(port, label, connected, candidates): candidates görüntü gelmezse sırayla denenecek girişlerdir
+    // (app.js). Bulamazsa callback'i null ile çağırır.
     findConsolePort: function (callback) {
       var done = false;
-      function finish(port, label) {
+      function finish(port, label, candidates) {
         if (done) return;
         done = true;
-        callback(port, label);
+        callback(port, label, undefined, candidates || []);
       }
       try {
         var bridge = new PalmServiceBridge();
         bridge.onservicecallback = function (msg) {
           var devices;
           try { devices = JSON.parse(msg).devices || []; } catch (e) { return finish(null); }
-          var hdmi = devices.filter(function (d) { return /^HDMI_/.test(d.id); });
-          // Konsol dinlenme modundayken giriş etkin görünmez ama etiketi kalır; etkin olan tercih edilir.
-          var consoles = hdmi.filter(function (d) {
-            return d.spdSourceDeviceInfo === 'GAME' || /playstation|ps5/i.test((d.label || '') + ' ' + (d.spdProductDescription || ''));
-          });
-          var pick = consoles.filter(function (d) { return d.activate; })[0] || consoles[0] ||
-            hdmi.filter(function (d) { return d.activate; })[0];
-          finish(pick ? pick.port : null, pick ? pick.label : null);
+          var ranked = rankInputs(devices);
+          knownInputs = ranked;
+          var pick = ranked[0] && ranked[0].rank < RANK_NONE ? ranked[0] : null;
+          var candidates = ranked.filter(function (d) { return d.rank < RANK_NONE; })
+            .map(function (d) { return d.port; });
+          finish(pick ? pick.port : null, pick ? pick.label : null, candidates);
         };
         bridge.call('luna://com.webos.service.eim/getAllInputStatus', '{}');
         // Köprü nesnesi çöpe gitmesin diye geri çağrı gelene kadar tutulur.

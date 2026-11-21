@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.53';
+  var APP_VERSION = '0.9.54';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -180,11 +180,7 @@
 
   // Parametrelerdeki sunucu ve HDMI tercihini uygular; sunucu değiştiyse yeniden bağlanır.
   function applyParams(params) {
-    if (params.hdmi >= 1 && params.hdmi <= 4) {
-      hdmiPort = Number(params.hdmi);
-      save('hdmi', hdmiPort);
-      showHdmi(hdmiPort);
-    }
+    if (params.hdmi >= 1 && params.hdmi <= 4) chooseHdmi(Number(params.hdmi));
     if (params.server) {
       var address = params.server.replace(/\/+$/, '');
       var oldKey = serverKey(address);
@@ -202,8 +198,26 @@
 
   // --- HDMI görüntüsü ---
 
+  // Bilgi panelindeki giriş: numara, TV'nin giriş listesindeki adı (LG) ve nasıl seçildiği.
+  function hdmiText(port, how) {
+    var label = '';
+    try { label = typeof platform.inputLabel === 'function' ? platform.inputLabel(port) : ''; } catch (e) {}
+    var text = String(port) + (label && label !== 'HDMI ' + port ? ' — ' + label : '');
+    if (how) text += ' (' + t(how) + ')';
+    else if (Number(load('hdmi')) === port) text += ' (' + t('manualInput') + ')';
+    return text;
+  }
+
+  // Kullanıcı girişi kendisi seçti (sayı tuşu, ◀▶, giriş kutusu): seçim saklanır, otomatik deneme sırası bırakılır.
+  function chooseHdmi(port) {
+    autoQueue = [];
+    hdmiPort = port;
+    save('hdmi', hdmiPort);
+    showHdmi(hdmiPort);
+  }
+
   function showHdmi(port) {
-    setStatus('st-hdmi', String(port));
+    setStatus('st-hdmi', hdmiText(port));
     shownPort = port;
     // Akış başka girişle açılmışsa bilgisayar/telefon yeni girişi öğrensin diye yeniden açılır (giriş değişince bir kez).
     if (eventSource && server && streamPort !== port && !pausedByHidden && !demoRunning()) connectStream(server);
@@ -273,6 +287,8 @@
   var noPictureActions = [];
   // Kutu görüntü yokken değil, konsolun girişini sormak için açık (#360): görüntü gelince kendiliğinden kapanmaz.
   var choosingInput = false;
+  // Otomatik seçimde görüntü gelmezse sırayla denenecek girişler (platform.findConsolePort'un adayları; yalnız LG verir).
+  var autoQueue = [];
 
   function watchPicture(port) {
     clearTimeout(pictureTimer);
@@ -283,8 +299,23 @@
     pictureTimer = setTimeout(function () {
       // Bazı TV'ler görüntüyü gösterip 'playing' olayını hiç göndermiyor; görüntü varsa kutu açılmaz.
       if (pictureOk || (platform.hasPicture && platform.hasPicture())) return;
+      if (tryNextInput(port)) return;
       showNoPicture(port, false);
     }, NO_PICTURE_MS);
+  }
+
+  // Otomatik seçilen girişte görüntü gelmedi (LG: soundbar/AV cihazı ya da başka cihaz konsolun önüne geçti): TV'nin
+  // giriş listesindeki sıradaki aday denenir, saklanmaz. Aday kalmayınca giriş kutusu açılır. Kullanıcı girişi kendisi
+  // seçtiyse (autoQueue boş) denenmez.
+  function tryNextInput(port) {
+    if (port !== hdmiPort || demoRunning()) return false;
+    while (autoQueue.length && autoQueue[0] === port) autoQueue.shift();
+    if (!autoQueue.length) return false;
+    var next = autoQueue.shift();
+    hdmiPort = next;
+    showHdmi(next);
+    setStatus('st-hdmi', hdmiText(next, 'tryingInput'));
+    return true;
   }
 
   function notePicture(port, kind) {
@@ -295,6 +326,7 @@
       if (!choosingInput) hideNoPicture();
     } else if (kind === 'inputError' || kind === 'sourceError') {
       clearTimeout(pictureTimer);
+      if (tryNextInput(port)) return;
       if (platform.noPictureHelp) showNoPicture(port, true);
     }
   }
@@ -403,9 +435,7 @@
     } else if (action.close) {
       closeNoPicture();
     } else {
-      hdmiPort = action.port;
-      save('hdmi', hdmiPort);
-      showHdmi(hdmiPort);
+      chooseHdmi(action.port);
       showPanel(true);
     }
   }
@@ -446,9 +476,11 @@
   }
 
   // connected: bağlı HDMI sayısı (yalnız Samsung bildirir). Birden çoksa seçim tahmindir, giriş kullanıcıya sorulur.
+  // candidates: görüntü gelmezse sırayla denenecek girişler (LG; ilki port).
   function autoSelectConsole(onNotFound) {
-    platform.findConsolePort(function (port, label, connected) {
+    platform.findConsolePort(function (port, label, connected, candidates) {
       var guessed = connected > 1;
+      autoQueue = port && candidates && candidates.length > 1 ? candidates.slice() : [];
       if (!port) {
         if (guessed) askConsoleInput(hdmiPort);
         return onNotFound && onNotFound();
@@ -2303,7 +2335,7 @@
     // Geniş ekranlı Samsung'da (21:9, 32:9) Sarı tuş HDMI görüntüsünü sığdırır ya da ekranı doldurur (#304); 4K
     // Samsung'da görüntü ekranı doldurmuyorsa sıradaki pencere yöntemini dener.
     var modes = pictureModes();
-    if (modes) text += ' · ' + t(PICTURE_TEXT[modes] ? 'keyPictureSize' : 'keyPicture');
+    if (modes) text += ' · ' + t(pictureStep(modes) ? 'keyPictureSize' : 'keyPicture');
     var parts = text.split(' · ');
     el.innerHTML = '';
     for (var i = 0; i < parts.length; i++) {
@@ -2322,15 +2354,26 @@
     try { return typeof platform.pictureModes === 'function' ? platform.pictureModes() : null; } catch (e) { return null; }
   }
 
-  // 4K Samsung'daki pencere yöntemleri (tv-tizen/platform.js) ve Sarı'dan sonra gösterilen yazı.
-  var PICTURE_TEXT = { hold: 'pictureSize1', zoom: 'pictureSize2', page: 'pictureSize3' };
+  // 4K/8K Samsung'daki pencere yöntemleri (tv-tizen/platform.js): yöntemin sırası ve sayısı [1, 5]; geniş ekranın
+  // sığdır/doldur seçiminde null.
+  function pictureStep(mode) {
+    try {
+      var list = typeof platform.pictureModeList === 'function' ? platform.pictureModeList() : null;
+      var index = list ? list.indexOf(mode) : -1;
+      return index >= 0 ? [index + 1, list.length] : null;
+    } catch (e) {
+      return null;
+    }
+  }
 
   // Sarı: geniş ekranda HDMI görüntüsü 16:9 tam yükseklik (yanlarda siyah) ya da ekranın tamamı (gerilmiş); 4K
   // Samsung'da sıradaki pencere yöntemi.
   function togglePicture() {
     if (!pictureModes()) return;
     var mode = platform.togglePicture();
-    showSubtitle(t(PICTURE_TEXT[mode] || (mode === 'fill' ? 'pictureFill' : 'pictureFit')), 3000);
+    var step = pictureStep(mode);
+    showSubtitle(step ? t('pictureSize').replace('%1', step[0]).replace('%2', step[1]) :
+      t(mode === 'fill' ? 'pictureFill' : 'pictureFit'), 3000);
   }
 
   // Panel açıkken bekleme kutusu kapanır: ikisi üst üste binince yazılar okunmuyor.
@@ -2388,9 +2431,7 @@
 
   // Sayı tuşu olmayan kumandalar için: panel açıkken sol ve sağ HDMI girişini değiştirir.
   function stepHdmi(step) {
-    hdmiPort = (hdmiPort + step + 3) % 4 + 1;
-    save('hdmi', hdmiPort);
-    showHdmi(hdmiPort);
+    chooseHdmi((hdmiPort + step + 3) % 4 + 1);
     showPanel(true);
   }
 
@@ -2430,10 +2471,8 @@
         setStatus('st-hdmi', hdmiPort + ' (' + t('consoleNotFound') + ')', 'bad');
       });
       showPanel(true);
-    } else if (code >= 49 && code <= 52) { // 1–4
-      hdmiPort = code - 48;
-      save('hdmi', hdmiPort);
-      showHdmi(hdmiPort);
+    } else if (code >= 49 && code <= 52) { // 1–4: elle seçim, saklanır
+      chooseHdmi(code - 48);
       showPanel(true);
     } else if (code === KEY.RED) {
       showSubtitle(t('localTest'), 4000);

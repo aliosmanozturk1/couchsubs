@@ -465,3 +465,42 @@ test('webOS HDMI: açıkça istenirse odak sınırlı sayıda, TV sesi kısık k
   assert.strictEqual(tv.videos.length, 1);
 });
 
+
+// 0.9.54, X'te LG OLED C2: PS5 soundbar üzerinden bağlı (soundbar TV'nin eARC girişinde, HDMI 2), çeviri başlayınca
+// siyah ekran; PS5 doğrudan TV'ye takılınca düzeliyor. Giriş listesi (getAllInputStatus, LG belgelerinde yok) yalnız
+// 0.9'dan beri okunan alanlarla sıralanır: konsol, sinyalli başka cihaz, sinyalli ses cihazı, sinyalsizler (aday değil).
+function inputs(...list) {
+  return list.map(([port, label, activate, extra]) => Object.assign({ id: 'HDMI_' + port, port, label, activate }, extra || {}));
+}
+
+test('webOS giriş sırası: konsol önce; soundbar/AV cihazı adıyla görünen giriş sinyalli cihazların sonunda', () => {
+  const { platform } = startTv();
+  const order = (devices) => JSON.parse(JSON.stringify(platform.rankInputs(devices).map((d) => [d.port, d.rank])));
+  // PS5 HDMI 3'te, soundbar HDMI 2'de (eARC): PS5, sonra soundbar.
+  assert.deepStrictEqual(order(inputs([1, 'HDMI 1', false], [2, 'Soundbar', true], [3, 'HDMI 3', true, { spdSourceDeviceInfo: 'GAME' }])),
+    [[3, 0], [2, 3], [1, 4]]);
+  // Soundbar PS5'i geçiriyor ve SPD'de GAME bildiriyorsa (görüntü HDMI 2'den geliyor) konsol odur.
+  assert.deepStrictEqual(order(inputs([1, 'HDMI 1', true], [2, 'LG Sound Bar', true, { spdSourceDeviceInfo: 'GAME' }])),
+    [[2, 0], [1, 2]]);
+  // Konsol adı yok: sinyalli cihazlar giriş sırasıyla, ses cihazları (ad ya da SPD ürün adı) sonda.
+  assert.deepStrictEqual(order(inputs([1, 'AV Receiver', true], [2, 'HDMI 2', true], [3, 'HDMI 3', true, { spdProductDescription: 'HW-Q990B' }], [4, 'HDMI 4', true])),
+    [[2, 2], [4, 2], [1, 3], [3, 3]]);
+  // Dinlenme modundaki PS5 (sinyalsiz, etiketi kalmış) sinyalli başka cihazdan önce.
+  assert.deepStrictEqual(order(inputs([1, 'HDMI 1', true], [4, 'PS5', false])), [[4, 1], [1, 2]]);
+  // HDMI olmayan girişler, eksik alanlar.
+  assert.deepStrictEqual(order([{ id: 'COMP_1', port: 1, activate: true }, { id: 'HDMI_2' }, null]), [[2, 4]]);
+});
+
+test('webOS findConsolePort: seçilen giriş, adı ve görüntü gelmezse sırayla denenecek adaylar', () => {
+  const reply = { devices: inputs([1, 'HDMI 1', false], [2, 'Soundbar', true], [3, 'PS5', true]) };
+  const tv = startTv({ luna: (uri) => (uri.endsWith('/getAllInputStatus') ? reply : null) });
+  let result = null;
+  tv.platform.findConsolePort((...args) => { result = JSON.parse(JSON.stringify(args)); });
+  assert.deepStrictEqual(result, [3, 'PS5', null, [3, 2]]);
+  assert.strictEqual(tv.platform.inputLabel(2), 'Soundbar');
+  assert.strictEqual(tv.platform.inputLabel(4), '');
+  // Hiçbiri sinyalli değil ve konsol yok: bulunamadı (eskisi gibi).
+  reply.devices = inputs([1, 'HDMI 1', false], [2, 'HDMI 2', false]);
+  tv.platform.findConsolePort((...args) => { result = JSON.parse(JSON.stringify(args)); });
+  assert.deepStrictEqual(result, [null, null, null, []]);
+});

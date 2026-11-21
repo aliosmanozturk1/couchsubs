@@ -66,8 +66,10 @@ function element() {
 // hello: adrese göre /hello yanıtındaki kimlik ve bağlı TV sayısı ({ id, tvs }); verilmeyen adres eski sürüm gibi yalnız
 // {"app":"couchsubs"} döner. savedId: TV'nin kayıtlı CouchSubs kimliği. params: başlatma parametreleri.
 // auth: sunucunun eşleştirme durumu; storedKeys/identities: TV'de kayıtlı anahtarlar ve sunucu kimlikleri.
+// noPicture: görüntü vermeyen girişler; noPictureHelp: görüntü gelmezse app.js kutuyu açar (LG, Samsung gibi);
+// labels: platform.inputLabel'ın verdiği giriş adları.
 function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdmi, resolution, closeWhenHidden, panelTips, hello, savedId, params,
-                   auth = null, storedKeys = null, identities = null }) {
+                   auth = null, storedKeys = null, identities = null, noPicture = [], noPictureHelp = false, labels = null }) {
   const clock = makeClock();
   const storage = new Map();
   if (saved) storage.set('couchsubs.server', saved);
@@ -82,6 +84,7 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
   // index.html'de gizli başlayan öğeler.
   for (const id of ['panel-tip', 'source-tip', 'no-picture']) elements.set(id, Object.assign(element(), { className: 'hidden' }));
   let exits = 0;
+  const shownPorts = [];
   const opened = [];
   const streams = [];
   let relaunchCallback = null;
@@ -156,7 +159,10 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
     launchParams: () => params || null,
     onRelaunch(cb) { relaunchCallback = cb; },
     // TV görüntüyü kısa süre sonra verir (Samsung TVWindow'un yanıtı gibi).
-    showHdmi(port, host, onStatus) { clock.setTimeout(() => onStatus('playing'), 30); },
+    showHdmi(port, host, onStatus) {
+      shownPorts.push(port);
+      if (noPicture.indexOf(port) < 0) clock.setTimeout(() => onStatus('playing'), 30);
+    },
     findConsolePort(cb) { clock.setTimeout(() => cb.apply(null, consolePort || [1, 'PS5']), 20); }
   };
   let resolutionCallback = null;
@@ -165,6 +171,8 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
   }
   if (hasLocalAddress) platform.localAddress = (cb) => clock.setTimeout(() => cb(localIp || null), 10);
   if (closeWhenHidden) platform.closeWhenHidden = true;
+  if (noPictureHelp) platform.noPictureHelp = true;
+  if (labels) platform.inputLabel = (port) => labels[port] || '';
 
   const document = {
     hidden: false,
@@ -229,6 +237,8 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
     },
     server: () => elements.get('st-server') && elements.get('st-server').textContent,
     savedHdmi: () => storage.get('couchsubs.hdmi'),
+    // platform.showHdmi'ye sırayla verilen girişler.
+    shownPorts: () => shownPorts.slice(),
     stored: (key) => storage.get('couchsubs.' + key),
     // Sorulan /hello adresleri (tarama ve kimlik sorusu).
     probed: () => probes.slice(),
@@ -981,4 +991,39 @@ test('"temizle" gelen ya da süresi dolan satır öne gelişte yeniden çizilmez
   tv.setHidden(false);
   tv.clock.advance(1000);
   assert.strictEqual(tv.element('subtitle').className, 'hidden');
+});
+
+// 0.9.54, LG OLED C2 (PS5 soundbar üzerinden): otomatik seçilen girişte görüntü gelmezse TV'nin giriş listesindeki
+// sıradaki aday denenir, saklanmaz; elle seçimde denenmez. Bilgi panelinde giriş adı ve elle seçim görünür.
+test('LG: otomatik seçilen girişte görüntü gelmezse sıradaki aday denenir; elle seçim saklanır ve panelde görünür', () => {
+  const tv = startTv({ alive: new Set(), hasLocalAddress: false, consolePort: [3, 'PS5', undefined, [3, 2]],
+    noPicture: [3], noPictureHelp: true, labels: { 2: 'Soundbar', 3: 'PS5' } });
+  tv.clock.advance(1000);
+  assert.match(tv.element('st-hdmi').textContent, /^3 — PS5 \(otomatik\)$/);
+  // HDMI 3'te 10 sn görüntü yok: HDMI 2 denenir, kutu açılmaz, saklanmaz.
+  tv.clock.advance(10000);
+  assert.strictEqual(tv.shownPorts().at(-1), 2);
+  assert.match(tv.element('st-hdmi').textContent, /^2 — Soundbar \(önceki girişte görüntü yok, bu deneniyor\)$/);
+  assert.notStrictEqual(tv.element('no-picture').className, '');
+  assert.strictEqual(tv.savedHdmi(), undefined);
+  // Sayı tuşuyla elle seçim: saklanır, panelde "elle seçildi".
+  tv.key(51);
+  assert.strictEqual(tv.savedHdmi(), '3');
+  assert.match(tv.element('st-hdmi').textContent, /^3 — PS5 \(elle seçildi, hatırlanır\)$/);
+  // Elle seçilen girişte görüntü gelmezse başka giriş denenmez, giriş kutusu açılır.
+  tv.clock.advance(11000);
+  assert.strictEqual(tv.shownPorts().at(-1), 3);
+  assert.strictEqual(tv.element('no-picture').className, '');
+});
+
+test('LG: adaylar tükenince giriş kutusu açılır', () => {
+  const tv = startTv({ alive: new Set(), hasLocalAddress: false, consolePort: [3, 'PS5', undefined, [3, 2]],
+    noPicture: [2, 3], noPictureHelp: true });
+  tv.clock.advance(1000);
+  tv.clock.advance(10000);
+  assert.strictEqual(tv.shownPorts().at(-1), 2);
+  assert.notStrictEqual(tv.element('no-picture').className, '');
+  tv.clock.advance(10500);
+  assert.strictEqual(tv.element('no-picture').className, '');
+  assert.match(tv.element('no-picture-text').textContent, /HDMI 2/);
 });

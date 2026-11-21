@@ -183,8 +183,20 @@
   //         (Samsung pencereyi istendiği andaki ölçüde tutarsa sayfa değişmeden görüntü ekranı doldurur)
   //   zoom: görünüm ekran genişliğinde kalır, sayfa CSS zoom ile 1920'lik ölçüye büyütülür, '100%' istenir
   //   page: eski davranış, 1920'lik görünümde '100%'
+  // 8K Samsung (0.9.54, X'te QE75QN900A 7680x4320: "üç yöntemde de görüntü sol üst köşede küçük"). Bu TV 0.9.46'da
+  // 'scr 3840x2160 ... vv 2' bildirmişti: uygulama yüzeyi 4K, panel 8K. İki olasılık (ikisi de gerçek TV'de denenmedi):
+  //   a) device-width görünümü bu TV'de çalışma anında genişlemiyor (vw 1920 kalıyor): hold ve zoom reddedilip page'e
+  //      düşüyor, üç yöntem aynı görünüyor. hold/zoom artık device-width genişlemezse açık 'width=3840' ile de dener
+  //      ve ikinci kez bekler.
+  //   b) TVWindow pikseli 8K görüntü düzleminde okuyor: 3840'lık '100%' panelin çeyreği. hold8/zoom8 görünümü panelin
+  //      16:9 genişliğinde (7680) açar, '100%' o ölçüde istenir.
+  // 8K panel Samsung'un belgeli webapis.productinfo.is8KPanelSupported() (Tizen 4.0+) ya da DISPLAY ölçüsünden
+  // anlaşılır. Belgede panel çözünürlüğünü veren bir yöntem yok (yalnız evet/hayır); AVPlay.setDisplayRect belgede
+  // 1920x1080 tabanlı, TVWindow.show için belgede taban ölçü yazmıyor (yalnız "görüntü alanının sınırı içinde").
   var SCALED_KEY = 'couchsubs.picture4k';
   var SCALED_MODES = ['hold', 'zoom', 'page'];
+  var SCALED_MODES_8K = ['hold', 'hold8', 'zoom', 'zoom8', 'page'];
+  var EIGHT_K = [7680, 4320];
   // Görünüm değişikliğinden sonra innerWidth'in yenilenmesi için beklenen süre (ms).
   var VIEWPORT_DELAY = 300;
   var zoomFactor = 1;
@@ -256,7 +268,8 @@
       [Math.round(display.physicalWidth), Math.round(display.physicalHeight)] : null;
     var cap = capabilitySize();
     var model = productModel();
-    var candidates = [['scr', screenSize()], ['dsp', dsp], ['cap', cap], ['model', modelPanel(model)]];
+    var candidates = [['scr', screenSize()], ['dsp', dsp], ['cap', cap], ['model', modelPanel(model)],
+      ['8k', productSays8K() ? EIGHT_K : null]];
     var best = null;
     var from = '';
     for (var i = 0; i < candidates.length; i++) {
@@ -328,7 +341,7 @@
   function scaledMode() {
     try {
       var stored = window.localStorage.getItem(SCALED_KEY);
-      return SCALED_MODES.indexOf(stored) >= 0 ? stored : null;
+      return modeList().indexOf(stored) >= 0 ? stored : null;
     } catch (e) {
       return null;
     }
@@ -354,6 +367,27 @@
   function pageViewport() {
     if (zoomFactor > 1) setZoom(1);
     setViewport('width=' + NARROW_WIDTH);
+  }
+
+  // Samsung ürün bilgisi: panel 8K mı (webapis.productinfo.is8KPanelSupported, Tizen 4.0+; yoksa false).
+  function productSays8K() {
+    try {
+      var info = webapis.productinfo;
+      return typeof info.is8KPanelSupported === 'function' && info.is8KPanelSupported() === true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 8K panel: ürün bilgisi ya da okunan panel ölçüsü (7680x4320).
+  function eightK() {
+    var p = knownPanel();
+    return productSays8K() || !!(p && p.w >= EIGHT_K[0] * 0.95 && p.h >= EIGHT_K[1] * 0.95);
+  }
+
+  // Bu TV'de Sarı'nın sırayla geçtiği yöntemler.
+  function modeList() {
+    return eightK() ? SCALED_MODES_8K : SCALED_MODES;
   }
 
   // Webapis ürün bilgisi: panel 4K/8K mı (tanı satırı için; API yoksa boş).
@@ -386,10 +420,30 @@
 
   // line: tanı satırının başı. Sırayla denenen yöntemler: seçilmişse o (reddedilirse sıradakiler), yoksa physical
   // (bir kez reddedildiyse atlanır) ve hold. Her biri tried listesine yazılır; biri kabul edilince durulur.
+  // Bir yöntemin sırayla denenen görünümleri. hold/zoom: wideViewport; o device-width ise ve TV görünümü genişletmezse
+  // açık ekran genişliği (8K QN900A olasılık a). hold8/zoom8: 8K panelin 16:9 genişliği (olasılık b).
+  function viewportsFor(mode) {
+    if (mode === 'hold8' || mode === 'zoom8') {
+      var scale = panelScale();
+      return ['width=' + Math.round(NARROW_WIDTH * (scale >= 3 ? scale : EIGHT_K[0] / NARROW_WIDTH))];
+    }
+    var first = wideViewport();
+    var list = [first];
+    var size = screenSize();
+    if (first === 'width=device-width' && size && size[0] > NARROW_WIDTH * 1.05) list.push('width=' + size[0]);
+    return list;
+  }
+
+  function viewportWidth(content) {
+    var match = /^width=(\d+)$/.exec(content);
+    return match ? Number(match[1]) : 0;
+  }
+
   function showScaled(line, done) {
+    var modes = modeList();
     var chosen = scaledMode();
-    var order = chosen ? SCALED_MODES.slice(SCALED_MODES.indexOf(chosen)).concat(SCALED_MODES.slice(0, SCALED_MODES.indexOf(chosen)))
-      : (physicalRejected ? [] : ['physical']).concat(SCALED_MODES);
+    var order = chosen ? modes.slice(modes.indexOf(chosen)).concat(modes.slice(0, modes.indexOf(chosen)))
+      : (physicalRejected ? [] : ['physical']).concat(modes);
     var tried = [];
     var run = ++scaledRun;
     acceptedRect = null;
@@ -442,27 +496,40 @@
         pageViewport();
         return showFull(function () { tried.push('page ok'); finish(); }, next);
       }
-      // hold ve zoom: görünüm ekran genişliğinde açılır, yenilenmesi beklenir (zoom açıkken innerWidth değişmez).
-      if (zoomFactor > 1 && mode !== 'zoom') setZoom(1);
-      setViewport(wideViewport());
-      later(function () {
-        if (run !== scaledRun) return done();
-        var width = window.innerWidth;
-        if (!(width > NARROW_WIDTH * 1.05)) {
+      // hold ve zoom (8K: hold8, zoom8): görünüm ekran genişliğinde açılır, yenilenmesi beklenir (zoom açıkken
+      // innerWidth değişmez). Genişlemezse bir kez daha beklenir, sonra sıradaki görünüm denenir.
+      var zooms = mode === 'zoom' || mode === 'zoom8';
+      var views = viewportsFor(mode);
+      if (zoomFactor > 1 && !zooms) setZoom(1);
+      var view = function (v, waited) {
+        if (v >= views.length) {
           // Görünüm genişlemedi: bu yöntem bu TV'de anlamsız.
+          var narrow = window.innerWidth;
           pageViewport();
-          return next({ name: 'vw ' + width });
+          return next({ name: 'vw ' + narrow });
         }
-        if (mode === 'zoom') setZoom(width / NARROW_WIDTH);
-        showFull(function () {
-          tried.push(mode + ' vw ' + width + ' ok');
-          if (mode === 'hold') pageViewport();
-          finish();
-        }, function (e) {
-          pageViewport();
-          next(e);
-        });
-      }, VIEWPORT_DELAY);
+        if (!waited) setViewport(views[v]);
+        later(function () {
+          if (run !== scaledRun) return done();
+          var width = window.innerWidth;
+          // 8K yöntemi görünüm panel genişliğine yaklaşmadıysa (TV 3840'ta tuttu) hold/zoom'dan farkı yok.
+          var need = mode === 'hold8' || mode === 'zoom8' ? viewportWidth(views[v]) * 0.95 : NARROW_WIDTH * 1.05;
+          if (!(width >= need) || !(width > NARROW_WIDTH * 1.05)) {
+            if (!waited) return view(v, true);
+            return view(v + 1, false);
+          }
+          if (zooms) setZoom(width / NARROW_WIDTH);
+          showFull(function () {
+            tried.push(mode + ' vw ' + width + ' ok');
+            if (!zooms) pageViewport();
+            finish();
+          }, function (e) {
+            pageViewport();
+            next(e);
+          });
+        }, waited ? VIEWPORT_DELAY * 2 : VIEWPORT_DELAY);
+      };
+      view(0, false);
     };
     attempt(0);
   }
@@ -703,13 +770,18 @@
     },
     // Sayfanın CSS zoom oranı (zoom yönteminde ekran genişliği / 1920, yoksa 1); app.js aynı değeri
     // window.COUCHSUBS_ZOOM'dan okur.
+    // Sarı'nın sırayla geçtiği pencere yöntemleri (4K: 3, 8K: 5); app.js "yöntem 2/5" yazar. Geniş ekranda null.
+    pictureModeList: function () {
+      return !isWide() && scaledScreen() ? modeList().slice() : null;
+    },
     pageZoom: function () {
       return zoomFactor;
     },
     togglePicture: function (onStatus) {
       var next;
       if (!isWide() && scaledScreen()) {
-        next = SCALED_MODES[(SCALED_MODES.indexOf(scaledMode() || 'hold') + 1) % SCALED_MODES.length];
+        var modes = modeList();
+        next = modes[(modes.indexOf(scaledMode() || 'hold') + 1) % modes.length];
         try { window.localStorage.setItem(SCALED_KEY, next); } catch (e) {}
       } else {
         next = pictureMode() === 'fill' ? 'fit' : 'fill';

@@ -19,14 +19,18 @@ const code = fs.readFileSync(path.join(tizenDir, 'platform.js'), 'utf8');
 // opts.reject(rect): true ise show o dikdörtgeni ayrıca reddeder; opts.picture: kayıtlı seçim.
 // opts.follow: görünüm değişince innerWidth/innerHeight de değişir ('width=device-width' ekranın ölçüsü, 'width=N' N
 // genişlik, 16:9). opts.cssBounds: TVWindow sınırı ve '100%' penceresi o anki sayfa ölçüsü (4K Samsung QN900A).
-// opts.display: Tizen SystemInfo DISPLAY özelliği; opts.model: webapis.productinfo.getRealModel().
+// opts.display: Tizen SystemInfo DISPLAY özelliği; opts.model: webapis.productinfo.getRealModel(); opts.is8k:
+// productinfo.is8KPanelSupported() true. opts.deviceWidthStuck: 'width=device-width' görünümü genişlemez (açık genişlik
+// çalışır); opts.maxWidth: görünüm en çok bu genişliğe açılır.
 function load(innerWidth, innerHeight, opts = {}) {
   let window = null;
   const meta = { content: 'width=device-width', setAttribute(name, value) {
     if (name !== 'content') return;
     this.content = value;
     if (!opts.follow || !window) return;
-    const width = value === 'width=device-width' ? opts.screen[0] : Number(value.replace('width=', ''));
+    if (value === 'width=device-width' && opts.deviceWidthStuck) return;
+    let width = value === 'width=device-width' ? opts.screen[0] : Number(value.replace('width=', ''));
+    if (opts.maxWidth) width = Math.min(width, opts.maxWidth);
     window.innerWidth = width;
     window.innerHeight = Math.round(width * opts.screen[1] / opts.screen[0]);
   } };
@@ -90,7 +94,8 @@ function load(innerWidth, innerHeight, opts = {}) {
     },
     tvwindow,
   };
-  const webapis = opts.model ? { productinfo: { getRealModel: () => opts.model } } : undefined;
+  const webapis = opts.model || opts.is8k ? { productinfo: { getRealModel: () => opts.model || '',
+    is8KPanelSupported: () => !!opts.is8k } } : undefined;
   const document = { querySelector: (q) => (q === 'meta[name="viewport"]' ? meta : null), documentElement: { style: {} } };
   vm.runInNewContext(code, { window, document, tizen, webapis, setTimeout, clearTimeout, setInterval });
   const diagnostics = [];
@@ -463,7 +468,7 @@ test('Ekranı doldur seçiliyken ve 16:9 TV\'de sınama/yeniden isteme yok', () 
 // süre ekran genişliğinde açılıp '100%' o ölçüde istenir (hold); Sarı sıradaki yöntemi dener.
 // Görünüm değişikliğinden sonraki beklemeler dahil bütün zamanlayıcılar.
 function drain(loaded) {
-  for (let i = 0; i < 10 && loaded.pending(); i++) loaded.runTimers();
+  for (let i = 0; i < 30 && loaded.pending(); i++) loaded.runTimers();
 }
 
 function playAsync(loaded) {
@@ -617,4 +622,70 @@ test('16:9 1080p TV (DISPLAY 1920x1080, 16:9 milimetre): Sarı yok, tek 100% pen
     display: { resolutionWidth: 1920, resolutionHeight: 1080, physicalWidth: 1210, physicalHeight: 680 }, model: 'UE55KS9000' });
   assert.equal(loaded.platform.pictureModes(), null);
   assert.deepEqual(playHdmi(loaded), [FULL]);
+});
+
+// 0.9.54, X'te 8K Samsung QE75QN900A (7680x4320): "görüntü sol üst köşede küçük, Sarı ile üç yöntemde de aynı". Uygulama
+// yüzeyi 4K (scr 3840x2160), panel 8K; Samsung webapis.productinfo.is8KPanelSupported() true. İki olasılık sınanır:
+// a) çalışma anında "width=device-width" görünümü genişlemiyor (hold/zoom reddedilip page'e düşüyordu): açık genişlik;
+// b) TVWindow pikseli 8K düzlemde okuyor: hold8/zoom8 görünümü 7680'de açar.
+const QN900A_8K = { screen: [3840, 2160], follow: true, cssBounds: true, is8k: true };
+
+test('8K Samsung (7680x4320): panel 8K okunur, Sarı beş yöntem arasında döner (hold, hold8, zoom, zoom8, page)', () => {
+  const loaded = load(1920, 1080, QN900A_8K);
+  assert.deepEqual([...loaded.platform.pictureModeList()], ['hold', 'hold8', 'zoom', 'zoom8', 'page']);
+  playAsync(loaded);
+  // Önce 8K panelin pikselinde (sınır dışı, reddedilir), sonra 4K görünümde '100%'.
+  assert.deepEqual(loaded.shown[1].rect, ['0px', '0px', '7680px', '4320px']);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '3840px', '2160px']);
+  assert.match(loaded.diagnostics.at(-1), /panel 7680x4320 1\.78 8k \(dsp - cap -\) 8k · 100% ok · area 0,0,1920,1080 · auto · physical 0,0,7680,4320 fail NotSupportedError hold vw 3840 ok/);
+  const yellow = () => { const mode = loaded.platform.togglePicture(() => {}); drain(loaded); return mode; };
+  // hold8: görünüm 7680, '100%' o ölçüde; sayfa sonra 1920'ye döner.
+  assert.equal(yellow(), 'hold8');
+  assert.deepEqual(loaded.shown.at(-1).page, [7680, 4320]);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '7680px', '4320px']);
+  assert.equal(loaded.meta.content, 'width=1920');
+  assert.match(loaded.diagnostics.at(-1), /· hold8 · hold8 vw 7680 ok/);
+  assert.equal(yellow(), 'zoom');
+  assert.equal(loaded.platform.pageZoom(), 2);
+  // zoom8: görünüm 7680'de kalır, sayfa 4 kat büyütülür.
+  assert.equal(yellow(), 'zoom8');
+  assert.equal(loaded.meta.content, 'width=7680');
+  assert.equal(loaded.platform.pageZoom(), 4);
+  assert.equal(loaded.document.documentElement.style.zoom, '4');
+  assert.deepEqual(loaded.current(), ['0px', '0px', '7680px', '4320px']);
+  assert.equal(yellow(), 'page');
+  assert.equal(loaded.platform.pageZoom(), 1);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '1920px', '1080px']);
+  assert.equal(yellow(), 'hold');
+  assert.equal(loaded.store['couchsubs.picture4k'], 'hold');
+});
+
+test('8K Samsung: device-width görünümü genişlemezse hold açık 3840 genişlikle istenir (üç yöntem aynı kalmaz)', () => {
+  const loaded = load(1920, 1080, { ...QN900A_8K, deviceWidthStuck: true });
+  playAsync(loaded);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '3840px', '2160px']);
+  assert.deepEqual(loaded.shown.at(-1).page, [3840, 2160]);
+  assert.equal(loaded.meta.content, 'width=1920');
+  assert.match(loaded.diagnostics.at(-1), /hold vw 3840 ok/);
+});
+
+test('8K Samsung DISPLAY 7680x4320 bildirirse ürün bilgisi olmadan da 8K yöntemleri; 4K TV\'de beş yöntem yok', () => {
+  const byDisplay = load(1920, 1080, { screen: [3840, 2160], follow: true, cssBounds: true,
+    display: { resolutionWidth: 7680, resolutionHeight: 4320 } });
+  assert.equal(byDisplay.platform.pictureModeList().length, 5);
+  const fourK = load(1920, 1080, QN900A);
+  assert.deepEqual([...fourK.platform.pictureModeList()], ['hold', 'zoom', 'page']);
+  // 8K yöntemi 4K TV'de saklı kalmışsa yok sayılır, varsayılan yol çalışır.
+  fourK.store['couchsubs.picture4k'] = 'hold8';
+  assert.equal(fourK.platform.pictureModes(), 'hold');
+  // 16:9 1080p TV'de liste yok.
+  assert.equal(load(1920, 1080, { screen: [1920, 1080] }).platform.pictureModeList(), null);
+});
+
+test('8K Samsung: görünüm 7680e açılmazsa (TV 3840da tutar) hold8 atlanır, nedeni yazılır', () => {
+  const loaded = load(1920, 1080, { ...QN900A_8K, maxWidth: 3840 });
+  playAsync(loaded);
+  loaded.platform.togglePicture(() => {});
+  drain(loaded);
+  assert.match(loaded.diagnostics.at(-1), /· hold8 · hold8 fail vw 3840 zoom vw 3840 ok/);
 });
