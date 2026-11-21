@@ -590,8 +590,11 @@ public final class SubtitleServer: @unchecked Sendable {
                     let check = SubtitleAccess.Request(method: "GET", target: "/events?k=\(supplied.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "")", origin: request.origin, host: request.host)
                     state = SubtitleAccess.authorize(check, key: key, allowLegacy: false).status == 200 ? "valid" : "expired"
                 } else { state = pairing.poll(request.parameter("id") ?? "") }
-                var result = ["state": state]
+                var result: [String: Any] = ["state": state]
                 if state == "approved" { result["key"] = key }
+                // Eski TV uygulamaları `rejected`'ı tanımaz: `expired` görüp durur. Yenisi `rejected` ile Tamam bekler, yalnız
+                // `expired`'da kendisi yeniden ister (GitHub #737).
+                if state == "rejected" { result = ["state": "expired", "rejected": true] }
                 respondAndClose(connection, status: "200 OK", data: try! JSONSerialization.data(withJSONObject: result), type: "application/json", cors: cors)
             } else { respondAndClose(connection, status: "405 Method Not Allowed", cors: cors) }
             return

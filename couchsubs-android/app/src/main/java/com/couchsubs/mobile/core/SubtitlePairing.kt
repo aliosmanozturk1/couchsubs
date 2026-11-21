@@ -16,10 +16,15 @@ class SubtitlePairing(private val now: () -> Long = { System.nanoTime() / 1_000_
     private var ticket: Ticket? = null
     private var approved = false
     private var delivered = false
+    /**
+     * Telefonda reddedilen son istek: TV'ye `rejected` olarak söylenir. TV süresi dolan ya da düşen isteği kendisi yeniden
+     * ister, reddedileni istemez (Tamam bekler); yoksa reddedilen TV için pencere art arda açılırdı (GitHub #737).
+     */
+    private var rejected: String? = null
     @Synchronized fun setSession(active: Boolean) { session = active; if (!active) clear() }
     @Synchronized fun open() { manualUntil = now() + 120000 }
     @Synchronized fun reset() { clear() }
-    private fun clear() { ticket = null; approved = false; delivered = false; manualUntil = 0; cooldown = 0 }
+    private fun clear() { ticket = null; approved = false; delivered = false; manualUntil = 0; cooldown = 0; rejected = null }
     /**
      * Süresi dolan isteğin bekleme süresi dolduğu andan sayılır. Eskiden ilk bakıldığı andan sayılıyordu: TV'de
      * "Eşleştirme tamamlanmadı" çıktıktan sonra Tamam'a basınca istek on saniye boyunca reddediliyordu (409).
@@ -46,12 +51,16 @@ class SubtitlePairing(private val now: () -> Long = { System.nanoTime() / 1_000_
     @Synchronized fun resolve(id: String, accept: Boolean): Boolean {
         expire()
         if (ticket?.id != id || approved) return false
-        if (accept) approved = true else { ticket = null; cooldown = now() + 10000 }
+        if (accept) approved = true else { ticket = null; rejected = id; cooldown = now() + 10000 }
         return true
     }
+    /**
+     * İsteğin durumu: `pending`, `approved`, `rejected` (reddedildi) ya da `expired` (süresi doldu, yerini yenisi aldı,
+     * çeviri durdu). Sunucu `rejected`'ı eski TV uygulamaları için `expired` olarak, yanında `rejected: true` ile gönderir.
+     */
     @Synchronized fun poll(id: String): String {
         expire()
-        if (ticket?.id != id) return "expired"
+        if (ticket?.id != id) return if (id == rejected) "rejected" else "expired"
         if (approved) delivered = true
         return if (approved) "approved" else "pending"
     }

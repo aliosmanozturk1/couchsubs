@@ -141,6 +141,7 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
               if (auth.reject) { this.status = 409; data = {}; }
               else data = { id: 'abcdefghijklmnopqrstuv', code: '123456' };
             } else if (target.searchParams.has('validate')) data = { state: target.searchParams.get('k') === auth.key ? 'valid' : 'expired' };
+            else if (auth.rejected) data = { state: 'expired', rejected: true };
             else if (auth.expired) data = { state: 'expired' };
             else data = auth.approved ? { state: 'approved', key: auth.key } : { state: 'pending' };
           }
@@ -836,14 +837,28 @@ test('discovery does not restart pairing while waiting for human approval', () =
   assert.strictEqual(tv.lastOpened(), secureAddress + '/events?k=' + secureKey);
 });
 
-test('süresi dolan eşleştirme kendiliğinden yeniden başlamaz, Tamam ile yeniden istenir', () => {
+// GitHub #737: istek telefonda düştü (çeviri durdurulup başlatıldı, iki dakikada onaylanmadı). Eskiden TV "Eşleştirme
+// tamamlanmadı, Tamam'a basın"da kalıyor, yeni istek göndermiyordu; telefonda onay penceresi hiç çıkmıyordu.
+test('süresi dolan ya da düşen eşleştirme isteği kendiliğinden yeniden gönderilir, onaylanınca bağlanır', () => {
   const auth = { key: secureKey, id: secureId, expired: true };
+  const tv = startTv({ saved: secureAddress, alive: new Set([secureAddress]), auth });
+  tv.clock.advance(1000);
+  assert.doesNotMatch(tv.element('pairing').textContent, /Tamam/);
+  tv.clock.advance(4000);
+  assert(tv.requests.filter(r => r.method === 'POST').length >= 2);
+  auth.expired = false; auth.approved = true;
+  tv.clock.advance(5000);
+  assert.strictEqual(tv.lastOpened(), secureAddress + '/events?k=' + secureKey);
+});
+
+test('reddedilen eşleştirme kendiliğinden yeniden başlamaz, Tamam ile yeniden istenir', () => {
+  const auth = { key: secureKey, id: secureId, rejected: true };
   const tv = startTv({ saved: secureAddress, alive: new Set([secureAddress]), auth });
   tv.clock.advance(5000);
   assert.match(tv.element('pairing').textContent, /Tamam/);
   tv.clock.advance(60000);
   assert.strictEqual(tv.requests.filter(r => r.method === 'POST').length, 1);
-  auth.expired = false; auth.approved = true;
+  auth.rejected = false; auth.approved = true;
   // Gerçek sayfada kaynak ipucu ve görüntü yok ekranı başta gizlidir.
   tv.element('source-tip').className = 'hidden';
   tv.element('no-picture').className = 'hidden';

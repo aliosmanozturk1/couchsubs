@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.61';
+  var APP_VERSION = '0.9.62';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -1633,9 +1633,22 @@
   var pairingTimer = null;
   // Eşleştirme kodu ekranda beklerken tarama aynı adresi bulursa bağlantı baştan kurulmaz (kod kaybolmasın).
   var pairingActive = false;
-  // Eşleştirme kendiliğinden yeniden başlamaz (bilgisayarda yeni onay penceresi açılırdı); Tamam ile yeniden denenir.
+  // Reddedilen eşleştirme kendiliğinden yeniden başlamaz (bilgisayarda/telefonda pencere art arda açılırdı); Tamam ile
+  // yeniden denenir.
   var pairingFailed = false;
   function stopPairing() { pairingActive = false; pairingFailed = true; setPairing(t('pairRetry')); }
+  // Süresi dolan ya da telefonda/bilgisayarda düşen istek (çeviri durdurulup başlatıldı, uygulama yeniden açıldı, iki
+  // dakikada onaylanmadı) ve ulaşmayan istek kendiliğinden yeniden gönderilir (GitHub #737). Eskiden TV "Eşleştirme
+  // tamamlanmadı, Tamam'a basın"da kalıyor, yeni istek göndermiyordu; telefonda çeviri sürse de onay penceresi hiç
+  // çıkmıyordu.
+  var PAIR_RETRY_MS = 3000;
+  function retryPairing(address, generation, ms) {
+    pairingActive = false;
+    pairingFailed = false;
+    setPairing(t('pairServer'));
+    clearTimeout(pairingTimer);
+    pairingTimer = setTimeout(function () { if (generation === connectionGeneration) connect(address); }, ms || PAIR_RETRY_MS);
+  }
   // Eşleştirme kodu ve yönlendirmesi bekleme kutusunun dışında, her şeyin üstünde durur (X @Eaglaris, 20 Kas: Android
   // TV'de kod hiç görünmedi, bilgisayarda onaylayınca bağlandı). Kod bekleme kutusunun içindeydi; o kutu katman modunda
   // hep gizli (tv-android/platform.js), panel ya da "görüntü yok" kutusu açılınca da gizleniyor ve bağlanılacak adres
@@ -1688,9 +1701,11 @@
       if (saved) saveServerKey(address, saved);
       var key = serverKey(address);
       if (key) {
-        pairRequest('GET', address, '/pair?validate=1&k=' + encodeURIComponent(key), function (result) {
+        pairRequest('GET', address, '/pair?validate=1&k=' + encodeURIComponent(key), function (result, status) {
           if (generation !== connectionGeneration) return;
           if (result && result.state === 'valid') { remember(key); connectStream(address); }
+          // Yanıt gelmedi (ağ bir an koptu, sunucu yeniden açılıyor): anahtar geçerli olabilir, boşuna onay istenmez.
+          else if (!status) retryPairing(address, generation, 5000);
           else beginPair();
         });
       } else beginPair();
@@ -1716,8 +1731,8 @@
             return;
           }
           if (!ticket || !/^[A-Za-z0-9_-]{22}$/.test(ticket.id || '') || !/^[0-9]{6}$/.test(ticket.code || '')) {
-            stopPairing();
-            pairingTimer = setTimeout(function () { if (generation === connectionGeneration) connect(address); }, 15000);
+            // İstek ulaşmadı ya da yanıt bozuk: "tamamlanmadı" denmez, birkaç saniye sonra yeniden denenir.
+            retryPairing(address, generation, 5000);
             return;
           }
           var deadline = Date.now() + 120000;
@@ -1725,13 +1740,17 @@
           setStatus('st-conn', t('pairCode') + ' ' + ticket.code, 'muted');
           function poll() {
             if (generation !== connectionGeneration) return;
-            if (Date.now() >= deadline) { stopPairing(); return; }
+            if (Date.now() >= deadline) { retryPairing(address, generation); return; }
             pairRequest('GET', address, '/pair?id=' + encodeURIComponent(ticket.id), function (result) {
               if (generation !== connectionGeneration) return;
               if (result && result.state === 'approved' && /^[A-Za-z0-9_-]{22}$/.test(result.key || '')) {
                 remember(result.key); setPairing(''); connectStream(address); return;
               }
-              if (result && result.state === 'expired') { stopPairing(); return; }
+              // Reddedildi: Tamam beklenir. Süresi doldu ya da istek düştü: yeni istek gönderilir.
+              if (result && result.state === 'expired') {
+                if (result.rejected === true) stopPairing(); else retryPairing(address, generation);
+                return;
+              }
               pairingTimer = setTimeout(poll, 1500);
             });
           }

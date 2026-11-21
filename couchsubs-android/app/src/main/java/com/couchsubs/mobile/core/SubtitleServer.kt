@@ -430,7 +430,10 @@ class SubtitleServer(
                             val check = request.copy(target = "/events?k=" + java.net.URLEncoder.encode(request.parameter("k") ?: "", "UTF-8"))
                             if (SubtitleAccess.authorize(check, accessKey, false).status == 200) "valid" else "expired"
                         } else pairing.poll(request.parameter("id") ?: "")
-                        org.json.JSONObject().put("state", state).apply { if (state == "approved") put("key", accessKey) }.toString()
+                        // Eski TV uygulamaları "rejected"ı tanımaz: "expired" görüp durur. Yenisi rejected ile Tamam bekler, yalnız
+                        // "expired"da kendisi yeniden ister (GitHub #737).
+                        if (state == "rejected") org.json.JSONObject().put("state", "expired").put("rejected", true).toString()
+                        else org.json.JSONObject().put("state", state).apply { if (state == "approved") put("key", accessKey) }.toString()
                     }
                     respondAndClose(socket, "200 OK", body, cors)
                 } else respondAndClose(socket, "405 Method Not Allowed", cors = cors)

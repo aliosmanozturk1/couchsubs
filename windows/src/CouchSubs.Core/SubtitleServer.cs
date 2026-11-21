@@ -569,7 +569,10 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
                     {
                         var valid = request.Parameter("validate") == "1";
                         var state = valid ? (SubtitleAccess.Authorize(request with { Target = "/events?k=" + Uri.EscapeDataString(request.Parameter("k") ?? "") }, accessKey, false, out _) == 200 ? "valid" : "expired") : Pairing.Poll(request.Parameter("id") ?? "");
-                        body = JsonSerializer.Serialize(new { state, key = state == "approved" ? accessKey : null });
+                        // Eski TV uygulamaları "rejected"ı tanımaz: "expired" görüp durur. Yenisi rejected ile Tamam bekler, yalnız
+                        // "expired"da kendisi yeniden ister (GitHub #737).
+                        body = state == "rejected" ? JsonSerializer.Serialize(new { state = "expired", rejected = true })
+                            : JsonSerializer.Serialize(new { state, key = state == "approved" ? accessKey : null });
                     }
                     await RespondAndClose(tcp, "200 OK", body, cors);
                 }
