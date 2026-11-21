@@ -17,6 +17,8 @@ object ScreenTranslation {
         val lineHeight: Double,
         /** Her parçadaki kumanda simgeleri, parçadaki [ButtonIcons.MARKER] sırasıyla; simge yoksa null. */
         val icons: List<List<IconSlot>>? = null,
+        /** GTA 6 telefonunun ekranındaki grubun rolü ve düz ekrandaki yeri ([PhoneChat]); telefon dışındaysa null. */
+        val phone: ScreenPhoneCard.Placement? = null,
     )
 
     data class Item(
@@ -33,6 +35,8 @@ object ScreenTranslation {
         val look: TextLook? = null,
         /** Çevirisi aslıyla aynı (ad, "ok"): yalnız telefon kartında gösterilir, başka yerde atılır ([ScreenPhoneCard]). */
         val unchanged: Boolean = false,
+        /** Telefondaki yazının rolü ve düz ekrandaki yeri; kart bunlarla dizilir ([ScreenPhoneCard.layout]). */
+        val phone: ScreenPhoneCard.Placement? = null,
     ) {
         /** Birden çok parça var: satır satır, sola yaslı gösterilir. */
         val paragraphs: Boolean get() = translation.contains('\n')
@@ -51,16 +55,16 @@ object ScreenTranslation {
      */
     fun translateGroups(
         reading: Reading, translate: (String) -> String, cancelled: () -> Boolean = { false }, frame: GrayFrame? = null,
-        color: ((Int, Int) -> Int)? = null, phone: TextBox? = null, progress: (List<Item>) -> Unit = {},
+        color: ((Int, Int) -> Int)? = null, phone: ScreenPhoneCard.Handset? = null, progress: (List<Item>) -> Unit = {},
     ): List<Item> {
         val items = mutableListOf<Item>()
-        for (group in withImages(groups(reading, wholeScreen = true), frame)) {
+        for (group in withImages(groups(reading, wholeScreen = true, handset = phone), frame)) {
             if (cancelled()) return present(items, phone)
             // Simgeler çeviride uydurma adlarla korunur (IconText); sözlükteki kısa etiketler çevirmene gitmez, fiyatlar
             // adla korunur (PriceText).
             val prepared = group.paragraphs.map { IconText.protect(it) }
             val translated = prepared.mapIndexed { index, paragraph ->
-                known(group.paragraphs[index]) ?: PriceText.protect(paragraph.text).let { PriceText.restore(translate(it.text), it.values) }
+                known(group.paragraphs[index], group) ?: PriceText.protect(paragraph.text).let { PriceText.restore(translate(it.text), it.values) }
             }
             val item = item(group, prepared, translated, keepUnchanged = phone != null) ?: continue
             items.add(styled(item, frame, color))
@@ -80,17 +84,17 @@ object ScreenTranslation {
      */
     fun translate(
         reading: Reading, translator: TextTranslator, cancelled: () -> Boolean = { false }, frame: GrayFrame? = null,
-        color: ((Int, Int) -> Int)? = null, phone: TextBox? = null, progress: (List<Item>) -> Unit = {},
+        color: ((Int, Int) -> Int)? = null, phone: ScreenPhoneCard.Handset? = null, progress: (List<Item>) -> Unit = {},
     ): List<Item> {
         if (!translator.translatesTogether)
             return translateGroups(reading, { translator.translate(it) }, cancelled, frame, color, phone, progress)
-        val groups = withImages(groups(reading, wholeScreen = true), frame)
+        val groups = withImages(groups(reading, wholeScreen = true, handset = phone), frame)
         // Simgeler çeviride uydurma adlarla korunur (IconText). Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND",
-        // "BACK") çevirmene gitmez; fiyatlar adla korunur (PriceText).
+        // "BACK") ve telefondaki kişi adları çevirmene gitmez; fiyatlar adla korunur (PriceText).
         val prepared = groups.map { group -> group.paragraphs.map { IconText.protect(it) } }
         val sources = groups.flatMap { it.paragraphs }
         if (sources.isEmpty()) return emptyList()
-        val knowns = sources.map(::known)
+        val knowns = groups.flatMap { group -> group.paragraphs.map { known(it, group) } }
         val prices = prepared.flatMap { group -> group.map { PriceText.protect(it.text) } }
         val asked = prices.indices.filter { knowns[it] == null }
         val answers = if (asked.isEmpty()) emptyList() else translator.translateAll(asked.map { prices[it].text })
@@ -115,8 +119,12 @@ object ScreenTranslation {
      * Oyun arayüzü sözlüğündeki kısa etiketin Türkçesi ("SCROLL" → "KAYDIR", "TIP" → "BAHŞİŞ VER"); simgeli ya da
      * sözlükte olmayan parçada null (çevirmene gider).
      */
-    internal fun known(paragraph: String): String? =
-        if (paragraph.indexOf(ButtonIcons.MARKER) >= 0) null else UiCommands.translate(paragraph)
+    internal fun known(paragraph: String, group: Group? = null): String? = when {
+        // Telefondaki kişi adı (sohbet başlığı, listedeki ad) çevrilmez: "Rose" "Gül", "May" "Mayıs" olmasın.
+        group?.phone?.role?.keepsText == true -> paragraph
+        paragraph.indexOf(ButtonIcons.MARKER) >= 0 -> null
+        else -> UiCommands.translate(paragraph)
+    }
 
     /**
      * Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de
@@ -136,7 +144,7 @@ object ScreenTranslation {
     }
 
     /** Gösterilecek öğeler: telefon varsa kartı dizilir; çevirisi aslıyla aynı öğeler (kart dışında) atılır. */
-    internal fun present(items: List<Item>, phone: TextBox?): List<Item> =
+    internal fun present(items: List<Item>, phone: ScreenPhoneCard.Handset?): List<Item> =
         (if (phone != null) ScreenPhoneCard.layout(items, phone) else items).filter { !it.unchanged }
 
     /** Aynı ekranın iki okuması en az bu kadar benzer; yeni bir mesajın eklenmesi bile ekranı "değişmiş" yapar. */
@@ -180,7 +188,7 @@ object ScreenTranslation {
         if (!changed && !keepUnchanged) return null
         val rendered = IconText.render(texts.joinToString("\n"), slots)
         return Item(group.paragraphs.joinToString("\n") { IconText.plain(it) }, rendered.text, group.box, group.lineHeight,
-            rendered.icons.takeIf { it.isNotEmpty() }, unchanged = !changed)
+            rendered.icons.takeIf { it.isNotEmpty() }, unchanged = !changed, phone = group.phone)
     }
 
     /**
@@ -189,7 +197,10 @@ object ScreenTranslation {
      * biniyorsa ve yazı boyu benziyorsa o gruba katılır; küçük harfle başlayan satır üstteki bitmemiş cümleye katılır
      * ([continues]). Gruplar yukarıdan aşağı; en çok [MAX_GROUPS], en çok yazısı olanlar.
      */
-    fun groups(reading: Reading, keepPrompts: Boolean = false, keepIdentifiers: Boolean = false, wholeScreen: Boolean = false): List<Group> {
+    fun groups(
+        reading: Reading, keepPrompts: Boolean = false, keepIdentifiers: Boolean = false, wholeScreen: Boolean = false,
+        handset: ScreenPhoneCard.Handset? = null,
+    ): List<Group> {
         var marked = (if (wholeScreen) Reading(reading.lines.map(::repaired)) else reading).withButtonIcons()
         // "Ekranı çevir": tuş çubukları atılmaz, etiketlerine bölünür ([promptPieces]); fiyatlar düzelir ([PriceText.repair]).
         if (wholeScreen) marked = Reading(marked.lines.flatMap { line ->
@@ -199,6 +210,16 @@ object ScreenTranslation {
         val lines = (if (keepPrompts) marked else marked.withoutButtonPrompts()).withoutOcrNoise(keepIdentifiers).lines
             .filter { it.box != null && ScreenText.isWords(it.text) }
             .sortedWith(compareBy<TextLine>({ it.box!!.top }, { it.box!!.left }))
+        // [handset]: karede GTA 6 telefonu varsa ekranındaki satırlar ayrı gruplanır ([PhoneChat]: balon, başlık, liste).
+        if (handset != null) {
+            val (onPhone, rest) = lines.partition { PhoneChat.onScreen(handset.flat(it.box!!)) }
+            if (onPhone.isNotEmpty()) return groupLines(rest) + PhoneChat.groups(onPhone, handset)
+        }
+        return groupLines(lines)
+    }
+
+    /** Kutuları bilinen, süzülmüş ve sıralı satırları gruplar. */
+    private fun groupLines(lines: List<TextLine>): List<Group> {
         val groups = mutableListOf<MutableList<TextLine>>()
         for (line in lines) {
             var index = groups.indexOfLast { belongs(line.box!!, it.last().box!!) }

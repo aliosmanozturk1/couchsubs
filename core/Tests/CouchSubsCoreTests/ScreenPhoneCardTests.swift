@@ -4,68 +4,164 @@ import CoreGraphics
 import XCTest
 @testable import CouchSubsCore
 
-/// "Ekranı çevir": stil eşleşmeli yerinde çizim, GTA 6 telefon kartı ve yeniden basınca ekranın değişip değişmediği
-/// (Windows: ScreenPhoneCardTests.cs, Android: ScreenPhoneCardTest.kt).
+/// "Ekranı çevir": stil eşleşmeli yerinde çizim, GTA 6 telefon kartı ve yeniden basınca ekranın değişip değişmediği.
+/// Telefonun satır kuralları ortak deneme dosyasından (Fixtures/phone-chat.json; Windows ScreenPhoneCardTests.cs ve
+/// Android ScreenPhoneCardTest.kt aynı dosyayı okur).
 final class ScreenPhoneCardTests: XCTestCase {
-    private let phone = TextBox(left: 0.72, top: 0.30, right: 0.96, bottom: 0.92)
+    private struct Vectors: Decodable {
+        struct Line: Decodable { let text: String; let box: [Double] }
+        struct Case: Decodable { let name: String; let pose: [Double]; let aspect: Double; let lines: [Line]; let groups: [[String]] }
+        struct Outside: Decodable {
+            struct Entry: Decodable { let box: [Double]; let inside: Bool }
+            let pose: [Double]; let aspect: Double; let boxes: [Entry]
+        }
+        struct Flat: Decodable { let pose: [Double]; let aspect: Double; let box: [Double]; let flat: [Double] }
+        struct Card: Decodable { let phone: [Double]; let card: [Double] }
+        let cases: [Case]
+        let outside: Outside
+        let flat: [Flat]
+        let cards: [Card]
+    }
 
-    private func item(_ source: String, _ translation: String, _ left: Double, _ top: Double, _ right: Double,
-                      unchanged: Bool = false) -> ScreenTranslation.Item {
+    private func vectors() throws -> Vectors {
+        let url = Bundle.module.url(forResource: "Fixtures", withExtension: nil)!.appendingPathComponent("phone-chat.json")
+        return try JSONDecoder().decode(Vectors.self, from: Data(contentsOf: url))
+    }
+
+    private func handset(_ pose: [Double], _ aspect: Double = 16.0 / 9) -> ScreenPhoneCard.Handset {
+        ScreenPhoneCard.Handset(pose: GamePhoneGeometry.Pose(topX: pose[0], topY: pose[1], bottomX: pose[2], bottomY: pose[3]),
+                                aspect: aspect)
+    }
+
+    private func box(_ v: [Double]) -> TextBox { TextBox(left: v[0], top: v[1], right: v[2], bottom: v[3]) }
+
+    func testSharedChatVectors() throws {
+        for vector in try vectors().cases {
+            let phone = handset(vector.pose, vector.aspect)
+            let reading = Reading(lines: vector.lines.map { TextLine($0.text, box: box($0.box)) })
+            let groups = ScreenTranslation.groups(reading, wholeScreen: true, handset: phone)
+            XCTAssertEqual(groups.compactMap { $0.phone.map { [$0.role.rawValue] } }.count, groups.count, vector.name)
+            XCTAssertEqual(groups.map { [$0.phone!.role.rawValue, $0.paragraphs.joined(separator: "\n")] }, vector.groups, vector.name)
+        }
+    }
+
+    func testSharedEdgeAndFlatVectors() throws {
+        let all = try vectors()
+        let phone = handset(all.outside.pose, all.outside.aspect)
+        for entry in all.outside.boxes {
+            XCTAssertEqual(PhoneChat.onScreen(phone.flat(box(entry.box))), entry.inside, "\(entry.box)")
+        }
+        for entry in all.flat {
+            let spot = handset(entry.pose, entry.aspect).flat(box(entry.box))
+            XCTAssertEqual(spot.left, entry.flat[0], accuracy: 0.02, "\(entry)")
+            XCTAssertEqual(spot.right, entry.flat[2], accuracy: 0.02, "\(entry)")
+            XCTAssertEqual((spot.top + spot.bottom) / 2, (entry.flat[1] + entry.flat[3]) / 2, accuracy: 0.006, "\(entry)")
+            XCTAssertEqual(spot.bottom - spot.top, entry.flat[3] - entry.flat[1], accuracy: 0.012, "\(entry)")
+        }
+        for entry in all.cards {
+            let card = ScreenPhoneCard.cardBox(box(entry.phone))
+            for (a, b) in zip([card.left, card.top, card.right, card.bottom], entry.card) { XCTAssertEqual(a, b, accuracy: 1e-9) }
+        }
+    }
+
+    private let upright = [0.78, 0.17, 0.78, 0.85]
+
+    private func item(_ source: String, _ translation: String, role: ScreenPhoneCard.Role, top: Double,
+                      left: Double = 0.1, right: Double = 0.7, unchanged: Bool = false) -> ScreenTranslation.Item {
         var item = ScreenTranslation.Item(source: source, translation: translation,
-                                          box: TextBox(left: left, top: top, right: right, bottom: top + 0.03), lineHeight: 0.025)
+                                          box: TextBox(left: 0.8, top: 0.2 + top * 0.6, right: 0.9, bottom: 0.22 + top * 0.6),
+                                          lineHeight: 0.018)
         item.unchanged = unchanged
+        item.phone = ScreenPhoneCard.Placement(role: role, spot: TextBox(left: left, top: top, right: right, bottom: top + 0.03))
         return item
     }
 
     func testPhoneMessagesBecomeACardBesideThePhone() {
+        let phone = handset(upright)
+        var outside = ScreenTranslation.Item(source: "Find the car", translation: "Arabayı bul",
+                                             box: TextBox(left: 0.30, top: 0.10, right: 0.50, bottom: 0.13), lineHeight: 0.025)
+        outside.unchanged = false
         let items = [
-            item("Donnie", "Donnie", 0.80, 0.33, 0.88, unchanged: true),
-            item("Where are you man", "Neredesin adamım", 0.74, 0.45, 0.86),
-            item("On my way", "Yoldayım", 0.85, 0.55, 0.95),
-            item("Find the car", "Arabayı bul", 0.30, 0.10, 0.50),
+            outside,
+            item("Brian", "Brian", role: .header, top: 0.06, unchanged: true),
+            item("Where are you man", "Neredesin adamım", role: .incoming, top: 0.2),
+            item("On my way", "Yoldayım", role: .outgoing, top: 0.3, left: 0.6, right: 0.93),
         ]
         let laid = ScreenTranslation.present(items, phone: phone)
-        // Telefon dışındaki yazı yerinde kalır.
         XCTAssertEqual(laid.first?.translation, "Arabayı bul")
-        XCTAssertEqual(laid.first?.box.left, 0.30)
-        // Kart: zemin + başlık + iki balon, telefonun solunda (sağda yer yok), telefon boyunda.
         XCTAssertEqual(laid.count, 5)
         let backdrop = laid[1]
         XCTAssertTrue(ScreenPhoneCard.isBackdrop(backdrop))
-        XCTAssertEqual(backdrop.box.top, phone.top)
-        XCTAssertEqual(backdrop.box.bottom, phone.bottom)
-        XCTAssertLessThan(backdrop.box.right, phone.left)
-        XCTAssertEqual(backdrop.box.right - backdrop.box.left, phone.right - phone.left, accuracy: 1e-9)
-        // Kişi adı çevrilmese de kartın başlığıdır: ortalı, kalın.
-        XCTAssertEqual(laid[2].translation, "Donnie")
+        XCTAssertEqual(backdrop.box.top, phone.bounds.top)
+        XCTAssertEqual(backdrop.box.bottom, phone.bounds.bottom)
+        XCTAssertLessThan(backdrop.box.right, phone.bounds.left)
+        // Kişi adı çevrilmese de kartın başlığıdır: ortalı, kalın; yazı TV'de okunacak boyda.
+        XCTAssertEqual(laid[2].translation, "Brian")
         XCTAssertEqual(laid[2].look?.align, .center)
         XCTAssertEqual(laid[2].look?.bold, true)
-        // Gelen mesaj solda beyaz, giden sağda mavi; yükseklikleri okunan balonunki.
+        XCTAssertEqual(laid[2].lineHeight, ScreenPhoneCard.minLine)
         XCTAssertEqual(laid[3].style, ScreenPhoneCard.incomingColor)
         XCTAssertEqual(laid[3].box.left, backdrop.box.left + (backdrop.box.right - backdrop.box.left) * 0.05, accuracy: 1e-9)
-        XCTAssertEqual(laid[3].box.top, 0.45)
         XCTAssertEqual(laid[4].style, ScreenPhoneCard.outgoingColor)
         XCTAssertEqual(laid[4].look?.align, .right)
         XCTAssertEqual(laid[4].box.right, backdrop.box.right - (backdrop.box.right - backdrop.box.left) * 0.05, accuracy: 1e-9)
-        XCTAssertTrue(laid.allSatisfy { $0.box.left >= 0 && $0.box.right <= 1 })
+        // Satırlar üst üste binmez ve kartın içinde kalır.
+        for (upper, lower) in zip(laid[2...], laid[3...]) { XCTAssertLessThanOrEqual(upper.box.bottom, lower.box.top) }
+        XCTAssertTrue(laid[2...].allSatisfy { $0.box.left >= backdrop.box.left && $0.box.right <= backdrop.box.right
+            && $0.box.top >= backdrop.box.top && $0.box.bottom <= backdrop.box.bottom })
+    }
+
+    func testFullCardDropsTheOldestMessagesAndKeepsTheNewest() {
+        let long = String(repeating: "Bu çok uzun bir mesajın Türkçesi ", count: 4)
+        let items = (0..<9).map { index in
+            item("message \(index)", "\(index) \(long)", role: index % 2 == 0 ? .incoming : .outgoing, top: 0.1 + Double(index) * 0.09)
+        }
+        let laid = ScreenPhoneCard.layout(items, handset: handset(upright))
+        let card = laid[0].box
+        let rows = Array(laid.dropFirst())
+        XCTAssertLessThan(rows.count, 9)
+        XCTAssertEqual(rows.last?.source, "message 8")
+        for (upper, lower) in zip(rows, rows.dropFirst()) { XCTAssertLessThanOrEqual(upper.box.bottom, lower.box.top + 1e-9) }
+        XCTAssertLessThanOrEqual(rows.last!.box.bottom, card.bottom)
+        XCTAssertGreaterThanOrEqual(rows.first!.box.top, card.top)
+    }
+
+    func testAmbiguousBubbleSideComesFromItsColorAndListRowsAreLeftAligned() {
+        var blue = item("Sure thing", "Tabii", role: .message, top: 0.2, left: 0.05, right: 0.96)
+        blue.style = PhoneTextStyle(background: "#1E6FE0", foreground: "#FFFFFF")
+        var gray = item("Ok then", "Peki", role: .message, top: 0.4, left: 0.05, right: 0.96)
+        gray.style = PhoneTextStyle(background: "#E5E5EA", foreground: "#000000")
+        let laid = ScreenPhoneCard.layout([blue, gray, item("Lucia", "Lucia", role: .contact, top: 0.6, unchanged: true),
+                                           item("You coming?", "Geliyor musun?", role: .preview, top: 0.65)], handset: handset(upright))
+        XCTAssertEqual(laid[1].style, ScreenPhoneCard.outgoingColor)
+        XCTAssertEqual(laid[2].style, ScreenPhoneCard.incomingColor)
+        XCTAssertEqual(laid[3].look?.bold, true)
+        XCTAssertEqual(laid[3].look?.align, .left)
+        XCTAssertEqual(laid[4].style, ScreenPhoneCard.cardColor)
     }
 
     func testCardGoesRightWhenThePhoneIsOnTheLeft() {
-        let left = TextBox(left: 0.05, top: 0.30, right: 0.29, bottom: 0.92)
-        let laid = ScreenPhoneCard.layout([item("Where are you man", "Neredesin adamım", 0.07, 0.45, 0.20)], phone: left)
-        XCTAssertGreaterThan(laid[0].box.left, left.right)
+        let left = handset([0.20, 0.17, 0.20, 0.85])
+        let laid = ScreenPhoneCard.layout([item("Where are you man", "Neredesin adamım", role: .incoming, top: 0.3)], handset: left)
+        XCTAssertGreaterThan(laid[0].box.left, left.bounds.right)
     }
 
     func testWithoutATranslatedPhoneTextNothingMovesAndUnchangedItemsAreDropped() {
-        let items = [item("Donnie", "Donnie", 0.80, 0.33, 0.88, unchanged: true), item("Find the car", "Arabayı bul", 0.30, 0.10, 0.50)]
-        XCTAssertEqual(ScreenTranslation.present(items, phone: phone).map(\.translation), ["Arabayı bul"])
+        var outside = ScreenTranslation.Item(source: "Find the car", translation: "Arabayı bul",
+                                             box: TextBox(left: 0.30, top: 0.10, right: 0.50, bottom: 0.13), lineHeight: 0.025)
+        outside.unchanged = false
+        let items = [item("Donnie", "Donnie", role: .header, top: 0.06, unchanged: true), outside]
+        XCTAssertEqual(ScreenTranslation.present(items, phone: handset(upright)).map(\.translation), ["Arabayı bul"])
         XCTAssertEqual(ScreenTranslation.present(items, phone: nil).map(\.translation), ["Arabayı bul"])
     }
 
-    func testNoRoomBesideThePhoneKeepsTranslationsInPlace() {
-        let wide = TextBox(left: 0.10, top: 0.30, right: 0.90, bottom: 0.92)
-        let items = [item("Where are you man", "Neredesin adamım", 0.30, 0.45, 0.60)]
-        XCTAssertEqual(ScreenPhoneCard.layout(items, phone: wide), items)
+    /// Telefondaki kişi adı çevirmene gitmez ("Rose" → "Gül" olmasın); mesajlar gider.
+    func testContactNamesAreNotSentToTheTranslator() async throws {
+        let vector = try vectors().cases[0]
+        let reading = Reading(lines: vector.lines.map { TextLine($0.text, box: box($0.box)) })
+        let groups = ScreenTranslation.groups(reading, wholeScreen: true, handset: handset(vector.pose))
+        XCTAssertEqual(ScreenTranslation.known("Brian", in: groups[0]), "Brian")
+        XCTAssertNil(ScreenTranslation.known("Will do", in: groups.last))
     }
 
     /// Çeviriler artık özgün yazının stilinde: koyu kutudaki beyaz yazı koyu zeminde beyaz, BÜYÜK HARF yazı büyük harf.

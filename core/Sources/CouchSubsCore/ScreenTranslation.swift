@@ -17,6 +17,8 @@ public enum ScreenTranslation {
         public var lineHeight: Double
         /// Her parçadaki kumanda simgeleri, parçadaki `ButtonIcons.marker` sırasıyla; simge yoksa nil.
         public var icons: [[IconSlot]]? = nil
+        /// GTA 6 telefonunun ekranındaki grubun rolü ve düz ekrandaki yeri (`PhoneChat`); telefon dışındaysa nil.
+        var phone: ScreenPhoneCard.Placement? = nil
     }
 
     public struct Item: Equatable, Sendable {
@@ -32,6 +34,8 @@ public enum ScreenTranslation {
         public var look: TextLook?
         /// Çevirisi aslıyla aynı (ad, "ok"): yalnız telefon kartında gösterilir, başka yerde atılır (`ScreenPhoneCard`).
         var unchanged = false
+        /// Telefondaki yazının rolü ve düz ekrandaki yeri; kart bunlarla dizilir (`ScreenPhoneCard.layout`).
+        var phone: ScreenPhoneCard.Placement?
 
         public init(source: String, translation: String, box: TextBox, lineHeight: Double, icons: [IconPlacement]? = nil) {
             self.source = source
@@ -60,12 +64,12 @@ public enum ScreenTranslation {
                                  frame: CGImage? = nil, progress: ([Item]) -> Void = { _ in }) async throws -> [Item] {
         let phone = frame.flatMap(ScreenPhoneCard.phone(in:))
         var items: [Item] = []
-        for group in withImages(groups(reading, frame: frame, wholeScreen: true), from: frame) {
+        for group in withImages(groups(reading, frame: frame, wholeScreen: true, handset: phone), from: frame) {
             try Task.checkCancellation()
             let prepared = group.paragraphs.map(IconText.protect)
             var translated: [String] = []
             for (index, paragraph) in prepared.enumerated() {
-                if let known = known(group.paragraphs[index]) {
+                if let known = known(group.paragraphs[index], in: group) {
                     translated.append(known)
                     continue
                 }
@@ -87,12 +91,13 @@ public enum ScreenTranslation {
         guard translator.translatesTogether else {
             return try await translate(reading, using: { try await translator.translate($0) }, frame: frame, progress: progress)
         }
-        let groups = withImages(groups(reading, frame: frame, wholeScreen: true), from: frame)
         let phone = frame.flatMap(ScreenPhoneCard.phone(in:))
+        let groups = withImages(groups(reading, frame: frame, wholeScreen: true, handset: phone), from: frame)
         let prepared = groups.map { group in group.paragraphs.map(IconText.protect) }
-        // Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND", "BACK") çevirmene gitmez; fiyatlar adla korunur.
+        // Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND", "BACK") ve telefondaki kişi adları çevirmene gitmez;
+        // fiyatlar adla korunur.
         let sources = groups.flatMap(\.paragraphs)
-        let knowns = sources.map(known)
+        let knowns = groups.flatMap { group in group.paragraphs.map { known($0, in: group) } }
         let prices = prepared.flatMap { list in list.map { PriceText.protect($0.text) } }
         let asked = prices.indices.filter { knowns[$0] == nil }
         guard !sources.isEmpty else { return [] }
@@ -119,7 +124,9 @@ public enum ScreenTranslation {
 
     /// Oyun arayüzü sözlüğündeki kısa etiketin Türkçesi ("SCROLL" → "KAYDIR", "TIP" → "BAHŞİŞ VER"); simgeli ya da
     /// sözlükte olmayan parçada nil (çevirmene gider).
-    static func known(_ paragraph: String) -> String? {
+    static func known(_ paragraph: String, in group: Group? = nil) -> String? {
+        // Telefondaki kişi adı (sohbet başlığı, listedeki ad) çevrilmez: "Rose" "Gül", "May" "Mayıs" olmasın.
+        if group?.phone?.role.keepsText == true { return paragraph }
         guard !paragraph.contains(ButtonIcons.marker) else { return nil }
         return UiCommands.translateLabel(paragraph)
     }
@@ -138,8 +145,8 @@ public enum ScreenTranslation {
     }
 
     /// Gösterilecek öğeler: telefon varsa kartı dizilir; çevirisi aslıyla aynı öğeler (kart dışında) atılır.
-    static func present(_ items: [Item], phone: TextBox?) -> [Item] {
-        let laid = phone.map { ScreenPhoneCard.layout(items, phone: $0) } ?? items
+    static func present(_ items: [Item], phone: ScreenPhoneCard.Handset?) -> [Item] {
+        let laid = phone.map { ScreenPhoneCard.layout(items, handset: $0) } ?? items
         return laid.filter { !$0.unchanged }
     }
 
@@ -191,6 +198,7 @@ public enum ScreenTranslation {
         var item = Item(source: group.paragraphs.map(IconText.plain).joined(separator: "\n"), translation: rendered.text,
                         box: group.box, lineHeight: group.lineHeight, icons: rendered.icons.isEmpty ? nil : rendered.icons)
         item.unchanged = !changed
+        item.phone = group.phone
         return item
     }
 
@@ -203,8 +211,10 @@ public enum ScreenTranslation {
     /// `wholeScreen` ("Ekranı çevir"): yazı tanımanın bozduğu fiyatlar düzelir (`PriceText.repair`) ve tuş çubukları
     /// atılmaz, etiketlerine bölünür (`promptPieces`): tuş simgeleri ve fiyatlar çeviriye girmez, ekranda görünür kalır;
     /// aynı satırdaki her seçenek kendi kutusunda çevrilir, çeviriler üst üste binmez.
+    ///
+    /// `handset`: karede GTA 6 telefonu varsa ekranındaki satırlar ayrı gruplanır (`PhoneChat`: balon, başlık, liste).
     public static func groups(_ reading: Reading, frame: CGImage? = nil, keepIdentifiers: Bool = false,
-                              wholeScreen: Bool = false) -> [Group] {
+                              wholeScreen: Bool = false, handset: ScreenPhoneCard.Handset? = nil) -> [Group] {
         var marked = (wholeScreen ? Reading(lines: reading.lines.map(repaired)) : reading).withButtonIcons()
         if wholeScreen {
             marked = Reading(lines: marked.lines.flatMap { line -> [TextLine] in
@@ -223,7 +233,10 @@ public enum ScreenTranslation {
             .filter { $0.box != nil && isWords($0.text) }
             // Aynı satırdaki parçalar (tuş çubuğunun etiketleri) soldan sağa; sıralama kararlı değildir.
             .sorted { $0.box!.top != $1.box!.top ? $0.box!.top < $1.box!.top : $0.box!.left < $1.box!.left }
-        return groups(from: lines)
+        guard let handset else { return groups(from: lines) }
+        let onPhone = lines.filter { PhoneChat.onScreen(handset.flat($0.box!)) }
+        guard !onPhone.isEmpty else { return groups(from: lines) }
+        return groups(from: lines.filter { !PhoneChat.onScreen(handset.flat($0.box!)) }) + PhoneChat.groups(onPhone, handset: handset)
     }
 
     /// Satırın ve sözcüklerinin fiyat düzeltmesi (uzunluk değişmez).

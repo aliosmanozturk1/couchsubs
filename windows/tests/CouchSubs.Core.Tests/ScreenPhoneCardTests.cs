@@ -1,76 +1,185 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+using System.Text.Json;
 using CouchSubs.Core;
 
 namespace CouchSubs.Core.Tests;
 
 /// <summary>
-/// "Ekranı çevir": stil eşleşmeli yerinde çizim, GTA 6 telefon kartı ve yeniden basınca ekranın değişip değişmediği
-/// (Mac: ScreenPhoneCardTests.swift, Android: ScreenPhoneCardTest.kt).
+/// "Ekranı çevir": stil eşleşmeli yerinde çizim, GTA 6 telefon kartı ve yeniden basınca ekranın değişip değişmediği.
+/// Telefonun satır kuralları ortak deneme dosyasından (core/Tests/CouchSubsCoreTests/Fixtures/phone-chat.json; Mac
+/// ScreenPhoneCardTests.swift ve Android ScreenPhoneCardTest.kt aynı dosyayı okur).
 /// </summary>
 public class ScreenPhoneCardTests
 {
     private static readonly TextBox Phone = new(0.72, 0.30, 0.96, 0.92);
+    private static readonly double[] Upright = [0.78, 0.17, 0.78, 0.85];
+
+    private static JsonElement Vectors() => JsonDocument.Parse(File.ReadAllText(PackFixtures.Path("phone-chat.json"))).RootElement;
+
+    private static double[] Numbers(JsonElement array) => [.. array.EnumerateArray().Select(value => value.GetDouble())];
+
+    private static TextBox Box(double[] v) => new(v[0], v[1], v[2], v[3]);
+
+    private static ScreenPhoneCard.Handset Handset(double[] pose, double aspect = 16.0 / 9) =>
+        new(new GamePhoneGeometry.Pose(pose[0], pose[1], pose[2], pose[3]), aspect);
+
+    private static string Name(ScreenPhoneCard.Role role) => role.ToString().ToLowerInvariant();
 
     private static ScreenTranslation.Item Item(string source, string translation, double left, double top, double right, bool unchanged = false) =>
         new(source, translation, new TextBox(left, top, right, top + 0.03), 0.025) { Unchanged = unchanged };
 
+    private static ScreenTranslation.Item OnPhone(string source, string translation, ScreenPhoneCard.Role role, double top,
+                                                  double left = 0.1, double right = 0.7, bool unchanged = false) =>
+        new(source, translation, new TextBox(0.8, 0.2 + top * 0.6, 0.9, 0.22 + top * 0.6), 0.018)
+        {
+            Unchanged = unchanged, Phone = new ScreenPhoneCard.Placement(role, new TextBox(left, top, right, top + 0.03)),
+        };
+
+    [Fact]
+    public void SharedChatVectors()
+    {
+        foreach (var vector in Vectors().GetProperty("cases").EnumerateArray())
+        {
+            var name = vector.GetProperty("name").GetString();
+            var phone = Handset(Numbers(vector.GetProperty("pose")), vector.GetProperty("aspect").GetDouble());
+            var reading = new Reading(vector.GetProperty("lines").EnumerateArray()
+                .Select(line => new TextLine(line.GetProperty("text").GetString()!, Box(Numbers(line.GetProperty("box"))))));
+            var groups = ScreenTranslation.ScreenGroups(reading, phone);
+            Assert.All(groups, group => Assert.NotNull(group.Phone));
+            var expected = vector.GetProperty("groups").EnumerateArray()
+                .Select(pair => $"{pair[0].GetString()}|{pair[1].GetString()}").ToList();
+            Assert.True(expected.SequenceEqual(groups.Select(group => $"{Name(group.Phone!.Role)}|{string.Join('\n', group.Paragraphs)}")),
+                $"{name}: {string.Join(" / ", groups.Select(group => $"{Name(group.Phone!.Role)}|{string.Join('\n', group.Paragraphs)}"))}");
+        }
+    }
+
+    [Fact]
+    public void SharedEdgeAndFlatVectors()
+    {
+        var all = Vectors();
+        var outside = all.GetProperty("outside");
+        var phone = Handset(Numbers(outside.GetProperty("pose")), outside.GetProperty("aspect").GetDouble());
+        foreach (var entry in outside.GetProperty("boxes").EnumerateArray())
+            Assert.Equal(entry.GetProperty("inside").GetBoolean(), PhoneChat.OnScreen(phone.Flat(Box(Numbers(entry.GetProperty("box"))))));
+        foreach (var entry in all.GetProperty("flat").EnumerateArray())
+        {
+            var spot = Handset(Numbers(entry.GetProperty("pose")), entry.GetProperty("aspect").GetDouble())
+                .Flat(Box(Numbers(entry.GetProperty("box"))));
+            var flat = Numbers(entry.GetProperty("flat"));
+            Assert.InRange(spot.Left, flat[0] - 0.02, flat[0] + 0.02);
+            Assert.InRange(spot.Right, flat[2] - 0.02, flat[2] + 0.02);
+            Assert.InRange((spot.Top + spot.Bottom) / 2, (flat[1] + flat[3]) / 2 - 0.006, (flat[1] + flat[3]) / 2 + 0.006);
+            Assert.InRange(spot.Bottom - spot.Top, flat[3] - flat[1] - 0.012, flat[3] - flat[1] + 0.012);
+        }
+        foreach (var entry in all.GetProperty("cards").EnumerateArray())
+        {
+            var card = ScreenPhoneCard.CardBox(Box(Numbers(entry.GetProperty("phone"))));
+            var expected = Numbers(entry.GetProperty("card"));
+            Assert.Equal(expected[0], card.Left, 9);
+            Assert.Equal(expected[1], card.Top, 9);
+            Assert.Equal(expected[2], card.Right, 9);
+            Assert.Equal(expected[3], card.Bottom, 9);
+        }
+    }
+
     [Fact]
     public void PhoneMessagesBecomeACardBesideThePhone()
     {
+        var phone = Handset(Upright);
         var laid = ScreenTranslation.Present([
-            Item("Donnie", "Donnie", 0.80, 0.33, 0.88, unchanged: true),
-            Item("Where are you man", "Neredesin adamım", 0.74, 0.45, 0.86),
-            Item("On my way", "Yoldayım", 0.85, 0.55, 0.95),
             Item("Find the car", "Arabayı bul", 0.30, 0.10, 0.50),
-        ], Phone);
-        // Telefon dışındaki yazı yerinde kalır.
+            OnPhone("Brian", "Brian", ScreenPhoneCard.Role.Header, 0.06, unchanged: true),
+            OnPhone("Where are you man", "Neredesin adamım", ScreenPhoneCard.Role.Incoming, 0.2),
+            OnPhone("On my way", "Yoldayım", ScreenPhoneCard.Role.Outgoing, 0.3, 0.6, 0.93),
+        ], phone);
         Assert.Equal("Arabayı bul", laid[0].Translation);
-        Assert.Equal(0.30, laid[0].Box.Left);
-        // Kart: zemin + başlık + iki balon, telefonun solunda (sağda yer yok), telefon boyunda.
         Assert.Equal(5, laid.Count);
         var backdrop = laid[1];
         Assert.True(ScreenPhoneCard.IsBackdrop(backdrop));
-        Assert.Equal(Phone.Top, backdrop.Box.Top);
-        Assert.Equal(Phone.Bottom, backdrop.Box.Bottom);
-        Assert.True(backdrop.Box.Right < Phone.Left);
-        Assert.Equal(Phone.Right - Phone.Left, backdrop.Box.Right - backdrop.Box.Left, 9);
-        // Kişi adı çevrilmese de kartın başlığıdır: ortalı, kalın.
-        Assert.Equal("Donnie", laid[2].Translation);
+        Assert.Equal(phone.Bounds.Top, backdrop.Box.Top);
+        Assert.Equal(phone.Bounds.Bottom, backdrop.Box.Bottom);
+        Assert.True(backdrop.Box.Right < phone.Bounds.Left);
+        // Kişi adı çevrilmese de kartın başlığıdır: ortalı, kalın; yazı TV'de okunacak boyda.
+        Assert.Equal("Brian", laid[2].Translation);
         Assert.Equal("center", laid[2].Look?.Align);
         Assert.True(laid[2].Look?.Bold);
-        // Gelen mesaj solda beyaz, giden sağda mavi; yükseklikleri okunan balonunki.
+        Assert.Equal(ScreenPhoneCard.MinLine, laid[2].LineHeight);
         var width = backdrop.Box.Right - backdrop.Box.Left;
         Assert.Equal(ScreenPhoneCard.IncomingColor, laid[3].Style);
         Assert.Equal(backdrop.Box.Left + width * 0.05, laid[3].Box.Left, 9);
-        Assert.Equal(0.45, laid[3].Box.Top);
         Assert.Equal(ScreenPhoneCard.OutgoingColor, laid[4].Style);
         Assert.Equal("right", laid[4].Look?.Align);
         Assert.Equal(backdrop.Box.Right - width * 0.05, laid[4].Box.Right, 9);
-        Assert.All(laid, item => Assert.True(item.Box.Left >= 0 && item.Box.Right <= 1));
+        // Satırlar üst üste binmez ve kartın içinde kalır.
+        for (var i = 2; i + 1 < laid.Count; i++) Assert.True(laid[i].Box.Bottom <= laid[i + 1].Box.Top);
+        Assert.All(laid.Skip(2), item => Assert.True(item.Box.Left >= backdrop.Box.Left && item.Box.Right <= backdrop.Box.Right
+            && item.Box.Top >= backdrop.Box.Top && item.Box.Bottom <= backdrop.Box.Bottom));
+    }
+
+    [Fact]
+    public void FullCardDropsTheOldestMessagesAndKeepsTheNewest()
+    {
+        var text = string.Concat(Enumerable.Repeat("Bu çok uzun bir mesajın Türkçesi ", 4));
+        var items = Enumerable.Range(0, 9).Select(i => OnPhone($"message {i}", $"{i} {text}",
+            i % 2 == 0 ? ScreenPhoneCard.Role.Incoming : ScreenPhoneCard.Role.Outgoing, 0.1 + i * 0.09)).ToList();
+        var laid = ScreenPhoneCard.Layout(items, Handset(Upright));
+        var card = laid[0].Box;
+        var rows = laid.Skip(1).ToList();
+        Assert.True(rows.Count < 9);
+        Assert.Equal("message 8", rows[^1].Source);
+        for (var i = 0; i + 1 < rows.Count; i++) Assert.True(rows[i].Box.Bottom <= rows[i + 1].Box.Top + 1e-9);
+        Assert.True(rows[^1].Box.Bottom <= card.Bottom);
+        Assert.True(rows[0].Box.Top >= card.Top);
+    }
+
+    [Fact]
+    public void AmbiguousBubbleSideComesFromItsColorAndListRowsAreLeftAligned()
+    {
+        var blue = OnPhone("Sure thing", "Tabii", ScreenPhoneCard.Role.Message, 0.2, 0.05, 0.96) with
+        {
+            Style = new PhoneTextStyle("#1E6FE0", "#FFFFFF"),
+        };
+        var gray = OnPhone("Ok then", "Peki", ScreenPhoneCard.Role.Message, 0.4, 0.05, 0.96) with
+        {
+            Style = new PhoneTextStyle("#E5E5EA", "#000000"),
+        };
+        var laid = ScreenPhoneCard.Layout([blue, gray, OnPhone("Lucia", "Lucia", ScreenPhoneCard.Role.Contact, 0.6, unchanged: true),
+            OnPhone("You coming?", "Geliyor musun?", ScreenPhoneCard.Role.Preview, 0.65)], Handset(Upright));
+        Assert.Equal(ScreenPhoneCard.OutgoingColor, laid[1].Style);
+        Assert.Equal(ScreenPhoneCard.IncomingColor, laid[2].Style);
+        Assert.True(laid[3].Look?.Bold);
+        Assert.Equal("left", laid[3].Look?.Align);
+        Assert.Equal(ScreenPhoneCard.CardColor, laid[4].Style);
     }
 
     [Fact]
     public void CardGoesRightWhenThePhoneIsOnTheLeft()
     {
-        var left = new TextBox(0.05, 0.30, 0.29, 0.92);
-        var laid = ScreenPhoneCard.Layout([Item("Where are you man", "Neredesin adamım", 0.07, 0.45, 0.20)], left);
-        Assert.True(laid[0].Box.Left > left.Right);
+        var left = Handset([0.20, 0.17, 0.20, 0.85]);
+        var laid = ScreenPhoneCard.Layout([OnPhone("Where are you man", "Neredesin adamım", ScreenPhoneCard.Role.Incoming, 0.3)], left);
+        Assert.True(laid[0].Box.Left > left.Bounds.Right);
     }
 
     [Fact]
     public void WithoutATranslatedPhoneTextNothingMovesAndUnchangedItemsAreDropped()
     {
-        ScreenTranslation.Item[] items = [Item("Donnie", "Donnie", 0.80, 0.33, 0.88, unchanged: true), Item("Find the car", "Arabayı bul", 0.30, 0.10, 0.50)];
-        Assert.Equal(["Arabayı bul"], ScreenTranslation.Present(items, Phone).Select(item => item.Translation));
+        ScreenTranslation.Item[] items =
+            [OnPhone("Donnie", "Donnie", ScreenPhoneCard.Role.Header, 0.06, unchanged: true), Item("Find the car", "Arabayı bul", 0.30, 0.10, 0.50)];
+        Assert.Equal(["Arabayı bul"], ScreenTranslation.Present(items, Handset(Upright)).Select(item => item.Translation));
         Assert.Equal(["Arabayı bul"], ScreenTranslation.Present(items, null).Select(item => item.Translation));
     }
 
+    /// <summary>Telefondaki kişi adı çevirmene gitmez ("Rose" → "Gül" olmasın); mesajlar gider.</summary>
     [Fact]
-    public void NoRoomBesideThePhoneKeepsTranslationsInPlace()
+    public void ContactNamesAreNotSentToTheTranslator()
     {
-        ScreenTranslation.Item[] items = [Item("Where are you man", "Neredesin adamım", 0.30, 0.45, 0.60)];
-        Assert.Equal(items, ScreenPhoneCard.Layout(items, new TextBox(0.10, 0.30, 0.90, 0.92)));
+        var vector = Vectors().GetProperty("cases")[0];
+        var reading = new Reading(vector.GetProperty("lines").EnumerateArray()
+            .Select(line => new TextLine(line.GetProperty("text").GetString()!, Box(Numbers(line.GetProperty("box"))))));
+        var groups = ScreenTranslation.ScreenGroups(reading, Handset(Numbers(vector.GetProperty("pose"))));
+        Assert.Equal("Brian", ScreenTranslation.Known("Brian", groups[0]));
+        Assert.Null(ScreenTranslation.Known("Will do", groups[^1]));
     }
 
     /// <summary>Çeviriler artık özgün yazının stilinde: koyu kutudaki beyaz yazı koyu zeminde beyaz, BÜYÜK HARF yazı büyük harf.</summary>

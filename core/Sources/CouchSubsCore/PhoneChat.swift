@@ -1,0 +1,206 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import Foundation
+
+/// "Ekranı çevir"de GTA 6 telefonunun ekranındaki satırlar: önce telefonun düz ekranına taşınır (`ScreenPhoneCard.Handset`,
+/// eğik telefonda da sol/sağ kenar ekranın kenarına göre ölçülür), sonra ekranın ne olduğu çıkarılır. Sohbet ekranında
+/// her balon bir parça olur (balonun satırları birleşir); balon telefonun hangi kenarına yaslıysa gelen ya da giden
+/// mesajdır. Sohbet listesinde kişi adları çevrilmez, son mesaj önizlemeleri çevrilir. Windows (PhoneChat.cs) ve Android
+/// (PhoneChat.kt) aynı kuralları ve eşikleri uygular; ortak deneme dosyası Fixtures/phone-chat.json.
+enum PhoneChat {
+    /// Satır, merkezi düz ekranda bu payla dışarıda kalsa da telefonundur (kutular kenarda biraz taşabilir).
+    static let insideSlack = 0.05
+    /// Düz ekranda bu kadar dışarı taşan satır telefonun yazısı değildir (telefonun arkasından geçen altyazı, tabela).
+    static let outsideReach = 0.3
+    /// Ekranın üst/alt kenarından bu kadar dışarı taşan satır kesiktir (sohbet kaymış, satırın yarısı görünüyor).
+    static let edgeCut = 0.015
+    /// Kesik satır: yüksekliği ortanca satırın bu kadarından az (başlığın altına girmiş ilk satır, alt kenardaki son satır).
+    static let cutHeight = 0.6
+    /// Fotoğrafın içindeki yazı: ortanca satırın bu kadar katından yüksek (en az üç satır varken).
+    static let photoHeight = 2.0
+    /// Aynı balonun iki satırı arasındaki boşluk ortanca satır yüksekliğinin bu kadarından az; balonlar arası daha geniş.
+    static let bubbleGap = 0.6
+    /// Aynı balonun satırları solda bu kadar hizalı (ekran genişliğine oranla); sağa yaslı balonda sağda `rightAlign`.
+    static let leftAlign = 0.04, rightAlign = 0.03
+    /// Kenar payı oranı: balonun bir yandaki payı öbür yandakinin bu kadarından azsa o yana yaslıdır.
+    static let sideRatio = 0.6
+    /// İki yanı da bundan dar balon (ekranı dolduran uzun mesaj) yaslı sayılmaz; tarafı balonun rengi söyler.
+    static let wideMargin = 0.15
+    /// Ortalı kısa satır (saat, "Today", "Delivered"): merkezi ortadan en çok bu kadar uzak, iki yanda en az `noteMargin` pay.
+    static let noteCenter = 0.06, noteMargin = 0.2
+    /// Başlık (kişi adı): ekranın üst bu kadarında, ortalıysa merkezi ortadan en çok `headerCenter` uzak.
+    static let headerBand = 0.2, headerCenter = 0.12
+    /// Aynı satırda yan yana okunan parçalar (emoji satırı böler) aradaki boşluk satır yüksekliğinin bu katından azsa birleşir.
+    static let rowJoin = 2.0
+
+    /// Düz ekrandaki satır.
+    struct Row {
+        var lines: [TextLine]
+        /// Düz ekrandaki yeri (0–1, ekranın kenarlarına göre).
+        var spot: TextBox
+        var text: String
+        var height: Double { spot.bottom - spot.top }
+        var center: Double { (spot.left + spot.right) / 2 }
+        var words: Int { text.split(whereSeparator: \.isWhitespace).count }
+    }
+
+    /// Telefonun içinde mi (merkezi düz ekranda, satır ekranın dışına taşmıyor).
+    static func onScreen(_ spot: TextBox) -> Bool {
+        let u = (spot.left + spot.right) / 2, v = (spot.top + spot.bottom) / 2
+        return u >= -insideSlack && u <= 1 + insideSlack && v >= -insideSlack && v <= 1 + insideSlack
+            && spot.left >= -outsideReach && spot.right <= 1 + outsideReach
+    }
+
+    /// Telefonun satırlarını (kutuları bilinen, süzülmüş) parçalara ayırır; her grup `phone` bilgisini taşır.
+    static func groups(_ lines: [TextLine], handset: ScreenPhoneCard.Handset) -> [ScreenTranslation.Group] {
+        var rows = joinedRows(lines.compactMap { line in
+            line.box.map { Row(lines: [line], spot: handset.flat($0), text: clean(line.text)) }
+        }.filter { $0.text.filter(\.isLetter).count >= 2 }.sorted { $0.spot.top < $1.spot.top })
+        guard !rows.isEmpty else { return [] }
+        let median = rows.map(\.height).sorted()[rows.count / 2]
+        rows.removeAll { $0.spot.top < -edgeCut || $0.spot.bottom > 1 + edgeCut }
+        var header: Row?
+        if let first = rows.first, isHeader(first) {
+            header = first
+            rows.removeFirst()
+        }
+        if rows.count >= 3 { rows.removeAll { $0.height > median * photoHeight } }
+        // Kaymış sohbetin en üstteki ve en alttaki yarım satırı okunmaz, çevrilmez.
+        if let first = rows.first, first.height < median * cutHeight { rows.removeFirst() }
+        if let last = rows.last, last.height < median * cutHeight { rows.removeLast() }
+
+        var result: [ScreenTranslation.Group] = []
+        if let list = contactList(rows, median: median) {
+            // Listenin başındaki ortalı olmayan başlık bir kişi değil bölüm adıdır ("Messages"): çevrilir.
+            if let header { result.append(group([header], role: abs(header.center - 0.5) <= headerCenter ? .header : .heading, handset: handset)) }
+            for (index, row) in rows.enumerated() { result.append(group([row], role: list[index], handset: handset)) }
+            return result
+        }
+        if let header { result.append(group([header], role: .header, handset: handset)) }
+        var bubble: [Row] = []
+        func finish() {
+            guard !bubble.isEmpty else { return }
+            result.append(group(bubble, role: role(of: bubble), handset: handset))
+            bubble.removeAll()
+        }
+        for row in rows {
+            if let last = bubble.last, !continues(row, after: last, first: bubble[0], median: median) { finish() }
+            bubble.append(row)
+        }
+        finish()
+        return result
+    }
+
+    /// Satırın başındaki ve sonundaki harfsiz, rakamsız kırıntılar (emoji ya da simge yanlış okunmuş: "©", "•", "♡") atılır.
+    static func clean(_ text: String) -> String {
+        var words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        func junk(_ word: String) -> Bool {
+            !word.contains(where: { $0.isLetter || $0.isNumber }) && !word.allSatisfy { ".,!?…'\"-:;()".contains($0) }
+        }
+        while let first = words.first, junk(first) { words.removeFirst() }
+        while let last = words.last, junk(last) { words.removeLast() }
+        return words.joined(separator: " ")
+    }
+
+    /// Aynı yükseklikte yan yana okunmuş parçalar (arada emoji ya da simge) tek satır olur.
+    static func joinedRows(_ rows: [Row]) -> [Row] {
+        var result: [Row] = []
+        for row in rows {
+            if let index = result.lastIndex(where: { sameRow($0, row) }) {
+                let (a, b) = result[index].spot.left <= row.spot.left ? (result[index], row) : (row, result[index])
+                result[index] = Row(lines: a.lines + b.lines, spot: a.spot.union(b.spot), text: a.text + " " + b.text)
+            } else {
+                result.append(row)
+            }
+        }
+        return result.sorted { $0.spot.top < $1.spot.top }
+    }
+
+    private static func sameRow(_ a: Row, _ b: Row) -> Bool {
+        let overlap = min(a.spot.bottom, b.spot.bottom) - max(a.spot.top, b.spot.top)
+        guard overlap >= min(a.height, b.height) * 0.5 else { return false }
+        let gap = max(a.spot.left, b.spot.left) - min(a.spot.right, b.spot.right)
+        // Yatay boşluk ekran genişliğine, satır yüksekliği ekran yüksekliğine oranla; ikisi aynı ölçüye çevrilir.
+        return gap * ScreenPhoneCard.Handset.screenShape <= max(a.height, b.height) * rowJoin
+    }
+
+    /// Başlık: ekranın en üstündeki kısa, cümle olmayan satır; ortalı ya da (solda avatarın yanında) ad gibi yazılmış.
+    static func isHeader(_ row: Row) -> Bool {
+        let v = (row.spot.top + row.spot.bottom) / 2
+        guard v < headerBand, (1...4).contains(row.words), !endsSentence(row.text) else { return false }
+        return abs(row.center - 0.5) <= headerCenter || looksLikeName(row.text)
+    }
+
+    /// Ad gibi: bir-üç sözcük, her biri büyük harf ya da rakamla başlar, virgül ve cümle sonu yok.
+    static func looksLikeName(_ text: String) -> Bool {
+        let words = text.split(whereSeparator: \.isWhitespace)
+        guard (1...3).contains(words.count), !text.contains(","), !endsSentence(text) else { return false }
+        return words.allSatisfy { word in word.first.map { $0.isUppercase || $0.isNumber } ?? false }
+    }
+
+    static func endsSentence(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespaces).last.map { ".!?…".contains($0) } ?? false
+    }
+
+    /// Sohbet listesi: en az iki "ad + hemen altında aynı hizada önizleme" çifti ve satırların çoğu bu çiftlerde. Liste
+    /// ise her satırın rolü, değilse nil.
+    static func contactList(_ rows: [Row], median: Double) -> [ScreenPhoneCard.Role]? {
+        var roles = [ScreenPhoneCard.Role](repeating: .heading, count: rows.count)
+        var pairs = 0, index = 0
+        while index + 1 < rows.count {
+            let name = rows[index], preview = rows[index + 1]
+            if looksLikeName(name.text), preview.words >= 2, abs(name.spot.left - preview.spot.left) <= leftAlign,
+               preview.spot.top - name.spot.bottom <= median * 0.7, name.spot.left < 0.5 {
+                roles[index] = .contact
+                roles[index + 1] = .preview
+                pairs += 1
+                index += 2
+            } else {
+                index += 1
+            }
+        }
+        guard pairs >= 2, pairs * 2 * 10 >= rows.count * 6 else { return nil }
+        // Çifte girmeyen ad gibi satırlar bölüm başlığıdır ("Messages"), uzunlar tek başına önizlemedir.
+        for i in rows.indices where roles[i] == .heading && !looksLikeName(rows[i].text) { roles[i] = .preview }
+        return roles
+    }
+
+    /// Satır, açık balonun devamı mı: arada dar boşluk ve aynı hiza (solda; sağa yaslı balonda sağda da olur).
+    private static func continues(_ row: Row, after last: Row, first: Row, median: Double) -> Bool {
+        guard row.spot.top - last.spot.bottom < median * bubbleGap else { return false }
+        if abs(row.spot.left - first.spot.left) <= leftAlign { return true }
+        return min(row.spot.left, first.spot.left) > 0.2 && abs(row.spot.right - last.spot.right) <= rightAlign
+    }
+
+    /// Balonun rolü yaslı olduğu kenardan: sağa yaslı giden, sola yaslı gelen; ortalı kısa satır not; iki yanı da dar
+    /// (ekranı dolduran) balon belirsiz, tarafı kartta balonun renginden seçilir.
+    static func role(of bubble: [Row]) -> ScreenPhoneCard.Role {
+        let spot = bubble.dropFirst().reduce(bubble[0].spot) { $0.union($1.spot) }
+        let left = max(0, spot.left), right = max(0, 1 - spot.right)
+        if bubble.count == 1, abs((spot.left + spot.right) / 2 - 0.5) <= noteCenter, left >= noteMargin, right >= noteMargin {
+            return .note
+        }
+        if left < wideMargin && right < wideMargin { return .message }
+        if right < left * sideRatio { return .outgoing }
+        if left < right * sideRatio { return .incoming }
+        return .message
+    }
+
+    /// Satırlar tek parça olur: satır sonunda tireyle bölünmüş sözcük boşluksuz birleşir.
+    private static func group(_ rows: [Row], role: ScreenPhoneCard.Role, handset: ScreenPhoneCard.Handset) -> ScreenTranslation.Group {
+        var text = ""
+        for row in rows {
+            if text.isEmpty { text = row.text }
+            else if text.hasSuffix("-") { text += row.text }
+            else { text += " " + row.text }
+        }
+        let boxes = rows.flatMap(\.lines).compactMap(\.box)
+        let spot = rows.dropFirst().reduce(rows[0].spot) { $0.union($1.spot) }
+        // Eğik telefonda okunan kutu satırın eğimini de kapsar; yazı boyu düz ekrandaki yükseklikten gelir.
+        let heights = rows.map(\.height).sorted()
+        var group = ScreenTranslation.Group(paragraphs: [text], box: boxes.dropFirst().reduce(boxes[0]) { $0.union($1) },
+                                            lineHeight: heights[heights.count / 2] * handset.screenHeight)
+        group.phone = ScreenPhoneCard.Placement(role: role, spot: spot)
+        return group
+    }
+}

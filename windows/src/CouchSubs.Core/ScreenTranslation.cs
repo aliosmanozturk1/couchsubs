@@ -15,7 +15,11 @@ public static class ScreenTranslation
     /// <param name="LineHeight">Satırlarının tipik yüksekliği, karenin yüksekliğine oranla; TV yazı boyunu buna göre seçer.</param>
     /// <param name="Icons">Her parçadaki kumanda simgeleri, parçadaki <see cref="ButtonIcons.Marker"/> sırasıyla.</param>
     public sealed record Group(IReadOnlyList<string> Paragraphs, TextBox Box, double LineHeight,
-                               IReadOnlyList<IReadOnlyList<IconSlot>>? Icons = null);
+                               IReadOnlyList<IReadOnlyList<IconSlot>>? Icons = null)
+    {
+        /// <summary>GTA 6 telefonunun ekranındaki grubun rolü ve düz ekrandaki yeri (<see cref="PhoneChat"/>); telefon dışındaysa null.</summary>
+        internal ScreenPhoneCard.Placement? Phone { get; init; }
+    }
 
     /// <param name="Translation">Parçaların çevirisi, her parça ayrı satırda.</param>
     /// <param name="Icons">Çevirinin içindeki kumanda simgeleri (kareden kesilmiş); TV <c>Translation</c>'ın o yerine koyar.</param>
@@ -27,6 +31,8 @@ public static class ScreenTranslation
         public TextLook? Look { get; init; }
         /// <summary>Çevirisi aslıyla aynı (ad, "ok"): yalnız telefon kartında gösterilir, başka yerde atılır (<see cref="ScreenPhoneCard"/>).</summary>
         internal bool Unchanged { get; init; }
+        /// <summary>Telefondaki yazının rolü ve düz ekrandaki yeri; kart bunlarla dizilir (<see cref="ScreenPhoneCard.Layout"/>).</summary>
+        internal ScreenPhoneCard.Placement? Phone { get; init; }
         /// <summary>Birden çok parça var: TV satır satır, sola yaslı gösterir.</summary>
         public bool Paragraphs => Translation.Contains('\n');
     }
@@ -85,8 +91,8 @@ public static class ScreenTranslation
         Action<IReadOnlyList<Item>>? progress = null, CancellationToken cancellationToken = default, Frame? frame = null)
     {
         var items = new List<Item>();
-        var groups = ReadGroups(reading, false, frame, wholeScreen: true);
         var phone = frame is null ? null : ScreenPhoneCard.Phone(frame);
+        var groups = ReadGroups(reading, false, frame, wholeScreen: true, handset: phone);
         var keep = phone is not null;
         if (frame is not null)
             groups = [.. groups.Select(group => group.Icons is null ? group
@@ -95,10 +101,11 @@ public static class ScreenTranslation
         var protectedGroups = groups.Select(group => group.Paragraphs.Select(IconText.Protect).ToList()).ToList();
         if (translator.TranslatesTogether)
         {
-            // Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND", "BACK") çevirmene gitmez; fiyatlar adla korunur.
+            // Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND", "BACK") ve telefondaki kişi adları çevirmene gitmez;
+            // fiyatlar adla korunur.
             var sources = groups.SelectMany(group => group.Paragraphs).ToList();
             if (sources.Count == 0) return items;
-            var knowns = sources.Select(Known).ToList();
+            var knowns = groups.SelectMany(group => group.Paragraphs.Select(paragraph => Known(paragraph, group))).ToList();
             var prices = protectedGroups.SelectMany(group => group.Select(p => PriceText.Protect(p.Text))).ToList();
             var asked = Enumerable.Range(0, sources.Count).Where(i => knowns[i] is null).ToList();
             var answers = asked.Count == 0 ? []
@@ -127,7 +134,7 @@ public static class ScreenTranslation
             var translated = new List<string>(group.Paragraphs.Count);
             for (var p = 0; p < group.Paragraphs.Count; p++)
             {
-                if (Known(group.Paragraphs[p]) is { } known)
+                if (Known(group.Paragraphs[p], group) is { } known)
                 {
                     translated.Add(known);
                     continue;
@@ -148,8 +155,10 @@ public static class ScreenTranslation
     /// Oyun arayüzü sözlüğündeki kısa etiketin Türkçesi ("SCROLL" → "KAYDIR", "TIP" → "BAHŞİŞ VER"); simgeli ya da
     /// sözlükte olmayan parçada null (çevirmene gider).
     /// </summary>
-    internal static string? Known(string paragraph) =>
-        paragraph.Contains(ButtonIcons.Marker) ? null : UiCommands.TranslateLabel(paragraph);
+    internal static string? Known(string paragraph, Group? group = null) =>
+        // Telefondaki kişi adı (sohbet başlığı, listedeki ad) çevrilmez: "Rose" "Gül", "May" "Mayıs" olmasın.
+        group?.Phone?.Role.KeepsText() == true ? paragraph
+        : paragraph.Contains(ButtonIcons.Marker) ? null : UiCommands.TranslateLabel(paragraph);
 
     /// <summary>
     /// Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de
@@ -168,8 +177,8 @@ public static class ScreenTranslation
     }
 
     /// <summary>Gösterilecek öğeler: telefon varsa kartı dizilir; çevirisi aslıyla aynı öğeler (kart dışında) atılır.</summary>
-    internal static IReadOnlyList<Item> Present(IReadOnlyList<Item> items, TextBox? phone) =>
-        [.. (phone is { } box ? ScreenPhoneCard.Layout(items, box) : items).Where(item => !item.Unchanged)];
+    internal static IReadOnlyList<Item> Present(IReadOnlyList<Item> items, ScreenPhoneCard.Handset? phone) =>
+        [.. (phone is not null ? ScreenPhoneCard.Layout(items, phone) : items).Where(item => !item.Unchanged)];
 
     /// <summary>Aynı ekranın iki okuması en az bu kadar benzer; yeni bir mesajın eklenmesi bile ekranı "değişmiş" yapar.</summary>
     public const double SameScreenSimilarity = 0.95;
@@ -205,7 +214,7 @@ public static class ScreenTranslation
         if (!changed && !keepUnchanged) return null;
         var (translation, placements) = IconText.Render(string.Join('\n', texts), slots);
         return new Item(string.Join('\n', group.Paragraphs.Select(IconText.Plain)), translation, group.Box, group.LineHeight,
-                        placements.Count > 0 ? placements : null) { Unchanged = !changed };
+                        placements.Count > 0 ? placements : null) { Unchanged = !changed, Phone = group.Phone };
     }
 
     /// <summary>
@@ -226,9 +235,11 @@ public static class ScreenTranslation
     /// <paramref name="wholeScreen"/> ("Ekranı çevir"): yazı tanımanın bozduğu fiyatlar düzelir (<see cref="PriceText.Repair"/>)
     /// ve tuş çubukları atılmaz, etiketlerine bölünür (<see cref="PromptPieces"/>): tuş simgeleri ve fiyatlar çeviriye
     /// girmez, ekranda görünür kalır; aynı satırdaki her seçenek kendi kutusunda çevrilir, çeviriler üst üste binmez.
+    /// <paramref name="handset"/>: karede GTA 6 telefonu varsa ekranındaki satırlar ayrı gruplanır (<see cref="PhoneChat"/>:
+    /// balon, başlık, liste).
     /// </summary>
     private static IReadOnlyList<Group> ReadGroups(Reading reading, bool menuRows, Frame? frame, bool keepIdentifiers = false,
-                                                   bool wholeScreen = false)
+                                                   bool wholeScreen = false, ScreenPhoneCard.Handset? handset = null)
     {
         var marked = (wholeScreen ? new Reading(reading.Lines.Select(Repaired)) : reading).WithButtonIcons();
         if (wholeScreen)
@@ -243,8 +254,16 @@ public static class ScreenTranslation
             .Where(line => line.Box is not null && IsWords(line.Text))
             .OrderBy(line => line.Box!.Value.Top).ThenBy(line => line.Box!.Value.Left)
             .ToList();
-        return GroupsFromLines(lines, menuRows);
+        if (handset is null) return GroupsFromLines(lines, menuRows);
+        var onPhone = lines.Where(line => PhoneChat.OnScreen(handset.Flat(line.Box!.Value))).ToList();
+        if (onPhone.Count == 0) return GroupsFromLines(lines, menuRows);
+        return [.. GroupsFromLines([.. lines.Where(line => !PhoneChat.OnScreen(handset.Flat(line.Box!.Value)))], menuRows),
+                .. PhoneChat.Groups(onPhone, handset)];
     }
+
+    /// <summary>"Ekranı çevir"in grupları; karede telefon varsa ekranının satırları ayrı gruplanır (sınamalar için).</summary>
+    internal static IReadOnlyList<Group> ScreenGroups(Reading reading, ScreenPhoneCard.Handset? handset) =>
+        ReadGroups(reading, false, null, wholeScreen: true, handset: handset);
 
     /// <summary>Satırın ve sözcüklerinin fiyat düzeltmesi (uzunluk değişmez).</summary>
     internal static TextLine Repaired(TextLine line) => line with
