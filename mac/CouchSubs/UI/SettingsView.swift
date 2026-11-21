@@ -296,6 +296,8 @@ private struct AreaCards: View {
         Card {
             SwitchRow(title: "Automatically translate on-screen text (experimental)", isOn: $model.settings.autoScreenText)
             HintText(text: "Text boxes that appear on screen (objectives, help, messages) are found and translated in place. Counters, the map and short labels are skipped.")
+            // Türler yalnız ayar açıkken görünür; dört platformda aynı ad ve sıra (bkz. ScreenTextKind).
+            if model.settings.autoScreenText { ScreenTextKindRows(settings: $model.settings) }
             Divider().overlay(Color.csBorder)
             SwitchRow(title: "Set on-screen text apart from subtitles", isOn: $model.settings.setTextApart)
             HintText(text: "On-screen text keeps its own colours and place, and never looks like the subtitle box.")
@@ -940,6 +942,24 @@ private struct PackTile: View {
 }
 
 /// Açık/kapalı ayar: başlık (`body`) solda, anahtar sağda. Onay kutusu kullanılmaz.
+/// Otomatik ekran yazısında hangi türler çevrilir (iPhone: Profile, Windows: SettingsWindow, Android: ProfileScreens).
+struct ScreenTextKindRows: View {
+    @Binding var settings: UserSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.space("s")) {
+            Text("Which on-screen text to translate").font(.csBody).foregroundStyle(Color.csSecondary)
+            SwitchRow(title: "Phone (GTA 6 phone)", isOn: $settings.screenTextPhone)
+            SwitchRow(title: "Mission and objective text", isOn: $settings.screenTextMission)
+            SwitchRow(title: "Help boxes and actions (button prompts)", isOn: $settings.screenTextHelp)
+            SwitchRow(title: "Menus (pause, map, settings)", isOn: $settings.screenTextMenus)
+            SwitchRow(title: "Other on-screen text", isOn: $settings.screenTextOther)
+            HintText(text: "Translate the screen always translates everything.")
+        }
+        .padding(.leading, Theme.space("m"))
+    }
+}
+
 struct SwitchRow: View {
     let title: LocalizedStringKey
     @Binding var isOn: Bool

@@ -25,13 +25,16 @@ public class ScreenTextReadingTests
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task FoundTextBoxIsTranslatedInPlaceOnlyWhenEnabled(bool enabled)
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    // Noktalamayla biten kısa tek cümle görev/hedef türüdür; Ayarlar'da Görev kapatılınca bulunan kutu çizilmez.
+    [InlineData(true, false)]
+    public async Task FoundTextBoxIsTranslatedInPlaceOnlyWhenEnabled(bool enabled, bool mission)
     {
         var services = new FakeServices { ReaderLines = Reading.FromText("Follow Paulie to the car.") };
         var settings = new MemorySettings();
-        settings.Save(new UserSettings { FrameSource = FrameSource.RemotePlayWindow, Output = SubtitleOutput.Computer, AutoScreenText = enabled, AutoScreenTextReset = true });
+        settings.Save(new UserSettings { FrameSource = FrameSource.RemotePlayWindow, Output = SubtitleOutput.Computer, AutoScreenText = enabled, AutoScreenTextReset = true,
+                                        ScreenTextMission = mission });
         using var controller = AppControllerTests.Make(services, settings: settings);
         // Sahte okuyucu altyazıya ve alana aynı yazıyı verir; altyazı yinelemesi engeli burada sınanmıyor.
         controller.SubtitleEcho = null;
@@ -39,14 +42,14 @@ public class ScreenTextReadingTests
         controller.StreamEvent += events.Enqueue;
         await controller.StartAsync();
         var frame = BoxFrame();
-        var until = DateTime.UtcNow + TimeSpan.FromSeconds(enabled ? 6 : 2);
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(enabled && mission ? 6 : 2);
         bool Found() => events.Any(e => e.Kind == SubtitleEventKind.Region && e.Id?.StartsWith("auto-") == true && e.Text.Length > 0);
         while (DateTime.UtcNow < until && !Found())
         {
             services.Streams[0].Emit(frame);
             await Task.Delay(50);
         }
-        Assert.Equal(enabled, Found());
+        Assert.Equal(enabled && mission, Found());
         controller.Stop();
     }
 

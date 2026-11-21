@@ -87,6 +87,21 @@ struct ProfileScreen: View {
                 toggleRow("Automatically translate on-screen text (experimental)",
                           "Text boxes that appear on screen (objectives, help, messages) are found and translated in place. Counters, the map and short labels are skipped.",
                           isOn: $model.settings.autoScreenText)
+                // Türler yalnız ayar açıkken görünür; dört platformda aynı ad ve sıra (bkz. ScreenTextKind).
+                if model.settings.autoScreenText {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Which on-screen text to translate").font(Mobile.TypeScale.caption)
+                            .foregroundStyle(Mobile.Palette.secondary)
+                        kindToggle("Phone (GTA 6 phone)", isOn: $model.settings.screenTextPhone)
+                        kindToggle("Mission and objective text", isOn: $model.settings.screenTextMission)
+                        kindToggle("Help boxes and actions (button prompts)", isOn: $model.settings.screenTextHelp)
+                        kindToggle("Menus (pause, map, settings)", isOn: $model.settings.screenTextMenus)
+                        kindToggle("Other on-screen text", isOn: $model.settings.screenTextOther)
+                        Text("Translate the screen always translates everything.").font(Mobile.TypeScale.caption)
+                            .foregroundStyle(Mobile.Palette.secondary)
+                    }
+                    .padding(.leading, 12)
+                }
                 RowDivider()
                 toggleRow("Set on-screen text apart from subtitles",
                           "On-screen text keeps its own colours and place, and never looks like the subtitle box.",
@@ -152,6 +167,11 @@ struct ProfileScreen: View {
         if model.settings.output == .computer { return String(localized: "This phone") }
         if model.settings.output == .both, model.hasTV { return String(format: String(localized: "%@ and this phone"), model.tv?.name ?? "TV") }
         return model.hasTV ? model.tv?.name ?? "TV" : String(localized: "Not set up")
+    }
+
+    /// Otomatik ekran yazısının türü (bkz. ScreenTextKind): açıklamasız, girintili anahtar.
+    private func kindToggle(_ title: LocalizedStringKey, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) { Text(title).font(Mobile.TypeScale.body) }.tint(Mobile.Palette.accent)
     }
 
     private func toggleRow(_ title: LocalizedStringKey, _ caption: LocalizedStringKey, isOn: Binding<Bool>) -> some View {

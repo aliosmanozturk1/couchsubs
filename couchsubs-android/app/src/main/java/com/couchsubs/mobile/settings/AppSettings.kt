@@ -208,6 +208,36 @@ class AppSettings(context: Context) : AreaStore {
             autoScreenTextNotice = false
         }
 
+    /**
+     * Otomatik ekran yazısında hangi türler çevrilir ([com.couchsubs.mobile.core.ScreenTextKind]). Eski kayıtlarda
+     * yoktur; varsayılanla gelir (telefon, görev, yardım/eylemler açık; menüler ve diğerleri kapalı).
+     */
+    var screenTextPhone: Boolean
+        get() = prefs.getBoolean("screenTextPhone", true)
+        set(value) = prefs.edit().putBoolean("screenTextPhone", value).apply()
+    var screenTextMission: Boolean
+        get() = prefs.getBoolean("screenTextMission", true)
+        set(value) = prefs.edit().putBoolean("screenTextMission", value).apply()
+    var screenTextHelp: Boolean
+        get() = prefs.getBoolean("screenTextHelp", true)
+        set(value) = prefs.edit().putBoolean("screenTextHelp", value).apply()
+    var screenTextMenus: Boolean
+        get() = prefs.getBoolean("screenTextMenus", false)
+        set(value) = prefs.edit().putBoolean("screenTextMenus", value).apply()
+    var screenTextOther: Boolean
+        get() = prefs.getBoolean("screenTextOther", false)
+        set(value) = prefs.edit().putBoolean("screenTextOther", value).apply()
+
+    /** Türlerin şu anki hali. */
+    val screenTextKinds: com.couchsubs.mobile.core.ScreenTextKinds
+        get() = com.couchsubs.mobile.core.ScreenTextKinds(screenTextPhone, screenTextMission, screenTextHelp, screenTextMenus, screenTextOther)
+
+    /** Bu tür ekran yazısı çevrilir mi (ana ayar kapalıyken hepsi). */
+    fun screenTextAllows(kind: com.couchsubs.mobile.core.ScreenTextKind): Boolean = screenTextKinds.allows(autoScreenText, kind)
+
+    /** GTA 6 telefonu okunur mu: kendi ayarı ya da otomatik ekran yazısında Telefon türü açık. */
+    val readsGamePhone: Boolean get() = screenTextKinds.readsGamePhone(autoReadGamePhone, autoScreenText)
+
     init {
         migrateAutoScreenText()
     }

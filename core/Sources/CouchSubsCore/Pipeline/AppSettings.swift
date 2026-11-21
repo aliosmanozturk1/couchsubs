@@ -169,6 +169,14 @@ public struct UserSettings: Codable, Equatable {
     public var autoScreenText = false
     /// Bir kerelik göç yapıldı (bkz. `migratingAutoScreenText()`). Eski kayıtlarda yoktur (false).
     public var autoScreenTextReset = false
+    /// Otomatik ekran yazısında hangi türler çevrilir (bkz. `ScreenTextKind`); yalnız `autoScreenText` açıkken geçerli.
+    /// Eski kayıtlarda yoktur; varsayılanla gelir: telefon, görev, yardım/eylemler açık; menüler ve diğerleri kapalı
+    /// (kullanıcı isteği: "menülerde olmasını istemiyorum").
+    public var screenTextPhone = true
+    public var screenTextMission = true
+    public var screenTextHelp = true
+    public var screenTextMenus = false
+    public var screenTextOther = false
     /// iPhone Xbox ev yayınında oyun sesi telefonda çalınır. Xbox uzaktan oynatma sürerken sesi istemciye verip TV'yi
     /// susturabilir; kapalıyken ses hiçbir yerden gelmeyebilir, bu yüzden varsayılan açık. PS5'i etkilemez.
     public var xboxAudioOnDevice = true
@@ -226,6 +234,11 @@ public struct UserSettings: Codable, Equatable {
         setTextApart = try values.decodeIfPresent(Bool.self, forKey: .setTextApart) ?? defaults.setTextApart
         autoScreenText = try values.decodeIfPresent(Bool.self, forKey: .autoScreenText) ?? defaults.autoScreenText
         autoScreenTextReset = try values.decodeIfPresent(Bool.self, forKey: .autoScreenTextReset) ?? defaults.autoScreenTextReset
+        screenTextPhone = try values.decodeIfPresent(Bool.self, forKey: .screenTextPhone) ?? defaults.screenTextPhone
+        screenTextMission = try values.decodeIfPresent(Bool.self, forKey: .screenTextMission) ?? defaults.screenTextMission
+        screenTextHelp = try values.decodeIfPresent(Bool.self, forKey: .screenTextHelp) ?? defaults.screenTextHelp
+        screenTextMenus = try values.decodeIfPresent(Bool.self, forKey: .screenTextMenus) ?? defaults.screenTextMenus
+        screenTextOther = try values.decodeIfPresent(Bool.self, forKey: .screenTextOther) ?? defaults.screenTextOther
         xboxAudioOnDevice = try values.decodeIfPresent(Bool.self, forKey: .xboxAudioOnDevice) ?? defaults.xboxAudioOnDevice
         appearance = (try? values.decodeIfPresent(AppAppearance.self, forKey: .appearance)) ?? defaults.appearance
         frameSource = (try? values.decodeIfPresent(FrameSource.self, forKey: .frameSource)) ?? defaults.frameSource

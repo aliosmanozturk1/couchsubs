@@ -84,6 +84,11 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var speakerColors by remember { mutableStateOf(settings.speakerColors) }
     var gameAreaPresets by remember { mutableStateOf(settings.gameAreaPresets) }
     var autoScreenText by remember { mutableStateOf(settings.autoScreenText) }
+    var kindPhone by remember { mutableStateOf(settings.screenTextPhone) }
+    var kindMission by remember { mutableStateOf(settings.screenTextMission) }
+    var kindHelp by remember { mutableStateOf(settings.screenTextHelp) }
+    var kindMenus by remember { mutableStateOf(settings.screenTextMenus) }
+    var kindOther by remember { mutableStateOf(settings.screenTextOther) }
     var setTextApart by remember { mutableStateOf(settings.setTextApart) }
     var fastReading by remember { mutableStateOf(settings.fastSubtitleDetection) }
     var gamePhone by remember { mutableStateOf(settings.autoReadGamePhone) }
@@ -127,8 +132,30 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
             { RowItem(stringResource(R.string.settings_game_area_presets), stringResource(R.string.settings_game_area_presets_short)) {
                 Switch(gameAreaPresets, { gameAreaPresets = it; settings.gameAreaPresets = it })
             } },
-            { RowItem(stringResource(R.string.settings_auto_screen_text), stringResource(R.string.settings_auto_screen_text_short)) {
-                Switch(autoScreenText, { autoScreenText = it; settings.autoScreenText = it })
+            { Column {
+                RowItem(stringResource(R.string.settings_auto_screen_text), stringResource(R.string.settings_auto_screen_text_short)) {
+                    Switch(autoScreenText, { autoScreenText = it; settings.autoScreenText = it })
+                }
+                // Türler yalnız ayar açıkken görünür; dört platformda aynı ad ve sıra (bkz. ScreenTextKind).
+                if (autoScreenText) Column(Modifier.padding(start = 16.dp)) {
+                    Text(stringResource(R.string.settings_screen_text_kinds), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                    RowItem(stringResource(R.string.settings_screen_text_phone)) {
+                        Switch(kindPhone, { kindPhone = it; settings.screenTextPhone = it })
+                    }
+                    RowItem(stringResource(R.string.settings_screen_text_mission)) {
+                        Switch(kindMission, { kindMission = it; settings.screenTextMission = it })
+                    }
+                    RowItem(stringResource(R.string.settings_screen_text_help)) {
+                        Switch(kindHelp, { kindHelp = it; settings.screenTextHelp = it })
+                    }
+                    RowItem(stringResource(R.string.settings_screen_text_menus)) {
+                        Switch(kindMenus, { kindMenus = it; settings.screenTextMenus = it })
+                    }
+                    RowItem(stringResource(R.string.settings_screen_text_other)) {
+                        Switch(kindOther, { kindOther = it; settings.screenTextOther = it })
+                    }
+                    Text(stringResource(R.string.settings_screen_text_manual), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                }
             } },
             { RowItem(stringResource(R.string.settings_set_text_apart), stringResource(R.string.settings_set_text_apart_short)) {
                 Switch(setTextApart, { setTextApart = it; settings.setTextApart = it; TranslationService.setTextApart(it) })

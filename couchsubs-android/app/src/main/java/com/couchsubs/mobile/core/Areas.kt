@@ -610,6 +610,12 @@ class RegionWatcher(
     /** Altyazı hattının son satırları ve alanı (bkz. [SubtitleEcho]); uygulama [SubtitleEcho.shared] verir. */
     @Volatile var subtitleEcho: SubtitleEcho? = null
 
+    /** Bu tür ekran yazısı çevrilir mi (Ayarlar'daki türler, [ScreenTextKinds]); varsayılan hepsi. */
+    @Volatile var allows: (ScreenTextKind) -> Boolean = { true }
+
+    /** Ayarlar'da kapalı türün alanı (menü, hazır yardım/mesaj alanı, görev satırı) okunmaz; kutusu kalkar. */
+    private fun wanted(area: ExtraArea): Boolean = ScreenTextKind.of(area)?.let(allows) ?: true
+
     /** Otomatik alan okundu ama yazı yok ya da gürültü ([ScreenTextNoise]): bulucu o karoları reddeder. */
     @Volatile var onAutoRejected: ((String) -> Unit)? = null
 
@@ -626,7 +632,8 @@ class RegionWatcher(
      * Her karede çağrılır: tur zamanı geldiyse ve önceki tur bittiyse alanların kareleri [crop] ile alınır ve tur
      * [run] ile (çağıranın iş parçacığında) başlatılır; true döner. Yoksa hemen false.
      */
-    fun offer(areas: List<ExtraArea>, crop: (CropRegion) -> Crop?, run: (Runnable) -> Unit): Boolean {
+    fun offer(offered: List<ExtraArea>, crop: (CropRegion) -> Crop?, run: (Runnable) -> Unit): Boolean {
+        val areas = offered.filter(::wanted)
         var manualDue = false
         var phone: PhoneRegionSession? = null
         val started = synchronized(lock) {
@@ -669,7 +676,9 @@ class RegionWatcher(
     }
 
     /** Bir tur: kaldırılan alanların kutusu kalkar, her açık alan gerekirse okunur ve kararlı yazısı çevrilir. */
-    fun pass(ids: Set<String>, crops: List<Pair<ExtraArea, Crop>>, started: Int = session) {
+    fun pass(offeredIds: Set<String>, offered: List<Pair<ExtraArea, Crop>>, started: Int = session) {
+        val crops = offered.filter { wanted(it.first) }
+        val ids = offeredIds - offered.filterNot { wanted(it.first) }.map { it.first.id }.toSet()
         synchronized(lock) {
             if (started != session) return
             passes++
@@ -741,8 +750,11 @@ class RegionWatcher(
         val text = if (area.auto) AutoText.clean(own, area.menu) else own
         var candidate = candidate(text, area.region, crop.frame, keepPrompts = area.menu)
         if (area.auto) {
+            // Menü dışındaki otomatik alanın türü okunan yazıdan çıkar (yardım/eylem ya da diğer); kapalı tür gürültü gibi
+            // çizilmez, bulucuya bildirilir.
+            val unwanted = ScreenTextKind.of(area) == null && !allows(ScreenTextKind.ofParagraphs(candidate.paragraphs))
             if (candidate.key.isEmpty() || ScreenTextNoise.isNoise(candidate.paragraphs.joinToString(" ") { IconText.plain(it) }, area.menu) ||
-                (!area.menu && isWorldText(candidate))) {
+                (!area.menu && isWorldText(candidate)) || unwanted) {
                 // Sayaç, harita, kısa etiket ya da yazısız kutu: çevrilmez; alan bir sonraki turda listeden çıkar.
                 state.candidate = null
                 state.lastRead = null

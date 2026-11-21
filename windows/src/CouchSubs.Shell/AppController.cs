@@ -2501,7 +2501,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         {
             watcherRequested = false;
             var running = pipeline is not null && !subtitlesPaused;
-            if (running && settings.AutoReadGamePhone && GameName.Key(gameSense.Current?.Name) == "gta 6")
+            if (running && settings.ReadsGamePhone && GameName.Key(gameSense.Current?.Name) == "gta 6")
                 phoneTracker ??= new GamePhoneTracker();
             else
             {
@@ -2548,6 +2548,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             regionWatcher.TranslatesUiCommands = settings.SourceLanguage == "en" && settings.TargetLanguage == "tr";
             regionWatcher.EnglishPhoneMessages = settings.SourceLanguage == "en";
             regionWatcher.Game = () => gameSense.Current?.Name;
+            // Ayarlar'daki ekran yazısı türleri (telefon, görev, yardım/eylemler, menüler, diğer).
+            regionWatcher.Allows = kind => Volatile.Read(ref settings).ScreenTextAllows(kind);
             regionWatcher.Slowdown = () => ReadPressure.Slowdown(pipeline?.LastReadMs, frameGate.BusyMs(Environment.TickCount64));
         }
     }

@@ -285,7 +285,8 @@ class TranslationService : Service() {
     /** Oyun telefonu: izleyici saniyede üç kez bakar; telefon açıkken o kare kopyalanıp telefon oturumuna verilir. */
     private fun offerGamePhone(frame: com.couchsubs.mobile.remoteplay.VideoFrame) {
         val watcher = regionWatcher ?: return
-        if (!playsGta6 || !settings.autoReadGamePhone) {
+        // Telefonun kendi ayarı ya da otomatik ekran yazısında Telefon türü (Mac/Windows readsGamePhone).
+        if (!playsGta6 || !settings.readsGamePhone) {
             if (phoneTracking) resetGamePhone()
             return
         }
@@ -573,6 +574,8 @@ class TranslationService : Service() {
             readPhone = { flat -> areaReader.read(RegionPixels(flat.nv21, flat.width, flat.height, 0L)) }).apply {
             prefetchesTranslations = earlyTranslator != null
             subtitleEcho = com.couchsubs.mobile.core.SubtitleEcho.shared
+            // Ayarlar'daki ekran yazısı türleri (telefon, görev, yardım/eylemler, menüler, diğer).
+            allows = { kind -> settings.screenTextAllows(kind) }
             // Altyazı okuması yavaşsa ya da uzun süredir bitmediyse ek alanlar seyrek okunur (Mac, iPhone ve Windows ile aynı).
             slowdown = {
                 val since = readStartedAt

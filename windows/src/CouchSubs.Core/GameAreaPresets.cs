@@ -12,13 +12,15 @@ public static class GameAreaPresets
 {
     /// <summary>GTA 6 telefonu açıkken çıkarılan alan (telefon okuyucusu aynı köşeyi okuyor).</summary>
     public const string PhoneId = "preset-phone";
+    /// <summary>Sol üstteki ipucu/yardım kutusu.</summary>
+    public const string HelpId = "preset-help";
 
     private static readonly Dictionary<string, IReadOnlyList<WatchedArea>> Table = new()
     {
         ["gta 6"] =
         [
             // Sol üstteki ipucu kutusu.
-            new WatchedArea("preset-help", "Help", new CropRegion(0.02, 0.28, 0.01, 0.36)) { RequiresPanel = true },
+            new WatchedArea(HelpId, "Help", new CropRegion(0.02, 0.28, 0.01, 0.36)) { RequiresPanel = true },
             // Sağ alttaki telefon mesajı kartı.
             new WatchedArea(PhoneId, "Messages", new CropRegion(0.45, 0.80, 0.72, 0.99)) { RequiresPanel = true },
         ],

@@ -1,6 +1,13 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Which on-screen text to translate": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Which on-screen text to translate"}},"tr":{"stringUnit":{"state":"translated","value":"Hangi ekran yazıları çevrilsin"}}}},
+    "Phone (GTA 6 phone)": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Phone (GTA 6 phone)"}},"tr":{"stringUnit":{"state":"translated","value":"Telefon (GTA 6 telefonu)"}}}},
+    "Mission and objective text": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Mission and objective text"}},"tr":{"stringUnit":{"state":"translated","value":"Görev ve hedef yazısı"}}}},
+    "Help boxes and actions (button prompts)": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Help boxes and actions (button prompts)"}},"tr":{"stringUnit":{"state":"translated","value":"Yardım kutuları ve eylemler (tuş ipuçları)"}}}},
+    "Menus (pause, map, settings)": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Menus (pause, map, settings)"}},"tr":{"stringUnit":{"state":"translated","value":"Menüler (duraklatma, harita, ayarlar)"}}}},
+    "Other on-screen text": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Other on-screen text"}},"tr":{"stringUnit":{"state":"translated","value":"Diğer ekran yazıları"}}}},
+    "Translate the screen always translates everything.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Translate the screen always translates everything."}},"tr":{"stringUnit":{"state":"translated","value":"Ekranı çevir her zaman her şeyi çevirir."}}}},
     "The TV's Key Server is on, but its developer connection is closed. After Dev Mode Status is turned on the TV has to restart: press RESTART in the Developer Mode app (or unplug the TV and plug it back in), then open the app again, turn on Key Server and try again.": {
       "localizations": {
         "en": {

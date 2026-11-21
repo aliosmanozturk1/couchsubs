@@ -147,6 +147,8 @@ public final class RegionWatcher {
     /// Kısa İngilizce tuş komutlarını Türkçeye çevirir. Yalnız en → tr için açılır.
     public var translatesUiCommands = false
     public var onLog: ((String) -> Void)?
+    /// Bu tür ekran yazısı çevrilir mi (Ayarlar'daki türler, `UserSettings.screenTextAllows`); varsayılan hepsi.
+    public var allows: (ScreenTextKind) -> Bool = { _ in true }
     /// Altyazı hattının son satırları ve alanı (bkz. `SubtitleEcho`); uygulama `SubtitleEcho.shared` verir.
     public var subtitleEcho: SubtitleEcho?
     /// Otomatik alan okundu ama yazı yok ya da gürültü (`ScreenTextNoise`): alanın kimliği (`ScreenTextDetector.reject`).
@@ -205,9 +207,11 @@ public final class RegionWatcher {
 
     /// Bir tur: kaldırılan alanların kutusu kalkar, her açık alan gerekirse okunur ve kararlı yazısı çevrilir.
     /// Testler doğrudan çağırır.
-    public func pass(_ frame: CGImage, areas: [ExtraArea]) async {
+    public func pass(_ frame: CGImage, areas all: [ExtraArea]) async {
         let started = session
         passes += 1
+        // Ayarlar'da kapalı türün alanı (menü, hazır yardım/mesaj alanı, görev satırı) okunmaz; kutusu kalkar.
+        let areas = all.filter { area in ScreenTextKind.of(area).map(allows) ?? true }
         let ids = Set(areas.map(\.id))
         for (id, state) in states where !ids.contains(id) {
             if !state.shown.isEmpty { server.sendRegion(id: id, text: "", box: nil, lineHeight: nil) }
@@ -484,8 +488,11 @@ public final class RegionWatcher {
     /// Kararlı yazı: öncekinden farklıysa çevrilip gönderilir, boşsa kutu kalkar.
     private func commit(_ candidate: Candidate, area: ExtraArea) async {
         guard var state = states[area.id] else { return }
+        // Menü dışındaki otomatik alanın türü okunan yazıdan çıkar (yardım/eylem ya da diğer); kapalı tür gürültü gibi
+        // çizilmez, dedektöre bildirilir.
+        let unwanted = area.auto && ScreenTextKind.of(area) == nil && !allows(ScreenTextKind.of(paragraphs: candidate.paragraphs))
         if area.auto, candidate.key.isEmpty || ScreenTextNoise.isNoise(candidate.paragraphs.joined(separator: " "), menu: area.menu)
-            || (!area.menu && isWorldText(candidate)) {
+            || (!area.menu && isWorldText(candidate)) || unwanted {
             // Kendiliğinden bulunan alanda yazı yok ya da gürültü (sayaç, harita, kısa etiket): çevrilmez, dedektöre
             // bildirilir; o görüntü değişmedikçe alan yeniden önerilmez.
             if !state.shown.isEmpty || !(state.renderedText ?? "").isEmpty {

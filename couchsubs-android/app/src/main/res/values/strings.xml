@@ -309,6 +309,13 @@
     <string name="settings_auto_screen_text">Ekran yazılarını otomatik çevir (deneysel)</string>
     <string name="auto_screen_text_notice">Ekran yazılarını otomatik çevirme deneysel; Ayarlar\'dan açabilirsiniz.</string>
     <string name="settings_auto_screen_text_short">Ekranda beliren yazı kutuları (görev, yardım, mesaj) bulunur ve kendi yerinde çevrilir. Sayaçlar, harita ve kısa etiketler atlanır.</string>
+    <string name="settings_screen_text_kinds">Hangi ekran yazıları çevrilsin</string>
+    <string name="settings_screen_text_phone">Telefon (GTA 6 telefonu)</string>
+    <string name="settings_screen_text_mission">Görev ve hedef yazısı</string>
+    <string name="settings_screen_text_help">Yardım kutuları ve eylemler (tuş ipuçları)</string>
+    <string name="settings_screen_text_menus">Menüler (duraklatma, harita, ayarlar)</string>
+    <string name="settings_screen_text_other">Diğer ekran yazıları</string>
+    <string name="settings_screen_text_manual">Ekranı çevir her zaman her şeyi çevirir.</string>
     <string name="settings_set_text_apart">Ekran yazılarını altyazıdan ayır</string>
     <string name="settings_set_text_apart_short">Ekran yazıları kendi rengini ve yerini korur, altyazı kutusuna benzemez.</string>
     <string name="settings_speaker_colors_short">Her konuşanın adı ve satırı kendi renginde görünür.</string>

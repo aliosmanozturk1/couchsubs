@@ -604,7 +604,7 @@ final class AppModel: ObservableObject {
                 || settings.localAIBaseURL != oldValue.localAIBaseURL || settings.localAIModel != oldValue.localAIModel
                 || settings.aiInstruction != oldValue.aiInstruction
             if translationChanged { Task { await refreshTranslatorStatus() } }
-            if settings.autoReadGamePhone != oldValue.autoReadGamePhone { configureGamePhone() }
+            if settings.readsGamePhone != oldValue.readsGamePhone { configureGamePhone() }
             let languageChanged = settings.sourceLanguage != oldValue.sourceLanguage
                 || settings.targetLanguage != oldValue.targetLanguage
             if isRunning, languageChanged || translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection
@@ -2090,7 +2090,7 @@ final class AppModel: ObservableObject {
 
     private func configureGamePhone() {
         regionWatcher?.closePhone()
-        if pipeline != nil, settings.autoReadGamePhone, let name = gameChoice.game?.name, GameName.key(name) == "gta 6" {
+        if pipeline != nil, settings.readsGamePhone, let name = gameChoice.game?.name, GameName.key(name) == "gta 6" {
             gamePhoneTracker = GamePhoneTracker()
         } else {
             gamePhoneTracker = nil
@@ -2102,6 +2102,8 @@ final class AppModel: ObservableObject {
         let watcher = RegionWatcher(reader: VisionReader(language: settings.sourceLanguage), translator: makeTranslator(), server: server)
         watcher.packLookup = packLookup
         watcher.subtitleEcho = .shared
+        // Ayarlar'daki ekran yazısı türleri (telefon, görev, yardım/eylemler, menüler, diğer).
+        watcher.allows = { [weak self] kind in self?.settings.screenTextAllows(kind) ?? true }
         watcher.skipsTurkish = settings.targetLanguage == "tr"
         watcher.translatesUiCommands = settings.sourceLanguage == "en" && settings.targetLanguage == "tr"
         watcher.englishPhoneMessages = settings.sourceLanguage == "en"

@@ -64,7 +64,7 @@ final class PhoneModel: ObservableObject {
                 || settings.openAIModel != oldValue.openAIModel || settings.claudeModel != oldValue.claudeModel
                 || settings.aiInstruction != oldValue.aiInstruction
             if translationChanged { Task { await refreshTranslatorStatus() } }
-            if settings.autoReadGamePhone != oldValue.autoReadGamePhone { configureGamePhone() }
+            if settings.readsGamePhone != oldValue.readsGamePhone { configureGamePhone() }
             if isRunning, translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection
                 || settings.watchSubtitleBackground != oldValue.watchSubtitleBackground {
                 makePipeline()
@@ -924,7 +924,7 @@ final class PhoneModel: ObservableObject {
     /// Oyun telefonu yalnız ayar açıkken ve oynanan oyun GTA 6 iken izlenir (Mac'teki `configureGamePhone` ile aynı).
     private func configureGamePhone() {
         regionWatcher?.closePhone()
-        gamePhoneTracker = Self.tracksGamePhone(running: pipeline != nil, enabled: settings.autoReadGamePhone,
+        gamePhoneTracker = Self.tracksGamePhone(running: pipeline != nil, enabled: settings.readsGamePhone,
                                                 game: gameChoice.game?.name) ? GamePhoneTracker() : nil
     }
 
@@ -938,6 +938,8 @@ final class PhoneModel: ObservableObject {
         let watcher = RegionWatcher(reader: VisionReader(language: settings.sourceLanguage), translator: makeTranslator(), server: server)
         watcher.packLookup = packLookup
         watcher.subtitleEcho = .shared
+        // Ayarlar'daki ekran yazısı türleri (telefon, görev, yardım/eylemler, menüler, diğer).
+        watcher.allows = { [weak self] kind in self?.settings.screenTextAllows(kind) ?? true }
         watcher.skipsTurkish = settings.targetLanguage == "tr"
         watcher.translatesUiCommands = settings.sourceLanguage == "en" && settings.targetLanguage == "tr"
         watcher.onLog = { SubtitleLog.write($0) }

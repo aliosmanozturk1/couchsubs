@@ -381,6 +381,22 @@
                                                Text="{t:T 'Text boxes that appear on screen (objectives, help, messages) are found and translated in place. Counters, the map and short labels are skipped.'}" />
                                 </StackPanel>
                             </DockPanel>
+                            <!-- Otomatik ekran yazısının türleri: yalnız ayar açıkken görünür; dört platformda aynı ad ve sıra (bkz. ScreenTextKind). -->
+                            <StackPanel x:Name="ScreenTextKindsPanel" Margin="16,0,0,8">
+                                <TextBlock Text="{t:T 'Which on-screen text to translate'}" Style="{StaticResource HintText}" />
+                                <CheckBox x:Name="ScreenTextPhone" Content="{t:T 'Phone (GTA 6 phone)'}" Foreground="{DynamicResource textPrimaryBrush}"
+                                          Margin="0,6,0,0" Checked="OnScreenTextKind" Unchecked="OnScreenTextKind" />
+                                <CheckBox x:Name="ScreenTextMission" Content="{t:T 'Mission and objective text'}" Foreground="{DynamicResource textPrimaryBrush}"
+                                          Margin="0,6,0,0" Checked="OnScreenTextKind" Unchecked="OnScreenTextKind" />
+                                <CheckBox x:Name="ScreenTextHelp" Content="{t:T 'Help boxes and actions (button prompts)'}" Foreground="{DynamicResource textPrimaryBrush}"
+                                          Margin="0,6,0,0" Checked="OnScreenTextKind" Unchecked="OnScreenTextKind" />
+                                <CheckBox x:Name="ScreenTextMenus" Content="{t:T 'Menus (pause, map, settings)'}" Foreground="{DynamicResource textPrimaryBrush}"
+                                          Margin="0,6,0,0" Checked="OnScreenTextKind" Unchecked="OnScreenTextKind" />
+                                <CheckBox x:Name="ScreenTextOther" Content="{t:T 'Other on-screen text'}" Foreground="{DynamicResource textPrimaryBrush}"
+                                          Margin="0,6,0,0" Checked="OnScreenTextKind" Unchecked="OnScreenTextKind" />
+                                <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Text="{t:T 'Translate the screen always translates everything.'}" />
+                            </StackPanel>
                             <Separator Margin="0" />
                             <DockPanel MinHeight="{DynamicResource size.buttonLarge}" Margin="0,8">
                                 <CheckBox x:Name="SetTextApart" DockPanel.Dock="Right" Margin="12,0,0,0" VerticalAlignment="Center"

@@ -105,6 +105,12 @@ public partial class SettingsWindow : Window
         SpeakerNames.IsChecked = settings.ShowSpeakerNames;
         SpeakerColors.IsChecked = settings.SpeakerColors;
         AutoScreenText.IsChecked = settings.AutoScreenText;
+        ScreenTextPhone.IsChecked = settings.ScreenTextPhone;
+        ScreenTextMission.IsChecked = settings.ScreenTextMission;
+        ScreenTextHelp.IsChecked = settings.ScreenTextHelp;
+        ScreenTextMenus.IsChecked = settings.ScreenTextMenus;
+        ScreenTextOther.IsChecked = settings.ScreenTextOther;
+        ScreenTextKindsPanel.Visibility = settings.AutoScreenText ? Visibility.Visible : Visibility.Collapsed;
         SetTextApart.IsChecked = settings.SetTextApart;
         GameAreaPresets.IsChecked = settings.GameAreaPresets;
         ShowPacks();
@@ -585,7 +591,22 @@ public partial class SettingsWindow : Window
 
     private void OnSpeakerColors(object sender, RoutedEventArgs e) => Update(s => s with { SpeakerColors = SpeakerColors.IsChecked == true });
 
-    private void OnAutoScreenText(object sender, RoutedEventArgs e) => Update(s => s with { AutoScreenText = AutoScreenText.IsChecked == true });
+    private void OnAutoScreenText(object sender, RoutedEventArgs e)
+    {
+        // Türler yalnız ayar açıkken görünür.
+        ScreenTextKindsPanel.Visibility = AutoScreenText.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        Update(s => s with { AutoScreenText = AutoScreenText.IsChecked == true });
+    }
+
+    /// <summary>Otomatik ekran yazısının türleri (bkz. <see cref="ScreenTextKind"/>).</summary>
+    private void OnScreenTextKind(object sender, RoutedEventArgs e) => Update(s => s with
+    {
+        ScreenTextPhone = ScreenTextPhone.IsChecked == true,
+        ScreenTextMission = ScreenTextMission.IsChecked == true,
+        ScreenTextHelp = ScreenTextHelp.IsChecked == true,
+        ScreenTextMenus = ScreenTextMenus.IsChecked == true,
+        ScreenTextOther = ScreenTextOther.IsChecked == true,
+    });
 
     private void OnSetTextApart(object sender, RoutedEventArgs e) => Update(s => s with { SetTextApart = SetTextApart.IsChecked == true });
 

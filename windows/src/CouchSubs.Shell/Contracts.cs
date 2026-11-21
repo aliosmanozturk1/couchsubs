@@ -281,6 +281,36 @@ public sealed record UserSettings
     /// </summary>
     public bool AutoScreenTextReset { get; init; }
     /// <summary>
+    /// Otomatik ekran yazısında hangi türler çevrilir (bkz. <see cref="ScreenTextKind"/>); yalnız <see cref="AutoScreenText"/>
+    /// açıkken geçerli. Eski ayar dosyalarında yoktur; varsayılanla gelir: telefon, görev, yardım/eylemler açık; menüler ve
+    /// diğerleri kapalı (kullanıcı isteği: "menülerde olmasını istemiyorum").
+    /// </summary>
+    public bool ScreenTextPhone { get; init; } = true;
+    public bool ScreenTextMission { get; init; } = true;
+    public bool ScreenTextHelp { get; init; } = true;
+    public bool ScreenTextMenus { get; init; }
+    public bool ScreenTextOther { get; init; }
+
+    /// <summary>
+    /// Bu tür ekran yazısı çevrilir mi. "Ekran yazılarını otomatik çevir" kapalıyken türler uygulanmaz (hazır alanlar ve
+    /// telefon kendi ayarlarıyla eskisi gibi çalışır).
+    /// </summary>
+    public bool ScreenTextAllows(ScreenTextKind kind) => !AutoScreenText || kind switch
+    {
+        ScreenTextKind.Phone => ScreenTextPhone,
+        ScreenTextKind.Mission => ScreenTextMission,
+        ScreenTextKind.Help => ScreenTextHelp,
+        ScreenTextKind.Menu => ScreenTextMenus,
+        _ => ScreenTextOther,
+    };
+
+    /// <summary>
+    /// GTA 6 telefonu okunur mu: kendi ayarı ("GTA 6 telefonunu otomatik çevir") ya da otomatik ekran yazısında Telefon
+    /// türü açık.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool ReadsGamePhone => AutoReadGamePhone || (AutoScreenText && ScreenTextPhone);
+    /// <summary>
     /// "Ekran yazılarını altyazıdan ayır": ek alan ve otomatik ekran yazısı kutuları özgün rengini ve zeminini korur,
     /// altyazı kutusuna benzemez (zemin yoksa zeminsiz, koyu gölgeli). Eski ayar dosyalarında yoktur; açık başlar.
     /// </summary>

@@ -186,6 +186,10 @@ public sealed partial class RegionWatcher
     public Action<string>? Log { get; set; }
     /// <summary>Altyazı hattının son satırları ve alanı (bkz. <see cref="CouchSubs.Core.SubtitleEcho"/>); uygulama altyazı hattınınkini verir.</summary>
     public SubtitleEcho? SubtitleEcho { get; set; }
+    /// <summary>
+    /// Bu tür ekran yazısı çevrilir mi (Ayarlar'daki türler, <see cref="ScreenTextKind"/>); verilmezse hepsi.
+    /// </summary>
+    public Func<ScreenTextKind, bool>? Allows { get; set; }
     /// <summary>Otomatik alan okundu ama yazı yok ya da gürültü (<see cref="ScreenTextNoise"/>): alanın kimliği.</summary>
     public Action<string>? Rejected { get; set; }
     /// <summary>Her okumanın süresi (ms; ölçüm için).</summary>
@@ -277,9 +281,11 @@ public sealed partial class RegionWatcher
     public Task PassAsync(Frame frame, IReadOnlyList<WatchedArea> areas) =>
         PassAsync(frame, areas, Volatile.Read(ref session), regularDue: true, confirmOnly: false, phoneDue: true);
 
-    private async Task PassAsync(Frame frame, IReadOnlyList<WatchedArea> areas, int started, bool regularDue, bool confirmOnly, bool phoneDue)
+    private async Task PassAsync(Frame frame, IReadOnlyList<WatchedArea> all, int started, bool regularDue, bool confirmOnly, bool phoneDue)
     {
         if (Volatile.Read(ref session) != started) return;
+        // Ayarlar'da kapalı türün alanı (menü, hazır yardım/mesaj alanı, görev satırı) okunmaz; kutusu kalkar.
+        var areas = Allows is { } allows ? [.. all.Where(area => ScreenTextKinds.Of(area) is not { } kind || allows(kind))] : all;
         var map = states;
         if (regularDue || phoneDue) Interlocked.Increment(ref passes);
         var ids = areas.Select(area => area.Id).ToHashSet();
@@ -654,8 +660,12 @@ public sealed partial class RegionWatcher
 
     private async Task CommitAsync(Candidate candidate, WatchedArea area, State state, int started)
     {
+        // Menü dışındaki otomatik alanın türü okunan yazıdan çıkar (yardım/eylem ya da diğer); kapalı tür gürültü gibi
+        // çizilmez, dedektöre bildirilir.
+        var unwanted = area.Auto && Allows is { } allows && ScreenTextKinds.Of(area) is null
+                       && !allows(ScreenTextKinds.Of(candidate.Paragraphs));
         if (area.Auto && (candidate.Key.Length == 0 || ScreenTextNoise.IsNoise(string.Join(' ', candidate.Paragraphs), area.Menu)
-                          || (!area.Menu && IsWorldText(candidate))))
+                          || (!area.Menu && IsWorldText(candidate)) || unwanted))
         {
             // Kendiliğinden bulunan alanda yazı yok ya da gürültü (sayaç, harita, kısa etiket): çevrilmez, dedektöre
             // bildirilir; o görüntü değişmedikçe alan yeniden önerilmez.
