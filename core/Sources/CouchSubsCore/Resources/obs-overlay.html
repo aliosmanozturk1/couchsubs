@@ -82,6 +82,8 @@
   var pageColor = PAGE_COLORS[rawBg] || null;
   var fixed = { size: params.get('size'), bottom: params.get('bottom'), bg: pageColor ? null : params.get('bg') };
   var timer = null;
+  // Oyundaki altyazının son bilinen yeri ("Örtsün"de yeri gelmeyen satır için).
+  var lastBox = null;
   var hintTimer = null;
   var placement = 'cover';
   // Son altyazının yerleşimi: 'fixed' (sabit yükseklik), 'cover', 'above' ya da 'below'.
@@ -190,11 +192,12 @@
     return widest;
   }
 
-  function wrapToCover(text, box) {
+  // scale: yazı boyu çarpanı (1 ya da COVER_STEP). Ölçüm yapılamazsa null, hiçbir bölme 3 satırda sığmazsa false.
+  function wrapToCover(text, box, scale) {
     if (!box || text.indexOf('\n') >= 0) return null;
     var words = wrapTokens(text);
     var style = window.getComputedStyle(line);
-    var size = parseFloat(pixels(baseSize));
+    var size = parseFloat(pixels(baseSize * scale));
     var font = style.fontWeight + ' ' + size + 'px ' + style.fontFamily;
     var pageWidth = window.innerWidth || 1920, pageHeight = window.innerHeight || 1080;
     // İç boşluk: yanlarda 0.6em, üstte ve altta 0.25em (#line); en çok 84vw.
@@ -209,8 +212,38 @@
       var area = Math.max(coverWidth, width + pad) * Math.max(coverHeight, size * (1.3 * lines + 0.5));
       if (!best || area < best.area * COVER_LINE_GAIN) best = { text: candidate, area: area };
     }
-    return best ? { text: best.text, scale: 1 } : null;
+    return best ? { text: best.text, scale: scale } : false;
   }
+
+  // "Örtsün"de yazı boyu kararlıdır (Mac/Windows: CoverFontScale, TV: coverWrap). Kullanıcının seçtiği boy kullanılır, kutu
+  // çeviriye göre genişler; yazı ancak 3 satıra sığmıyorsa bir kademe küçülür (seçilen boyun %80'i), asla büyütülmez. Küçülen
+  // boy yazı boyu ayarı değişene dek kalır: ardışık satırlarda boy bir büyük bir küçük zıplamasın. Yazı daha fazla
+  // küçülmez; sığmayan çeviride kutu büyür.
+  var COVER_STEP = 0.8, coverScale = 1, coverFont = null;
+  function wrapAt(text, scale) {
+    var cap = Math.floor(WRAP_MAX_CHARS / scale);
+    var length = Array.from ? Array.from(text).length : text.length;
+    if (length <= cap || text.indexOf('\n') >= 0) return { text: text, scale: scale };
+    var words = wrapTokens(text);
+    if (words.length < 2) return { text: text, scale: scale };
+    var lines = Math.min(WRAP_MAX_LINES, Math.max(2, Math.ceil(length / cap)));
+    return { text: wrapBalance(words, Math.min(lines, words.length)), scale: scale };
+  }
+  function coverWrap(text, box) {
+    if (coverFont !== baseSize) { coverFont = baseSize; coverScale = 1; }
+    if (text.indexOf('\n') >= 0) return { text: text, scale: coverScale };
+    var fitted = wrapToCover(text, box, coverScale);
+    if (fitted === false && coverScale === 1) {
+      coverScale = COVER_STEP;
+      fitted = wrapToCover(text, box, coverScale);
+    } else if (fitted === null && coverScale === 1 && wrapSubtitle(text).scale < 1) {
+      coverScale = COVER_STEP;
+    }
+    return fitted || wrapAt(text, coverScale);
+  }
+
+  // Örtü kutusunun her yana bıraktığı pay (1080 satırlık ekranda piksel; Mac ve Windows'taki OverlayCover ile aynı).
+  var COVER_MARGIN = 8;
 
   /// Yazı boyu 1080 satırlık ekrana göredir; sayfanın gerçek yüksekliğinde tam piksele yuvarlanır (keskin yazı).
   function pixels(size) {
@@ -465,8 +498,11 @@
     clearTimeout(timer);
     if (!text) return hide();
     hideHint();
+    // "Örtsün": oyundaki altyazının yeri gelmezse son bilinen yer örtülür (Mac ve Windows'taki pencere ile aynı).
+    if (placement === 'cover' && !box) box = lastBox;
+    if (box) lastBox = box;
     var covering = box && !fixed.bottom && placement === 'cover' && !(lastStyle && lastStyle.backgroundShape === 'band');
-    var wrapped = (covering && wrapToCover(text, box)) || wrapSubtitle(text);
+    var wrapped = covering ? coverWrap(text, box) : wrapSubtitle(text);
     textScale = wrapped.scale;
     line.textContent = wrapped.text;
     paintSpeakers(line, wrapped.text, speakerMap(speakers));
@@ -488,14 +524,28 @@
       line.style.left = band ? '50%' : ((box.left + box.right) / 2 * 100) + '%';
       line.style.maxWidth = band ? '100vw' : '';
       line.style.top = ((box.top + box.bottom) / 2 * 100) + '%';
-      // Bant: zemin sayfanın tüm genişliğini kaplar (eski sürümler alanı göndermez, yazı kadar kalır).
-      line.style.minWidth = band ? '100vw' : ((box.right - box.left) * 100) + 'vw';
+      // Bant: zemin sayfanın tüm genişliğini kaplar (eski sürümler alanı göndermez, yazı kadar kalır). Kutu İngilizce
+      // altyazıyı genişlikte ve yükseklikte (iki satırlık altyazı dahil) her yana payla örter; dar kalan kutunun
+      // yanlarından ya da altından/üstünden oyunun yazısı görünüyordu. Yazı kutunun dikey ortasında kalır.
+      var viewWidth = window.innerWidth || 1920, viewHeight = window.innerHeight || 1080;
+      var margin = COVER_MARGIN * viewHeight / 1080;
+      line.style.boxSizing = 'border-box';
+      line.style.minWidth = band ? '100vw' : Math.ceil((box.right - box.left) * viewWidth + 2 * margin) + 'px';
+      line.style.paddingTop = '';
+      line.style.paddingBottom = '';
+      var coverHeight = (box.bottom - box.top) * viewHeight + 2 * margin;
       // Örtü de "Arka plan koyuluğu"na uyar (eskiden hep %97'ydi, kaydırıcı örtüde işe yaramıyordu); %100 tamamen
       // opaktır. Koyuluğu göndermeyen eski sürümlerde örtü %97 kalır.
       var bg = fixed.bg !== null ? Number(fixed.bg) : (lastStyle && lastStyle.background);
       line.style.background = typeof bg === 'number' && !isNaN(bg) ? (bg >= 100 ? '#000' : boxColor(bg)) : 'rgba(0, 0, 0, 0.97)';
       if (pageColor) line.style.background = '#000';
       line.className = 'on cover';
+      var natural = line.offsetHeight;
+      if (natural > 0 && natural < coverHeight) {
+        var extra = (coverHeight - natural) / 2, padded = window.getComputedStyle(line);
+        line.style.paddingTop = (parseFloat(padded.paddingTop) + extra) + 'px';
+        line.style.paddingBottom = (parseFloat(padded.paddingBottom) + extra) + 'px';
+      }
       if (!band) {
         // Genişleyen kutu ekranın kenarından taşmasın: ortası kutunun yarısı kadar içeride kalır.
         var pageWidth = window.innerWidth || 1920, half = line.offsetWidth / 2;
@@ -507,6 +557,9 @@
       line.style.top = '';
       line.style.minWidth = '';
       line.style.maxWidth = '';
+      line.style.boxSizing = '';
+      line.style.paddingTop = '';
+      line.style.paddingBottom = '';
       line.className = 'on';
       apply(lastStyle);
       // apply() may restore a fixed bottom from the previous subtitle. Pick the new mode first,

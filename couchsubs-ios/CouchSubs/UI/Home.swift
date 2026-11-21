@@ -214,6 +214,7 @@ struct HomeScreen: View {
 
     private var targetName: String {
         if model.settings.output == .computer { return String(localized: "This phone") }
+        if model.settings.output == .obs { return String(localized: "OBS only (stream)") }
         if model.settings.output == .both, model.hasTV { return String(format: String(localized: "%@ and this phone"), model.tv?.name ?? "TV") }
         return model.hasTV ? model.tv?.name ?? "TV" : String(localized: "Not set up")
     }
@@ -341,7 +342,8 @@ struct RunningScreen: View {
                 }
                 Tile {
                     Text(model.settings.output.showsOnTV ? "TV" : "Screen").font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
-                    Text(verbatim: model.settings.output.showsOnTV ? model.tvStatusText : String(localized: "This phone"))
+                    Text(verbatim: model.settings.output.showsOnTV ? model.tvStatusText
+                         : model.settings.output == .obs ? String(localized: "OBS only (stream)") : String(localized: "This phone"))
                         .font(Mobile.TypeScale.title).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 }
             }

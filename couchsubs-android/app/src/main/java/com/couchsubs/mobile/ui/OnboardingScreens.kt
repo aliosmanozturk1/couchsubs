@@ -261,13 +261,13 @@ fun TargetScreen(onBack: (() -> Unit)? = null, onTvInstall: (() -> Unit)? = null
         if (tv.host.isNotBlank()) chosen = com.couchsubs.mobile.tv.TvChoice.select(chosen, tv).also { settings.installedTv = it }
         chosenName = tv.name
         settings.tvName = tv.name
-        if (target == SubtitleTarget.PHONE) target = SubtitleTarget.TV
+        if (!target.showsOnTv) target = SubtitleTarget.TV
     }
     ScreenScaffold(top = { TopBar(onBack = onBack) }, bottom = {
         PrimaryButton(stringResource(R.string.next_continue)) {
             settings.target = target
             // Seçim yapılmadıysa ağda görülen ilk TV kullanılır (eski davranış).
-            if (chosen == null && target != SubtitleTarget.PHONE) tvs?.firstOrNull()?.let { choose(it) }
+            if (chosen == null && target.showsOnTv) tvs?.firstOrNull()?.let { choose(it) }
             settings.onboarded = true
             onDone()
         }
@@ -329,10 +329,23 @@ fun TargetScreen(onBack: (() -> Unit)? = null, onTvInstall: (() -> Unit)? = null
             showManual = false
             choose(tv)
         }
+        // Mac ve Windows'taki "Yalnız OBS (yayın)": TV aranmaz, bu telefonda altyazı ekranı açılmaz; altyazı yalnız aynı Wi-Fi'daki
+        // bilgisayarda OBS'in tarayıcı kaynağına gider (iPhone ile aynı). Seçiliyken adres ve kopyala düğmesi görünür.
+        Tile(Modifier.fillMaxWidth(), style = if (target == SubtitleTarget.OBS) TileStyle.ACTIVE else TileStyle.NORMAL, onClick = { target = SubtitleTarget.OBS }) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Tokens.Space.inline)) {
+                TileIcon(CouchIcons.Tv)
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.target_obs), style = Tokens.Type.headline, color = Tokens.Color.text)
+                    Text(stringResource(R.string.target_obs_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                }
+                if (target == SubtitleTarget.OBS) SelectedCheck()
+            }
+            if (target == SubtitleTarget.OBS) ObsOnlyAddress()
+        }
         // TV'si olmayan ya da monitörde oynayan için: hangi hedef seçilirse seçilsin altyazı ayrıca bir tarayıcıda da görünür.
         SecondScreenTile()
         // TV kurulumu bitti: her çeviride TV uygulaması kendiliğinden açılmaya çalışılır; açılmazsa TV'den açılır.
-        if (onBack == null && target != SubtitleTarget.PHONE && settings.installedTv != null)
+        if (onBack == null && target.showsOnTv && settings.installedTv != null)
             Text(stringResource(R.string.tv_open_wizard_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
     }
 }
@@ -370,6 +383,30 @@ private fun ManualTvDialog(onDismiss: () -> Unit, onSupported: () -> Unit, onCon
         dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancel)) } },
         containerColor = Tokens.Color.surface2,
     )
+}
+
+/** "Yalnız OBS (yayın)": OBS'in tarayıcı kaynağına yazılacak adres (bu telefonun ağ adresiyle) ve kopyala düğmesi. */
+@Composable
+private fun ObsOnlyAddress() {
+    val context = LocalContext.current
+    val address = remember { com.couchsubs.mobile.service.TranslationService.viewerAddress() }
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            kotlinx.coroutines.delay(1500)
+            copied = false
+        }
+    }
+    Text(stringResource(R.string.target_obs_body), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+    address?.let { shown ->
+        androidx.compose.foundation.text.selection.SelectionContainer {
+            Text(shown, style = Tokens.Type.caption.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace), color = Tokens.Color.text)
+        }
+        SecondaryButton(stringResource(if (copied) R.string.history_copied else R.string.history_copy), Modifier.fillMaxWidth()) {
+            context.getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("CouchSubs", shown))
+            copied = true
+        }
+    }
 }
 
 fun brandName(brand: TvBrand) = when (brand) {

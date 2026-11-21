@@ -78,12 +78,16 @@ public enum TranslationEngine: String, Codable, CaseIterable {
     }
 }
 
-/// Altyazının gösterileceği yer (Windows'taki `SubtitleOutput` ile aynı).
+/// Altyazının gösterileceği yer (Windows'taki `SubtitleOutput` ile aynı). `obs`: yalnız OBS katmanı (`/obs`, yayın); TV
+/// aranmaz ve açılmaz, bilgisayar ekranında (telefonda: bu telefonun ekranında) pencere açılmaz. OBS katmanı her seçimde
+/// altyazıyı alır; `obs` yalnız öbür yerleri kapatır. Bu seçeneği tanımayan eski sürüm kaydı varsayılanla (TV) açar.
 public enum SubtitleOutput: String, Codable, CaseIterable {
-    case tv, computer, both
+    case tv, computer, both, obs
 
-    public var showsOnTV: Bool { self != .computer }
-    public var showsOnComputer: Bool { self != .tv }
+    public var showsOnTV: Bool { self == .tv || self == .both }
+    public var showsOnComputer: Bool { self == .computer || self == .both }
+    /// Altyazının gideceği bir yer var mı: TV seçiliyse TV eşleşmiş olmalı; bilgisayar ekranı ve OBS TV istemez.
+    public func hasDestination(hasTV: Bool) -> Bool { showsOnComputer || self == .obs || hasTV }
 }
 
 /// Görüntünün nereden okunduğu. `ps5`: CouchSubs PS5'e kendisi bağlanır (ikinci hesap). `remotePlayWindow`: oyun bu

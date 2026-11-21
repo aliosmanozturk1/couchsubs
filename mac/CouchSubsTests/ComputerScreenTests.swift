@@ -92,6 +92,45 @@ final class ComputerScreenTests: XCTestCase {
         model.stop()
     }
 
+    /// "Yalnız OBS (yayın)": TV eşleşmiş olsa da aranmaz ve açık tutulmaz, bilgisayar ekranında pencere açılmaz; çeviri TV'siz de
+    /// başlar (OBS katmanı olayları sunucudan alır).
+    func testOBSOnlyStartsWithoutTVAndOpensNoWindow() async {
+        let services = FakeServices()
+        let store = storeWithoutTV()
+        store.save(LGTV(name: "LG TV", host: "127.0.0.1"), for: StoreKey.tv)
+        store.save("tv-key", for: StoreKey.tvKey)
+        let model = AppModel(services: services, store: store, defaults: .isolated())
+        model.settings.output = .obs
+        XCTAssertTrue(model.canStart)
+        await model.start()
+        XCTAssertTrue(model.isRunning)
+        XCTAssertTrue(services.keepers.isEmpty)
+        model.overlayReceive(.subtitle(text: "Merhaba", durationMs: 4000, paragraphs: false))
+        XCTAssertTrue(model.overlayLines.isEmpty)
+        XCTAssertFalse(model.overlayVisible)
+        model.stop()
+        let alone = AppModel(services: FakeServices(), store: storeWithoutTV(), defaults: .isolated())
+        alone.settings.output = .obs
+        XCTAssertTrue(alone.canStart)
+    }
+
+    /// "Örtsün": yeri gelmeyen satır son bilinen yeri örter; yazı boyu bir kademeden fazla küçülmez ve geri zıplamaz.
+    func testCoverKeepsTheLastBoxAndAStableFontScale() {
+        let model = AppModel(services: FakeServices(), store: storeWithoutTV(), defaults: .isolated())
+        model.settings.output = .computer
+        model.settings.style.placement = .cover
+        let box = TextBox(left: 0.3, top: 0.8, right: 0.7, bottom: 0.9)
+        model.overlayReceive(.subtitle(text: "Çaldın mı?", durationMs: 4000, paragraphs: false, box: box))
+        XCTAssertEqual(model.overlayCover?.box, box)
+        XCTAssertEqual(model.overlayCover?.scale, 1)
+        let long = String(repeating: "Annenin arabası demiştin hani, unuttun mu yoksa? ", count: 4)
+        model.overlayReceive(.subtitle(text: long, durationMs: 4000, paragraphs: false))
+        XCTAssertEqual(model.overlayCover?.box, box)
+        XCTAssertEqual(model.overlayCover?.scale, CoverFontScale.step)
+        model.overlayReceive(.subtitle(text: "Evet.", durationMs: 4000, paragraphs: false))
+        XCTAssertEqual(model.overlayCover?.scale, CoverFontScale.step)
+    }
+
     func testTVOnlyWithoutTVCannotStart() async {
         let services = FakeServices()
         let model = AppModel(services: services, store: storeWithoutTV(), defaults: .isolated())

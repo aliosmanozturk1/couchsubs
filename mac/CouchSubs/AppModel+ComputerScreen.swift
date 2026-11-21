@@ -41,7 +41,12 @@ extension AppModel {
         switch event {
         case .subtitle(let text, let durationMs, let paragraphs, let replaces, let box):
             overlayScreenUntil = 0
-            overlayCover = box.map { (text: text, box: $0) }
+            // "Örtsün": oyundaki altyazının yeri gelmezse son bilinen yer örtülür; yazı boyu seçilen boyda kalır, ancak
+            // 3 satıra sığmazsa bir kademe küçülür (bkz. CoverFontScale; TV ve OBS sayfası da aynı).
+            let style = settings.style
+            let covering = style.placement == .cover && style.backgroundShape != .band && !paragraphs
+            overlayCover = (text: text, box: box ?? overlayCover?.box,
+                            scale: covering ? overlayCoverFont.scale(for: text, fontSize: style.fontSize) : 1)
             overlayStack.stackPrevious = settings.style.stackPrevious
             overlayStack.show(text, durationMs: durationMs, paragraphs: paragraphs, replaces: replaces, now: now)
         // "Ekranı çevir": çeviriler satır satır gösterilir. Hemen ardından gelen "temizle" ("Ekran çevriliyor…" yazısı

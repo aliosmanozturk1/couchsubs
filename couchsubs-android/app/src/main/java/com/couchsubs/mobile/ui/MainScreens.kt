@@ -379,7 +379,8 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
             } },
             { Tile(it) {
                 TileLabel(stringResource(R.string.main_tvs_label))
-                Text(if (Services.settings.target.showsOnTv) status.connectedTvs.toString() else stringResource(R.string.main_target_phone),
+                Text(if (Services.settings.target.showsOnTv) status.connectedTvs.toString()
+                    else stringResource(if (Services.settings.target == SubtitleTarget.OBS) R.string.target_obs else R.string.main_target_phone),
                     style = Tokens.Type.titleNumeric, color = Tokens.Color.text)
             } },
         )

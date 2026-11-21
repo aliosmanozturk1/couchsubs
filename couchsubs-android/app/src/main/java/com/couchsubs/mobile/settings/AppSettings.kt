@@ -31,13 +31,16 @@ import javax.crypto.spec.GCMParameterSpec
 /** Okunan konsol: PlayStation (varsayılan, Remote Play) ya da Xbox (Beta, ev yayını). */
 enum class ConsolePlatform { PLAYSTATION, XBOX }
 
-/** Altyazının gösterileceği yer. */
-/** Altyazının gösterildiği yer; [BOTH]: TV'de ve bu telefonda (Mac ve Windows'taki "İkisi de", iPhone ile aynı). */
+/**
+ * Altyazının gösterildiği yer; [BOTH]: TV'de ve bu telefonda (Mac ve Windows'taki "İkisi de", iPhone ile aynı). [OBS]: yalnız
+ * OBS katmanı (Mac ve Windows'taki "Yalnız OBS (yayın)"): TV aranmaz ve açılmaz, bu telefonda altyazı ekranı açılmaz; aynı
+ * ağdaki bilgisayarda OBS'in tarayıcı kaynağı telefonun /obs adresini açar.
+ */
 enum class SubtitleTarget {
-    TV, PHONE, BOTH;
+    TV, PHONE, BOTH, OBS;
 
-    val showsOnTv: Boolean get() = this != PHONE
-    val showsOnPhone: Boolean get() = this != TV
+    val showsOnTv: Boolean get() = this == TV || this == BOTH
+    val showsOnPhone: Boolean get() = this == PHONE || this == BOTH
 }
 
 /** Çeviri motoru: ücretsiz cihaz üstü (ML Kit) ya da kullanıcının anahtarıyla çevrimiçi hizmet. */

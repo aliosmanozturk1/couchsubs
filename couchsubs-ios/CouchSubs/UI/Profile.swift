@@ -188,6 +188,7 @@ struct ProfileScreen: View {
 
     private var targetName: String {
         if model.settings.output == .computer { return String(localized: "This phone") }
+        if model.settings.output == .obs { return String(localized: "OBS only (stream)") }
         if model.settings.output == .both, model.hasTV { return String(format: String(localized: "%@ and this phone"), model.tv?.name ?? "TV") }
         return model.hasTV ? model.tv?.name ?? "TV" : String(localized: "Not set up")
     }
@@ -380,7 +381,7 @@ struct SettingsScreen: View {
                     .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
                 // TV'de çevirinin yeri (Mac ve Windows'taki Yeri seçimi, Android ile aynı): üstünde/altında seçilince oyundaki
                 // İngilizce altyazı da görünür; sabit yerde yükseklik kaydırıcıyla ayarlanır, bırakınca TV'de örnek altyazı çıkar.
-                if model.settings.output.showsOnTV {
+                if model.settings.output.showsOnTV || model.settings.output == .obs {
                     Text("Subtitle position on TV").font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
                     SegmentedTabs(options: [SubtitlePlacement.cover: "Cover", .above: "Above", .below: "Below", .fixed: "Fixed"],
                                   selection: $model.settings.style.placement)
@@ -511,6 +512,7 @@ struct SettingsScreen: View {
 
     private var targetName: String {
         if model.settings.output == .computer { return String(localized: "This phone") }
+        if model.settings.output == .obs { return String(localized: "OBS only (stream)") }
         if model.settings.output == .both, model.hasTV { return String(format: String(localized: "%@ and this phone"), model.tv?.name ?? "TV") }
         return model.hasTV ? model.tv?.name ?? "TV" : String(localized: "Not set up")
     }

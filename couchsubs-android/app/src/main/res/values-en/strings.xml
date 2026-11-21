@@ -105,6 +105,9 @@
     <string name="target_phone">On this phone</string>
     <string name="target_both">Both</string>
     <string name="target_both_note">On the TV and on this phone</string>
+    <string name="target_obs">OBS only (stream)</string>
+    <string name="target_obs_note">To OBS on a computer on the same Wi-Fi</string>
+    <string name="target_obs_body">Subtitles go only to OBS. The TV is not searched for and this phone shows no subtitle screen. In OBS on a computer on the same Wi-Fi, add a Browser source with this address (width 1920, height 1080).</string>
     <string name="main_target_both">%1$s and this phone</string>
     <string name="target_tvs_none">No TV seen on the network (it may be off; that\'s fine).</string>
     <string name="target_tvs_none_help">No TV seen on the network. Is the TV on and on the same Wi-Fi? If the CouchSubs app is not on the TV, tap “Install the TV app from this phone” below. Using a monitor or a non-smart TV? Choose “On this phone”.</string>

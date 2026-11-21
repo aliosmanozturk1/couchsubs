@@ -418,8 +418,16 @@ struct SubtitleOverlayView: View {
     private func line(_ line: SubtitleStack.Line) -> some View {
         let style = model.settings.style
         let current = line.role == .current
-        // Uzun çeviri en çok 3 satıra dengeli bölünür; 3 satıra sığmazsa yazı biraz küçülür (bkz. SubtitleWrap).
-        let wrapped = line.wrapped
+        // Bant: kutu pencerenin tüm genişliğini kaplar, oyundaki İngilizce yazıyı yan yana da gizler.
+        let band = style.backgroundShape == .band
+        // "Yazı kadar" ve örtü: güncel satırın kutusu en az oyundaki altyazının ekrandaki kutusu kadar (her yana pay). Çeviri
+        // kısa kalınca oyunun altyazısı kutunun yanlarından taşıyordu; çeviri daha uzunsa kutu yine yazı kadar büyür.
+        let coverLine = !band && current && !line.paragraphs && style.placement == .cover && model.overlayCover?.text == line.text
+            ? model.overlayCover : nil
+        let cover: CGSize? = coverLine.flatMap { OverlayCover.size(of: $0.box, screen: geometry.screen, scale: scale) }
+        // Uzun çeviri en çok 3 satıra dengeli bölünür; 3 satıra sığmazsa yazı biraz küçülür (bkz. SubtitleWrap). "Örtsün"de
+        // yazı seçilen boyda kalır, en çok bir kademe küçülür ve satırdan satıra zıplamaz (CoverFontScale).
+        let wrapped = coverLine.map { SubtitleWrap.fit(line.text, scale: $0.scale) } ?? line.wrapped
         let size = CGFloat(style.fontSize) * scale * (current ? 1 : 0.8) * CGFloat(wrapped.scale)
         let alpha = Double(max(0, min(100, style.background))) / 100 * (current ? 1 : 0.83)
         let opacity: Double = switch line.role {
@@ -433,13 +441,7 @@ struct SubtitleOverlayView: View {
         let shadowRadius: CGFloat = 2 * scale
         let vertical: CGFloat = (current ? 10 : 6) * scale
         let horizontal: CGFloat = (current ? 26 : 20) * scale
-        // Bant: kutu pencerenin tüm genişliğini kaplar, oyundaki İngilizce yazıyı yan yana da gizler.
-        let band = style.backgroundShape == .band
         let corner: CGFloat = band ? 0 : 10 * scale
-        // "Yazı kadar" ve örtü: güncel satırın kutusu en az oyundaki altyazının ekrandaki kutusu kadar (her yana pay). Çeviri
-        // kısa kalınca oyunun altyazısı kutunun yanlarından taşıyordu; çeviri daha uzunsa kutu yine yazı kadar büyür.
-        let covers = !band && current && !line.paragraphs && style.placement == .cover && model.overlayCover?.text == line.text
-        let cover: CGSize? = covers ? OverlayCover.size(of: model.overlayCover?.box, screen: geometry.screen, scale: scale) : nil
         let shown: Double = line.fading ? 0 : opacity
         let colored = model.settings.speakerColors && !line.paragraphs
         let text = Self.subtitleText(wrapped.text, colored: colored, base: Self.color(style.textColor), book: model.speakerBook)

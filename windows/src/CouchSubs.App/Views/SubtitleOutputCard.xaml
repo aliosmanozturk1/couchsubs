@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
-<!-- "Altyazıyı göster: TV / Bilgisayar ekranı / İkisi de" ve bilgisayar ekranındaki pencerenin seçenekleri (Mac: SubtitleOutputCard.swift).
+<!-- "Altyazıyı göster: TV / Bilgisayar ekranı / İkisi de / Yalnız OBS (yayın)" ve bilgisayar ekranındaki pencerenin seçenekleri (Mac: SubtitleOutputCard.swift).
      Ana ekranda ve ayarlarda aynı kart kullanılır. -->
 <UserControl x:Class="CouchSubs.App.Views.SubtitleOutputCard"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -15,8 +15,26 @@
                     <RadioButton x:Name="OutputTv" Content="TV" GroupName="subtitleOutput" Style="{StaticResource SegmentButton}" Checked="OnOutput" Tag="Tv" />
                     <RadioButton x:Name="OutputComputer" Content="{t:T 'Computer screen'}" GroupName="subtitleOutput" Style="{StaticResource SegmentButton}" Checked="OnOutput" Tag="Computer" />
                     <RadioButton x:Name="OutputBoth" Content="{t:T 'Both'}" GroupName="subtitleOutput" Style="{StaticResource SegmentButton}" Checked="OnOutput" Tag="Both" />
+                    <RadioButton x:Name="OutputObs" Content="{t:T 'OBS only (stream)'}" GroupName="subtitleOutput" Style="{StaticResource SegmentButton}" Checked="OnOutput" Tag="Obs" />
                 </UniformGrid>
             </Border>
+            <!-- "Yalnız OBS (yayın)": TV aranmaz, bilgisayar ekranında pencere açılmaz; altyazı yalnız OBS katmanına gider (Mac ile aynı). -->
+            <StackPanel x:Name="ObsPanel" Margin="0,12,0,0">
+                <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"
+                           Text="{t:T 'Subtitles go only to the OBS overlay. The TV is not searched for or opened, and no subtitle window opens on this computer. In OBS add a Browser source with this address (width 1920, height 1080).'}" />
+                <DockPanel Margin="0,0,0,8">
+                    <Button x:Name="OutputObsCopy" DockPanel.Dock="Right" Content="{t:T 'Copy'}" Padding="16,0" Margin="8,0,0,0" Click="OnCopyObs" />
+                    <TextBox x:Name="OutputObsAddress" IsReadOnly="True" FontFamily="Consolas" VerticalContentAlignment="Center" />
+                </DockPanel>
+                <StackPanel x:Name="OutputNetworkObsPanel">
+                    <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8"
+                               Text="{t:T 'If OBS runs on another computer, use this address:'}" />
+                    <DockPanel>
+                        <Button x:Name="OutputNetworkObsCopy" DockPanel.Dock="Right" Content="{t:T 'Copy'}" Padding="16,0" Margin="8,0,0,0" Click="OnCopyObs" />
+                        <TextBox x:Name="OutputNetworkObsAddress" IsReadOnly="True" FontFamily="Consolas" VerticalContentAlignment="Center" />
+                    </DockPanel>
+                </StackPanel>
+            </StackPanel>
             <StackPanel x:Name="ComputerPanel" Margin="0,12,0,0">
                 <TextBlock x:Name="WindowHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,12"
                            Text="{t:T 'Subtitles appear in a window on this computer, over the game or PS Remote Play.'}" />

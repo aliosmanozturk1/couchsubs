@@ -186,9 +186,9 @@ private struct AppearanceCard: View {
                     .foregroundStyle(Color.csSecondary)
                     .accessibilityHidden(true)
             }
-            // Yer ayarları TV içindir; bilgisayar ekranındaki altyazı penceresi sürüklenerek taşınır (Genzo, 2026-11-13:
+            // Yer ayarları TV ve OBS katmanı içindir; bilgisayar ekranındaki altyazı penceresi sürüklenerek taşınır (Genzo, 2026-11-13:
             // "ekrandaki konum ayarı işlemiyor").
-            if model.settings.output.showsOnTV {
+            if model.settings.output.showsOnTV || model.settings.output == .obs {
                 Picker("Placement", selection: $model.settings.style.placement) {
                     Text("Over the English subtitle").tag(SubtitlePlacement.cover)
                     Text("Above the English subtitle").tag(SubtitlePlacement.above)
@@ -624,7 +624,7 @@ private struct OBSCard: View {
 }
 
 /// Kopyalanabilir adres satırı.
-private struct AddressRow: View {
+struct AddressRow: View {
     let address: String
     @State private var copied = false
 

@@ -70,14 +70,19 @@ public static class StreamBackgrounds
     public static double BoxOpacity(int backgroundPercent) => backgroundPercent > 0 ? 1 : 0;
 }
 
-/// <summary>Altyazının gösterileceği yer (Mac'teki SubtitleOutput ile aynı).</summary>
+/// <summary>
+/// Altyazının gösterileceği yer (Mac'teki SubtitleOutput ile aynı). <see cref="Obs"/>: yalnız OBS katmanı (<c>/obs</c>, yayın);
+/// TV aranmaz ve açılmaz, bilgisayar ekranında altyazı penceresi açılmaz. OBS katmanı her seçimde altyazıyı alır.
+/// </summary>
 [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<SubtitleOutput>))]
-public enum SubtitleOutput { Tv, Computer, Both }
+public enum SubtitleOutput { Tv, Computer, Both, Obs }
 
 public static class SubtitleOutputs
 {
-    public static bool ShowsOnTv(this SubtitleOutput output) => output != SubtitleOutput.Computer;
-    public static bool ShowsOnComputer(this SubtitleOutput output) => output != SubtitleOutput.Tv;
+    public static bool ShowsOnTv(this SubtitleOutput output) => output is SubtitleOutput.Tv or SubtitleOutput.Both;
+    public static bool ShowsOnComputer(this SubtitleOutput output) => output is SubtitleOutput.Computer or SubtitleOutput.Both;
+    /// <summary>Altyazının gideceği bir yer var mı: TV seçiliyse TV eşleşmiş olmalı; bilgisayar ekranı ve OBS TV istemez.</summary>
+    public static bool HasDestination(this SubtitleOutput output, bool hasTv) => output.ShowsOnComputer() || output == SubtitleOutput.Obs || hasTv;
 }
 
 /// <summary>Uygulama pencerelerinin görünümü (Mac'teki AppAppearance ile aynı). Onaylı tasarım koyudur; varsayılan da odur.</summary>

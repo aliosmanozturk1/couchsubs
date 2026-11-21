@@ -28,6 +28,18 @@ public enum SubtitleWrap {
         return Result(text: balance(words, lines: min(lines, words.count)), scale: scale)
     }
 
+    /// Verilen sabit yazı boyu çarpanıyla bölme ("Örtsün", bkz. `CoverFontScale`): satır başına `maxChars / scale`
+    /// karakter, en çok 3 satır; daha uzun metinde satırlar uzar, yazı daha fazla küçülmez.
+    public static func fit(_ text: String, scale: Double) -> Result {
+        let scale = scale.isFinite && scale > 0 ? min(1, scale) : 1
+        let cap = Int((Double(maxChars) / scale).rounded(.down))
+        if text.count <= cap || text.contains("\n") { return Result(text: text, scale: scale) }
+        let words = tokens(text)
+        guard words.count > 1 else { return Result(text: text, scale: scale) }
+        let lines = min(maxLines, max(2, Int((Double(text.count) / Double(cap)).rounded(.up))))
+        return Result(text: balance(words, lines: min(lines, words.count)), scale: scale)
+    }
+
     /// Sözcükler; konuşan adı ("ARTHUR:") sonraki sözcükle birleşik tutulur, böylece ad satır sonunda tek kalmaz.
     static func tokens(_ text: String) -> [String] {
         var words = text.split(whereSeparator: \.isWhitespace).map(String.init)

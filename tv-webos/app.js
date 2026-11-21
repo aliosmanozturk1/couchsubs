@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.57';
+  var APP_VERSION = '0.9.58';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -31,6 +31,7 @@
   var placement = 'fixed';
   // Gösterilen satırın oyundaki İngilizce altyazının yeri (ekrana oranla), bilinmiyorsa null.
   var currentBox = null;
+  var lastCoverBox = null;
 
   // Hızlı konuşma: yeni satır öncekinden bu süre içinde gelirse önceki okunamamış olabilir. Önceki çeviri yeni satırın
   // üstünde küçük ve soluk olarak bir süre daha kalır, sonra solarak kalkar. Üç kişi art arda konuşursa iki önceki satır
@@ -736,6 +737,58 @@
     return { text: candidate, scale: Math.max(WRAP_MIN_SCALE, Math.min(1, room / widest)) };
   }
 
+  // "Örtsün"de yazı boyu kararlıdır (Mac/Windows: CoverFontScale, OBS katmanı: coverWrap). Kullanıcının seçtiği boy
+  // kullanılır, örtü çeviriye göre genişler; yazı ancak 3 satıra sığmıyorsa bir kademe küçülür (seçilen boyun %80'i), asla
+  // büyütülmez ve daha fazla küçülmez. Küçülen boy yazı boyu ayarı değişene dek kalır: ardışık satırlarda boy bir büyük bir
+  // küçük zıplamasın (eskiden her satır kendi genişliğine göre %75'e kadar ve piksel piksel küçülüyordu).
+  var COVER_STEP = 0.8;
+  var coverScale = 1;
+  var coverFont = null;
+
+  // Sabit çarpanla 42 karakter kuralı (ölçüm yapılamayan tarayıcıda): satır başına 42 / çarpan karakter, en çok 3 satır.
+  function wrapAt(text, scale) {
+    var cap = Math.floor(WRAP_MAX_CHARS / scale);
+    var length = Array.from ? Array.from(text).length : text.length;
+    if (length <= cap || text.indexOf('\n') >= 0) return { text: text, scale: scale };
+    var words = wrapTokens(text);
+    if (words.length < 2) return { text: text, scale: scale };
+    var lines = Math.min(WRAP_MAX_LINES, Math.max(2, Math.ceil(length / cap)));
+    return { text: wrapBalance(words, Math.min(lines, words.length)), scale: scale };
+  }
+
+  // Örtü modunda satırın bölünmesi ve yazı boyu çarpanı (1 ya da COVER_STEP). shrink: satır bu boyda ekrana sığmadı
+  // (setLineText yükseklik sınırını aşınca çağırır).
+  function coverWrap(text, el, base, cover, shrink) {
+    if (coverFont !== base) {
+      coverFont = base;
+      coverScale = 1;
+    }
+    if (shrink) coverScale = COVER_STEP;
+    if (text.indexOf('\n') >= 0) return { text: text, scale: coverScale };
+    var words = wrapTokens(text);
+    function attempt(scale) {
+      var size = Math.round(base * scale);
+      var viewport = (document.documentElement.clientWidth || window.innerWidth || 1920) / (window.COUCHSUBS_ZOOM || 1);
+      var room = viewport * WRAP_WIDTH - size;
+      var width = lineWidths(el, text, size);
+      if (!width || room <= 0) return null;
+      if (words.length < 2) return { text: text, fits: width <= room };
+      var shaped = wrapToCover(text, words, el, size, room, cover);
+      return shaped ? { text: shaped.text, fits: true }
+        : { text: wrapBalance(words, Math.min(WRAP_MAX_LINES, words.length)), fits: false };
+    }
+    var result = attempt(coverScale);
+    if (!result) {
+      if (coverScale === 1 && wrapSubtitle(text).scale < 1) coverScale = COVER_STEP;
+      return wrapAt(text, coverScale);
+    }
+    if (!result.fits && coverScale === 1) {
+      coverScale = COVER_STEP;
+      result = attempt(coverScale) || result;
+    }
+    return { text: result.text, scale: coverScale };
+  }
+
   function wrapSubtitle(text, el, size, cover) {
     if (text.indexOf('\n') >= 0) return { text: text, scale: 1 };
     var measured = el && size ? wrapToWidth(text, el, size, cover) : null;
@@ -756,7 +809,11 @@
     // Önceki satır için daraltılmış kutu (fitBox) yeni satır ölçülmeden önce bırakılır: yoksa yeni satır eski satırın dar
     // kutusunda ölçülüyor, fazladan satıra bölünmüş sayılıp yazı gereksiz yere küçülüyordu (0.9.42).
     el.style.width = '';
-    var wrapped = paragraphs ? { text: text, scale: 1 } : wrapSubtitle(text, el, baseSize, coverSize(textId));
+    // Sabit yazı boyu "Örtsün" ve "Yazı kadar" zeminde (Mac, Windows ve OBS katmanı ile aynı); bant eskisi gibi bölünür.
+    var cover = paragraphs ? null : coverSize(textId);
+    var stable = cover && !bandShape;
+    var wrapped = paragraphs ? { text: text, scale: 1 } : stable ? coverWrap(text, el, baseSize, cover, false)
+      : wrapSubtitle(text, el, baseSize, cover);
     el.rawText = text;
     el.speakers = speakers || null;
     el.textContent = wrapped.text;
@@ -771,6 +828,16 @@
     if (paragraphs) return fitBox(el);
     var limit = (document.documentElement.clientHeight || window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1) * SUBTITLE_MAX_HEIGHT;
     var lines = wrapped.text.split('\n').length;
+    // Örtü: yazı piksel piksel küçülmez; sığmazsa bir kez kademeye iner ve orada kalır (bkz. coverWrap).
+    if (stable) {
+      if (coverScale === 1 && (el.offsetHeight > limit || extraLines(el, lines))) {
+        wrapped = coverWrap(text, el, baseSize, cover, true);
+        el.textContent = wrapped.text;
+        paintSpeakers(el, wrapped.text, el.speakers);
+        el.style.fontSize = Math.round(baseSize * wrapped.scale) + 'px';
+      }
+      return fitBox(el);
+    }
     while (size > SUBTITLE_MIN_FONT && (el.offsetHeight > limit || extraLines(el, lines))) {
       size -= 1;
       el.style.fontSize = size + 'px';
@@ -845,6 +912,9 @@
     shownParagraphs = !!paragraphs;
     holdUntil = shownAt + Math.min(HOLD_MAX_MS, 2000 + text.length * 60);
     currentBox = validBox(box);
+    // "Örtsün": oyundaki altyazının yeri gelmezse son bilinen yer örtülür (Mac, Windows ve OBS katmanı ile aynı).
+    if (!currentBox && placement === 'cover' && !paragraphs) currentBox = lastCoverBox;
+    if (currentBox && !paragraphs) lastCoverBox = currentBox;
     setLineText('subtitle-text', text, paragraphs, fontBase, speakers);
     $('subtitle-text').style.textAlign = paragraphs ? 'left' : '';
     $('subtitle').className = '';

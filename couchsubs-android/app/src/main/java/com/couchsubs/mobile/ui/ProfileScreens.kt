@@ -399,7 +399,8 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             }
             Text(stringResource(R.string.settings_background_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
         }
-        if (settings.target.showsOnTv) Tile(Modifier.fillMaxWidth()) {
+        // Yeri seçimi OBS katmanında da geçerlidir ("Yalnız OBS (yayın)"; iPhone ile aynı). Görüntü modu yalnız TV içindir.
+        if (settings.target.showsOnTv || settings.target == SubtitleTarget.OBS) Tile(Modifier.fillMaxWidth()) {
             SectionTitle(stringResource(R.string.settings_section_tv))
             // TV'de çevirinin yeri (Mac ve Windows'taki Yeri seçimi, iPhone ile aynı): üstünde/altında seçilince oyundaki
             // İngilizce altyazı da görünür; sabit yerde yükseklik kaydırıcıyla ayarlanır, bırakınca TV'de örnek altyazı çıkar.
@@ -422,13 +423,15 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             }
             // Yalnız Android TV uygulaması kullanır: bazı TV'lerde (ör. TCL) uygulama içindeki PS5 görüntüsü siyah kalıyor.
             // Katman'da TV, PS5'i kendi HDMI girişinde gösterir (Mac ve Windows'taki Görüntü modu seçimi, iPhone ile aynı).
-            TileLabel(stringResource(R.string.settings_display_mode))
-            Segmented(listOf(stringResource(R.string.settings_display_mode_in_app), stringResource(R.string.settings_display_mode_overlay)),
-                if (displayMode == TvDisplayMode.OVERLAY) 1 else 0) {
-                displayMode = if (it == 1) TvDisplayMode.OVERLAY else TvDisplayMode.IN_APP
-                settings.tvDisplayMode = displayMode
+            if (settings.target.showsOnTv) {
+                TileLabel(stringResource(R.string.settings_display_mode))
+                Segmented(listOf(stringResource(R.string.settings_display_mode_in_app), stringResource(R.string.settings_display_mode_overlay)),
+                    if (displayMode == TvDisplayMode.OVERLAY) 1 else 0) {
+                    displayMode = if (it == 1) TvDisplayMode.OVERLAY else TvDisplayMode.IN_APP
+                    settings.tvDisplayMode = displayMode
+                }
+                Text(stringResource(R.string.settings_display_mode_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
             }
-            Text(stringResource(R.string.settings_display_mode_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
         }
         RowList(listOf({ RowItem(stringResource(R.string.settings_screen_on)) { Switch(screenOn, { screenOn = it; settings.keepScreenOn = it }) } }))
         // Telefon kilitlenince ne olduğu açıkça yazar; pil kısıtlaması açıksa ayara giden düğme de çıkar.
@@ -678,5 +681,6 @@ fun targetName(settings: AppSettings): String {
         SubtitleTarget.TV -> tv
         SubtitleTarget.PHONE -> stringResource(R.string.main_target_phone)
         SubtitleTarget.BOTH -> stringResource(R.string.main_target_both, tv)
+        SubtitleTarget.OBS -> stringResource(R.string.target_obs)
     }
 }

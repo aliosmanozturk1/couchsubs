@@ -509,6 +509,13 @@ struct TargetScreen: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!model.hasTV)
+                // Mac ve Windows'taki "Yalnız OBS (yayın)": TV aranmaz, bu telefonda altyazı ekranı açılmaz; altyazı yalnız aynı
+                // Wi-Fi'daki bilgisayarda OBS'in tarayıcı kaynağına gider (Android ile aynı).
+                Button { model.settings.output = .obs } label: {
+                    InfoTile(symbol: "dot.radiowaves.left.and.right", title: "OBS only (stream)", caption: "To OBS on a computer on the same Wi-Fi",
+                             emphasis: model.settings.output == .obs ? .selected : .none)
+                }
+                .buttonStyle(.plain)
                 Button { showManual = true } label: {
                     InfoTile(symbol: "questionmark.circle", title: "My TV is not listed", caption: "Supported TVs")
                 }
@@ -520,6 +527,7 @@ struct TargetScreen: View {
                          emphasis: model.tvAppMissing ? .selected : .none)
             }
             .buttonStyle(.plain)
+            if model.settings.output == .obs { OBSOnlyTile() }
             // TV'si olmayan ya da monitörde oynayan için: hangi hedef seçilirse seçilsin altyazı ayrıca bir tarayıcıda da görünür.
             SecondScreenTile()
             if let error { MobileNote(text: error) }
@@ -531,7 +539,7 @@ struct TargetScreen: View {
         } bottom: {
             Button(setup ? "Continue" : "Done", action: onDone)
                 .buttonStyle(.mobilePrimary)
-                .disabled(!(model.hasTV || model.settings.output == .computer))
+                .disabled(!(model.hasTV || !model.settings.output.showsOnTV))
         }
         .task { await search() }
         .sheet(isPresented: $showManual) { manualSheet }
@@ -657,6 +665,36 @@ struct SearchAgainButton: View {
                 .frame(width: Mobile.Control.icon, height: Mobile.Control.icon)
         } else {
             IconButton(symbol: "arrow.clockwise", label: "Search again", tint: Mobile.Palette.accent, action: action)
+        }
+    }
+}
+
+/// "Yalnız OBS (yayın)" seçiliyken: OBS'in tarayıcı kaynağına yazılacak adres (bu telefonun ağ adresiyle) ve kopyala düğmesi.
+private struct OBSOnlyTile: View {
+    @EnvironmentObject private var model: PhoneModel
+    @State private var copied = false
+
+    var body: some View {
+        Tile {
+            Text("OBS overlay").font(Mobile.TypeScale.headline)
+            Text("Subtitles go only to OBS. The TV is not searched for and this phone shows no subtitle screen. In OBS on a computer on the same Wi-Fi, add a Browser source with this address (width 1920, height 1080).")
+                .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(verbatim: model.subtitleViewerAddress)
+                .font(Mobile.TypeScale.caption.monospaced())
+                .textSelection(.enabled)
+                .padding(.horizontal, Mobile.Space.tile)
+                .frame(maxWidth: .infinity, minHeight: Mobile.Control.field, alignment: .leading)
+                .background(Mobile.Palette.surface2, in: RoundedRectangle(cornerRadius: Mobile.Radius.control))
+                .overlay(RoundedRectangle(cornerRadius: Mobile.Radius.control).strokeBorder(Mobile.Palette.border))
+            Button {
+                UIPasteboard.general.string = model.subtitleViewerAddress
+                copied = true
+            } label: {
+                Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+            }
+            .buttonStyle(MobileButtonStyle(kind: .secondary, compact: true))
+            .resetsAfterDelay($copied)
         }
     }
 }

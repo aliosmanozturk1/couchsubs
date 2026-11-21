@@ -16,11 +16,14 @@ class SubtitleTargetTest {
         assertTrue(SubtitleTarget.PHONE.showsOnPhone)
         assertTrue(SubtitleTarget.BOTH.showsOnTv)
         assertTrue(SubtitleTarget.BOTH.showsOnPhone)
+        // "Yalnız OBS (yayın)": TV aranmaz, bu telefonda altyazı ekranı açılmaz (Mac/iPhone: SubtitleOutput.obs).
+        assertFalse(SubtitleTarget.OBS.showsOnTv)
+        assertFalse(SubtitleTarget.OBS.showsOnPhone)
     }
 
     /** Kayıtlı adlar değişmedi: eski kayıt (TV, PHONE) aynı okunur. */
     @Test
     fun storedNamesAreStable() {
-        assertEquals(listOf("TV", "PHONE", "BOTH"), SubtitleTarget.entries.map { it.name })
+        assertEquals(listOf("TV", "PHONE", "BOTH", "OBS"), SubtitleTarget.entries.map { it.name })
     }
 }

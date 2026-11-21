@@ -46,8 +46,12 @@ public sealed partial class SubtitleOverlayWindow : Window
     private readonly DesktopRegionsPanel regionsPanel;
     /// <summary>Görünen satırların kutuları; solan satırın animasyonu yeniden çizimde baştan başlamasın.</summary>
     private readonly Dictionary<int, Border> boxes = [];
-    /// <summary>Son altyazının metni ve oyundaki yeri: "Yazı kadar" zeminde o satırın kutusu oyunun altyazısını örter.</summary>
-    private (string Text, CouchSubs.Core.TextBox Box)? subtitleBox;
+    /// <summary>
+    /// Son altyazının metni, oyundaki yeri ve yazı boyu çarpanı: "Yazı kadar" zeminde o satırın kutusu oyunun altyazısını
+    /// örter. Yeri gelmeyen satır son bilinen yeri kullanır; "Örtsün"de yazı boyu kararlıdır (<see cref="CoverFontScale"/>).
+    /// </summary>
+    private (string Text, CouchSubs.Core.TextBox? Box, double Scale)? subtitleBox;
+    private readonly CoverFontScale coverFont = new();
     private readonly Grid adjustLayer = new() { Visibility = Visibility.Collapsed };
     /// <summary>Başka bir tam ekran ya da üstte duran pencere öne gelince altyazıyı yeniden en üste koyar.</summary>
     private readonly TopmostKeeper topmost;
@@ -156,7 +160,13 @@ public sealed partial class SubtitleOverlayWindow : Window
         {
             case SubtitleEventKind.Subtitle:
                 screenUntil = 0;
-                subtitleBox = e.Box is { } subtitleArea ? (e.Text, subtitleArea) : null;
+                {
+                    // "Örtsün": oyundaki altyazının yeri gelmezse son bilinen yer örtülür; yazı seçilen boyda kalır, ancak 3
+                    // satıra sığmazsa bir kademe küçülür (Mac ve TV/OBS sayfası ile aynı).
+                    var look = controller.Settings.Style;
+                    var covering = look.Placement == SubtitlePlacement.Cover && look.BackgroundShape != SubtitleBackgroundShape.Band && !e.Paragraphs;
+                    subtitleBox = (e.Text, e.Box ?? subtitleBox?.Box, covering ? coverFont.Scale(e.Text, look.FontSize) : 1);
+                }
                 stack.Show(e.Text, e.DurationMs, e.Paragraphs, Now, e.Replaces);
                 break;
             // "Ekranı çevir": çeviriler satır satır gösterilir. Hemen ardından gelen "temizle" ("Ekran çevriliyor…"
@@ -297,12 +307,15 @@ public sealed partial class SubtitleOverlayWindow : Window
         var scale = Scale;
         var current = line.Role == SubtitleStack.Role.Current;
         // Satır yüksekliği sıfır olursa WPF hata verir; boy en az 1.
-        // Uzun çeviri en çok 3 satıra dengeli bölünür; 3 satıra sığmazsa yazı biraz küçülür (bkz. SubtitleWrap).
-        var wrapped = line.Wrapped;
-        var size = Math.Max(1, OverlayPlacement.FontSize(style.FontSize) * scale * (current ? 1 : 0.8) * wrapped.Scale);
-        var alpha = Math.Clamp(style.Background, 0, 100) / 100.0 * (current ? 1 : 0.83);
         // Bant: kutu pencerenin tüm genişliğini kaplar, oyundaki İngilizce yazıyı yan yana da gizler.
         var band = style.BackgroundShape == SubtitleBackgroundShape.Band;
+        var coverLine = !band && current && !line.Paragraphs && style.Placement == SubtitlePlacement.Cover
+                        && subtitleBox is { } known && known.Text == line.Text ? subtitleBox : null;
+        // Uzun çeviri en çok 3 satıra dengeli bölünür; 3 satıra sığmazsa yazı biraz küçülür (bkz. SubtitleWrap). "Örtsün"de yazı
+        // seçilen boyda kalır, en çok bir kademe küçülür ve satırdan satıra zıplamaz (CoverFontScale).
+        var wrapped = coverLine is { } fixedSize ? SubtitleWrap.Fit(line.Text, fixedSize.Scale) : line.Wrapped;
+        var size = Math.Max(1, OverlayPlacement.FontSize(style.FontSize) * scale * (current ? 1 : 0.8) * wrapped.Scale);
+        var alpha = Math.Clamp(style.Background, 0, 100) / 100.0 * (current ? 1 : 0.83);
         var text = new TextBlock
         {
             FontSize = size,
@@ -319,8 +332,7 @@ public sealed partial class SubtitleOverlayWindow : Window
         // "Yazı kadar" ve örtü: güncel satırın kutusu en az oyundaki altyazının ekrandaki kutusu kadar (her yana pay). Çeviri kısa
         // kalınca oyunun altyazısı kutunun yanlarından taşıyordu; çeviri daha uzunsa kutu yine yazı kadar büyür (TV'deki örtü gibi).
         UIElement content = text;
-        if (!band && current && !line.Paragraphs && style.Placement == SubtitlePlacement.Cover
-            && subtitleBox is { } cover && cover.Text == line.Text
+        if (coverLine is { } cover
             && OverlayPlacement.CoverSize(cover.Box, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight, scale) is { } area)
         {
             // Kutu pencereye sığar (yanlarda 24 birim boşluk ve kutunun dolgusu); taşan kutuyu WPF sola yaslayıp keserdi.

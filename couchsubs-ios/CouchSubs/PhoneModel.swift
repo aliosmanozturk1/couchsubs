@@ -502,7 +502,7 @@ final class PhoneModel: ObservableObject {
         case .welcome: true
         case .psnLogin: isXbox ? xboxSignedIn : accountId != nil
         case .console: isXbox ? xboxConsole != nil : console != nil
-        case .output: hasTV || settings.output == .computer
+        case .output: hasTV || !settings.output.showsOnTV
         case .done: false
         }
     }
@@ -573,7 +573,8 @@ final class PhoneModel: ObservableObject {
         store.save(SamsungTokenHolder.keptToken(stored: savedKey, received: pairing.key), for: StoreKey.tvKey)
         tvKeySaved = true
         tvAppMissing = !pairing.launched
-        if settings.output == .computer { settings.output = .tv }
+        // "Yalnız OBS (yayın)" seçiliyken TV eşlenirse de altyazı TV'ye gider (Android'de TV seçilince olduğu gibi).
+        if !settings.output.showsOnTV { settings.output = .tv }
         onAnalytics(.tvConnected(brand: tv.brand.rawValue))
     }
 
@@ -608,7 +609,7 @@ final class PhoneModel: ObservableObject {
 
     var canStart: Bool {
         let paired = isXbox ? xboxConsole != nil && xboxSignedIn : console != nil && accountId != nil
-        return paired && (settings.output.showsOnComputer || hasTV)
+        return paired && settings.output.hasDestination(hasTV: hasTV)
     }
 
     /// Deneme modunu açar: konsol, hesap ve TV olmadan örnek karelerle çeviri başlar (altyazı bu ekranda görünür; TV

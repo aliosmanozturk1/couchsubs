@@ -52,7 +52,8 @@ public partial class SubtitleOutputCard : UserControl
 
     private void OnChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(AppController.Settings) or nameof(AppController.OverlayAdjusting)) Refresh();
+        if (e.PropertyName is nameof(AppController.Settings) or nameof(AppController.OverlayAdjusting)
+            or nameof(AppController.ObsAddress) or nameof(AppController.NetworkObsAddress)) Refresh();
     }
 
     private void Refresh()
@@ -60,8 +61,15 @@ public partial class SubtitleOutputCard : UserControl
         if (controller is null) return;
         loading = true;
         var settings = controller.Settings;
-        (settings.Output switch { SubtitleOutput.Computer => OutputComputer, SubtitleOutput.Both => OutputBoth, _ => OutputTv }).IsChecked = true;
+        (settings.Output switch
+        {
+            SubtitleOutput.Computer => OutputComputer, SubtitleOutput.Both => OutputBoth, SubtitleOutput.Obs => OutputObs, _ => OutputTv,
+        }).IsChecked = true;
         ComputerPanel.Visibility = controller.ShowsOnComputer ? Visibility.Visible : Visibility.Collapsed;
+        ObsPanel.Visibility = settings.Output == SubtitleOutput.Obs ? Visibility.Visible : Visibility.Collapsed;
+        OutputObsAddress.Text = controller.ObsAddress;
+        OutputNetworkObsAddress.Text = controller.NetworkObsAddress ?? "";
+        OutputNetworkObsPanel.Visibility = controller.NetworkObsAddress is null ? Visibility.Collapsed : Visibility.Visible;
         WindowHint.Visibility = Detailed ? Visibility.Visible : Visibility.Collapsed;
         SecondScreenEntry.Visibility = Detailed ? Visibility.Collapsed : Visibility.Visible;
         ClickThrough.IsChecked = settings.OverlayClickThrough;
@@ -76,6 +84,24 @@ public partial class SubtitleOutputCard : UserControl
     {
         if (loading || controller is null || sender is not RadioButton { Tag: string tag }) return;
         controller.Settings = controller.Settings with { Output = Enum.Parse<SubtitleOutput>(tag) };
+    }
+
+    /// <summary>OBS adresini panoya kopyalar; düğme kısa süre "Kopyalandı" der.</summary>
+    private async void OnCopyObs(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button) return;
+        var address = button == OutputObsCopy ? OutputObsAddress.Text : OutputNetworkObsAddress.Text;
+        try
+        {
+            Clipboard.SetText(address);
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            return;
+        }
+        button.Content = CouchSubs.Core.Localizer.Current["Copied"];
+        await System.Threading.Tasks.Task.Delay(1500);
+        button.Content = CouchSubs.Core.Localizer.Current["Copy"];
     }
 
     private void OnClickThrough(object sender, RoutedEventArgs e)

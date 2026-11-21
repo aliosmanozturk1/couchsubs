@@ -20,3 +20,26 @@ public enum OverlayCover {
         return CGSize(width: width + pad, height: height + pad)
     }
 }
+
+/// "Örtsün" yerleşiminde yazı boyu kararlıdır (TV ve OBS sayfası aynı kuralı uygular; Windows: CoverFontScale). Kullanıcının
+/// seçtiği boy kullanılır, kutu çeviriye göre genişler; yazı ancak 3 satıra sığmıyorsa bir kademe küçülür (seçilen boyun
+/// %80'i) ve asla büyütülmez. Küçülen boy oturum boyunca (yazı boyu değişene dek) kalır: ardışık satırlarda boy bir büyük
+/// bir küçük zıplamasın.
+public struct CoverFontScale: Equatable, Sendable {
+    /// Tek kademe: seçilen boyun %80'i. Bundan küçüğe inilmez.
+    public static let step = 0.8
+    public private(set) var shrunk = false
+    private var fontSize: Int?
+
+    public init() {}
+
+    /// Satırın yazı boyu çarpanı (1 ya da `step`). Yazı boyu ayarı değişince kademe sıfırlanır.
+    public mutating func scale(for text: String, fontSize: Int) -> Double {
+        if self.fontSize != fontSize {
+            self.fontSize = fontSize
+            shrunk = false
+        }
+        if !text.contains("\n"), SubtitleWrap.fit(text).scale < 1 { shrunk = true }
+        return shrunk ? Self.step : 1
+    }
+}

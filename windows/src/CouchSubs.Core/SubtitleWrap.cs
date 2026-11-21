@@ -30,6 +30,22 @@ public static class SubtitleWrap
         return new Result(Balance(words, Math.Min(lines, words.Count)), scale);
     }
 
+    /// <summary>
+    /// Verilen sabit yazı boyu çarpanıyla bölme ("Örtsün", bkz. <see cref="CoverFontScale"/>): satır başına
+    /// <c>MaxChars / scale</c> karakter, en çok 3 satır; daha uzun metinde satırlar uzar, yazı daha fazla küçülmez.
+    /// </summary>
+    public static Result Fit(string text, double scale)
+    {
+        scale = double.IsFinite(scale) && scale > 0 ? Math.Min(1, scale) : 1;
+        var cap = (int)Math.Floor(MaxChars / scale);
+        var length = new StringInfo(text).LengthInTextElements;
+        if (length <= cap || text.Contains('\n')) return new Result(text, scale);
+        var words = Tokens(text);
+        if (words.Count < 2) return new Result(text, scale);
+        var lines = Math.Min(MaxLines, Math.Max(2, (int)Math.Ceiling((double)length / cap)));
+        return new Result(Balance(words, Math.Min(lines, words.Count)), scale);
+    }
+
     /// <summary>Sözcükler; konuşan adı ("ARTHUR:") sonraki sözcükle birleşik tutulur, ad satır sonunda tek kalmaz.</summary>
     internal static List<string> Tokens(string text)
     {

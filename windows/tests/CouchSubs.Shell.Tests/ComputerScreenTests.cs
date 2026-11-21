@@ -199,6 +199,36 @@ public class ComputerScreenTests
         controller.Stop();
     }
 
+    /// <summary>
+    /// "Yalnız OBS (yayın)": TV eşleşmiş olsa da aranmaz ve açık tutulmaz, bilgisayar ekranında pencere açılmaz; çeviri TV'siz de
+    /// başlar (OBS katmanı olayları sunucudan alır). Mac ile aynı test.
+    /// </summary>
+    [Fact]
+    public async Task ObsOnlyStartsWithoutTvAndOpensNoWindow()
+    {
+        var services = new FakeServices();
+        var store = StoreWithoutTv();
+        store.Save(StoreKeys.Tv, new LgTv("LG TV", "127.0.0.1"));
+        store.Save(StoreKeys.TvKey, "tv-key");
+        var controller = Make(services, store);
+        controller.Settings = controller.Settings with { Output = SubtitleOutput.Obs };
+        Assert.True(controller.CanStart);
+        Assert.False(controller.ShowsOnTv);
+        Assert.False(controller.ShowsOnComputer);
+        var received = new List<SubtitleEvent>();
+        controller.OverlayEvent += received.Add;
+        await controller.StartAsync();
+        Assert.True(controller.IsRunning);
+        Assert.Empty(services.Keepers);
+        controller.SendTestSubtitle();
+        Assert.Empty(received);
+        controller.Stop();
+        var alone = Make();
+        alone.Settings = alone.Settings with { Output = SubtitleOutput.Obs };
+        Assert.True(alone.CanStart);
+        Assert.Contains("\"Output\":\"Obs\"", JsonSerializer.Serialize(alone.Settings));
+    }
+
     [Fact]
     public async Task PairingTvAfterNoTvChoiceSendsSubtitlesToTv()
     {

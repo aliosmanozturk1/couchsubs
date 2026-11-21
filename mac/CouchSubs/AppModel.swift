@@ -798,8 +798,10 @@ final class AppModel: ObservableObject {
         overlayAdjusting = false
     }
     var overlayStack = SubtitleStack()
-    /// Son altyazının metni ve oyundaki yeri: "Yazı kadar" zeminde o satırın kutusu oyunun altyazısını örter (bkz. OverlayCover).
-    var overlayCover: (text: String, box: TextBox)?
+    /// Son altyazının metni, oyundaki yeri ve yazı boyu çarpanı: "Yazı kadar" zeminde o satırın kutusu oyunun altyazısını
+    /// örter (bkz. OverlayCover). Yeri gelmeyen satır son bilinen yeri kullanır; "Örtsün"de boy kararlıdır (CoverFontScale).
+    var overlayCover: (text: String, box: TextBox?, scale: Double)?
+    var overlayCoverFont = CoverFontScale()
     /// "Yayın penceresi" açık: altyazı bilgisayar ekranında gösterilmese de satırlar yığına gelir (bkz. StreamWindow.swift).
     @Published var streamWindowOpen = false {
         didSet {
@@ -1179,7 +1181,7 @@ final class AppModel: ObservableObject {
         case .welcome, .secondAccount, .test, .betterTranslation: true
         case .psnLogin: isXbox ? xboxSignedIn : accountId != nil
         case .console: isXbox ? xboxConsole != nil : console != nil
-        case .tv: hasTV || settings.output == .computer
+        case .tv: hasTV || !settings.output.showsOnTV
         case .done: false
         }
     }
@@ -1424,7 +1426,8 @@ final class AppModel: ObservableObject {
         tvKeySaved = true
         tvAppMissing = !pairing.launched
         // Daha önce "TV'm yok" seçildiyse TV bağlanınca altyazı TV'ye gider.
-        if settings.output == .computer { settings.output = .tv }
+        // "Yalnız OBS (yayın)" seçiliyken TV eşlenirse de altyazı TV'ye gider (Android'de TV seçilince olduğu gibi).
+        if !settings.output.showsOnTV { settings.output = .tv }
         if tv.brand == .lg {
             await refreshTVApp()
         } else {
@@ -2049,7 +2052,7 @@ final class AppModel: ObservableObject {
     /// Çeviri başlatılabilir mi: görüntü kaynağı hazır (PS5 kurulu ya da PS Remote Play penceresi seçili) ve altyazının
     /// gideceği bir yer var (TV eşleşmiş ya da bilgisayar ekranı seçili).
     var canStart: Bool {
-        (isXbox ? xboxSignedIn && xboxConsole != nil : pictureSourceReady) && (settings.output.showsOnComputer || hasTV)
+        (isXbox ? xboxSignedIn && xboxConsole != nil : pictureSourceReady) && settings.output.hasDestination(hasTV: hasTV)
     }
 
     /// TV uygulamasını başlatır ve açık tutar; TV kapalıysa açıldığında bağlanır. Altyazı TV'ye gitmiyorsa ya da TV

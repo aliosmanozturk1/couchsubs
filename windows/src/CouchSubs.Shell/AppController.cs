@@ -540,7 +540,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                               || settings.FrameSource == FrameSource.CaptureWindow && settings.CaptureWindow is
                                  { ProcessName.Length: > 0, Title.Length: > 0 }
                               || settings.FrameSource == FrameSource.Ps5 && console is not null && accountId is not null)
-                            && (ShowsOnComputer || HasTv);
+                            && settings.Output.HasDestination(HasTv);
     public string LastSource { get => lastSource; private set => Set(ref lastSource, value); }
     public string LastTranslation { get => lastTranslation; private set => Set(ref lastTranslation, value, [nameof(ShowsMainAccountTip)]); }
     /// <summary>PS5'ten (ikinci hesap) çeviri sürüyor, ilk altyazı gelmedi ya da bağlantı koptu: "kolu açınca ana hesabı seçin"
@@ -683,7 +683,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         OnboardingStep.Welcome or OnboardingStep.SecondAccount or OnboardingStep.Test or OnboardingStep.BetterTranslation => true,
         OnboardingStep.PsnLogin => IsXbox ? xboxToken is not null : accountId is not null,
         OnboardingStep.Console => IsXbox ? xboxConsole is not null : console is not null,
-        OnboardingStep.Tv => HasTv || settings.Output == SubtitleOutput.Computer,
+        OnboardingStep.Tv => HasTv || !ShowsOnTv,
         OnboardingStep.Translation => ModelInstalled,
         _ => false,
     };
@@ -947,7 +947,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         store.Save(StoreKeys.TvKey, SamsungTokenHolder.KeptToken(savedKey, pairing.Key));
         tvAppMissing = !pairing.Launched;
         // Daha önce "TV'm yok" seçildiyse TV bağlanınca altyazı TV'ye gider.
-        if (settings.Output == SubtitleOutput.Computer) Settings = settings with { Output = SubtitleOutput.Tv };
+        // "Yalnız OBS (yayın)" seçiliyken TV eşlenirse de altyazı TV'ye gider (Mac ve telefonlarla aynı).
+        if (!settings.Output.ShowsOnTv()) Settings = settings with { Output = SubtitleOutput.Tv };
         Changed(nameof(Tv), nameof(CanAdvance), nameof(CanInstallTvApp), nameof(CanReinstallTvApp), nameof(CanReconnectTv), nameof(CanChangeTv), nameof(HasTv), nameof(NeedsTv), nameof(CanStart),
             nameof(TvStatusText), nameof(TvTone), nameof(ShowTvOpenHint), nameof(TvOpenHintText));
         if (target.Brand == TvBrand.Lg) await RefreshTvAppAsync();

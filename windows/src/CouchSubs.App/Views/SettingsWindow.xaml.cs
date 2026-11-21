@@ -492,7 +492,8 @@ public partial class SettingsWindow : Window
         DisplayModePanel.Visibility = controller.ShowsOnTv && controller.Tv?.Brand == TvBrand.AndroidTv
             ? Visibility.Visible : Visibility.Collapsed;
         // Yer ayarları TV içindir; bilgisayar ekranında "ekrandaki konum ayarı işlemiyor" sanılıyordu (Genzo, 2026-11-13).
-        TvPlacementPanel.Visibility = controller.ShowsOnTv ? Visibility.Visible : Visibility.Collapsed;
+        // OBS katmanı da yeri kullanır ("Yalnız OBS (yayın)").
+        TvPlacementPanel.Visibility = controller.ShowsOnTv || controller.Settings.Output == SubtitleOutput.Obs ? Visibility.Visible : Visibility.Collapsed;
         ComputerPlacementPanel.Visibility = controller.ShowsOnComputer ? Visibility.Visible : Visibility.Collapsed;
     }
 
