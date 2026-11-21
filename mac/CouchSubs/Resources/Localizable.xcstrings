@@ -4634,6 +4634,38 @@
         }
       }
     },
+    "The PS5 ended Remote Play. This usually happens when the user is switched on the PS5 during the game. Reconnecting…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The PS5 ended Remote Play. This usually happens when the user is switched on the PS5 during the game. Reconnecting…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PS5 Uzaktan Oynatma'yı kapattı. Bu çoğunlukla oyun sırasında PS5'te kullanıcı değiştirilince olur. Yeniden bağlanılıyor…"
+          }
+        }
+      }
+    },
+    "To play without the connection dropping: 1. On the PS5, start the game with your MAIN account first. 2. Then start translating. 3. Don't switch users during the game; when you turn on the controller, choose your MAIN account. Don't play with the second account CouchSubs signs in with, or the controller will turn off by itself or won't work in the game.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To play without the connection dropping: 1. On the PS5, start the game with your MAIN account first. 2. Then start translating. 3. Don't switch users during the game; when you turn on the controller, choose your MAIN account. Don't play with the second account CouchSubs signs in with, or the controller will turn off by itself or won't work in the game."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı kopmadan oynamak için: 1. PS5'te önce ANA hesabınızla oyuna girin. 2. Sonra çeviriyi başlatın. 3. Oyun sırasında kullanıcı değiştirmeyin; kolu açınca ANA hesabınızı seçin. CouchSubs'ın giriş yaptığı ikinci hesapla oynamayın, yoksa kol kendiliğinden kapanır ya da oyunda çalışmaz."
+          }
+        }
+      }
+    },
     "Remote Play on the PS5 has crashed. Turn the PS5 off completely (not rest mode) and back on, then connect again.": {
       "localizations": {
         "en": {

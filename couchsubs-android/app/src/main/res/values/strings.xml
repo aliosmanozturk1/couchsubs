@@ -26,6 +26,7 @@
     <string name="phase_rejected_code">PS5 bağlantıyı reddetti (kod %1$s). Başka bir Uzaktan Oynatma (PS Remote Play) açık olabilir ya da PS5 başka bir oturumda olabilir. PS Remote Play\'i kapat, PS5\'i yeniden başlatıp tekrar dene.</string>
     <string name="phase_rejected">PS5 oturumu başlatmadı. Başka bir Uzaktan Oynatma (PS Remote Play) açık olabilir ya da PS5 başka bir oturumda olabilir. PS Remote Play\'i kapat, PS5\'i yeniden başlatıp tekrar dene.</string>
     <string name="phase_registration_invalid">PS5 bu eşlemeyi kabul etmedi. Ayarlar\'dan PS5\'i ikinci hesapla yeniden eşle.</string>
+    <string name="phase_console_closed">PS5 Uzaktan Oynatma\'yı kapattı. Bu çoğunlukla oyun sırasında PS5\'te kullanıcı değiştirilince olur. Yeniden bağlanılıyor…</string>
     <string name="phase_console_rp_crashed">PS5\'teki Uzaktan Oynatma çöktü. PS5\'i tamamen kapatıp (bekleme modu değil) aç, sonra yeniden bağlan.</string>
     <string name="phase_no_picture">PS5 görüntüsü alınamıyor; PS Remote Play kapalı mı, PS5 uykuda mı? Kontrol edip çeviriyi yeniden başlat.</string>
     <string name="phase_not_found">PS5 ağda bulunamadı. Telefon ve PS5 aynı ağda mı?</string>
@@ -243,6 +244,7 @@
     <string name="psn_why">Neden ikinci hesap?</string>
     <string name="psn_why_body">Remote Play aynı hesapla bağlanınca oynadığın oturumu ve kolunu devralır. İkinci hesap yalnız görüntüyü alır; sen kendi hesabınla, kendi kolunla oynamaya devam edersin. Hesap ücretsizdir, PS Plus gerekmez.</string>
     <string name="subtitle_off_tip">Oyunun kendi altyazısını açın: CouchSubs sesi değil, ekrandaki İngilizce altyazıyı okur.</string>
+    <string name="psn_main_account_steps">Bağlantı kopmadan oynamak için: 1. PS5\'te önce ANA hesabınla oyuna gir. 2. Sonra çeviriyi başlat. 3. Oyun sırasında kullanıcı değiştirme; kolu açınca ANA hesabını seç. CouchSubs\'ın giriş yaptığı ikinci hesapla oynama, yoksa kol kendiliğinden kapanır ya da oyunda çalışmaz.</string>
     <string name="psn_main_account">Oynarken kolu açınca PS5\'te ANA hesabınızı seçin. CouchSubs\'ın giriş yaptığı ikinci hesapla oynamayın, yoksa kol kendiliğinden kapanır ya da oyunda çalışmaz.</string>
     <string name="pair_found">%1$s bulundu</string>
     <string name="pair_same_wifi">%1$s · aynı Wi-Fi</string>

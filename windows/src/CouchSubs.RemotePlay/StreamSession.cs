@@ -321,6 +321,7 @@ internal static class DisconnectReasons
         NativeMethods.QuitRefused => new(DisconnectKind.Refused),
         NativeMethods.QuitNetwork => new(DisconnectKind.Network),
         NativeMethods.QuitRpCrashed => new(DisconnectKind.ConsoleRemotePlayCrashed),
+        NativeMethods.QuitConsoleClosed => new(DisconnectKind.ConsoleClosed, text ?? ""),
         // PSN eşlemesinin reddi yeniden eşleme ister (eskiden TCP reddiyle aynı Refused'du).
         NativeMethods.QuitPsnRegistFailed => new(DisconnectKind.RegistrationInvalid),
         _ => new(DisconnectKind.Other, text),
@@ -693,6 +694,8 @@ public sealed class StreamSession : IStreamSession
             case NativeMethods.EventQuit:
                 var reason = DisconnectReasons.FromNative(quitReason, text, sessionRequestHint);
                 RemotePlayLog.Write(1, $"Oturum kapandı: neden {quitReason} ({reason.Kind}) {text}");
+                if (reason.Kind == DisconnectKind.ConsoleClosed)
+                    RemotePlayLog.Write(1, $"PS5 Uzaktan Oynatma'yı kendisi kapattı (PS5'in nedeni: \"{text}\"); ağ kopması değil, çoğunlukla PS5'te kullanıcı değişince olur; yeniden bağlanılıyor");
                 queue.Post(() =>
                 {
                     // Eski bir oturumun (ör. ReconnectNow ile kapatılanın) kapanma olayı yeni oturumu etkilemez.

@@ -43,6 +43,13 @@ enum class DisconnectKind {
      * kadar "yeniden bağlanılıyor" deneniyordu (GitHub #519). [CrashRetryLimit.MAX_RETRIES] denemeden sonra durulur.
      */
     CONSOLE_RP_CRASHED,
+    /**
+     * PS5 akışı kendisi kapattı: Takion bağlantısında "disconnect" iletisi gönderdi (libchiaki
+     * STREAM_CONNECTION_REMOTE_DISCONNECTED / _REMOTE_SHUTDOWN). Ağ kopması değildir; ağ gidince PS5'ten ileti gelmez.
+     * Kullanıcılar bunu oyun sırasında PS5'te ana hesaba geçince görüyor (X, 21 Kas); eskiden NETWORK sayılıp "kabloyla
+     * bağla" deniyor ve kopma görüntüyü 720p'ye düşürüyordu. Ayrıntı: PS5'in neden metni. Yeniden bağlanılır.
+     */
+    CONSOLE_CLOSED,
     OTHER;
 
     companion object {
@@ -53,6 +60,7 @@ enum class DisconnectKind {
             NativeBridge.QUIT_REFUSED -> REFUSED
             NativeBridge.QUIT_NETWORK -> NETWORK
             NativeBridge.QUIT_RP_CRASHED -> CONSOLE_RP_CRASHED
+            NativeBridge.QUIT_CONSOLE_CLOSED -> CONSOLE_CLOSED
             // PSN üzerinden eşleme reddedildi: yeniden eşleme gerekir (eskiden TCP reddiyle aynı REFUSED'du).
             NativeBridge.QUIT_PSN_REGIST_FAILED -> REGISTRATION_INVALID
             else -> OTHER
@@ -748,6 +756,12 @@ class StreamSession(
                     // Bekçi değil libchiaki kapattı (PS5 ya da ağ); görüntünün son ana kadar gelip gelmediği nedeni ayırır.
                     watchdog.summary(SystemClock.elapsedRealtime())?.let {
                         val note = "PS5 oturumunu libchiaki kapattı ($kind); $it"
+                        Log.i(TAG, note)
+                        Backend.breadcrumb(note)
+                    }
+                    if (kind == DisconnectKind.CONSOLE_CLOSED) {
+                        val note = "PS5 Uzaktan Oynatma'yı kendisi kapattı (PS5'in nedeni: \"${text.orEmpty()}\"); ağ kopması değil, " +
+                            "çoğunlukla PS5'te kullanıcı değişince olur; yeniden bağlanılıyor"
                         Log.i(TAG, note)
                         Backend.breadcrumb(note)
                     }

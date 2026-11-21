@@ -2341,6 +2341,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             DisconnectKind.Rejected when !string.IsNullOrEmpty(detail) => text.Format("The PS5 rejected the connection (code %@). Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again.", detail),
             DisconnectKind.Rejected => text["The PS5 didn't start the session. Another Remote Play app (PS Remote Play) may be open, or the PS5 may be in another session. Close PS Remote Play, restart the PS5, then try again."],
             // Eskiden İngilizce "Remote Play on Console has crashed" ile sonsuza kadar "Yeniden bağlanılıyor…" (GitHub #519).
+            // PS5 akışı kendisi kapattı (ör. oyun sırasında PS5'te kullanıcı değişti): eskiden "kabloyla bağlayın" deniyordu.
+            DisconnectKind.ConsoleClosed => text["The PS5 ended Remote Play. This usually happens when the user is switched on the PS5 during the game. Reconnecting…"],
             DisconnectKind.ConsoleRemotePlayCrashed => text["Remote Play on the PS5 has crashed. Turn the PS5 off completely (not rest mode) and back on, then connect again."],
             DisconnectKind.Other when !string.IsNullOrEmpty(detail) => text.Format("Reconnecting… (%@)", detail),
             _ => text["Reconnecting…"],
@@ -3753,7 +3755,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         var ps5Trouble = !IsXbox && isRunning && sessionState.Phase != SessionPhase.Streaming && sessionState.Reason?.Kind is not
             (DisconnectKind.ConsoleAsleep or DisconnectKind.InUse or DisconnectKind.Refused or DisconnectKind.LoginPasscode
              or DisconnectKind.LoginPasscodeIncorrect or DisconnectKind.RegistrationInvalid or DisconnectKind.Rejected
-             or DisconnectKind.ConsoleRemotePlayCrashed);
+             or DisconnectKind.ConsoleRemotePlayCrashed or DisconnectKind.ConsoleClosed);
         ps5TroubleSince = ps5Trouble ? ps5TroubleSince ?? now : null;
         // Altyazı TV'ye gitmiyorsa ya da TV yoksa TV beklenmez.
         tvWaitingSince = isRunning && ShowsOnTv && HasTv && tvClients == 0 ? tvWaitingSince ?? now : null;

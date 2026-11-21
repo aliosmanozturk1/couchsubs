@@ -1932,6 +1932,11 @@ public class AppControllerRunTests
             AppController.StatusText(SessionState.Disconnected(DisconnectKind.Rejected, ApplicationReasons.RemotePlayDisabled), true, Localizer.ForLanguage("tr")));
         Assert.Equal("The PS5 didn't accept this pairing. Pair the PS5 again with the second account in Settings.",
             AppController.StatusText(SessionState.Disconnected(DisconnectKind.RegistrationInvalid), true, text));
+        // X, 21 Kas: PS5 akışı kendisi kapatınca (oyun sırasında kullanıcı değişti) "kabloyla bağlayın" denmez.
+        Assert.Equal("The PS5 ended Remote Play. This usually happens when the user is switched on the PS5 during the game. Reconnecting…",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.ConsoleClosed, "x"), true, text));
+        Assert.Equal("PS5 Uzaktan Oynatma'yı kapattı. Bu çoğunlukla oyun sırasında PS5'te kullanıcı değiştirilince olur. Yeniden bağlanılıyor…",
+            AppController.StatusText(SessionState.Disconnected(DisconnectKind.ConsoleClosed, "x"), true, Localizer.ForLanguage("tr")));
         // GitHub #519: İngilizce "Remote Play on Console has crashed" yerine yerelleştirilmiş yönlendirme.
         Assert.Equal("Remote Play on the PS5 has crashed. Turn the PS5 off completely (not rest mode) and back on, then connect again.",
             AppController.StatusText(SessionState.Disconnected(DisconnectKind.ConsoleRemotePlayCrashed), true, text));

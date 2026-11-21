@@ -330,7 +330,7 @@
                                    Visibility="{Binding LastTranslation, Converter={StaticResource VisibleIf}, ConverterParameter=invert}" />
                         <!-- Çeviri PS5'ten (ikinci hesap) okunurken: kolu açınca ana hesap seçilmeli (GitHub #231). -->
                         <TextBlock Style="{StaticResource HintText}" Margin="0,8,0,0" TextWrapping="Wrap"
-                                   Text="{t:T 'When you turn on the controller to play, choose your MAIN account on the PS5. Don\'t play with the second account CouchSubs signs in with, or the controller will turn off by itself or won\'t work in the game.'}"
+                                   Text="{t:T 'To play without the connection dropping: 1. On the PS5, start the game with your MAIN account first. 2. Then start translating. 3. Don\'t switch users during the game; when you turn on the controller, choose your MAIN account. Don\'t play with the second account CouchSubs signs in with, or the controller will turn off by itself or won\'t work in the game.'}"
                                    Visibility="{Binding ShowsMainAccountTip, Converter={StaticResource VisibleIf}}" />
                         <!-- Otomatik ekran yazısı beta.63'te açık geliyordu; bir kez kapatıldı, kullanıcıya söylenir. -->
                         <TextBlock Style="{StaticResource HintText}" Margin="0,8,0,0" TextWrapping="Wrap"

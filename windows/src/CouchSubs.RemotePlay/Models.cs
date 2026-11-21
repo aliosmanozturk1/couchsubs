@@ -62,6 +62,11 @@ public enum DisconnectKind
     /// sonsuza kadar "Yeniden bağlanılıyor…" deneniyordu (GitHub #519). <see cref="CrashRetryLimit.MaxRetries"/> denemeden
     /// sonra durulur.</summary>
     ConsoleRemotePlayCrashed,
+    /// <summary>PS5 akışı kendisi kapattı: Takion bağlantısında "disconnect" iletisi gönderdi (libchiaki
+    /// STREAM_CONNECTION_REMOTE_DISCONNECTED / _REMOTE_SHUTDOWN). Ağ kopması değildir; ağ gidince PS5'ten ileti gelmez.
+    /// Kullanıcılar bunu oyun sırasında PS5'te ana hesaba geçince görüyor (X, 21 Kas); eskiden Network sayılıp "kabloyla
+    /// bağlayın" deniyor ve kopma görüntüyü 720p'ye düşürüyordu. Ayrıntı: PS5'in neden metni. Yeniden bağlanılır.</summary>
+    ConsoleClosed,
 }
 
 /// <summary>PS5 oturum giriş şifresi (4 hane). PS5 ikinci hesapta şifre isterse Ayarlar'da kayıtlı şifre gönderilir.</summary>

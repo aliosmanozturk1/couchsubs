@@ -265,7 +265,7 @@ struct RunningScreen: View {
                 // İlk altyazı gelene kadar ve bağlantı koptuğunda: kolu açınca PS5'te ana hesap seçilmeli (GitHub #231).
                 if MainAccountTip.isVisible(ps5: !model.isXbox, demo: model.demoMode, hasSubtitle: !model.recentLines.isEmpty,
                                             streaming: model.sessionState == .streaming) {
-                    MobileNote(text: String(localized: "When you turn on the controller to play, choose your MAIN account on the PS5. Don't play with the second account CouchSubs signs in with, or the controller will turn off by itself or won't work in the game."),
+                    MobileNote(text: String(localized: "To play without the connection dropping: 1. On the PS5, start the game with your MAIN account first. 2. Then start translating. 3. Don't switch users during the game; when you turn on the controller, choose your MAIN account. Don't play with the second account CouchSubs signs in with, or the controller will turn off by itself or won't work in the game."),
                                tone: Mobile.Palette.secondary)
                 }
                 // Görüntü bir dakikadır geliyor ama hiç altyazı satırı okunmadı (GitHub #503, #566, #572; SubtitleOffTip).

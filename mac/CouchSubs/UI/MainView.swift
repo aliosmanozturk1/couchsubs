@@ -419,7 +419,7 @@ private struct LiveSubtitlesTile: View {
             if model.isRunning && MainAccountTip.isVisible(ps5: !model.isXbox && model.settings.frameSource == .ps5, demo: model.demoMode,
                                                            hasSubtitle: !model.lastTranslation.isEmpty,
                                                            streaming: model.sessionState == .streaming) {
-                HintText(text: "When you turn on the controller to play, choose your MAIN account on the PS5. Don't play with the second account CouchSubs signs in with, or the controller will turn off by itself or won't work in the game.")
+                HintText(text: "To play without the connection dropping: 1. On the PS5, start the game with your MAIN account first. 2. Then start translating. 3. Don't switch users during the game; when you turn on the controller, choose your MAIN account. Don't play with the second account CouchSubs signs in with, or the controller will turn off by itself or won't work in the game.")
             }
             // Otomatik ekran yazısı beta.63'te açık geliyordu; bir kez kapatıldı, kullanıcıya söylenir.
             if model.showsAutoScreenTextNotice {

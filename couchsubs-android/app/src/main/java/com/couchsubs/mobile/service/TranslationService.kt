@@ -1297,6 +1297,8 @@ class TranslationService : Service() {
             DisconnectKind.NO_PICTURE -> getString(R.string.phase_no_picture)
             // Eskiden İngilizce "Remote Play on Console has crashed" ile sonsuza kadar yeniden bağlanılıyordu (GitHub #519).
             DisconnectKind.CONSOLE_RP_CRASHED -> getString(R.string.phase_console_rp_crashed)
+            // PS5 akışı kendisi kapattı (ör. oyun sırasında PS5'te kullanıcı değişti): eskiden "kabloyla bağla" deniyordu.
+            DisconnectKind.CONSOLE_CLOSED -> getString(R.string.phase_console_closed)
             DisconnectKind.CONSOLE_ASLEEP -> getString(R.string.phase_asleep)
             DisconnectKind.LOGIN_PASSCODE -> getString(R.string.phase_passcode)
             DisconnectKind.LOGIN_PASSCODE_INCORRECT -> getString(R.string.phase_passcode_incorrect)

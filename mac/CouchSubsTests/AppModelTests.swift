@@ -1023,6 +1023,12 @@ final class AppModelRunTests: XCTestCase {
                        String(localized: "The PS5 didn't accept the login passcode in Settings. Correct it, or turn off this account's login passcode on the PS5."))
     }
 
+    /// X, 21 Kas: PS5 akışı kendisi kapatınca (oyun sırasında kullanıcı değişti) "kabloyla bağlayın" değil, nedeni söylenir.
+    func testConsoleClosedStatusNamesUserSwitch() {
+        XCTAssertEqual(AppModel.statusText(.disconnected(.consoleClosed("x")), running: true),
+                       String(localized: "The PS5 ended Remote Play. This usually happens when the user is switched on the PS5 during the game. Reconnecting…"))
+    }
+
     /// GitHub #519: İngilizce "Remote Play on Console has crashed" yerine yerelleştirilmiş yönlendirme.
     func testConsoleRemotePlayCrashIsExplained() {
         XCTAssertEqual(AppModel.statusText(.disconnected(.consoleRemotePlayCrashed), running: true),

@@ -569,8 +569,10 @@ static int cs_quit_reason(ChiakiQuitReason reason)
 			return CS_QUIT_REFUSED;
 		case CHIAKI_QUIT_REASON_PSN_REGIST_FAILED:
 			return CS_QUIT_PSN_REGIST_FAILED;
+		/* PS5 Takion "disconnect" iletisi gönderdi: ağ kopması değil, PS5 akışı kendisi kapattı (Mac'teki .consoleClosed). */
 		case CHIAKI_QUIT_REASON_STREAM_CONNECTION_REMOTE_DISCONNECTED:
 		case CHIAKI_QUIT_REASON_STREAM_CONNECTION_REMOTE_SHUTDOWN:
+			return CS_QUIT_CONSOLE_CLOSED;
 		case CHIAKI_QUIT_REASON_CTRL_CONNECT_FAILED:
 		case CHIAKI_QUIT_REASON_STREAM_CONNECTION_UNKNOWN:
 			return CS_QUIT_NETWORK;
