@@ -65,9 +65,90 @@
     try { if (video.parentNode) video.parentNode.removeChild(video); } catch (e2) {}
   }
 
+  // --- HDMI sesi ---
+  // X'te LG 55QNED86A6A (webOS 24/25, iPhone ile): "çeviri var ama ses gelmiyor; PS tuşuna basınca ses geliyor, çeviri
+  // gidiyor". PS tuşu TV'yi HDMI-CEC ile kendi HDMI girişine geçirir, uygulama arkaya düşer: ses TV'nin kendi giriş
+  // yolunda geliyor, uygulamanın içinde açılan <video> (ext://hdmi) yolunda gelmiyor. Bu sayfada sesi kısan bir şey yoktu;
+  // yine de <video> açıkça sesli istenir: muted/defaultMuted false, volume 1. LG'nin webOS TV 5.0 SSS'i ses parçası
+  // kapalı (audioTracks[i].enabled false) gelen içerikte sesin hiç çalmadığını ve parçanın açılması gerektiğini söylüyor;
+  // hiçbir parça açık değilse ilki açılır. Gerçek LG'de denenmedi.
+  // Bildirimlerin ortak yanı harici ses sistemi: X'te ikinci bir kullanıcı ses sistemine (soundbar) bağlıyken aynısını
+  // yaşıyor, TV hoparlörüne geçince düzeliyor; aynı seride (QNED86T6A, #373) Bluetooth çıkışta ses gelmiyor, TV
+  // hoparlöründe geliyordu. Tahmin: TV kendi girişinde PS5'in sıkıştırılmış sesini (Dolby/DTS) ARC/eARC'a olduğu gibi
+  // geçiriyor, uygulamanın içindeki oynatıcı yolunda geçirmiyor. Bunu sayfa değiştiremez; geçici yol TV'nin Dijital Ses
+  // Çıkışı'nı Otomatik/PCM ya da PS5'in Ses Biçimi'ni Linear PCM yapmak. TV'nin ses çıkışı ve ses düzeyi bilgi paneline
+  // yazılır (soundOutput: tv_speaker, external_arc, external_optical, bt_soundbar ...).
+  var sound = { output: '', volume: '', fixed: 0 };
+
+  function unmute(video) {
+    try {
+      if (video.muted) sound.fixed++;
+      video.muted = false;
+      video.defaultMuted = false;
+      if (video.volume !== undefined && video.volume < 1) video.volume = 1;
+    } catch (e) {}
+    try {
+      var tracks = video.audioTracks;
+      if (!tracks || !tracks.length) return;
+      for (var i = 0; i < tracks.length; i++) if (tracks[i] && tracks[i].enabled) return;
+      tracks[0].enabled = true;
+      sound.fixed++;
+    } catch (e2) {}
+  }
+
+  function audioText(video) {
+    var text = 'snd';
+    try {
+      text += video.muted ? ' muted' : ' on';
+      if (typeof video.volume === 'number') text += ' v' + Math.round(video.volume * 100);
+      var tracks = video.audioTracks;
+      if (tracks && tracks.length !== undefined) {
+        var on = 0;
+        for (var i = 0; i < tracks.length; i++) if (tracks[i] && tracks[i].enabled) on++;
+        text += ' tr' + on + '/' + tracks.length;
+      }
+    } catch (e) {}
+    if (sound.fixed) text += ' fixed ' + sound.fixed;
+    if (sound.output) text += ' out ' + sound.output;
+    if (sound.volume) text += ' tv ' + sound.volume;
+    return text;
+  }
+
+  // TV'nin ses çıkışı ve ses düzeyi (yalnız tanı için; hizmet yoksa ya da izin verilmezse yazılmaz).
+  function readSoundSettings() {
+    try {
+      var output = new PalmServiceBridge();
+      output.onservicecallback = function (msg) {
+        try {
+          var reply = JSON.parse(msg) || {};
+          var value = reply.settings && reply.settings.soundOutput;
+          sound.output = value ? String(value).slice(0, 24) : (reply.returnValue === false ? 'denied' : '');
+        } catch (e) {}
+      };
+      output.call('luna://com.webos.settingsservice/getSystemSettings',
+        JSON.stringify({ category: 'sound', keys: ['soundOutput'] }));
+      window.__soundOutputBridge = output;
+    } catch (e) {}
+    try {
+      var volume = new PalmServiceBridge();
+      volume.onservicecallback = function (msg) {
+        try {
+          var reply = JSON.parse(msg) || {};
+          var status = reply.volumeStatus || reply;
+          if (status.volume !== undefined) {
+            sound.volume = String(status.volume) + (status.muteStatus || status.muted ? ' muted' : '');
+          }
+        } catch (e) {}
+      };
+      volume.call('luna://com.webos.audio/getVolume', '{}');
+      window.__soundVolumeBridge = volume;
+    } catch (e) {}
+  }
+
   function buildVideo() {
     var video = document.createElement('video');
     video.autoplay = true;
+    unmute(video);
     var source = document.createElement('source');
     source.setAttribute('type', 'service/webos-external');
     source.setAttribute('src', 'ext://hdmi:' + hdmi.port);
@@ -98,6 +179,10 @@
         checkSoon(1500, false);
       };
     }
+    var sounding = function () { if (current()) unmute(video); };
+    video.addEventListener('loadedmetadata', sounding);
+    video.addEventListener('loadeddata', sounding);
+    video.addEventListener('playing', sounding);
     video.addEventListener('loadeddata', picture('ready'));
     video.addEventListener('playing', picture('playing'));
     video.addEventListener('error', function () {
@@ -274,6 +359,7 @@
     if (hdmi.rebuilds) text += ' · rebuilt ' + hdmi.rebuilds + ' (' + hdmi.reason + ')';
     if (hdmi.lastError) text += ' · last error ' + hdmi.lastError;
     if (hdmi.lastEvent) text += ' · ev ' + hdmi.lastEvent;
+    if (video) text += ' · ' + audioText(video);
     return text;
   }
 
@@ -425,6 +511,7 @@
       hdmi.sincePort = 0;
 
       onStatus('loading');
+      readSoundSettings();
       buildVideo();
       if (hdmi.checkTimer === null) hdmi.checkTimer = setTimeout(tick, CHECK_MS);
     },

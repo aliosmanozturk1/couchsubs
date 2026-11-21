@@ -78,8 +78,18 @@ function startTv(options = {}) {
     addEventListener: (name, fn) => { (windowListeners[name] = windowListeners[name] || []).push(fn); }
   };
   class FakeDate { getTime() { return clock; } }
+  // options.luna(uri, params): Luna hizmetinin yanıtı (nesne); verilmezse PalmServiceBridge yok.
+  const calls = [];
+  class PalmServiceBridge {
+    call(uri, params) {
+      calls.push(uri);
+      const reply = options.luna(uri, JSON.parse(params));
+      if (reply) this.onservicecallback(JSON.stringify(reply));
+    }
+  }
   const context = {
     window, document, JSON, Math, Number, String, Date: FakeDate,
+    ...(options.luna ? { PalmServiceBridge } : {}),
     setTimeout: (fn, ms) => { const id = nextTimer++; timers.push({ id, at: clock + (ms || 0), fn }); return id; },
     clearTimeout: (id) => { timers = timers.filter((t) => t.id !== id); }
   };
@@ -89,7 +99,7 @@ function startTv(options = {}) {
   const host = new Element('div');
 
   const tv = {
-    platform, document, videos, statuses, host,
+    platform, document, videos, statuses, host, calls,
     get video() { return videos[videos.length - 1]; },
     show(port) { platform.showHdmi(port || 3, host, (kind) => statuses.push(kind)); },
     // Saati ilerletir; her adımda (varsa) canlı görüntünün sayacı da ilerler.
@@ -127,7 +137,7 @@ test('webOS HDMI: sağlam görüntüye dokunulmaz (sayaç ilerlese de ilerlemese
     assert.strictEqual(tv.videos.length, 1, moving ? 'sayaç ilerlerken' : 'sayaç hiç ilerlemezken');
     assert.strictEqual(tv.video.attributes.src, undefined);
     assert.strictEqual(tv.video.children[0].attributes.src, 'ext://hdmi:3');
-    assert.match(tv.platform.diagnostics(), /^hdmi playing rs4 1920x1080 t[+=] · webOS 7\.4\.0 55NANO756PA cr79$/);
+    assert.match(tv.platform.diagnostics(), /^hdmi playing rs4 1920x1080 t[+=] · snd on · webOS 7\.4\.0 55NANO756PA cr79$/);
   }
 });
 
@@ -297,4 +307,38 @@ test('webOS HDMI: aynı giriş yeniden seçilince boru hattı bırakılıp başt
   assert.strictEqual(third.loads, 1);
   tv.advance(10 * 60000);
   assert.strictEqual(tv.videos.length, 3, 'çıkıştan sonra yeniden kurulmaz');
+});
+
+// X'teki LG 55QNED86A6A: çeviri varken ses yok, PS tuşuyla TV'nin kendi girişine geçince ses geliyor.
+test('webOS HDMI: <video> sesli istenir; kapalı ses parçası açılır, kısılmış ses açılır; durum panelde', () => {
+  const tv = startTv({ luna: (uri) => (uri.indexOf('settingsservice') >= 0
+    ? { returnValue: true, settings: { soundOutput: 'bt_soundbar' } }
+    : { returnValue: true, volumeStatus: { volume: 14, muteStatus: false } }) });
+  tv.show(2);
+  const video = tv.video;
+  assert.strictEqual(video.muted, false);
+  assert.strictEqual(video.defaultMuted, false);
+  // TV sesi kısılmış ve parçası kapalı verir.
+  video.muted = true;
+  video.volume = 0.2;
+  video.audioTracks = [{ enabled: false }, { enabled: false }];
+  video.fire('loadedmetadata');
+  assert.strictEqual(video.muted, false);
+  assert.strictEqual(video.volume, 1);
+  assert.deepStrictEqual(video.audioTracks.map((t) => t.enabled), [true, false]);
+  video.start();
+  assert.match(tv.platform.diagnostics(), / · snd on v100 tr1\/2 fixed 2 out bt_soundbar tv 14 · webOS/);
+  // Açık parça varsa dokunulmaz.
+  video.audioTracks = [{ enabled: false }, { enabled: true }];
+  video.fire('playing');
+  assert.deepStrictEqual(video.audioTracks.map((t) => t.enabled), [false, true]);
+  assert.ok(tv.calls.includes('luna://com.webos.settingsservice/getSystemSettings'));
+});
+
+test('webOS HDMI: ses ayarları okunamazsa (izin yok) panelde yazar, görüntü etkilenmez', () => {
+  const tv = startTv({ luna: () => ({ returnValue: false, errorText: 'denied' }) });
+  tv.show(1);
+  tv.video.start();
+  assert.match(tv.platform.diagnostics(), /^hdmi playing .* · snd on out denied · webOS/);
+  assert.deepStrictEqual(tv.statuses.slice(-1), ['playing']);
 });

@@ -235,6 +235,20 @@ TV, PS5'i kendi HDMI girişinde (kendi görüntü ayarları, oyun modu ve HDR il
 LG (webOS) ve Samsung (Tizen) TV uygulamaları HDMI'yi her zaman kendi içinde gösterir, bu TV'lerde Katman modu yoktur;
 oyun modu ya da HDR'nin kapanması bu TV'lerin uygulamalara koyduğu bir sınırdır.
 
+### LG'de altyazı var ama oyunun sesi yok
+
+Ses, TV'nin sesi soundbar ya da ev sinema sistemine (HDMI ARC/eARC, optik, Bluetooth) verdiği düzende kesilebiliyor;
+PS tuşuyla TV kendi HDMI girişine geçince ses geri geliyor ama TV uygulaması arkaya düştüğü için altyazı gidiyor.
+Şunları sırayla deneyin:
+
+1. TV'de **Ayarlar › Tüm Ayarlar › Ses › Gelişmiş Ayarlar › Dijital Ses Çıkışı**'nı **Otomatik** ya da **PCM** yapın (**Geçiş/Pass
+   Through** değil).
+2. PS5'te **Ayarlar › Ses › Ses Çıkışı › Ses Biçimi (Öncelik)**'yi **Linear PCM** yapın.
+3. Olmazsa TV'nin ses çıkışını **TV Hoparlörü** yapın.
+
+Bilgi panelindeki ikinci tanı satırının `snd` bölümü TV'nin ses çıkışını ve ses düzeyini gösterir; sorun sürerse bunun
+fotoğrafını paylaşın.
+
 ### USB bellekle kurulum
 
 CouchSubs TV'yi ağda bulamazsa (bazı TV'ler ağdan hata ayıklamaya izin vermez):
