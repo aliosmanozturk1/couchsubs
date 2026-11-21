@@ -370,7 +370,12 @@ Play Console › Uygulama içeriği › **Ön plan hizmeti izinleri**.
   6. (İsteğe bağlı, 45–55 sn) Aynı akış "Bu telefonda" hedefiyle: yatay altyazı ekranı.
   Videonun açıklamasına bir satır: "CouchSubs foreground service (connectedDevice) demo: PS5 Remote Play stream +
   subtitle server for a TV on the local network."
-- Diğer ön plan hizmeti türleri: yok (`specialUse`, `mediaProjection`, `dataSync` kullanılmıyor).
+- Diğer ön plan hizmeti türleri: yok (`specialUse`, `mediaProjection`, `dataSync` kullanılmıyor). `mediaProjection`
+  telefonun kendi ekranını kaydetmek içindir (burada görüntü PS5/Xbox'tan ağla gelir); `dataSync` Android 15'te 24 saatte
+  6 saatle sınırlı ve veri aktarımı içindir. Ağdaki harici cihazla süren oturum `connectedDevice`'a uyar.
+- Kalıcı bildirim: "CouchSubs çeviriyor" + "Çeviriyi durdur" düğmesi. Profil › "Arka planda sürdür (Resim içinde
+  resim)" yalnız Activity PiP penceresi açar (oyun görüntüsü + canlı altyazı); ön plan hizmetini değiştirmez, ayrı beyan
+  gerekmez.
 
 ### 4.8 Diğer beyanlar
 

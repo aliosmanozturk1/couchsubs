@@ -1,6 +1,13 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Keep translating in the background (Picture in Picture)": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Keep translating in the background (Picture in Picture)"}},"tr":{"stringUnit":{"state":"translated","value":"Arka planda sürdür (Resim içinde resim)"}}}},
+    "When you leave CouchSubs while translating, the game picture and the live subtitle stay in a small window; reading and sending to the TV continue.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"When you leave CouchSubs while translating, the game picture and the live subtitle stay in a small window; reading and sending to the TV continue."}},"tr":{"stringUnit":{"state":"translated","value":"Çeviri sürerken CouchSubs’tan çıkınca oyun görüntüsü ve canlı altyazı küçük bir pencerede kalır; okuma ve TV’ye gönderim sürer."}}}},
+    "Keep CouchSubs open on the screen while you play, or turn on “Keep translating in the background” in Profile. iOS stops the connection when the app goes to the background; the screen stays on while translating.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Keep CouchSubs open on the screen while you play, or turn on “Keep translating in the background” in Profile. iOS stops the connection when the app goes to the background; the screen stays on while translating."}},"tr":{"stringUnit":{"state":"translated","value":"Oynarken CouchSubs ekranda açık kalsın ya da Profil’de “Arka planda sürdür”ü açın. iOS, arka plana geçen uygulamanın bağlantısını keser; çeviri sürerken ekran kararmaz."}}}},
+    "If you leave CouchSubs, this picture and the live subtitle continue in a small window and translation keeps going. If you close the small window, iOS pauses CouchSubs.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"If you leave CouchSubs, this picture and the live subtitle continue in a small window and translation keeps going. If you close the small window, iOS pauses CouchSubs."}},"tr":{"stringUnit":{"state":"translated","value":"CouchSubs’tan çıkarsanız bu görüntü ve canlı altyazı küçük bir pencerede sürer, çeviri devam eder. Küçük pencereyi kapatırsanız iOS CouchSubs’u duraklatır."}}}},
+    "Open small window": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open small window"}},"tr":{"stringUnit":{"state":"translated","value":"Küçük pencereyi aç"}}}},
+    "The small Picture in Picture window closed, so iPhone paused CouchSubs. Open CouchSubs to continue; it reconnects by itself.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The small Picture in Picture window closed, so iPhone paused CouchSubs. Open CouchSubs to continue; it reconnects by itself."}},"tr":{"stringUnit":{"state":"translated","value":"Küçük pencere (Resim içinde resim) kapandığı için iPhone CouchSubs’u duraklattı. Devam etmek için CouchSubs’u açın; bağlantı kendiliğinden yenilenir."}}}},
+    "iPhone pauses CouchSubs in the background. Open CouchSubs to continue; it reconnects by itself. To keep translating in a small window, turn on “Keep translating in the background” in Profile.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"iPhone pauses CouchSubs in the background. Open CouchSubs to continue; it reconnects by itself. To keep translating in a small window, turn on “Keep translating in the background” in Profile."}},"tr":{"stringUnit":{"state":"translated","value":"iPhone, arka plandaki CouchSubs’u duraklatır. Devam etmek için CouchSubs’u açın; bağlantı kendiliğinden yenilenir. Küçük pencerede çevirmeye devam etmek için Profil’de “Arka planda sürdür”ü açın."}}}},
     "Which on-screen text to translate": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Which on-screen text to translate"}},"tr":{"stringUnit":{"state":"translated","value":"Hangi ekran yazıları çevrilsin"}}}},
     "Phone (GTA 6 phone)": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Phone (GTA 6 phone)"}},"tr":{"stringUnit":{"state":"translated","value":"Telefon (GTA 6 telefonu)"}}}},
     "Mission and objective text": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Mission and objective text"}},"tr":{"stringUnit":{"state":"translated","value":"Görev ve hedef yazısı"}}}},
@@ -9109,22 +9116,6 @@
         }
       }
     },
-    "Keep CouchSubs open on the screen while you play. iOS stops the connection when the app goes to the background; the screen stays on while translating.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keep CouchSubs open on the screen while you play. iOS stops the connection when the app goes to the background; the screen stays on while translating."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oynarken CouchSubs ekranda açık kalsın. iOS, arka plana geçen uygulamanın bağlantısını keser; çeviri sürerken ekran kararmaz."
-          }
-        }
-      }
-    },
     "The English–Turkish language pack is not downloaded yet.": {
       "localizations": {
         "en": {
@@ -12454,7 +12445,6 @@
       }
     },
     "Subtitles paused": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Subtitles paused"}}, "tr": {"stringUnit": {"state": "translated", "value": "Altyazı duraklatıldı"}}}},
-    "iPhone pauses CouchSubs in the background and when the screen is locked. Open CouchSubs to continue; it reconnects by itself.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "iPhone pauses CouchSubs in the background and when the screen is locked. Open CouchSubs to continue; it reconnects by itself."}}, "tr": {"stringUnit": {"state": "translated", "value": "iPhone, arka plandaki ya da kilitli ekrandaki CouchSubs'u duraklatır. Devam etmek için CouchSubs'u açın; bağlantı kendiliğinden yenilenir."}}}},
     "PS5 connection lost": {
       "localizations": {
         "en": {

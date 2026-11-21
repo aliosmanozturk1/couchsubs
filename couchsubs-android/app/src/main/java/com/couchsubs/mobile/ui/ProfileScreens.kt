@@ -95,6 +95,7 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var gamePhone by remember { mutableStateOf(settings.autoReadGamePhone) }
     var subtitleBackground by remember { mutableStateOf(settings.watchSubtitleBackground) }
     var usage by remember { mutableStateOf(settings.usageData) }
+    var backgroundPip by remember { mutableStateOf(settings.backgroundPip) }
     LaunchedEffect(Unit) { tvs = withContext(Dispatchers.IO) { runCatching { TvDiscovery.search() }.getOrDefault(emptyList()) } }
     ScreenScaffold(top = { TopBar(stringResource(R.string.profile), onBack = onBack) { SettingsAction(onSettings) } }) {
         TwoColumns(
@@ -115,6 +116,10 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
         }
         RowList(listOf(
             { RowItem(stringResource(R.string.notify_disconnect)) { Switch(notifyDisconnect, { notifyDisconnect = it; settings.notifyDisconnect = it }) } },
+            // iPhone ile aynı ad ve açıklama (orada Resim içinde resim penceresi çeviriyi ayakta tutar).
+            { RowItem(stringResource(R.string.settings_background_pip), stringResource(R.string.settings_background_pip_short)) {
+                Switch(backgroundPip, { backgroundPip = it; settings.backgroundPip = it })
+            } },
             { RowItem(stringResource(R.string.notify_packs)) { Switch(notifyPacks, { notifyPacks = it; settings.notifyNewPacks = it }) } },
         ))
         RowList(listOf(

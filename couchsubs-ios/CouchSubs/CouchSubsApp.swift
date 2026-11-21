@@ -52,8 +52,17 @@ struct CouchSubsApp: App {
         if !testing {
             model.requestNotificationPermission = { ConnectionAlert.requestPermission() }
             model.onConnectionLost = { ConnectionAlert.post() }
-            model.onPausedInBackground = { ConnectionAlert.schedulePausedInBackground() }
+            model.onPausedInBackground = { [weak model] in ConnectionAlert.schedulePausedInBackground(pipEnabled: model?.backgroundPiP ?? false) }
             model.onResumedFromBackground = { ConnectionAlert.clearPausedInBackground() }
+            // "Arka planda sürdür": çeviri sürerken uygulamadan çıkınca Resim içinde resim penceresi; açıkken çeviri sürer,
+            // "duraklatıldı" uyarısı gerekmez. Pencere arka planda kapanırsa uyarı yeniden kurulur.
+            let pip = BackgroundPiP.shared
+            pip.bind(model)
+            pip.onStarted = { ConnectionAlert.clearPausedInBackground() }
+            pip.onStoppedInBackground = { [weak model] in
+                guard let model, model.isRunning, !model.demoMode, model.notifiesDisconnect else { return }
+                ConnectionAlert.schedulePausedInBackground(pipEnabled: model.backgroundPiP)
+            }
             // Uzun oturum tanısı: önceki oturum durdurulmadan bittiyse (bellek, çökme) raporlanır.
             CrashNotes.enabled = firebase
             model.onDiagnostic = { CrashNotes.log($0) }
@@ -120,12 +129,17 @@ struct CouchSubsApp: App {
         .onChange(of: scenePhase) { phase in
             switch phase {
             case .active:
-                model.becameActive(afterBackground: wasInBackground)
+                // Arka planda Resim içinde resim penceresi hiç kapanmadıysa iOS uygulamayı askıya almadı: PS5 oturumu
+                // yeniden kurulmaz (ikinci hesap girip çıkmasın), yalnız bildirim silinir.
+                let keptAlive = wasInBackground && BackgroundPiP.shared.takeKeptAlive()
+                if keptAlive { ConnectionAlert.clearPausedInBackground() }
+                model.becameActive(afterBackground: wasInBackground && !keptAlive)
                 wasInBackground = false
                 // Ön plana gelince tanıtım popup'ına bakılır (promo.json en çok günde bir yeniden çekilir).
                 Task { await promo.refresh(setupDone: promoSetupDone) }
             case .background:
                 wasInBackground = true
+                BackgroundPiP.shared.enteredBackground()
                 model.enteredBackground()
                 Task { await model.flushPool() }
             default: break
@@ -160,12 +174,15 @@ enum ConnectionAlert {
     /// kullanıcı bildirim görmez (dönünce `clearPausedInBackground` iptal eder).
     private static let pausedDelay: TimeInterval = 8
 
-    /// iPhone'da çeviri arka planda ya da kilitli ekranda sürmez (iOS uygulamayı askıya alır; App Store kurallarına uyan
-    /// bir arka plan modu bu iş için yok). Bildirimi iOS zamanında kendisi gösterir; uygulamanın çalışması gerekmez.
-    static func schedulePausedInBackground() {
+    /// Resim içinde resim penceresi açık değilse iPhone'da çeviri arka planda ya da kilitli ekranda sürmez (iOS uygulamayı
+    /// askıya alır). Bildirimi iOS zamanında kendisi gösterir; uygulamanın çalışması gerekmez. Pencere 8 sn içinde açılırsa
+    /// bildirim gösterilmeden silinir.
+    static func schedulePausedInBackground(pipEnabled: Bool) {
         let content = UNMutableNotificationContent()
         content.title = String(localized: "Subtitles paused")
-        content.body = String(localized: "iPhone pauses CouchSubs in the background and when the screen is locked. Open CouchSubs to continue; it reconnects by itself.")
+        content.body = pipEnabled
+            ? String(localized: "The small Picture in Picture window closed, so iPhone paused CouchSubs. Open CouchSubs to continue; it reconnects by itself.")
+            : String(localized: "iPhone pauses CouchSubs in the background. Open CouchSubs to continue; it reconnects by itself. To keep translating in a small window, turn on “Keep translating in the background” in Profile.")
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: pausedDelay, repeats: false)
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: pausedIdentifier, content: content, trigger: trigger))

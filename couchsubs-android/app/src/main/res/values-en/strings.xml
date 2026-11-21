@@ -3,8 +3,8 @@
 <!-- İngilizce arayüz (cihaz dili İngilizceyken). Türkçesi values/strings.xml; yeni metin ikisine birden eklenir. -->
 <resources>
     <string name="channel_translation">Subtitle translation</string>
-    <string name="notification_title">Translating</string>
-    <string name="notification_text">Reading PS5 subtitles and translating them into Turkish</string>
+    <string name="notification_title">CouchSubs is translating</string>
+    <string name="notification_text">Reading subtitles and translating them into Turkish; keeps going while the screen is locked</string>
     <string name="stop">Stop translation</string>
     <string name="start">Start translation</string>
     <string name="next">Next</string>
@@ -382,6 +382,8 @@
     <string name="packs_switch_note">When off, all lines are translated with your chosen engine.</string>
     <string name="profile_no_account">CouchSubs has no accounts: your settings stay only on this phone. The app and game packs are free.</string>
     <string name="notify_disconnect">When the PS5 connection drops</string>
+    <string name="settings_background_pip">Keep translating in the background (Picture in Picture)</string>
+    <string name="settings_background_pip_short">When you leave CouchSubs while translating, the game picture and the live subtitle stay in a small window; reading and sending to the TV continue.</string>
     <string name="profile_tvs">TV and subtitle target</string>
     <string name="tvinstall_entry">Install the TV app from this phone</string>
     <string name="settings_tv_app">TV app</string>

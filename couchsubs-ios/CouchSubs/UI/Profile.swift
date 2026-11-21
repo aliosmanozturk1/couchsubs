@@ -73,6 +73,11 @@ struct ProfileScreen: View {
                 RowDivider()
                 toggleRow("PS5 connection", "Notify me when the connection drops", isOn: $notifyDisconnect)
                 RowDivider()
+                // Android'de aynı ad ve açıklama (ön plan hizmetiyle zaten süren çeviriye küçük pencere).
+                toggleRow("Keep translating in the background (Picture in Picture)",
+                          "When you leave CouchSubs while translating, the game picture and the live subtitle stay in a small window; reading and sending to the TV continue.",
+                          isOn: $model.backgroundPiP)
+                RowDivider()
                 toggleRow("Contribute to the shared pool", "English lines that are read, anonymous", isOn: $model.settings.sharePool)
                 RowDivider()
                 toggleRow("Ask which game I'm playing", "If no pack recognises the game, asked once two minutes after translation starts.",

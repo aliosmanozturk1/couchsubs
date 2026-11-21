@@ -344,8 +344,13 @@ struct RunningScreen: View {
                 // "Test on TV" TV'ye gitmedi: TV'deki 6 haneli kod bir yere yazılmaz, bu telefonda onaylanır.
                 MobileNote(text: String(localized: "The test subtitle did not reach the TV because the TV app is not connected. Open CouchSubs on the TV. If the TV shows a 6-digit code, don't type it anywhere: approve it in the “Pair this TV?” window that opens on this phone, then test again."))
             }
-            Text("Keep CouchSubs open on the screen while you play. iOS stops the connection when the app goes to the background; the screen stays on while translating.")
-                .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+            // "Arka planda sürdür (Resim içinde resim)": bu önizleme uygulamadan çıkınca küçük pencereye geçer (BackgroundPiP).
+            if model.backgroundPiP && BackgroundPiP.isSupported {
+                BackgroundPiPTile()
+            } else {
+                Text("Keep CouchSubs open on the screen while you play, or turn on “Keep translating in the background” in Profile. iOS stops the connection when the app goes to the background; the screen stays on while translating.")
+                    .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+            }
         } bottom: {
             // İkincil eylemler tek satırda küçük düğmeler; "Çeviriyi durdur" altta tam genişlikte.
             if model.settings.output.showsOnComputer || model.settings.output.showsOnTV || model.sessionState == .streaming {
@@ -389,6 +394,28 @@ struct RunningScreen: View {
     private func elapsed(at date: Date) -> String {
         let seconds = max(0, Int(date.timeIntervalSince(model.runningSince ?? date)))
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+/// Çalışma ekranındaki canlı önizleme: oyun görüntüsü ve canlı altyazı. Uygulamadan çıkınca aynı görüntü Resim içinde
+/// resim penceresinde sürer; düğme pencereyi hemen açar.
+struct BackgroundPiPTile: View {
+    @ObservedObject private var pip = BackgroundPiP.shared
+
+    var body: some View {
+        Tile {
+            PiPPreview()
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: Mobile.Radius.control))
+                .accessibilityHidden(true)
+            Text("If you leave CouchSubs, this picture and the live subtitle continue in a small window and translation keeps going. If you close the small window, iOS pauses CouchSubs.")
+                .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if pip.isPossible && !pip.isActive {
+                Button { pip.startManually() } label: { Label("Open small window", systemImage: "pip.enter") }
+                    .buttonStyle(MobileButtonStyle(kind: .secondary, compact: true))
+            }
+        }
     }
 }
 
@@ -475,8 +502,17 @@ struct SubtitleScreen: View {
                 .padding(.bottom, Mobile.Space.inline)
         }
         .overlay(alignment: .topLeading) {
-            MobilePill(text: statusText, live: model.sessionState == .streaming)
-                .padding(Mobile.Space.screen)
+            VStack(alignment: .leading, spacing: Mobile.Space.inline) {
+                MobilePill(text: statusText, live: model.sessionState == .streaming)
+                // "Arka planda sürdür" açıkken küçük önizleme: bu ekrandan çıkınca da görüntü küçük pencerede sürer.
+                if model.backgroundPiP && BackgroundPiP.isSupported {
+                    PiPPreview()
+                        .frame(width: 112, height: 63)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(Mobile.Space.screen)
         }
         .overlay(alignment: .topTrailing) {
             HStack(spacing: Mobile.Space.inline) {

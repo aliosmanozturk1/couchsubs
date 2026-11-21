@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -20,6 +21,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -94,6 +98,8 @@ class MainActivity : ComponentActivity() {
                     if (status.running && settings.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
+                // "Arka planda sürdür": çeviri sürerken uygulamadan çıkınca küçük pencere açılır (Android 12+'da sistem açar).
+                LaunchedEffect(status.running) { BackgroundPip.update(this@MainActivity, BackgroundPip.wanted(this@MainActivity, status)) }
                 // Masaüstündeki gibi: uygulama açılınca ve TV her bağlandığında TV'deki CouchSubs sürümüne bakılır;
                 // eskiyse ana ekran "TV uygulamasını güncelle" önerir.
                 val tvConnected = status.connectedTvs > 0
@@ -107,106 +113,126 @@ class MainActivity : ComponentActivity() {
                 }
                 // Ekranlar arası geçiş: yeni ekran sağdan biraz kayarak ve solarak gelir, geri dönüşte tersi (~280 ms).
                 // Sistemde animasyonlar kapalıysa Compose süreleri kendisi sıfırlar.
-                NavHost(
-                    navigation, startDestination = Routes.next(),
-                    enterTransition = { slideIntoContainer(SlideDirection.Start, tween(NAV_MS), initialOffset = { it / NAV_SHIFT }) + fadeIn(tween(NAV_MS)) },
-                    exitTransition = { slideOutOfContainer(SlideDirection.Start, tween(NAV_MS), targetOffset = { it / NAV_SHIFT }) + fadeOut(tween(NAV_MS)) },
-                    popEnterTransition = { slideIntoContainer(SlideDirection.End, tween(NAV_MS), initialOffset = { it / NAV_SHIFT }) + fadeIn(tween(NAV_MS)) },
-                    popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(NAV_MS), targetOffset = { it / NAV_SHIFT }) + fadeOut(tween(NAV_MS)) },
-                ) {
-                    composable(Routes.WELCOME) {
-                        WelcomeScreen(onDemo = { startDemo(navigation) }) {
-                            settings.welcomeSeen = true
-                            Services.applyMeasurement()
-                            advance(navigation)
+                // Küçük pencerede (Resim içinde resim) yalnız oyun görüntüsü ve canlı altyazı; gezinme yığını altta durur.
+                Box {
+                    NavHost(
+                        navigation, startDestination = Routes.next(),
+                        enterTransition = { slideIntoContainer(SlideDirection.Start, tween(NAV_MS), initialOffset = { it / NAV_SHIFT }) + fadeIn(tween(NAV_MS)) },
+                        exitTransition = { slideOutOfContainer(SlideDirection.Start, tween(NAV_MS), targetOffset = { it / NAV_SHIFT }) + fadeOut(tween(NAV_MS)) },
+                        popEnterTransition = { slideIntoContainer(SlideDirection.End, tween(NAV_MS), initialOffset = { it / NAV_SHIFT }) + fadeIn(tween(NAV_MS)) },
+                        popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(NAV_MS), targetOffset = { it / NAV_SHIFT }) + fadeOut(tween(NAV_MS)) },
+                    ) {
+                        composable(Routes.WELCOME) {
+                            WelcomeScreen(onDemo = { startDemo(navigation) }) {
+                                settings.welcomeSeen = true
+                                Services.applyMeasurement()
+                                advance(navigation)
+                            }
+                        }
+                        composable(Routes.PSN) {
+                            PsnLoginScreen(onBack = back(navigation), onSkip = skip(navigation)) {
+                                // Ana ekrandan eşlemeye gelindiyse girişten sonra eşleme ekranı açılır.
+                                if (settings.console == null && navigation.previousBackStackEntry != null)
+                                    navigation.navigate(Routes.PAIR) { popUpTo(Routes.PSN) { inclusive = true } }
+                                else advance(navigation)
+                            }
+                        }
+                        composable(Routes.PLATFORM) { PlatformScreen(onBack = back(navigation)) { advance(navigation) } }
+                        composable(Routes.XBOX_LOGIN) {
+                            XboxLoginScreen(onBack = back(navigation), onSkip = skip(navigation)) {
+                                if (settings.xboxConsole == null && navigation.previousBackStackEntry != null)
+                                    navigation.navigate(Routes.XBOX_CONSOLE) { popUpTo(Routes.XBOX_LOGIN) { inclusive = true } }
+                                else advance(navigation)
+                            }
+                        }
+                        composable(Routes.XBOX_CONSOLE) {
+                            XboxConsoleScreen(onBack = back(navigation), onSkip = skip(navigation),
+                                onSignIn = { navigation.navigate(Routes.XBOX_LOGIN) }) { advance(navigation) }
+                        }
+                        composable(Routes.PAIR) { PairScreen(onBack = back(navigation), onSkip = skip(navigation)) { advance(navigation) } }
+                        composable(Routes.TARGET) {
+                            val onboarding = navigation.previousBackStackEntry == null
+                            TargetScreen(onBack = back(navigation), onTvInstall = { navigation.navigate(Routes.TV_INSTALL) }) {
+                                if (onboarding) Telemetry.event(Telemetry.ONBOARDING_DONE, "target" to settings.target.name.lowercase())
+                                advance(navigation)
+                            }
+                        }
+                        composable(Routes.MAIN) {
+                            MainScreen(
+                                status = status,
+                                onStart = ::startTranslation,
+                                onStop = { TranslationService.stop(this@MainActivity) },
+                                onDemo = { startDemo(navigation) },
+                                onExitDemo = { exitDemo(navigation) },
+                                onPhoneView = { startActivity(Intent(this@MainActivity, PhoneSubtitleActivity::class.java)) },
+                                onTarget = { navigation.navigate(Routes.TARGET) },
+                                onPairing = { pairing(navigation) },
+                                onPacks = { navigation.navigate(Routes.PACKS) },
+                                onProfile = { navigation.navigate(Routes.PROFILE) },
+                                onSettings = { navigation.navigate(Routes.SETTINGS) },
+                                onHistory = { navigation.navigate(Routes.HISTORY) },
+                                onTvUpdate = { tv ->
+                                    TvAppUpdate.pending = tv
+                                    navigation.navigate(Routes.TV_INSTALL)
+                                },
+                                onHome = currentEntry?.destination?.route == Routes.MAIN,
+                            )
+                        }
+                        composable(Routes.PACKS) {
+                            PacksScreen(onBack = { pop(navigation) }, packInUse = status.packInUse)
+                        }
+                        composable(Routes.PROFILE) {
+                            ProfileScreen(
+                                onBack = { pop(navigation) },
+                                onSettings = { navigation.navigate(Routes.SETTINGS) },
+                                onPairing = { pairing(navigation) },
+                                onTarget = { navigation.navigate(Routes.TARGET) },
+                                onPsn = { navigation.navigate(Routes.PSN) },
+                            )
+                        }
+                        composable(Routes.SETTINGS) {
+                            SettingsScreen(onBack = { pop(navigation) }, onPacks = { navigation.navigate(Routes.PACKS) },
+                                onTarget = { navigation.navigate(Routes.TARGET) }, onPairing = { pairing(navigation) },
+                                onTvInstall = { navigation.navigate(Routes.TV_INSTALL) },
+                                onPlatform = { navigation.navigate(Routes.PLATFORM) }, onDemo = { startDemo(navigation) })
+                        }
+                        composable(Routes.HISTORY) { HistoryScreen(onBack = { pop(navigation) }) }
+                        composable(Routes.TV_INSTALL) {
+                            // Kurulum bitince "Ana ekrana geç": kurulumun 3. adımından gelindiyse kurulum biter (TvAppUpdate.installed).
+                            TvInstallScreen(onBack = { pop(navigation) }) {
+                                if (Routes.next() == Routes.MAIN) navigation.navigate(Routes.MAIN) { popUpTo(0) { inclusive = true } }
+                                else pop(navigation)
+                            }
                         }
                     }
-                    composable(Routes.PSN) {
-                        PsnLoginScreen(onBack = back(navigation), onSkip = skip(navigation)) {
-                            // Ana ekrandan eşlemeye gelindiyse girişten sonra eşleme ekranı açılır.
-                            if (settings.console == null && navigation.previousBackStackEntry != null)
-                                navigation.navigate(Routes.PAIR) { popUpTo(Routes.PSN) { inclusive = true } }
-                            else advance(navigation)
-                        }
-                    }
-                    composable(Routes.PLATFORM) { PlatformScreen(onBack = back(navigation)) { advance(navigation) } }
-                    composable(Routes.XBOX_LOGIN) {
-                        XboxLoginScreen(onBack = back(navigation), onSkip = skip(navigation)) {
-                            if (settings.xboxConsole == null && navigation.previousBackStackEntry != null)
-                                navigation.navigate(Routes.XBOX_CONSOLE) { popUpTo(Routes.XBOX_LOGIN) { inclusive = true } }
-                            else advance(navigation)
-                        }
-                    }
-                    composable(Routes.XBOX_CONSOLE) {
-                        XboxConsoleScreen(onBack = back(navigation), onSkip = skip(navigation),
-                            onSignIn = { navigation.navigate(Routes.XBOX_LOGIN) }) { advance(navigation) }
-                    }
-                    composable(Routes.PAIR) { PairScreen(onBack = back(navigation), onSkip = skip(navigation)) { advance(navigation) } }
-                    composable(Routes.TARGET) {
-                        val onboarding = navigation.previousBackStackEntry == null
-                        TargetScreen(onBack = back(navigation), onTvInstall = { navigation.navigate(Routes.TV_INSTALL) }) {
-                            if (onboarding) Telemetry.event(Telemetry.ONBOARDING_DONE, "target" to settings.target.name.lowercase())
-                            advance(navigation)
-                        }
-                    }
-                    composable(Routes.MAIN) {
-                        MainScreen(
-                            status = status,
-                            onStart = ::startTranslation,
-                            onStop = { TranslationService.stop(this@MainActivity) },
-                            onDemo = { startDemo(navigation) },
-                            onExitDemo = { exitDemo(navigation) },
-                            onPhoneView = { startActivity(Intent(this@MainActivity, PhoneSubtitleActivity::class.java)) },
-                            onTarget = { navigation.navigate(Routes.TARGET) },
-                            onPairing = { pairing(navigation) },
-                            onPacks = { navigation.navigate(Routes.PACKS) },
-                            onProfile = { navigation.navigate(Routes.PROFILE) },
-                            onSettings = { navigation.navigate(Routes.SETTINGS) },
-                            onHistory = { navigation.navigate(Routes.HISTORY) },
-                            onTvUpdate = { tv ->
-                                TvAppUpdate.pending = tv
-                                navigation.navigate(Routes.TV_INSTALL)
-                            },
-                            onHome = currentEntry?.destination?.route == Routes.MAIN,
-                        )
-                    }
-                    composable(Routes.PACKS) {
-                        PacksScreen(onBack = { pop(navigation) }, packInUse = status.packInUse)
-                    }
-                    composable(Routes.PROFILE) {
-                        ProfileScreen(
-                            onBack = { pop(navigation) },
-                            onSettings = { navigation.navigate(Routes.SETTINGS) },
-                            onPairing = { pairing(navigation) },
-                            onTarget = { navigation.navigate(Routes.TARGET) },
-                            onPsn = { navigation.navigate(Routes.PSN) },
-                        )
-                    }
-                    composable(Routes.SETTINGS) {
-                        SettingsScreen(onBack = { pop(navigation) }, onPacks = { navigation.navigate(Routes.PACKS) },
-                            onTarget = { navigation.navigate(Routes.TARGET) }, onPairing = { pairing(navigation) },
-                            onTvInstall = { navigation.navigate(Routes.TV_INSTALL) },
-                            onPlatform = { navigation.navigate(Routes.PLATFORM) }, onDemo = { startDemo(navigation) })
-                    }
-                    composable(Routes.HISTORY) { HistoryScreen(onBack = { pop(navigation) }) }
-                    composable(Routes.TV_INSTALL) {
-                        // Kurulum bitince "Ana ekrana geç": kurulumun 3. adımından gelindiyse kurulum biter (TvAppUpdate.installed).
-                        TvInstallScreen(onBack = { pop(navigation) }) {
-                            if (Routes.next() == Routes.MAIN) navigation.navigate(Routes.MAIN) { popUpTo(0) { inclusive = true } }
-                            else pop(navigation)
-                        }
-                    }
+                    // TV'nin eşleştirme isteği: onay penceresi ve her ekranın üstünde onay satırı (iPhone ile aynı).
+                    TvPairingPrompt(status.pairing)
+                    if (inPip) PipSubtitleView(status)
                 }
-                // TV'nin eşleştirme isteği: onay penceresi ve her ekranın üstünde onay satırı (iPhone ile aynı).
-                TvPairingPrompt(status.pairing)
             }
         }
     }
+
+    /** Küçük pencerede (Resim içinde resim) mi; Compose içeriği buna göre çizilir. */
+    private var inPip by mutableStateOf(false)
 
     /** Öne gelen ekran, gösterilemeyen (ya da arka plandayken gelen) eşleştirme isteğini yeniden gösterir. */
     override fun onResume() {
         super.onResume()
         TranslationService.syncPairing()
+        // Profil'de "Arka planda sürdür" değişmiş olabilir.
+        BackgroundPip.update(this, BackgroundPip.wanted(this, LiveState.status.value))
+    }
+
+    /** Android 11 ve öncesi: ana ekrana dönülürken küçük pencere burada açılır. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        BackgroundPip.onUserLeave(this, BackgroundPip.wanted(this, LiveState.status.value))
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPip = isInPictureInPictureMode
     }
 
     /**

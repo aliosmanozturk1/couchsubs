@@ -115,6 +115,10 @@ targets:
         # Samsung girişi sayfası jetonu bu telefondaki http://localhost:4794'e gönderir; TV'lerle düz HTTP konuşulur.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # "Audio, AirPlay, and Picture in Picture": "Arka planda sürdür" ayarının Resim içinde resim penceresi (oyun
+        # görüntüsü + canlı altyazı) ve bu telefonda çalınan Xbox oyun sesi için. Sessiz ses çalınmaz (BackgroundPiP.swift;
+        # App Review notu: docs/app-store.md).
+        UIBackgroundModes: [audio]
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
         UIRequiresFullScreen: false

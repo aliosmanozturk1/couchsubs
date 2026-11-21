@@ -7,6 +7,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -39,6 +40,9 @@ import com.couchsubs.mobile.service.TranslationService
 import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -92,6 +96,12 @@ class PhoneSubtitleActivity : ComponentActivity() {
         setContent {
             CouchSubsTheme {
                 val status by LiveState.status.collectAsState()
+                // "Arka planda sürdür": çeviri sürerken bu ekrandan çıkınca küçük pencere (iPhone ile aynı).
+                LaunchedEffect(status.running) { BackgroundPip.update(this@PhoneSubtitleActivity, BackgroundPip.wanted(this@PhoneSubtitleActivity, status)) }
+                if (inPip) {
+                    PipSubtitleView(status)
+                    return@CouchSubsTheme
+                }
                 Box(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().padding(Tokens.Space.screen)) {
                     Row(Modifier.fillMaxWidth().align(Alignment.TopCenter), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
@@ -178,9 +188,23 @@ class PhoneSubtitleActivity : ComponentActivity() {
         }
     }
 
+    /** Küçük pencerede (Resim içinde resim) mi; içerik buna göre çizilir. */
+    private var inPip by mutableStateOf(false)
+
     override fun onResume() {
         super.onResume()
         TranslationService.syncPairing()
+    }
+
+    /** Android 11 ve öncesi: ana ekrana dönülürken küçük pencere burada açılır. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        BackgroundPip.onUserLeave(this, BackgroundPip.wanted(this, LiveState.status.value))
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPip = isInPictureInPictureMode
     }
 }
 

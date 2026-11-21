@@ -590,6 +590,14 @@ class AppSettings(context: Context) : AreaStore {
         get() = prefs.getBoolean("tourShown", false)
         set(value) = prefs.edit().putBoolean("tourShown", value).apply()
 
+    /**
+     * "Arka planda sürdür (Resim içinde resim)": çeviri sürerken uygulamadan çıkınca oyun görüntüsü ve canlı altyazı
+     * küçük pencerede kalır (iPhone ile aynı ad ve açıklama). Çeviri ön plan hizmetinde zaten sürer; bu yalnız pencereyi açar.
+     */
+    var backgroundPip: Boolean
+        get() = prefs.getBoolean("backgroundPip", true)
+        set(value) = prefs.edit().putBoolean("backgroundPip", value).apply()
+
     /** Bildirim tercihleri: bağlantı koptuğunda ve yeni paket geldiğinde. */
     var notifyDisconnect: Boolean
         get() = prefs.getBoolean("notify.disconnect", true)

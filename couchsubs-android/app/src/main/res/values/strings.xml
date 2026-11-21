@@ -3,8 +3,8 @@
 <!-- Mobil metinler "sen" diliyle (TASARIM-MOBIL.md örnekleri). İngilizcesi values-en/strings.xml'de; yeni metin ikisine birden eklenir. -->
 <resources>
     <string name="channel_translation">Altyazı çevirisi</string>
-    <string name="notification_title">Çeviri sürüyor</string>
-    <string name="notification_text">PS5 altyazıları okunup Türkçeye çevriliyor</string>
+    <string name="notification_title">CouchSubs çeviriyor</string>
+    <string name="notification_text">Altyazılar okunup Türkçeye çevriliyor; ekran kilitliyken de sürer</string>
     <string name="stop">Çeviriyi durdur</string>
     <string name="start">Çeviriyi başlat</string>
     <string name="next">İleri</string>
@@ -389,6 +389,8 @@
     <string name="packs_switch_note">Kapalıysa bütün satırlar seçtiğin motorla çevrilir.</string>
     <string name="profile_no_account">CouchSubs\'ta hesap yok: ayarların yalnız bu telefonda durur. Uygulama ve oyun paketleri ücretsizdir.</string>
     <string name="notify_disconnect">PS5 bağlantısı koptuğunda</string>
+    <string name="settings_background_pip">Arka planda sürdür (Resim içinde resim)</string>
+    <string name="settings_background_pip_short">Çeviri sürerken CouchSubs’tan çıkınca oyun görüntüsü ve canlı altyazı küçük bir pencerede kalır; okuma ve TV’ye gönderim sürer.</string>
     <string name="profile_tvs">TV ve altyazı hedefi</string>
 
     <!-- TV uygulamasını bu telefondan kurmak ve güncellemek (Samsung, LG, Android TV). -->

@@ -47,10 +47,13 @@
             android:name="com.facebook.internal.FacebookInitProvider"
             android:authorities="${applicationId}.FacebookInitProvider"
             tools:node="remove" />
+        <!-- Resim içinde resim ("Arka planda sürdür"): pencereye geçerken etkinlik yeniden kurulmaz. -->
         <activity
             android:name=".ui.MainActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:exported="true"
             android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -60,7 +63,9 @@
         <!-- Altyazı bu telefonun ekranında: yatay, büyük yazı. -->
         <activity
             android:name=".ui.PhoneSubtitleActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
             android:exported="false"
+            android:supportsPictureInPicture="true"
             android:screenOrientation="sensorLandscape" />
         <service
             android:name=".service.TranslationService"

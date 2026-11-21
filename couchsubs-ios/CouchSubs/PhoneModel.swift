@@ -163,6 +163,11 @@ final class PhoneModel: ObservableObject {
     static let disabledPacksKey = "disabledPacks"
     /// Profil'deki "PS5 bağlantısı koptuğunda bildir" tercihi (varsayılan açık, Android ile aynı).
     static let notifyDisconnectKey = "notifyDisconnect"
+    /// "Arka planda sürdür (Resim içinde resim)" (varsayılan açık, Android ile aynı ad ve açıklama; bkz. BackgroundPiP).
+    static let backgroundPiPKey = "backgroundPiP"
+    @Published var backgroundPiP: Bool {
+        didSet { defaults.set(backgroundPiP, forKey: Self.backgroundPiPKey) }
+    }
 
     /// Çeviri sürerken ekran kararmasın (iOS uygulamayı askıya alınca bağlantı da durur). Uygulama UIKit'e bağlar.
     var keepScreenAwake: (Bool) -> Void = { _ in }
@@ -171,9 +176,9 @@ final class PhoneModel: ObservableObject {
     /// PS5 bağlantısı kendiliğinden koptu (kullanıcı durdurmadı). Uygulama, etkin değilken yerel bildirim gösterir;
     /// testlerde boş.
     var onConnectionLost: () -> Void = {}
-    /// Çeviri sürerken uygulama arka plana geçti ya da ekran kilitlendi: iOS uygulamayı kısa süre sonra askıya alır ve
-    /// altyazı durur (Android'deki ön plan hizmetinin iOS'ta karşılığı yok). Uygulama gecikmeli bir yerel bildirim kurar;
-    /// `onResumedFromBackground` onu geri alır. Testlerde boş.
+    /// Çeviri sürerken uygulama arka plana geçti ya da ekran kilitlendi: Resim içinde resim penceresi açılmazsa iOS
+    /// uygulamayı kısa süre sonra askıya alır ve altyazı durur. Uygulama gecikmeli bir yerel bildirim kurar; pencere
+    /// açılınca ya da `onResumedFromBackground` onu geri alır. Testlerde boş.
     var onPausedInBackground: () -> Void = {}
     /// Uygulama yeniden öne geldi: arka planda kurulan bildirim (henüz gösterilmediyse) iptal edilir, gösterildiyse silinir.
     var onResumedFromBackground: () -> Void = {}
@@ -240,6 +245,7 @@ final class PhoneModel: ObservableObject {
         self.store = store
         self.defaults = defaults
         self.packs = packs
+        backgroundPiP = defaults.object(forKey: Self.backgroundPiPKey) as? Bool ?? true
         let accountId = store.load(Data.self, for: StoreKey.accountId)
         let console = store.load(RegisteredConsole.self, for: StoreKey.console)
         let tv = store.load(LGTV.self, for: StoreKey.tv)
@@ -713,8 +719,8 @@ final class PhoneModel: ObservableObject {
     }
 
     /// Uygulama arka plana geçti (ana ekran, başka uygulama ya da kilit tuşu). Çeviri sürüyorsa ve bildirim tercihi açıksa
-    /// kullanıcı uyarılır: iPhone'da altyazı yalnız CouchSubs ekranı açıkken sürer (iOS arka planda yerel ağ bağlantısını ve
-    /// görüntü okumayı durdurur). Deneme modunda PS5 yok, uyarı da yok.
+    /// gecikmeli uyarı kurulur: Resim içinde resim penceresi açılmazsa iOS yerel ağ bağlantısını ve görüntü okumayı durdurur
+    /// (pencere açılınca uyarı kalkar). Deneme modunda PS5 yok, uyarı da yok.
     func enteredBackground() {
         if isRunning { markBackground(true) }
         guard isRunning, !demoMode, notifiesDisconnect else { return }
@@ -1222,8 +1228,9 @@ final class PhoneModel: ObservableObject {
 
     /// Sunucunun TV'ye gönderdiği olayların aynısı telefon ekranına da gelir (TV kurulu olmasa da).
     func phoneReceive(_ event: SubtitleEvent) {
-        // Deneme modunda altyazı TV seçili olsa da bu ekranda görünür (TV'si olmayan da görsün).
-        guard settings.output.showsOnComputer || demoMode else { return }
+        // Deneme modunda altyazı TV seçili olsa da bu ekranda görünür (TV'si olmayan da görsün). "Arka planda sürdür"
+        // açıkken satırlar Resim içinde resim penceresine de gider (TV seçiliyken de).
+        guard settings.output.showsOnComputer || demoMode || backgroundPiP else { return }
         let now = clock()
         switch event {
         case .subtitle(let text, let durationMs, let paragraphs, let replaces):
