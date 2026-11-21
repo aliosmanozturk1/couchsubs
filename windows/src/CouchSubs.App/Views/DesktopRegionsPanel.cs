@@ -32,7 +32,8 @@ internal sealed class DesktopRegionsPanel : DockPanel
     {
         hud.Children.Clear();
         phone.Child = null;
-        foreach (var (id, region) in regions.OrderBy(pair => pair.Value.Box?.Top ?? 0))
+        // "Ekranı çevir" ekrandayken onun yerindeki otomatik ekran yazısı blokları çizilmez (#827).
+        foreach (var (id, region) in CouchSubs.Core.ScreenRegions.Visible(regions).OrderBy(pair => pair.Value.Box?.Top ?? 0))
         {
             var box = makeBox(region.Text, region.Box, region.Blocks);
             if (id == "game-phone")

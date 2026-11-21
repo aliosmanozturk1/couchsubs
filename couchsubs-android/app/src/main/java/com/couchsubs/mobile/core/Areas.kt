@@ -371,9 +371,12 @@ class RegionWatcher(
         ): Candidate {
             val marked = reading.withButtonIcons()
             // Menüdeki tuş etiketleri ("HOLSTER (L1)", "SELECT ✕") menü durumunda çevrilir; başka yerde kısa ipucu atılır.
-            val lines = (if (keepPrompts) marked else marked.withoutButtonPrompts()).withoutOcrNoise().lines
+            // Aynı yazının iki okunuşu tek satır kalır; satırın başındaki/sonundaki simge kutunun dışında kalır (#827;
+            // "Ekranı çevir" ile aynı).
+            val lines = ScreenTranslation.withoutDuplicateLines((if (keepPrompts) marked else marked.withoutButtonPrompts()).withoutOcrNoise().lines
+                .map(ScreenTranslation::withoutEdgeMarks)
                 .filter { ScreenText.isWords(it.text) }
-                .sortedBy { it.box?.top ?: 0.0 }
+                .sortedBy { it.box?.top ?: 0.0 })
             var paragraphs = ScreenText.paragraphs(lines)
             val boxes = lines.mapNotNull { it.box }
             val box = boxes.reduceOrNull { a, b -> a.union(b) }?.placedIn(region.box)

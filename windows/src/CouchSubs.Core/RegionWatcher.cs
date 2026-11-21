@@ -536,6 +536,9 @@ public sealed partial class RegionWatcher
                                       || (line.Confidence < 0.5 && UiCommands.TranslateLabelLoosely(IconText.Plain(line.Text)) is null)))
             .OrderBy(line => line.Box?.Top ?? 0)
             .ToList();
+        // Aynı yazının iki okunuşu tek satır kalır; satırın başındaki/sonundaki simge kutunun dışında kalır (#827; "Ekranı
+        // çevir" ile aynı). Telefon alanı girmez.
+        if (!phone) lines = [.. ScreenTranslation.WithoutDuplicateLines([.. lines.Select(ScreenTranslation.WithoutEdgeMarks)])];
         var paragraphs = ScreenTranslation.Paragraphs(lines);
         var place = new TextBox(region.Left, region.Top, region.Right, region.Bottom);
         var boxes = lines.Where(line => line.Box is not null).Select(line => line.Box!.Value).ToList();

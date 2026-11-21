@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.58';
+  var APP_VERSION = '0.9.59';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -1045,25 +1045,18 @@
   }
 
   // Otomatik bulunan ekran yazısı (bilgisayar "auto-<n>" alanı) özgün yazının görünüşüyle gelir: surface {background,
-  // foreground, flat} zemin ve yazı rengi (flat değilse — harita, oyun dünyası — zemin %85 opak), style {bold,
-  // condensed, align, upper}. Büyük harf çeviriyi bilgisayar zaten büyütür. Alanları göndermeyen eski bilgisayarda
+  // foreground, flat} zemin ve yazı rengi, style {bold, condensed, align, upper}. Zemin her yüzeyde (harita, oyun dünyası
+  // da) tam opaktır: önceden düz olmayan zeminde %94 opaktı, altındaki İngilizce harfler ("uture", "KM") seçiliyordu (#827). Büyük harf çeviriyi bilgisayar zaten büyütür. Alanları göndermeyen eski bilgisayarda
   // kutu eskisi gibi siyah kalır.
   var STYLED_MIN_SCALE = 0.8;
   var STYLED_LABEL_MIN_SCALE = 0.6;
-  // Düz olmayan zeminde (harita, bulanık sahne) kaplama: altındaki İngilizce yazı seçilmeyecek kadar koyu.
-  var STYLED_SOFT_ALPHA = 0.94;
   var CONDENSED_FONT = '"Roboto Condensed", "Arial Narrow", "Helvetica Neue Condensed", "LG Smart UI Condensed", sans-serif';
-
-  function hexAlpha(hex, alpha) {
-    return 'rgba(' + parseInt(hex.substr(1, 2), 16) + ', ' + parseInt(hex.substr(3, 2), 16) + ', ' +
-      parseInt(hex.substr(5, 2), 16) + ', ' + alpha + ')';
-  }
 
   // Öğeye özgün yazının görünüşü uygulandı mı.
   function applyLook(el, item) {
     var surface = item.surface;
     if (!surface || !phoneColor(surface.background) || !phoneColor(surface.foreground)) return false;
-    el.style.backgroundColor = surface.flat === false ? hexAlpha(surface.background, STYLED_SOFT_ALPHA) : surface.background;
+    el.style.backgroundColor = surface.background;
     el.style.color = surface.foreground;
     el.style.textShadow = 'none';
     var style = item.style;
@@ -1108,6 +1101,8 @@
       if (!box || !item.text || tooBig(box)) continue;
       var el = document.createElement('div');
       el.className = item.paragraphs === true ? 'item paragraphs' : 'item';
+      // Özgün yazının yeri: aynı yeri çizen başka katmanın kutusuyla karşılaştırılır (resolveLayers).
+      el.couchsubsBox = box;
       var styled = false;
       if (phone) {
         el.className += ' phone';
@@ -1193,12 +1188,14 @@
     placeItems(host, items);
     clearTimeout(screenTimer);
     screenTimer = setTimeout(hideScreen, duration || 20000);
+    resolveLayers();
   }
 
   function hideScreen() {
     clearTimeout(screenTimer);
     $('screen').className = 'hidden';
     $('screen').innerHTML = '';
+    resolveLayers();
   }
 
   // --- Ek alanlar ---
@@ -1237,8 +1234,12 @@
       regionBoxes[id] = el;
     }
     $('regions').className = '';
+    // En son gelen alan, kendisiyle aynı yeri çizen eski alanın önüne geçer (resolveLayers).
+    el.couchsubsStamp = ++regionStamp;
+    el.couchsubsBox = box;
     if (kind === 'region-blocks') {
       placeItems(el, blocks, id);
+      resolveLayers();
       avoidRegions();
       return;
     }
@@ -1273,6 +1274,7 @@
       size = Math.max(SCREEN_MIN_FONT, size - 2);
       el.style.fontSize = size + 'px';
     }
+    resolveLayers();
     avoidRegions();
   }
 
@@ -1281,7 +1283,59 @@
     if (!el) return;
     delete regionBoxes[id];
     $('regions').removeChild(el);
+    resolveLayers();
     avoidRegions();
+  }
+
+  // --- Aynı yerde tek çizim (#827) ---
+  // "Ekranı çevir" ve ek alanlar (otomatik ekran yazısı dahil) ayrı katmanlarda çizilir. Aynı yazıyı iki katman birden
+  // çizince (GTA 6 haritası, görev listesi) kutular üst üste biniyor, alttakinin yazısı üsttekinin arasından görünüyordu.
+  // Kutusu başka bir katmanın kutusuyla, küçüğünün alanının en az COVER_SHARE'i kadar örtüşen çeviri gizlenir: "Ekranı
+  // çevir" ekrandayken onunki, ek alanlar arasında en son gelen kalır (yeni olan eskisinin yerine geçer). Ekranı çevir
+  // kalkınca ya da üstteki alan silinince gizlenenler yeniden görünür. Oyun telefonu kartı bu kurala girmez.
+  // Bilgisayardaki kural: ScreenTranslation.coverShare (Mac, iPhone), CoverShare (Windows), COVER_SHARE (Android).
+  var COVER_SHARE = 0.25;
+  var SCREEN_RANK = 1e15;
+  var regionStamp = 0;
+
+  function overlapShare(a, b) {
+    var width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    var height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    if (!(width > 0) || !(height > 0)) return 0;
+    var smaller = Math.min((a.right - a.left) * (a.bottom - a.top), (b.right - b.left) * (b.bottom - b.top));
+    return smaller > 0 ? Math.min(1, width * height / smaller) : 0;
+  }
+
+  function layerParts() {
+    var parts = [];
+    var screen = $('screen');
+    if (screen && screen.className !== 'hidden') {
+      for (var i = 0; i < screen.children.length; i++) {
+        var item = screen.children[i];
+        if (item.couchsubsBox) parts.push({ el: item, box: item.couchsubsBox, rank: SCREEN_RANK, layer: 'screen' });
+      }
+    }
+    for (var id in regionBoxes) {
+      if (!Object.prototype.hasOwnProperty.call(regionBoxes, id) || id === 'game-phone') continue;
+      var host = regionBoxes[id];
+      var list = host.className === 'region-blocks' ? host.children : [host];
+      for (var j = 0; j < list.length; j++) {
+        if (list[j].couchsubsBox) parts.push({ el: list[j], box: list[j].couchsubsBox, rank: host.couchsubsStamp || 0, layer: id });
+      }
+    }
+    return parts;
+  }
+
+  function resolveLayers() {
+    var parts = layerParts();
+    for (var i = 0; i < parts.length; i++) {
+      var covered = false;
+      for (var j = 0; j < parts.length && !covered; j++) {
+        covered = parts[j].layer !== parts[i].layer && parts[j].rank > parts[i].rank &&
+          overlapShare(parts[i].box, parts[j].box) >= COVER_SHARE;
+      }
+      parts[i].el.style.visibility = covered ? 'hidden' : '';
+    }
   }
 
   // --- Ekran yazısı ile altyazının ayrımı ---
@@ -1337,6 +1391,7 @@
     }
     regionBoxes = {};
     $('regions').className = 'hidden';
+    resolveLayers();
     avoidRegions();
   }
 

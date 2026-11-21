@@ -172,7 +172,127 @@ object ScreenTranslation {
 
     /** Gösterilecek öğeler: telefon varsa kartı dizilir; çevirisi aslıyla aynı öğeler (kart dışında) atılır. */
     internal fun present(items: List<Item>, phone: ScreenPhoneCard.Handset?): List<Item> =
-        (if (phone != null) ScreenPhoneCard.layout(items, phone) else items).filter { !it.unchanged }
+        withoutDuplicates((if (phone != null) ScreenPhoneCard.layout(items, phone) else items).filter { !it.unchanged })
+
+    // --- Aynı yerde tek çizim (#827) ---
+
+    /**
+     * Aynı okumada iki satırın (ya da iki öğenin) kutusu küçüğünün alanının en az bu kadarı kadar örtüşüyorsa aynı yazının
+     * iki okunuşudur; yalnız harfi çok olanı kalır.
+     */
+    const val DUPLICATE_SHARE = 0.5
+
+    /**
+     * Ayrı yollardan gelen iki çevirinin ("Ekranı çevir", otomatik ekran yazısı, ek alan) kutusu küçüğünün alanının en az
+     * bu kadarı kadar örtüşüyorsa aynı yazıyı çiziyorlardır; yalnız biri çizilir. Önceden GTA 6 haritasında ikisi üst üste
+     * çiziliyor, alttakinin yazısı üsttekinin arasından görünüyordu.
+     */
+    const val COVER_SHARE = 0.25
+
+    /** İki kutunun kesişiminin küçük kutunun alanına oranı (0…1). */
+    fun overlap(a: TextBox, b: TextBox): Double {
+        val width = minOf(a.right, b.right) - maxOf(a.left, b.left)
+        val height = minOf(a.bottom, b.bottom) - maxOf(a.top, b.top)
+        if (width <= 0 || height <= 0) return 0.0
+        val smaller = minOf((a.right - a.left) * (a.bottom - a.top), (b.right - b.left) * (b.bottom - b.top))
+        return if (smaller > 0) minOf(1.0, width * height / smaller) else 0.0
+    }
+
+    private fun letters(text: String): Int = text.count { it.isLetter() }
+
+    /**
+     * Aynı yazının iki okunuşundan (yazı tanıma bir satırı hem bütün hem parça okuyabiliyor) yalnız harfi çok olanı kalır;
+     * eşitse önce gelen. Sıra korunur. Önceden ikisi ayrı çevrilip üst üste çiziliyordu ("Donnie'nin Paketini Bul" altında
+     * "Bulur").
+     */
+    fun withoutDuplicateLines(lines: List<TextLine>): List<TextLine> {
+        val counts = lines.map { letters(it.text) }
+        return lines.filterIndexed { i, line ->
+            val box = line.box ?: return@filterIndexed true
+            lines.indices.none { j ->
+                val other = lines[j].box
+                j != i && other != null && overlap(box, other) >= DUPLICATE_SHARE &&
+                    (counts[j] > counts[i] || (counts[j] == counts[i] && j < i))
+            }
+        }
+    }
+
+    /**
+     * Satırın başındaki ya da sonundaki simge kırıntısı (menüdeki harita/dükkân/ayar simgesi yazı tanımada "<", "©",
+     * "@" ya da baştaki tek harf olarak okunur) satırdan atılır; kutu yalnız yazının sözcüklerini kapsar (#827). Önceden
+     * çeviri kutusu simgeyi de örtüyordu. Sözcük yerleri bilinmiyorsa harf sayısına göre kestirilir. Kumanda simgeli
+     * satıra (simge çeviride yerinde gösterilir), sayıya, noktalamaya ve geriye iki harf kalmayacaksa dokunulmaz.
+     */
+    fun withoutEdgeMarks(line: TextLine): TextLine {
+        val box = line.box ?: return line
+        if (!line.icons.isNullOrEmpty() || line.text.contains(ButtonIcons.MARKER)) return line
+        val measured = !line.words.isNullOrEmpty()
+        val words = if (measured) line.words!! else ButtonIcons.estimate(line.text, box)
+        var start = 0
+        var end = words.size
+        while (start < end - 1 && isEdgeMark(words[start].text, leading = true)) start++
+        while (end - 1 > start && isEdgeMark(words[end - 1].text, leading = false)) end--
+        if (start == 0 && end == words.size) return line
+        val kept = words.subList(start, end)
+        if (kept.sumOf { letters(it.text) } < 2) return line
+        return line.copy(
+            text = kept.joinToString(" ") { it.text },
+            box = TextBox(if (start > 0) kept.first().box.left else box.left, box.top,
+                if (end < words.size) kept.last().box.right else box.right, box.bottom),
+            words = if (measured) kept.toList() else null,
+        )
+    }
+
+    /** Yalnız noktalamadan oluşan parça simge değildir ("...", "-"). */
+    private const val PUNCTUATION = ".,!?…:;-–—'\"’”"
+    /** Kumanda tuşu yazısı ("(✕)", "△", "R1"): kontrol şemasında etiketin parçasıdır, çeviride de yazılır; atılmaz. */
+    private const val BUTTON_GLYPHS = "✕×△○□◯⨯"
+
+    /**
+     * Simge kırıntısı mı: harfi ve rakamı yok ve yalnız noktalama ya da kumanda tuşu değil ("<", "©", "@"); satır başında
+     * tek harf de ("G Settings"; "a", "A", "I" sözcüktür).
+     */
+    internal fun isEdgeMark(word: String, leading: Boolean): Boolean {
+        val core = word.trim { it in "()[]{}" }
+        if (word.any { it.isDigit() } || word.any { it in BUTTON_GLYPHS } || ButtonIcons.isButtonName(core) ||
+            (word.length > 1 && word.first() == '(' && word.last() == ')')) return false
+        if (word.none { it.isLetter() }) return !word.all { it in PUNCTUATION }
+        return leading && word.length == 1 && word !in setOf("a", "A", "I")
+    }
+
+    /** Telefon kartının parçası (zemin, balon, başlık): kart bilerek üst üste dizilir, çakışma kuralına girmez. */
+    internal fun isCardPart(item: Item): Boolean = item.phone != null || ScreenPhoneCard.isBackdrop(item)
+
+    /** Aynı okumanın öğelerinden aynı yeri çizenlerin yalnız harfi çok olanı kalır ([DUPLICATE_SHARE]); kart dokunulmaz. */
+    internal fun withoutDuplicates(items: List<Item>): List<Item> {
+        val counts = items.map { letters(it.source) }
+        return items.filterIndexed { i, item ->
+            isCardPart(item) || items.indices.none { j ->
+                j != i && !isCardPart(items[j]) && overlap(item.box, items[j].box) >= DUPLICATE_SHARE &&
+                    (counts[j] > counts[i] || (counts[j] == counts[i] && j < i))
+            }
+        }
+    }
+
+    /**
+     * Katmanlar tek listede: sonra gelen öğe, kendisiyle çakışan ([COVER_SHARE]) önceki öğelerin yerine geçer (yeni olan
+     * eskisini değiştirir). Telefon kartının parçaları dokunulmaz.
+     */
+    fun layered(items: List<Item>): List<Item> {
+        val result = mutableListOf<Item>()
+        for (item in items) {
+            if (!isCardPart(item)) result.removeAll { !isCardPart(it) && overlap(it.box, item.box) >= COVER_SHARE }
+            result.add(item)
+        }
+        return result
+    }
+
+    /**
+     * [items]'tan [top] öğelerinden biriyle çakışanlar ([COVER_SHARE]) atılır: "Ekranı çevir" ekrandayken onun yazılarının
+     * yerindeki otomatik ekran yazısı ve ek alan kutuları çizilmez.
+     */
+    fun uncovered(items: List<Item>, top: List<Item>): List<Item> =
+        items.filter { item -> top.none { overlap(item.box, it.box) >= COVER_SHARE } }
 
     /** Aynı ekranın iki okuması en az bu kadar benzer; yeni bir mesajın eklenmesi bile ekranı "değişmiş" yapar. */
     const val SAME_SCREEN_SIMILARITY = 0.95
@@ -239,7 +359,12 @@ object ScreenTranslation {
             .filter { it.box != null && ScreenText.isWords(it.text) }
             .sortedWith(compareBy<TextLine>({ it.box!!.top }, { it.box!!.left }))
         // "Ekranı çevir": haritanın görev kartı kendi parçalarına ayrılır (başlık, açıklama, ayrıntılar; [MissionCard]).
-        val plain = { all: List<TextLine> -> if (wholeScreen) withMissionCards(all, frame) else groupLines(all) }
+        // Aynı yazının iki okunuşu tek satır kalır; satırın başındaki/sonundaki simge kutunun dışında kalır (#827).
+        // Telefonun satırları girmez: eğik telefonda kutuları bilerek üst üste.
+        val plain = { all: List<TextLine> ->
+            val kept = withoutDuplicateLines(all.map(::withoutEdgeMarks))
+            if (wholeScreen) withMissionCards(kept, frame) else groupLines(kept)
+        }
         // [handset]: karede GTA 6 telefonu varsa ekranındaki satırlar ayrı gruplanır ([PhoneChat]: balon, başlık, liste).
         if (handset != null) {
             val (onPhone, rest) = lines.partition { PhoneChat.onScreen(handset.flat(it.box!!)) }

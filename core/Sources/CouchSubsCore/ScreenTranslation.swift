@@ -173,7 +173,113 @@ public enum ScreenTranslation {
     /// Gösterilecek öğeler: telefon varsa kartı dizilir; çevirisi aslıyla aynı öğeler (kart dışında) atılır.
     static func present(_ items: [Item], phone: ScreenPhoneCard.Handset?) -> [Item] {
         let laid = phone.map { ScreenPhoneCard.layout(items, handset: $0) } ?? items
-        return laid.filter { !$0.unchanged }
+        return withoutDuplicates(laid.filter { !$0.unchanged })
+    }
+
+    // MARK: - Aynı yerde tek çizim (#827)
+
+    /// Aynı okumada iki satırın (ya da iki öğenin) kutusu küçüğünün alanının en az bu kadarı kadar örtüşüyorsa aynı yazının
+    /// iki okunuşudur; yalnız harfi çok olanı kalır.
+    public static let duplicateShare = 0.5
+    /// Ayrı yollardan gelen iki çevirinin ("Ekranı çevir", otomatik ekran yazısı, ek alan) kutusu küçüğünün alanının en az bu
+    /// kadarı kadar örtüşüyorsa aynı yazıyı çiziyorlardır; yalnız biri çizilir. Önceden GTA 6 haritasında ikisi üst üste
+    /// çiziliyor, alttakinin yazısı üsttekinin arasından görünüyordu.
+    public static let coverShare = 0.25
+
+    /// İki kutunun kesişiminin küçük kutunun alanına oranı (0…1).
+    public static func overlap(_ a: TextBox, _ b: TextBox) -> Double {
+        let width = min(a.right, b.right) - max(a.left, b.left)
+        let height = min(a.bottom, b.bottom) - max(a.top, b.top)
+        guard width > 0, height > 0 else { return 0 }
+        let smaller = min((a.right - a.left) * (a.bottom - a.top), (b.right - b.left) * (b.bottom - b.top))
+        return smaller > 0 ? min(1, width * height / smaller) : 0
+    }
+
+    private static func letters(_ text: String) -> Int { text.filter(\.isLetter).count }
+
+    /// Aynı yazının iki okunuşundan (yazı tanıma bir satırı hem bütün hem parça okuyabiliyor) yalnız harfi çok olanı kalır;
+    /// eşitse önce gelen. Sıra korunur. Önceden ikisi ayrı çevrilip üst üste çiziliyordu ("Donnie'nin Paketini Bul" altında
+    /// "Bulur").
+    public static func withoutDuplicateLines(_ lines: [TextLine]) -> [TextLine] {
+        let counts = lines.map { letters($0.text) }
+        return lines.indices.filter { i in
+            guard let box = lines[i].box else { return true }
+            return !lines.indices.contains { j in
+                guard j != i, let other = lines[j].box, overlap(box, other) >= duplicateShare else { return false }
+                return counts[j] > counts[i] || (counts[j] == counts[i] && j < i)
+            }
+        }.map { lines[$0] }
+    }
+
+    /// Satırın başındaki ya da sonundaki simge kırıntısı (menüdeki harita/dükkân/ayar simgesi yazı tanımada "<", "©",
+    /// "@" ya da baştaki tek harf olarak okunur) satırdan atılır; kutu yalnız yazının sözcüklerini kapsar (#827). Önceden
+    /// çeviri kutusu simgeyi de örtüyordu. Sözcük yerleri bilinmiyorsa harf sayısına göre kestirilir. Kumanda simgeli
+    /// satıra (simge çeviride yerinde gösterilir), sayıya, noktalamaya ve geriye iki harf kalmayacaksa dokunulmaz.
+    public static func withoutEdgeMarks(_ line: TextLine) -> TextLine {
+        guard (line.icons ?? []).isEmpty, !line.text.contains(ButtonIcons.marker), let box = line.box else { return line }
+        let measured = !(line.words ?? []).isEmpty
+        let words = measured ? line.words! : ButtonIcons.estimate(line.text, box)
+        var start = 0, end = words.count
+        while start < end - 1, isEdgeMark(words[start].text, leading: true) { start += 1 }
+        while end - 1 > start, isEdgeMark(words[end - 1].text, leading: false) { end -= 1 }
+        guard start > 0 || end < words.count else { return line }
+        let kept = Array(words[start..<end])
+        guard kept.reduce(0, { $0 + letters($1.text) }) >= 2 else { return line }
+        var trimmed = line
+        trimmed.text = kept.map(\.text).joined(separator: " ")
+        trimmed.box = TextBox(left: start > 0 ? kept[0].box.left : box.left, top: box.top,
+                              right: end < words.count ? kept[kept.count - 1].box.right : box.right, bottom: box.bottom)
+        trimmed.words = measured ? kept : nil
+        return trimmed
+    }
+
+    /// Yalnız noktalamadan oluşan parça simge değildir ("...", "-").
+    private static let punctuation = Set(".,!?…:;-–—'\"’”")
+
+    /// Kumanda tuşu yazısı ("(✕)", "△", "R1"): kontrol şemasında etiketin parçasıdır, çeviride de yazılır; atılmaz.
+    private static let buttonGlyphs = Set("✕×△○□◯⨯")
+
+    /// Simge kırıntısı mı: harfi ve rakamı yok ve yalnız noktalama ya da kumanda tuşu değil ("<", "©", "@"); satır başında
+    /// tek harf de ("G Settings"; "a", "A", "I" sözcüktür).
+    static func isEdgeMark(_ word: String, leading: Bool) -> Bool {
+        let core = word.trimmingCharacters(in: CharacterSet(charactersIn: "()[]{}"))
+        if word.contains(where: \.isNumber) || word.contains(where: { buttonGlyphs.contains($0) })
+            || ButtonIcons.isButtonName(core) || (word.count > 1 && word.first == "(" && word.last == ")") { return false }
+        if !word.contains(where: \.isLetter) { return !word.allSatisfy { punctuation.contains($0) } }
+        return leading && word.count == 1 && !["a", "A", "I"].contains(word)
+    }
+
+    /// Telefon kartının parçası (zemin, balon, başlık): kart bilerek üst üste dizilir, çakışma kuralına girmez.
+    static func isCardPart(_ item: Item) -> Bool { item.phone != nil || ScreenPhoneCard.isBackdrop(item) }
+
+    /// Aynı okumanın öğelerinden aynı yeri çizenlerin yalnız harfi çok olanı kalır (`duplicateShare`); kart dokunulmaz.
+    static func withoutDuplicates(_ items: [Item]) -> [Item] {
+        let counts = items.map { letters($0.source) }
+        return items.indices.filter { i in
+            isCardPart(items[i]) || !items.indices.contains { j in
+                guard j != i, !isCardPart(items[j]), overlap(items[i].box, items[j].box) >= duplicateShare else { return false }
+                return counts[j] > counts[i] || (counts[j] == counts[i] && j < i)
+            }
+        }.map { items[$0] }
+    }
+
+    /// Katmanlar tek listede: sonra gelen öğe, kendisiyle çakışan (`coverShare`) önceki öğelerin yerine geçer (yeni olan
+    /// eskisini değiştirir). Telefon kartının parçaları dokunulmaz.
+    public static func layered(_ items: [Item]) -> [Item] {
+        var result: [Item] = []
+        for item in items {
+            if !isCardPart(item) {
+                result.removeAll { !isCardPart($0) && overlap($0.box, item.box) >= coverShare }
+            }
+            result.append(item)
+        }
+        return result
+    }
+
+    /// `items`'tan `top` öğelerinden biriyle çakışanlar (`coverShare`) atılır: "Ekranı çevir" ekrandayken onun yazılarının
+    /// yerindeki otomatik ekran yazısı ve ek alan kutuları çizilmez.
+    public static func uncovered(_ items: [Item], by top: [Item]) -> [Item] {
+        items.filter { item in !top.contains { overlap(item.box, $0.box) >= coverShare } }
     }
 
     /// Ekranın yazılarının izi: tuşa yeniden basınca ekranın değişip değişmediği buna bakılarak anlaşılır (`isSameScreen`).
@@ -260,7 +366,12 @@ public enum ScreenTranslation {
             // Aynı satırdaki parçalar (tuş çubuğunun etiketleri) soldan sağa; sıralama kararlı değildir.
             .sorted { $0.box!.top != $1.box!.top ? $0.box!.top < $1.box!.top : $0.box!.left < $1.box!.left }
         // "Ekranı çevir": haritanın görev kartı kendi parçalarına ayrılır (başlık, açıklama, ayrıntılar; `MissionCard`).
-        let plain = { (lines: [TextLine]) in wholeScreen ? withMissionCards(lines, frame: frame) : groups(from: lines) }
+        // Aynı yazının iki okunuşu tek satır kalır; satırın başındaki/sonundaki simge kutunun dışında kalır (#827).
+        // Telefonun satırları girmez: eğik telefonda kutuları bilerek üst üste.
+        let plain = { (all: [TextLine]) -> [Group] in
+            let lines = withoutDuplicateLines(all.map(withoutEdgeMarks))
+            return wholeScreen ? withMissionCards(lines, frame: frame) : groups(from: lines)
+        }
         guard let handset else { return plain(lines) }
         let onPhone = lines.filter { PhoneChat.onScreen(handset.flat($0.box!)) }
         guard !onPhone.isEmpty else { return plain(lines) }

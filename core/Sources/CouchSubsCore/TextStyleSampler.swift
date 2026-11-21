@@ -4,7 +4,8 @@ import CoreGraphics
 import Foundation
 
 /// Yazı bloğunun görünüşü (çeviri özgün yazının stilinde çizilsin diye): kalın mı, dar mı, hizası, BÜYÜK HARF mi ve
-/// zemin düz mü. Düz zeminde kutu zemin rengiyle tam opak doldurulur; değilse (harita, dünya) %85 opak kaplanır.
+/// zemin düz mü. Kutu her zeminde (harita, dünya da) zemin rengiyle tam opak doldurulur: özgün yazı arasından görünmez
+/// (#827).
 /// TV'ye region bloklarının `style` alanıyla (`flat` `surface` içinde) gider; eski TV yok sayar.
 public struct TextLook: Equatable, Sendable {
     public enum Align: String, Sendable { case left, center, right }

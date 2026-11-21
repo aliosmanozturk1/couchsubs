@@ -202,7 +202,125 @@ public static class ScreenTranslation
 
     /// <summary>Gösterilecek öğeler: telefon varsa kartı dizilir; çevirisi aslıyla aynı öğeler (kart dışında) atılır.</summary>
     internal static IReadOnlyList<Item> Present(IReadOnlyList<Item> items, ScreenPhoneCard.Handset? phone) =>
-        [.. (phone is not null ? ScreenPhoneCard.Layout(items, phone) : items).Where(item => !item.Unchanged)];
+        WithoutDuplicates([.. (phone is not null ? ScreenPhoneCard.Layout(items, phone) : items).Where(item => !item.Unchanged)]);
+
+    // --- Aynı yerde tek çizim (#827) ---
+
+    /// <summary>
+    /// Aynı okumada iki satırın (ya da iki öğenin) kutusu küçüğünün alanının en az bu kadarı kadar örtüşüyorsa aynı yazının
+    /// iki okunuşudur; yalnız harfi çok olanı kalır.
+    /// </summary>
+    public const double DuplicateShare = 0.5;
+
+    /// <summary>
+    /// Ayrı yollardan gelen iki çevirinin ("Ekranı çevir", otomatik ekran yazısı, ek alan) kutusu küçüğünün alanının en az
+    /// bu kadarı kadar örtüşüyorsa aynı yazıyı çiziyorlardır; yalnız biri çizilir. Önceden GTA 6 haritasında ikisi üst üste
+    /// çiziliyor, alttakinin yazısı üsttekinin arasından görünüyordu.
+    /// </summary>
+    public const double CoverShare = 0.25;
+
+    /// <summary>İki kutunun kesişiminin küçük kutunun alanına oranı (0…1).</summary>
+    public static double Overlap(TextBox a, TextBox b)
+    {
+        var width = Math.Min(a.Right, b.Right) - Math.Max(a.Left, b.Left);
+        var height = Math.Min(a.Bottom, b.Bottom) - Math.Max(a.Top, b.Top);
+        if (width <= 0 || height <= 0) return 0;
+        var smaller = Math.Min((a.Right - a.Left) * (a.Bottom - a.Top), (b.Right - b.Left) * (b.Bottom - b.Top));
+        return smaller > 0 ? Math.Min(1, width * height / smaller) : 0;
+    }
+
+    private static int Letters(string text) => text.Count(char.IsLetter);
+
+    /// <summary>
+    /// Aynı yazının iki okunuşundan (yazı tanıma bir satırı hem bütün hem parça okuyabiliyor) yalnız harfi çok olanı kalır;
+    /// eşitse önce gelen. Sıra korunur. Önceden ikisi ayrı çevrilip üst üste çiziliyordu ("Donnie'nin Paketini Bul" altında
+    /// "Bulur").
+    /// </summary>
+    public static IReadOnlyList<TextLine> WithoutDuplicateLines(IReadOnlyList<TextLine> lines)
+    {
+        var counts = lines.Select(line => Letters(line.Text)).ToList();
+        return [.. lines.Where((line, i) => line.Box is not { } box || !Enumerable.Range(0, lines.Count).Any(j =>
+            j != i && lines[j].Box is { } other && Overlap(box, other) >= DuplicateShare
+            && (counts[j] > counts[i] || (counts[j] == counts[i] && j < i))))];
+    }
+
+    /// <summary>
+    /// Satırın başındaki ya da sonundaki simge kırıntısı (menüdeki harita/dükkân/ayar simgesi yazı tanımada "&lt;", "©",
+    /// "@" ya da baştaki tek harf olarak okunur) satırdan atılır; kutu yalnız yazının sözcüklerini kapsar (#827). Önceden
+    /// çeviri kutusu simgeyi de örtüyordu. Sözcük yerleri bilinmiyorsa harf sayısına göre kestirilir. Kumanda simgeli
+    /// satıra (simge çeviride yerinde gösterilir), sayıya, noktalamaya ve geriye iki harf kalmayacaksa dokunulmaz.
+    /// </summary>
+    public static TextLine WithoutEdgeMarks(TextLine line)
+    {
+        if (line.Icons is { Count: > 0 } || line.Text.Contains(ButtonIcons.Marker) || line.Box is not { } box) return line;
+        var measured = line.Words is { Count: > 0 };
+        var words = measured ? line.Words! : ButtonIcons.Estimate(line.Text, box);
+        int start = 0, end = words.Count;
+        while (start < end - 1 && IsEdgeMark(words[start].Text, leading: true)) start++;
+        while (end - 1 > start && IsEdgeMark(words[end - 1].Text, leading: false)) end--;
+        if (start == 0 && end == words.Count) return line;
+        var kept = words.Skip(start).Take(end - start).ToList();
+        if (kept.Sum(word => Letters(word.Text)) < 2) return line;
+        return line with
+        {
+            Text = string.Join(' ', kept.Select(word => word.Text)),
+            Box = new TextBox(start > 0 ? kept[0].Box.Left : box.Left, box.Top,
+                              end < words.Count ? kept[^1].Box.Right : box.Right, box.Bottom),
+            Words = measured ? kept : null,
+        };
+    }
+
+    /// <summary>Yalnız noktalamadan oluşan parça simge değildir ("...", "-").</summary>
+    private const string Punctuation = ".,!?…:;-–—'\"’”";
+    /// <summary>Kumanda tuşu yazısı ("(✕)", "△", "R1"): kontrol şemasında etiketin parçasıdır, çeviride de yazılır; atılmaz.</summary>
+    private const string ButtonGlyphs = "✕×△○□◯⨯";
+
+    /// <summary>
+    /// Simge kırıntısı mı: harfi ve rakamı yok ve yalnız noktalama ya da kumanda tuşu değil ("&lt;", "©", "@"); satır
+    /// başında tek harf de ("G Settings"; "a", "A", "I" sözcüktür).
+    /// </summary>
+    internal static bool IsEdgeMark(string word, bool leading)
+    {
+        var core = word.Trim("()[]{}".ToCharArray());
+        if (word.Any(char.IsDigit) || word.Any(c => ButtonGlyphs.Contains(c)) || ButtonIcons.IsButtonName(core)
+            || (word.Length > 1 && word[0] == '(' && word[^1] == ')')) return false;
+        if (!word.Any(char.IsLetter)) return !word.All(c => Punctuation.Contains(c));
+        return leading && word.Length == 1 && word is not ("a" or "A" or "I");
+    }
+
+    /// <summary>Telefon kartının parçası (zemin, balon, başlık): kart bilerek üst üste dizilir, çakışma kuralına girmez.</summary>
+    internal static bool IsCardPart(Item item) => item.Phone is not null || ScreenPhoneCard.IsBackdrop(item);
+
+    /// <summary>Aynı okumanın öğelerinden aynı yeri çizenlerin yalnız harfi çok olanı kalır (<see cref="DuplicateShare"/>); kart dokunulmaz.</summary>
+    internal static IReadOnlyList<Item> WithoutDuplicates(IReadOnlyList<Item> items)
+    {
+        var counts = items.Select(item => Letters(item.Source)).ToList();
+        return [.. items.Where((item, i) => IsCardPart(item) || !Enumerable.Range(0, items.Count).Any(j =>
+            j != i && !IsCardPart(items[j]) && Overlap(item.Box, items[j].Box) >= DuplicateShare
+            && (counts[j] > counts[i] || (counts[j] == counts[i] && j < i))))];
+    }
+
+    /// <summary>
+    /// Katmanlar tek listede: sonra gelen öğe, kendisiyle çakışan (<see cref="CoverShare"/>) önceki öğelerin yerine geçer
+    /// (yeni olan eskisini değiştirir). Telefon kartının parçaları dokunulmaz.
+    /// </summary>
+    public static IReadOnlyList<Item> Layered(IEnumerable<Item> items)
+    {
+        var result = new List<Item>();
+        foreach (var item in items)
+        {
+            if (!IsCardPart(item)) result.RemoveAll(other => !IsCardPart(other) && Overlap(other.Box, item.Box) >= CoverShare);
+            result.Add(item);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// <paramref name="items"/>'tan <paramref name="top"/> öğelerinden biriyle çakışanlar (<see cref="CoverShare"/>) atılır:
+    /// "Ekranı çevir" ekrandayken onun yazılarının yerindeki otomatik ekran yazısı ve ek alan kutuları çizilmez.
+    /// </summary>
+    public static IReadOnlyList<Item> Uncovered(IEnumerable<Item> items, IReadOnlyList<Item> top) =>
+        [.. items.Where(item => !top.Any(other => Overlap(item.Box, other.Box) >= CoverShare))];
 
     /// <summary>Aynı ekranın iki okuması en az bu kadar benzer; yeni bir mesajın eklenmesi bile ekranı "değişmiş" yapar.</summary>
     public const double SameScreenSimilarity = 0.95;
@@ -279,8 +397,13 @@ public static class ScreenTranslation
             .OrderBy(line => line.Box!.Value.Top).ThenBy(line => line.Box!.Value.Left)
             .ToList();
         // "Ekranı çevir": haritanın görev kartı kendi parçalarına ayrılır (başlık, açıklama, ayrıntılar; MissionCard).
-        IReadOnlyList<Group> Plain(IReadOnlyList<TextLine> all) =>
-            wholeScreen ? WithMissionCards(all, menuRows, frame) : GroupsFromLines(all, menuRows);
+        // Aynı yazının iki okunuşu tek satır kalır; satırın başındaki/sonundaki simge kutunun dışında kalır (#827).
+        // Telefonun satırları girmez: eğik telefonda kutuları bilerek üst üste.
+        IReadOnlyList<Group> Plain(IReadOnlyList<TextLine> all)
+        {
+            var kept = WithoutDuplicateLines([.. all.Select(WithoutEdgeMarks)]);
+            return wholeScreen ? WithMissionCards(kept, menuRows, frame) : GroupsFromLines(kept, menuRows);
+        }
         if (handset is null) return Plain(lines);
         var onPhone = lines.Where(line => PhoneChat.OnScreen(handset.Flat(line.Box!.Value))).ToList();
         if (onPhone.Count == 0) return Plain(lines);

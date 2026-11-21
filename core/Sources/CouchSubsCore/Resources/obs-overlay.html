@@ -309,6 +309,7 @@
     var node = regions[id];
     if (!text) {
       if (node) { regionsBox.removeChild(node); delete regions[id]; }
+      resolveLayers();
       avoidRegions();
       return;
     }
@@ -320,16 +321,19 @@
       regions[id] = node;
     }
     var auto = setApart && id.indexOf('auto-') === 0;
+    node.stamp = ++regionStamp;
     if ((id === 'game-phone' || auto) && Array.isArray(blocks) && blocks.length) {
       node.textContent = '';
       node.style.cssText = '';
       node.className = 'phone-blocks';
       for (var i = 0; i < blocks.length; i++) placePhoneBlock(node, blocks[i], auto);
+      resolveLayers();
       avoidRegions();
       if (node.firstChild) return;
     }
     node.className = 'region';
     node.textContent = text;
+    resolveLayers();
     node.box = box || null;
     styleRegion(node);
     avoidRegions();
@@ -345,7 +349,8 @@
     var surface = item.surface;
     function rgb(value) { return typeof value === 'string' && value.length === 7 && /^#[0-9a-f]{6}$/i.test(value); }
     if (surface && rgb(surface.background) && rgb(surface.foreground)) {
-      el.style.backgroundColor = auto && surface.flat === false ? surface.background + 'f0' : surface.background;
+      // Zemin her yüzeyde tam opak: özgün yazı arasından görünmez (#827; TV ile aynı).
+      el.style.backgroundColor = surface.background;
       el.style.color = surface.foreground;
     }
     var look = auto && item.style && typeof item.style === 'object' ? item.style : null;
@@ -368,6 +373,7 @@
       el.appendChild(image); at = icon.at;
     });
     el.appendChild(document.createTextNode(item.text.slice(at)));
+    el.box = b;
     var h = window.innerHeight || 1080, pad = 0.001;
     var left = Math.max(0, b.left - pad), top = Math.max(0, b.top - pad);
     var height = (b.bottom - b.top + 2 * pad) * h;
@@ -391,6 +397,31 @@
     while (!auto && el.scrollHeight > height + 1 && size > floor) {
       size = Math.max(floor, size - 2); el.style.fontSize = size + 'px';
     }
+  }
+
+  // Aynı yerde tek çizim (#827; TV resolveLayers ile aynı): iki otomatik ekran yazısı alanı aynı yazıyı çizerse (kutuları
+  // küçüğünün alanının en az %25'i kadar örtüşür) en son gelenin bloğu kalır, eskisi gizlenir. Oyun telefonu girmez.
+  var COVER_SHARE = 0.25, regionStamp = 0;
+  function overlapShare(a, b) {
+    var w = Math.min(a.right, b.right) - Math.max(a.left, b.left), hgt = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    if (!(w > 0) || !(hgt > 0)) return 0;
+    var smaller = Math.min((a.right - a.left) * (a.bottom - a.top), (b.right - b.left) * (b.bottom - b.top));
+    return smaller > 0 ? Math.min(1, w * hgt / smaller) : 0;
+  }
+  function resolveLayers() {
+    var parts = [];
+    for (var id in regions) {
+      if (id === 'game-phone' || regions[id].className !== 'phone-blocks') continue;
+      Array.prototype.forEach.call(regions[id].children, function (el) {
+        if (el.box) parts.push({ el: el, box: el.box, rank: regions[id].stamp || 0, id: id });
+      });
+    }
+    parts.forEach(function (part) {
+      var covered = parts.some(function (other) {
+        return other.id !== part.id && other.rank > part.rank && overlapShare(part.box, other.box) >= COVER_SHARE;
+      });
+      part.el.style.visibility = covered ? 'hidden' : '';
+    });
   }
 
   // Ekran yazısı (görev satırı, ek alan) ile altyazı üst üste binmesin. Altyazının yeri kullanıcının seçimidir, değişmez:

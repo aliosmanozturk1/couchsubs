@@ -367,12 +367,15 @@ public final class RegionWatcher {
                           menu: Bool = false) -> Candidate {
         // Otomatik alanda (menü, kontrol şeması) tuşlu etiketler ("HOLSTER (L1)", "SELECT (✕)") yazının kendisidir, atılmaz.
         let marked = reading.withButtonIcons(frame: frame, monochrome: auto)
-        let lines = (auto ? marked : marked.withoutButtonPrompts()).withoutOcrNoise().lines
+        let read = (auto ? marked : marked.withoutButtonPrompts()).withoutOcrNoise().lines
             .filter { ScreenTranslation.isWords($0.text) }
             // Otomatik alanda yayın katmanı (logo, alan adı, "Canlı"), karenin kenarında kesilmiş tek sözcük ve bozuk okuma
             // (düşük güven, tuhaf harfler) atılır.
             .filter { !auto || !(ScreenTextNoise.isOverlay($0.text) || cutAtEdge($0) || ScreenTextNoise.isGarbled($0)) }
             .sorted { ($0.box?.top ?? 0) < ($1.box?.top ?? 0) }
+        // Aynı yazının iki okunuşu tek satır kalır; satırın başındaki/sonundaki simge kutunun dışında kalır (#827;
+        // "Ekranı çevir" ile aynı).
+        let lines = ScreenTranslation.withoutDuplicateLines(read.map(ScreenTranslation.withoutEdgeMarks))
         var paragraphs = ScreenTranslation.paragraphs(lines)
         let place = TextBox(left: region.left, top: region.top, right: region.right, bottom: region.bottom)
         let boxes = lines.compactMap(\.box)

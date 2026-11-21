@@ -504,7 +504,11 @@ struct SubtitleScreen: View {
             .offset(y: CGFloat(liveOffset) * screenHeight)
             // Ek alanların (görev, telefon, bildirim) çevirisi oyundaki yerinde küçük kutuda (TV'deki gibi).
             GeometryReader { proxy in
-                ForEach(model.phoneRegions) { region in
+                // "Ekranı çevir" ekrandayken onun yazılarının yerindeki ek alan kutusu çizilmez: aynı yazı iki kez üst üste
+                // görünmesin (#827).
+                ForEach(model.phoneRegions.filter { region in
+                    region.box.map { box in !model.screenItems.contains { ScreenTranslation.overlap(box, $0.box) >= ScreenTranslation.coverShare } } ?? true
+                }) { region in
                     let box = region.box ?? TextBox(left: 0.6, top: 0.05, right: 0.95, bottom: 0.2)
                     Text(verbatim: region.text)
                         .font(Mobile.TypeScale.caption)
@@ -543,7 +547,7 @@ struct SubtitleScreen: View {
                         .padding(4)
                         .frame(width: width, alignment: frameAlignment)
                         .frame(minHeight: backdrop ? height : 0)
-                        .background((Self.screenColor(item.style?.background) ?? .black).opacity(item.look?.flat == false ? 0.94 : (item.look == nil ? 0.85 : 1)),
+                        .background((Self.screenColor(item.style?.background) ?? .black).opacity(item.look == nil ? 0.85 : 1),
                                     in: RoundedRectangle(cornerRadius: 4))
                         .fixedSize(horizontal: false, vertical: true)
                         .position(x: proxy.size.width * box.left + width / 2,
