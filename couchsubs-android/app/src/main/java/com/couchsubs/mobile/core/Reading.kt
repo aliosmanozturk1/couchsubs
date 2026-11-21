@@ -64,6 +64,14 @@ class Reading(lines: List<TextLine>) {
         /** [joiningRows]: aynı satırdaki iki parça arasındaki en büyük boşluk (alan genişliğine oranla). */
         const val ROW_GAP = 0.05
 
+        /**
+         * Aynı bloğun satırları arasındaki en büyük boşluk (satır yüksekliğine oranla). GTA 6 gibi geniş satır aralıklı
+         * altyazılarda 0,6 eşiği iki satırlı altyazıyı iki bloğa bölüyor, yalnız biri çevriliyordu (GitHub #822); 0,8 geri
+         * geldi. Alttaki satır üsttekinin devamıysa [CONTINUATION_GAP] geçerlidir (Mac/Windows: aynı eşikler).
+         */
+        const val LINE_GAP = 0.8
+        const val CONTINUATION_GAP = 1.3
+
         fun fromText(text: String) = Reading(text.replace("\r\n", "\n").split('\n').map { TextLine(it.trim()) })
 
         /** Aynı satırdaki iki sözcük arasındaki boşluk ayrı yazılara mı işaret ediyor (menü ile gösterge gibi). */
@@ -201,7 +209,7 @@ class Reading(lines: List<TextLine>) {
 
     /**
      * Bloğun son satırının hemen altında ve yatayda onunla üst üste binen satır o bloğa aittir. Aradaki boşluk satır
-     * yüksekliğinin 0,6'sından büyükse ya da yazı boyları 1,25 kattan çok farklıysa ayrı bloktur (altyazıya bitişik görev
+     * yüksekliğinin [LINE_GAP] katından (devam satırında [CONTINUATION_GAP]) büyükse ya da yazı boyları 1,25 kattan çok farklıysa ayrı bloktur (altyazıya bitişik görev
      * satırı ayrılır; Windows ve Mac ile aynı). Yazı boyu yalnız iki satır da en az üç sözcükken karşılaştırılır ve alttaki
      * satır üsttekinin devamıysa ([continues]) hiç karşılaştırılmaz: satır kutusu harflere göre ölçülür, "now." gibi kısa ve
      * büyük harfsiz/kuyruksuz satırın kutusu daha alçak çıkıyor, cümlenin devamı ayrı blok sayılıp tek başına çevriliyordu
@@ -212,9 +220,10 @@ class Reading(lines: List<TextLine>) {
         val own = box.bottom - box.top
         val previous = last.bottom - last.top
         val height = maxOf(own, previous)
-        if (box.top - last.bottom > height * 0.6 || box.top < last.top) return false
         val upper = block.last().text
-        val comparable = wordCount(text) >= 3 && wordCount(upper) >= 3 && !continues(upper, text)
+        val continuing = continues(upper, text)
+        if (box.top - last.bottom > height * (if (continuing) CONTINUATION_GAP else LINE_GAP) || box.top < last.top) return false
+        val comparable = wordCount(text) >= 3 && wordCount(upper) >= 3 && !continuing
         if (comparable && maxOf(own, previous) > 1.25 * minOf(own, previous)) return false
         val overlap = minOf(box.right, last.right) - maxOf(box.left, last.left)
         val narrower = minOf(box.right - box.left, last.right - last.left)

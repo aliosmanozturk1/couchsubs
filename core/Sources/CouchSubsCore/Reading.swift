@@ -228,7 +228,7 @@ public struct Reading: Equatable, Sendable {
     private static func letters(_ text: String) -> Int { text.filter(\.isLetter).count }
 
     /// Bloğun son satırının hemen altında ve yatayda onunla üst üste binen satır o bloğa aittir. Aradaki boşluk satır
-    /// yüksekliğinin 0,6'sından büyükse ya da yazı boyları 1,25 kattan çok farklıysa ayrı bloktur (altyazıya bitişik görev
+    /// yüksekliğinin `lineGap` katından (devam satırında `continuationGap`) büyükse ya da yazı boyları 1,25 kattan çok farklıysa ayrı bloktur (altyazıya bitişik görev
     /// satırı ayrılır; Windows ile aynı). Yazı boyu yalnız iki satır da en az üç sözcükken karşılaştırılır ve alttaki satır
     /// üsttekinin devamıysa (`continues`) hiç karşılaştırılmaz: satır kutusu harflere göre ölçülür, "now." gibi kısa ve
     /// büyük harfsiz/kuyruksuz satırın kutusu daha alçak çıkıyor, cümlenin devamı ayrı blok sayılıp tek başına
@@ -237,13 +237,23 @@ public struct Reading: Equatable, Sendable {
         let last = block.last!.box!.placed(in: area)
         let own = box.bottom - box.top, previous = last.bottom - last.top
         let height = max(own, previous)
-        guard box.top - last.bottom <= height * 0.6, box.top >= last.top else { return false }
-        let comparable = wordCount(text) >= 3 && wordCount(block.last!.text) >= 3 && !continues(block.last!.text, with: text)
+        let continuing = continues(block.last!.text, with: text)
+        guard box.top - last.bottom <= height * (continuing ? continuationGap : lineGap), box.top >= last.top else { return false }
+        let comparable = wordCount(text) >= 3 && wordCount(block.last!.text) >= 3 && !continuing
         guard !comparable || max(own, previous) <= 1.25 * min(own, previous) else { return false }
         let overlap = min(box.right, last.right) - max(box.left, last.left)
         let narrower = min(box.right - box.left, last.right - last.left)
         return overlap > 0 && overlap >= narrower * 0.5
     }
+
+    /// Aynı bloğun satırları arasındaki en büyük boşluk (satır yüksekliğine oranla). GTA 6 gibi geniş satır aralıklı
+    /// altyazılarda iki satırın arası 0,6'yı aşıyor; beta.67'deki 0,6 eşiği iki satırlı altyazıyı iki bloğa bölüyor, yalnız
+    /// biri çevriliyordu (GitHub #822: "5-6 cümlede bir çeviri", çevirilerin bir kısmı cümlenin ikinci yarısı). beta.66'ya
+    /// kadarki 0,8 geri geldi; görev satırı yazı boyu farkıyla ve `StickyRows` ile ayrılır.
+    static let lineGap = 0.8
+    /// Alttaki satır üsttekinin devamıysa (`continues`: cümle bitmemiş, küçük harfle sürüyor) daha geniş boşluk da aynı
+    /// bloktur: yarım cümle tek başına altyazı değildir.
+    static let continuationGap = 1.3
 
     private static func wordCount(_ text: String) -> Int { text.split(whereSeparator: \.isWhitespace).count }
 

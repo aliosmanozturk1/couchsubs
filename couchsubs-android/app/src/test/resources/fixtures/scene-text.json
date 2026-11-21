@@ -1,5 +1,5 @@
 {
- "comment": "Sahne yazısı (tabela, tişört) altyazı alanına düşse de çevrilmez. Kutular alana oranlı; alan karedeki yeridir (Alt bölge). Mac SceneTextTests.swift, Windows SceneTextTests.cs ve Android SceneTextTest.kt aynı dosyayı okur. \"before\": aynı oturumda önceden okunan altyazı (altyazının okunduğu yükseklik öğrenilir; GitHub #822).",
+ "comment": "Sahne yazısı (tabela, tişört) altyazı alanına düşse de çevrilmez. Kutular alana oranlı; alan karedeki yeridir (Alt bölge). Mac SceneTextTests.swift, Windows SceneTextTests.cs ve Android SceneTextTest.kt aynı dosyayı okur. \"before\": aynı oturumda önceden okunan altyazı (altyazının okunduğu yükseklik öğrenilir; GitHub #822). GTA 6 altyazısının satır aralığı geniştir; iki satırı arasındaki boşluk satır boyunun 0,6'sını aşar (GitHub #822).",
  "area": [
   0.14,
   0.62,
@@ -728,6 +728,84 @@
     }
    ],
    "subtitle": "Get down now"
+  },
+  {
+   "name": "GTA 6 iki satırlı, geniş satır aralıklı altyazı (cümle sürüyor) tek blok (GitHub #822)",
+   "lines": [
+    {
+     "text": "Take the next left and",
+     "box": [
+      0.3,
+      0.5,
+      0.7,
+      0.58
+     ],
+     "confidence": 1.0
+    },
+    {
+     "text": "park behind the store.",
+     "box": [
+      0.31,
+      0.66,
+      0.69,
+      0.74
+     ],
+     "confidence": 1.0
+    }
+   ],
+   "subtitle": "Take the next left and\npark behind the store."
+  },
+  {
+   "name": "GTA 6 iki cümleli, geniş satır aralıklı altyazı tek blok (GitHub #822)",
+   "lines": [
+    {
+     "text": "We'll think about it, Jay.",
+     "box": [
+      0.3,
+      0.5,
+      0.7,
+      0.58
+     ],
+     "confidence": 1.0
+    },
+    {
+     "text": "Thanks for the ride.",
+     "box": [
+      0.35,
+      0.636,
+      0.65,
+      0.716
+     ],
+     "confidence": 1.0
+    }
+   ],
+   "subtitle": "We'll think about it, Jay.\nThanks for the ride."
+  },
+  {
+   "name": "altyazıya bitişik küçük yazılı görev satırı ayrı blok, altyazı konuşma (#707)",
+   "lines": [
+    {
+     "text": "Brian's doing us a favor, you know?",
+     "box": [
+      0.25,
+      0.5,
+      0.75,
+      0.58
+     ],
+     "confidence": 1.0
+    },
+    {
+     "text": "Go to the marina now",
+     "box": [
+      0.4,
+      0.636,
+      0.6,
+      0.696
+     ],
+     "confidence": 1.0
+    }
+   ],
+   "subtitle": "Brian's doing us a favor, you know?"
   }
  ]
 }

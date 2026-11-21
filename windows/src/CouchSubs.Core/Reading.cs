@@ -219,19 +219,28 @@ public sealed class Reading
 
     /// <summary>
     /// Bloğun son satırının hemen altında ve yatayda onunla üst üste binen satır o bloğa aittir. Aradaki boşluk satır
-    /// yüksekliğinin 0,6'sından büyükse ya da yazı boyları 1,25 kattan çok farklıysa ayrı bloktur (altyazıya bitişik görev
+    /// yüksekliğinin LineGap katından (devam satırında ContinuationGap) büyükse ya da yazı boyları 1,25 kattan çok farklıysa ayrı bloktur (altyazıya bitişik görev
     /// satırı ayrılır). Yazı boyu yalnız iki satır da en az üç sözcükken karşılaştırılır ve alttaki satır üsttekinin
     /// devamıysa (<see cref="Continues"/>) hiç karşılaştırılmaz: satır kutusu harflere göre ölçülür, "now." gibi kısa ve
     /// büyük harfsiz/kuyruksuz satırın kutusu daha alçak çıkıyor, cümlenin devamı ayrı blok sayılıp tek başına
     /// çevriliyordu (GitHub #715).
     /// </summary>
+    /// <summary>
+    /// Aynı bloğun satırları arasındaki en büyük boşluk (satır yüksekliğine oranla). GTA 6 gibi geniş satır aralıklı
+    /// altyazılarda 0,6 eşiği iki satırlı altyazıyı iki bloğa bölüyor, yalnız biri çevriliyordu (GitHub #822); 0,8 geri geldi.
+    /// Alttaki satır üsttekinin devamıysa <see cref="ContinuationGap"/> geçerlidir (Mac/Android: aynı eşikler).
+    /// </summary>
+    internal const double LineGap = 0.8;
+    internal const double ContinuationGap = 1.3;
+
     private static bool Belongs(TextBox box, List<TextLine> block, TextBox area, string text)
     {
         var last = block[^1].Box!.Value.PlacedIn(area);
         double own = box.Bottom - box.Top, previous = last.Bottom - last.Top;
         var height = Math.Max(own, previous);
-        if (box.Top - last.Bottom > height * 0.6 || box.Top < last.Top) return false;
-        var comparable = WordCount(text) >= 3 && WordCount(block[^1].Text) >= 3 && !Continues(block[^1].Text, text);
+        var continuing = Continues(block[^1].Text, text);
+        if (box.Top - last.Bottom > height * (continuing ? ContinuationGap : LineGap) || box.Top < last.Top) return false;
+        var comparable = WordCount(text) >= 3 && WordCount(block[^1].Text) >= 3 && !continuing;
         if (comparable && Math.Max(own, previous) > 1.25 * Math.Min(own, previous)) return false;
         var overlap = Math.Min(box.Right, last.Right) - Math.Max(box.Left, last.Left);
         var narrower = Math.Min(box.Right - box.Left, last.Right - last.Left);
