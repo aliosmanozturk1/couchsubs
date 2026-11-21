@@ -204,6 +204,7 @@ public sealed class TranslationProbe
     private readonly object gate = new();
     private readonly List<string> fresh = [];
     private int hits;
+    private string? fallbackReason;
 
     public static TranslationProbe? Current
     {
@@ -215,6 +216,9 @@ public sealed class TranslationProbe
 
     internal void NoteFresh(string? engine) { lock (gate) fresh.Add(engine ?? ""); }
 
+    /// <summary>Çevrimiçi motor satırı ücretsiz yedeğe bıraktı; neden günlükte görünür (anahtar ve yanıt yazılmaz).</summary>
+    public void NoteFallback(string reason) { lock (gate) fallbackReason = reason; }
+
     public int Hits { get { lock (gate) return hits; } }
 
     /// <summary>"çeviri:&lt;motor&gt;" (motor yeni çevirdi), "önbellek" (her parça önbellekten geldi) ya da bilinmiyorsa "çeviri:&lt;yedek ad&gt;".</summary>
@@ -222,8 +226,9 @@ public sealed class TranslationProbe
     {
         lock (gate)
         {
-            if (fresh.Count > 0) return "çeviri:" + (fresh[^1].Length == 0 ? fallbackEngine : fresh[^1]);
-            return hits > 0 ? "önbellek" : "çeviri:" + fallbackEngine;
+            var result = fresh.Count > 0 ? "çeviri:" + (fresh[^1].Length == 0 ? fallbackEngine : fresh[^1])
+                : hits > 0 ? "önbellek" : "çeviri:" + fallbackEngine;
+            return fallbackReason is null ? result : $"{result}, ücretsiz yedek: {fallbackReason}";
         }
     }
 }

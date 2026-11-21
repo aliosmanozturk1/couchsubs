@@ -140,6 +140,7 @@ public static class TranslationEngines
     /// </summary>
     public static string Describe(this OnlineKeyState state, TranslationEngine engine, Localizer text, LocalAiServer? server = null)
     {
+        if (state == OnlineKeyState.KeychainWriteFailed) return text["The API key could not be saved to this computer's secure storage."];
         if (engine == TranslationEngine.Local) return state.DescribeLocal(server, text);
         var name = engine.DisplayName();
         return state switch

@@ -17,6 +17,7 @@ import com.couchsubs.mobile.translation.DeepLTranslator
 import com.couchsubs.mobile.translation.Http
 import com.couchsubs.mobile.translation.OnlineKeyState
 import com.couchsubs.mobile.translation.RequestBudget
+import com.couchsubs.mobile.translation.SentenceTranslator
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
@@ -154,8 +155,16 @@ class OnlineTranslationTest {
     @Test
     fun failureFallsBackToTheLocalEngine() {
         val translator = DeepLTranslator("bad", { "yerel: $it" }, FakeHttp(403, ""))
-        assertEquals("yerel: Run!", translator.translate("Run!"))
+        val logged = mutableListOf<String>()
+        SentenceTranslator.fallbackLog = { logged += it }
+        try {
+            assertEquals("yerel: Run!", translator.translate("Run!"))
+        } finally {
+            SentenceTranslator.fallbackLog = null
+        }
         assertEquals(OnlineKeyState.INVALID, translator.lastError)
+        // Günlükte ücretsiz çeviriye düşmenin nedeni görünür (Mac ve Windows ile aynı); anahtar yazılmaz.
+        assertEquals(listOf("çeviri: ücretsiz yedek: deepl hizmet durumu: INVALID"), logged)
     }
 
     @Test

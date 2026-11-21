@@ -73,7 +73,9 @@ public sealed class TranslatorException(TranslatorStatus status, Exception? inne
 /// zamanında gelmedi ya da dakikalık sınıra takıldı; anahtar reddedilmedi, internet de çalışıyor (yalnız yapay zekâ
 /// hizmetlerinde).
 /// </summary>
-public enum OnlineKeyState { Valid, Invalid, QuotaExceeded, Unreachable, ModelRejected, Busy }
+/// <remarks><see cref="KeychainWriteFailed"/>: hizmet anahtarı kabul etti ama şifreli depoya yazılamadı (geri okunamadı); kayıt
+/// başarılı sayılmaz (Mac'teki Anahtar Zinciri kuralıyla aynı).</remarks>
+public enum OnlineKeyState { Valid, Invalid, QuotaExceeded, Unreachable, ModelRejected, Busy, KeychainWriteFailed }
 
 /// <param name="Used">Bu ay kullanılan karakter (geçerli anahtarda).</param>
 /// <param name="Limit">Aylık sınır.</param>

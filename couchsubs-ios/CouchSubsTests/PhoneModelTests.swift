@@ -261,13 +261,27 @@ final class PhoneModelTests: XCTestCase {
     func testKeysAreTestedBeforeSaving() async {
         let model = makeModel()
         let rejected = await model.saveKey("bad", for: .deepL)
-        XCTAssertFalse(rejected)
+        XCTAssertEqual(rejected, .rejected)
         XCTAssertFalse(model.hasKey(.deepL))
         let accepted = await model.saveKey("good", for: .gemini)
-        XCTAssertTrue(accepted)
+        XCTAssertEqual(accepted, .saved)
         XCTAssertTrue(model.hasKey(.gemini))
         XCTAssertEqual(model.settings.translationEngine, .gemini)
         model.removeKey(.gemini)
+        XCTAssertEqual(model.settings.translationEngine, .free)
+    }
+
+    /// Hizmet anahtarı kabul etse de Anahtarlık'a yazılamazsa anahtar kayıtlı sayılmaz, motor değişmez (Mac ile aynı).
+    func testKeyIsNotReportedSavedWhenKeychainRejectsIt() async {
+        final class RejectingStore: AppStore {
+            func save<T: Encodable>(_ value: T, for key: String) {}
+            func load<T: Decodable>(_ type: T.Type, for key: String) -> T? { nil }
+            func remove(_ key: String) {}
+        }
+        let model = PhoneModel(services: services, store: RejectingStore(), defaults: defaults)
+        let result = await model.saveKey("good", for: .gemini)
+        XCTAssertEqual(result, .notStored)
+        XCTAssertFalse(model.hasKey(.gemini))
         XCTAssertEqual(model.settings.translationEngine, .free)
     }
 
@@ -301,7 +315,7 @@ final class PhoneModelTests: XCTestCase {
         let none = await model.deepLUsage()
         XCTAssertNil(none)
         let accepted = await model.saveKey("good", for: .deepL)
-        XCTAssertTrue(accepted)
+        XCTAssertEqual(accepted, .saved)
         let usage = await model.deepLUsage()
         XCTAssertEqual(usage, OnlineKeyCheck(state: .valid, used: 12_345, limit: 500_000))
         model.removeKey(.deepL)

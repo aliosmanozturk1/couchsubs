@@ -550,6 +550,7 @@
     <string name="settings_key_checking">Testing…</string>
     <string name="settings_key_remove">Remove key</string>
     <string name="settings_key_rejected">The key did not work. Check it and try again.</string>
+    <string name="settings_key_not_stored">The API key could not be saved to this phone\'s secure storage.</string>
     <string name="deepl_usage">This month: %1$s of %2$s characters used.</string>
     <string name="deepl_quota_used_up">This month\'s DeepL limit is used up. Until it renews, the free translation on this phone translates.</string>
     <string name="deepl_key_not_accepted">DeepL did not accept this key. Copy it again from your DeepL account page.</string>

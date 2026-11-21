@@ -429,6 +429,8 @@ class TranslationService : Service() {
         settings.lastHealth = null
         settings.translating = true
         Backend.breadcrumb("çeviri: başlıyor (${settings.target.name}, ${settings.engine.name}, paketler ${settings.packsEnabled})")
+        // Çevrimiçi motor satırı ücretsiz çeviriye bıraktığında nedeni günlüğe gider (Mac/Windows ile aynı).
+        com.couchsubs.mobile.translation.SentenceTranslator.fallbackLog = Backend::breadcrumb
         startedAt = System.currentTimeMillis()
         LiveState.update { LiveStatus(running = true, demo = demo, phase = getString(R.string.phase_preparing), startedAt = startedAt, engineLabel = engineLabel()) }
         Telemetry.event(Telemetry.SESSION_START, "target" to settings.target.name.lowercase(), "engine" to settings.engine.name.lowercase(),

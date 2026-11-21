@@ -1054,8 +1054,13 @@ public class AiTranslatorTests
         // Zaman aşımı: hizmete ulaşıldı ama yanıt zamanında gelmedi; "internet bağlantınızı denetleyin" denmez.
         var fake = new FakeAi((_, _) => throw new TaskCanceledException("timeout"));
         var translator = Make(AiProvider.Claude, fake);
-        Assert.Equal("yerel: Run!", await translator.TranslateAsync("Run!"));
+        var probe = new TranslationProbe();
+        TranslationProbe.Current = probe;
+        try { Assert.Equal("yerel: Run!", await translator.TranslateAsync("Run!")); }
+        finally { TranslationProbe.Current = null; }
         Assert.Equal(OnlineKeyState.Busy, translator.LastError);
+        // Günlükte ücretsiz yedeğe düşmenin nedeni görünür (Mac ile aynı).
+        Assert.Contains("ücretsiz yedek: claude hizmet durumu: Busy", probe.Outcome());
 
         // Bağlantı kurulamadıysa (DNS, ağ yok) gerçekten ulaşılamamıştır.
         var offline = Make(AiProvider.Claude, new FakeAi((_, _) => throw new HttpRequestException("No such host is known.")));

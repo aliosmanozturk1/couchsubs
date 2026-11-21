@@ -641,6 +641,20 @@ class AppSettings(context: Context) : AreaStore {
     fun apiKey(engine: EngineChoice): String? = secrets.get("key." + engine.name)
     fun setApiKey(engine: EngineChoice, key: String?) = secrets.put("key." + engine.name, key?.trim())
 
+    /**
+     * Denenmiş anahtarı gizli depoya yazar ve geri okur; Keystore yazamadıysa ya da değer geri okunamadıysa false (kayıt
+     * başarılı sayılmaz, Mac'teki Anahtar Zinciri ve Windows'taki şifreli depo kuralıyla aynı).
+     */
+    fun storeApiKey(engine: EngineChoice, key: String): Boolean {
+        val trimmed = key.trim()
+        try {
+            setApiKey(engine, trimmed)
+        } catch (error: Exception) {
+            return false
+        }
+        return apiKey(engine) == trimmed
+    }
+
     private inline fun <reified T : Enum<T>> enumOr(name: String?, fallback: T): T =
         name?.let { runCatching { enumValueOf<T>(it) }.getOrNull() } ?: fallback
 }

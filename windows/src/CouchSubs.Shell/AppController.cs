@@ -1652,7 +1652,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             MakePipeline();
             if (settings.Dubbing.Enabled && DubbingInstalled) MakeDubber()?.Prepare();
             SubtitleLog.Write($"oturum başladı: {settings.SourceLanguage}→{settings.TargetLanguage}, "
-                + $"motor: {(OnlineTranslationActive ? settings.OnlineEngine.ToString() : "ücretsiz")}, paketler: {(settings.GamePacks ? "açık" : "kapalı")}, "
+                + $"motor: {(OnlineTranslationActive ? settings.OnlineEngine.ToString() : "ücretsiz")}, seçilen motor: {settings.Engine}, paketler: {(settings.GamePacks ? "açık" : "kapalı")}, "
                 + $"görüntü: {(demoMode ? "deneme modu" : IsXbox ? "Xbox" : readsWindow ? "Remote Play penceresi" : readsCapture ? "seçilen pencere" : "PS5")}");
 
             IStreamSession stream;
@@ -2763,8 +2763,11 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public async Task<OnlineKeyCheck> SetDeepLKeyAsync(string key)
     {
         key = key.Trim();
+        SubtitleLog.Write("API anahtarı testi başladı: deepl");
         var check = await services.CheckOnlineKeyAsync(key);
-        if (check.State is OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded) SaveKey(TranslationEngine.DeepL, key);
+        if (check.State != OnlineKeyState.Valid) SubtitleLog.Write($"API anahtarı testi sonucu: deepl {check.State}");
+        if (check.State is OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded && !SaveKey(TranslationEngine.DeepL, key))
+            return new OnlineKeyCheck(OnlineKeyState.KeychainWriteFailed);
         return check;
     }
 
@@ -2782,9 +2785,13 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public async Task<AiTestResult> SetAiKeyAsync(AiProvider provider, string key)
     {
         key = key.Trim();
+        var name = provider.ToString().ToLowerInvariant();
+        SubtitleLog.Write($"API anahtarı testi başladı: {name}");
         var result = await services.TestAiKeyAsync(provider, key, provider.Model(settings.ModelFor(provider)).Id);
-        if (result.State is OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded or OnlineKeyState.ModelRejected or OnlineKeyState.Busy)
-            SaveKey(provider.Engine(), key);
+        if (result.State != OnlineKeyState.Valid) SubtitleLog.Write($"API anahtarı testi sonucu: {name} {result.State}");
+        if (result.State is OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded or OnlineKeyState.ModelRejected or OnlineKeyState.Busy
+            && !SaveKey(provider.Engine(), key))
+            return new AiTestResult(OnlineKeyState.KeychainWriteFailed);
         return result;
     }
 
@@ -2805,8 +2812,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         typed = typed.Trim();
         var key = typed.Length > 0 ? typed : store.Load<string>(StoreKeys.LocalAiKey) ?? "";
         var result = await services.TestLocalAiAsync(server, key);
-        if (typed.Length > 0 && result.State is OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded or OnlineKeyState.ModelRejected or OnlineKeyState.Busy)
-            SaveKey(TranslationEngine.Local, typed);
+        if (typed.Length > 0 && result.State is OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded or OnlineKeyState.ModelRejected or OnlineKeyState.Busy
+            && !SaveKey(TranslationEngine.Local, typed))
+            return new AiTestResult(OnlineKeyState.KeychainWriteFailed);
         return result;
     }
 
@@ -2825,16 +2833,31 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         RefreshTranslatorStatus();
     }
 
-    private void SaveKey(TranslationEngine engine, string key)
+    /// <summary>
+    /// Anahtar şifreli depoya yazılır ve geri okunur; yazılamadıysa (dosya kilitli, DPAPI hatası) kayıt başarılı sayılmaz,
+    /// motor değişmez (Mac'teki Anahtar Zinciri kuralıyla aynı). Depo dosyayı geçici dosyayla değiştirir: önceki kayıt korunur.
+    /// </summary>
+    private bool SaveKey(TranslationEngine engine, string key)
     {
-        if (engine.StoreKey() is not { } storeKey) return;
-        store.Save(storeKey, key);
+        if (engine.StoreKey() is not { } storeKey) return false;
+        try { store.Save(storeKey, key); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+        {
+            SubtitleLog.Write($"API anahtarı şifreli depoya kaydedilemedi: {engine} ({error.GetType().Name})");
+            return false;
+        }
+        if (store.Load<string>(storeKey) != key)
+        {
+            SubtitleLog.Write($"API anahtarı şifreli depoya kaydedilemedi: {engine}");
+            return false;
+        }
         Changed(nameof(HasDeepLKey));
         // Motor zaten seçiliydi, anahtar yeni geldi: hat yeni anahtarla kurulsun.
         if (settings.Engine == engine && isRunning) MakePipeline();
         else Settings = settings.WithEngine(engine);
         Changed(nameof(UsesFreeGemini));
         RefreshTranslatorStatus();
+        return true;
     }
 
     private void RefreshTranslatorStatus()

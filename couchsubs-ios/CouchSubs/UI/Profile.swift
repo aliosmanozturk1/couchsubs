@@ -265,7 +265,7 @@ struct SettingsScreen: View {
                             SecureField(String(format: String(localized: "%@ key"), engine.displayName), text: $key)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
-                            Button("Save") { Task { await save(engine) } }
+                            Button(checking ? LocalizedStringKey("Testing…") : LocalizedStringKey("Save")) { Task { await save(engine) } }
                                 .foregroundStyle(Mobile.Palette.accent)
                                 .disabled(checking || key.isEmpty)
                         }
@@ -468,9 +468,15 @@ struct SettingsScreen: View {
     private func save(_ engine: TranslationEngine) async {
         checking = true
         keyResult = nil
-        let accepted = await model.saveKey(key, for: engine)
-        keyResult = accepted ? nil : String(localized: "The key did not work. Check it and try again.")
-        if accepted { key = "" }
+        switch await model.saveKey(key, for: engine) {
+        case .saved:
+            keyResult = nil
+            key = ""
+        case .rejected:
+            keyResult = String(localized: "The key did not work. Check it and try again.")
+        case .notStored:
+            keyResult = String(localized: "The API key could not be saved to this iPhone's keychain.")
+        }
         checking = false
     }
 }

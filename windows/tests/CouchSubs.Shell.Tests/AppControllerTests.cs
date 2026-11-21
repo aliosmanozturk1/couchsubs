@@ -11,7 +11,13 @@ namespace CouchSubs.Shell.Tests;
 internal sealed class MemoryStore : IAppStore
 {
     public Dictionary<string, object?> Values { get; } = [];
-    public void Save<T>(string key, T value) => Values[key] = value;
+    /// <summary>Şifreli deponun yazamadığı durum (dosya kilitli, DPAPI hatası).</summary>
+    public bool RejectWrites { get; set; }
+    public void Save<T>(string key, T value)
+    {
+        if (RejectWrites) throw new IOException("locked");
+        Values[key] = value;
+    }
     public T? Load<T>(string key) => Values.TryGetValue(key, out var value) && value is T typed ? typed : default;
     public void Remove(string key) => Values.Remove(key);
 }
@@ -940,6 +946,25 @@ public class AppControllerTests
         services.AiTest = new AiTestResult(OnlineKeyState.QuotaExceeded);
         await controller.SetAiKeyAsync(AiProvider.Gemini, "AIza-busy");
         Assert.True(controller.UsesFreeGemini);
+    }
+
+    /// <summary>
+    /// Hizmet anahtarı kabul etse de şifreli depoya yazılamazsa (dosya kilitli, DPAPI hatası) kayıt başarılı sayılmaz,
+    /// motor değişmez ve ayrı bir ileti gösterilir (Mac'teki Anahtar Zinciri kuralıyla aynı).
+    /// </summary>
+    [Fact]
+    public async Task KeyIsNotReportedSavedWhenTheSecureStoreRejectsIt()
+    {
+        var store = new MemoryStore();
+        var controller = Make(new FakeServices(), store);
+        store.RejectWrites = true;
+        Assert.Equal(OnlineKeyState.KeychainWriteFailed, (await controller.SetAiKeyAsync(AiProvider.Claude, "claude-key")).State);
+        Assert.Equal(OnlineKeyState.KeychainWriteFailed, (await controller.SetDeepLKeyAsync("deepl-key")).State);
+        Assert.False(controller.HasKey(TranslationEngine.Claude));
+        Assert.False(controller.HasDeepLKey);
+        Assert.Equal(TranslationEngine.Free, controller.Settings.Engine);
+        Assert.Equal("The API key could not be saved to this computer's secure storage.",
+                     OnlineKeyState.KeychainWriteFailed.Describe(TranslationEngine.Claude, Localizer.ForLanguage("en")));
     }
 
     /// <summary>

@@ -454,6 +454,12 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
     private static readonly Lazy<HttpClient> SharedClient = new(() => new HttpClient { Timeout = AiTranslator.Timeout });
     private static readonly Lazy<HttpClient> LocalClient = new(() => new HttpClient { Timeout = LocalTimeout });
     private static readonly Lazy<HttpClient> LocalTestClient = new(() => new HttpClient { Timeout = LocalTestTimeout });
+    /// <summary>
+    /// Ayarlardaki "Kaydet ve dene"de bulut hizmeti için beklenen en uzun süre: deneme tek istektir, ilk bağlantı
+    /// altyazıdaki 5 saniyeyi aşabilir; yine de sınırlıdır, düğme takılı kalmaz (Mac ile aynı, 15 sn).
+    /// </summary>
+    public static readonly TimeSpan CloudKeyTestTimeout = TimeSpan.FromSeconds(15);
+    private static readonly Lazy<HttpClient> CloudTestClient = new(() => new HttpClient { Timeout = CloudKeyTestTimeout });
 
     /// <summary>Hizmete uygun zaman aşımıyla paylaşılan istemci.</summary>
     public static HttpClient ClientFor(AiProvider provider) => provider.IsLocal() ? LocalClient.Value : SharedClient.Value;
@@ -567,15 +573,27 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
         // beklemede yerel çeviri yoksa (inmemiş, açılamadı) satır düşmesin: hizmet yine denenir. 429 beklemesi kalır.
         if (sources.Count > 0 && DateTimeOffset.UtcNow < _pausedUntil)
         {
-            if (_pauseRateLimited) return Remember(await FallbackAsync(text, cancellationToken).ConfigureAwait(false), text, game);
-            if (await TryFallbackAsync(text, cancellationToken).ConfigureAwait(false) is { } offline) return Remember(offline, text, game);
+            if (_pauseRateLimited)
+            {
+                NoteFallback("dakikalık hizmet sınırı");
+                return Remember(await FallbackAsync(text, cancellationToken).ConfigureAwait(false), text, game);
+            }
+            if (await TryFallbackAsync(text, cancellationToken).ConfigureAwait(false) is { } offline)
+            {
+                NoteFallback($"yeniden deneme beklemesi ({_failure?.ToString() ?? "bekleme"})");
+                return Remember(offline, text, game);
+            }
         }
         // Dakikalık hak bittiyse satır sessizce yerel çeviriyle çevrilir (hata değildir). Hak uygulamanın temkinli
         // tahminidir; yerel çeviri yoksa satır denenmeden düşmesin, istek yine gönderilir.
         LastLineWasRateLimited = sources.Count > 0 && _budget is { } budget && !budget.TryTake();
         if (LastLineWasRateLimited)
         {
-            if (await TryFallbackAsync(text, cancellationToken).ConfigureAwait(false) is { } offline) return Remember(offline, text, game);
+            if (await TryFallbackAsync(text, cancellationToken).ConfigureAwait(false) is { } offline)
+            {
+                NoteFallback("uygulama dakikalık sınırı");
+                return Remember(offline, text, game);
+            }
             LastLineWasRateLimited = false;
         }
 
@@ -595,14 +613,17 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
             LastLineWasRateLimited = true;
             _pausedUntil = DateTimeOffset.UtcNow + pause;
             _pauseRateLimited = true;
+            NoteFallback("dakikalık hizmet sınırı");
             return Remember(await FallbackAsync(text, cancellationToken).ConfigureAwait(false), text, game);
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or AiException
                                       && !cancellationToken.IsCancellationRequested)
         {
-            Report(StateOf(error));
+            var state = StateOf(error);
+            Report(state);
             _pausedUntil = DateTimeOffset.UtcNow + ErrorPause;
             _pauseRateLimited = false;
+            NoteFallback($"hizmet durumu: {state}");
             return Remember(await FallbackAsync(text, cancellationToken).ConfigureAwait(false), text, game);
         }
         var local = false;
@@ -615,6 +636,7 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
                 && !string.IsNullOrWhiteSpace(retried) && !IsEcho(piece, retried))
             {
                 // Yerel çeviri bu motorun önbelleğine yazılmaz.
+                NoteFallback("boş veya değişmemiş yanıt");
                 translations[missing[i]] = retried;
                 local = true;
                 continue;
@@ -651,6 +673,10 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
     /// kalırsa (ad, konsolun Türkçe menüsü) çevrilecek bir şey yoktur ve modelin yanıtı önbelleğe yazılır; hizmet
     /// beklerken null dönerse istek yine gönderilir.
     /// </summary>
+    /// <summary>Satırın ücretsiz yedeğe düşme nedeni altyazı günlüğüne gider (Mac'teki <c>noteFallback</c> ile aynı).</summary>
+    private void NoteFallback(string reason) =>
+        TranslationProbe.Current?.NoteFallback($"{Provider.ToString().ToLowerInvariant()} {reason}");
+
     private async Task<string?> TryFallbackAsync(string text, CancellationToken cancellationToken)
     {
         if (_fallback is null) return null;
@@ -838,7 +864,7 @@ public sealed class AiTranslator : ITextTranslator, IOnlineTranslator
     {
         key = key.Trim();
         if (key.Length == 0 && !provider.IsLocal()) return new(OnlineKeyState.Invalid);
-        http ??= provider.IsLocal() ? LocalTestClient.Value : SharedClient.Value;
+        http ??= provider.IsLocal() ? LocalTestClient.Value : CloudTestClient.Value;
         // Deneme tek istektir; çeviri hattının dakikalık hakkından yemez.
         var translator = new AiTranslator(provider, key, model, new FailingTranslator(), http, budget: new RequestBudget(int.MaxValue),
                                           server: server, instruction: instruction);

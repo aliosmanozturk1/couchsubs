@@ -26,7 +26,9 @@ import java.util.concurrent.TimeUnit
  * gelmedi ya da dakikalık sınıra takıldı; anahtar reddedilmedi, internet de çalışıyor (Windows/Mac ile aynı).
  */
 enum class OnlineKeyState {
-    VALID, INVALID, QUOTA_EXCEEDED, MODEL_REJECTED, UNREACHABLE, BUSY;
+    VALID, INVALID, QUOTA_EXCEEDED, MODEL_REJECTED, UNREACHABLE, BUSY,
+    /** Hizmet anahtarı kabul etti ama gizli depoya (Keystore) yazılamadı; kayıt başarılı sayılmaz (Mac ile aynı). */
+    KEY_NOT_STORED;
 
     companion object {
         /** İstek hatasının türü: zaman aşımı yoğunluktur (hizmete ulaşıldı, yanıt gelmedi), diğer ağ hataları ulaşılamadır. */
@@ -204,6 +206,19 @@ abstract class SentenceTranslator<C>(
         const val RETRY_AFTER_MS = 60_000L
         /** Dakikalık sınır aşılınca en çok bu kadar beklenir (hizmet bekleme önermezse de bu kadar). */
         const val RATE_LIMIT_PAUSE_MS = 20_000L
+
+        /**
+         * Satır ücretsiz (cihaz üstü) çeviriye düştüğünde nedeni buraya yazılır (Mac/Windows'taki altyazı günlüğündeki
+         * "ücretsiz yedek: …" ile aynı); uygulama günlüğe bağlar. Anahtar ve hizmet yanıtı yazılmaz.
+         */
+        @Volatile var fallbackLog: ((String) -> Unit)? = null
+    }
+
+    /** Günlükteki motor adı (Mac ile aynı: "deepl", "gemini", "openai", "claude"). */
+    protected open val logName: String get() = "deepl"
+
+    private fun noteFallback(reason: String) {
+        fallbackLog?.invoke("çeviri: ücretsiz yedek: $logName $reason")
     }
 
     private val names = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -269,26 +284,41 @@ abstract class SentenceTranslator<C>(
         // Hizmetin beklemesi yalnız eksik çeviriler içindir; önbellekteki parçalar yerel motor istemez. Hata sonrası
         // beklemede yerel çeviri yoksa (indirilmemiş, açılamadı) satır düşmesin: hizmet yine denenir. 429 beklemesi kalır.
         if (sources.isNotEmpty() && clock() < pausedUntil) {
-            if (pauseRateLimited) return fallback(text, game)
-            tryLocal(text)?.let { remember(text, it, game); return it }
+            if (pauseRateLimited) {
+                noteFallback("dakikalık hizmet sınırı")
+                return fallback(text, game)
+            }
+            tryLocal(text)?.let {
+                noteFallback("yeniden deneme beklemesi (${lastError ?: "bekleme"})")
+                remember(text, it, game)
+                return it
+            }
         }
         // Dakikalık hak bittiyse satır sessizce yerel çeviriyle çevrilir (hata değildir). Hak uygulamanın temkinli
         // tahminidir; yerel çeviri yoksa satır denenmeden düşmesin, istek yine gönderilir.
-        if (sources.isNotEmpty() && budget?.take() == false) tryLocal(text)?.let { remember(text, it, game); return it }
+        if (sources.isNotEmpty() && budget?.take() == false) tryLocal(text)?.let {
+            noteFallback("uygulama dakikalık sınırı")
+            remember(text, it, game)
+            return it
+        }
         val translated = try {
             if (sources.isEmpty()) emptyList()
             else request(sources, context, game, SpeakerNameGuard.occurring(speakers.protected, sources.joinToString("\n"), exact = true))
                 .also { report(null) }
         } catch (error: AiRateLimitedException) {
             rateLimited(error.limit)
+            noteFallback("dakikalık hizmet sınırı")
             return fallback(text, game)
         } catch (error: IOException) {
-            report(OnlineKeyState.of(error))
+            val state = OnlineKeyState.of(error)
+            report(state)
             pauseAfter(error)
+            noteFallback("hizmet durumu: $state")
             return fallback(text, game)
         } catch (error: JSONException) {
             report(OnlineKeyState.UNREACHABLE)
             pauseAfter(null)
+            noteFallback("hizmet durumu: ${OnlineKeyState.UNREACHABLE}")
             return fallback(text, game)
         }
         var local = false
@@ -300,6 +330,7 @@ abstract class SentenceTranslator<C>(
                 val retried = tryLocal(piece)
                 if (retried != null && retried.isNotBlank() && !isEcho(piece, retried)) {
                     // Yerel çeviri bu motorun önbelleğine yazılmaz.
+                    noteFallback("boş veya değişmemiş yanıt")
                     translations[index] = retried
                     local = true
                     continue
@@ -857,6 +888,8 @@ class AiTranslator(
     override val translatesTogether: Boolean get() = true
 
     override val retriesEcho: Boolean get() = true
+
+    override val logName: String get() = provider.id
 
     /**
      * "Ekranı çevir": birbirinden bağımsız parçalar (menü satırı, görev yazısı...) tek istekte, aynı sırada çevrilir

@@ -1164,22 +1164,34 @@ final class PhoneModel: ObservableObject {
         hasLoginPasscode = false
     }
 
-    /// Anahtar denenir; kabul edildiyse Anahtarlık'a yazılır ve motor seçilir. Dönen metin kullanıcıya gösterilir.
-    func saveKey(_ key: String, for engine: TranslationEngine) async -> Bool {
+    /// Anahtar kaydının sonucu: hizmet kabul etmediyse `rejected`, Anahtarlık'a yazılamadıysa (geri okunamadı) `notStored`.
+    enum KeySaveResult: Equatable { case saved, rejected, notStored }
+
+    /// Anahtar denenir; kabul edildiyse Anahtarlık'a yazılır ve motor seçilir. Anahtarlık'tan geri okunamazsa kayıt
+    /// başarılı sayılmaz (Mac'teki `saveKey` ile aynı kural).
+    func saveKey(_ key: String, for engine: TranslationEngine) async -> KeySaveResult {
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty, let storeKey = engine.storeKey else { return false }
+        guard !key.isEmpty, let storeKey = engine.storeKey else { return .rejected }
         let accepted: Bool
+        SubtitleLog.write("API anahtarı testi başladı: \(engine.rawValue)")
         if let provider = engine.aiProvider {
-            switch await services.testAIKey(provider: provider, key: key, model: settings.model(for: provider)) {
+            let result = await services.testAIKey(provider: provider, key: key, model: settings.model(for: provider))
+            if case .failure(let error) = result { SubtitleLog.write("API anahtarı testi sonucu: \(provider.rawValue) \(error)") }
+            switch result {
             case .success, .failure(.quotaExceeded), .failure(.modelRejected), .failure(.busy): accepted = true
             case .failure: accepted = false
             }
         } else {
             let state = await services.checkDeepLKey(key).state
+            if state != .valid { SubtitleLog.write("API anahtarı testi sonucu: \(engine.rawValue) \(state)") }
             accepted = state == .valid || state == .quotaExceeded
         }
-        guard accepted else { return false }
+        guard accepted else { return .rejected }
         store.save(key, for: storeKey)
+        guard store.load(String.self, for: storeKey) == key else {
+            SubtitleLog.write("API anahtarı Anahtarlık'a kaydedilemedi: \(engine.rawValue)")
+            return .notStored
+        }
         savedKeys.insert(engine)
         if settings.translationEngine == engine {
             if isRunning { makePipeline() }
@@ -1187,7 +1199,7 @@ final class PhoneModel: ObservableObject {
         } else {
             settings.translationEngine = engine
         }
-        return true
+        return .saved
     }
 
     /// Kayıtlı DeepL anahtarının bu ayki kullanımı (Mac'teki `deepLUsage` ile aynı sorgu; karakter kotasından yemez).

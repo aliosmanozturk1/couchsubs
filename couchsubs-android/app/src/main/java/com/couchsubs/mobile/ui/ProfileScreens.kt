@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import com.couchsubs.mobile.BuildConfig
 import com.couchsubs.mobile.R
 import com.couchsubs.mobile.Services
+import com.couchsubs.mobile.account.Backend
 import com.couchsubs.mobile.core.SubtitleBackgroundShape
 import com.couchsubs.mobile.core.SubtitlePlacement
 import com.couchsubs.mobile.core.SubtitleTextColor
@@ -192,6 +193,7 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
     var saved by remember(engine) { mutableStateOf(!settings.apiKey(engine).isNullOrBlank()) }
     var checking by remember { mutableStateOf(false) }
     var keyRejected by remember(engine) { mutableStateOf(false) }
+    var keyNotStored by remember(engine) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var scale by remember { mutableStateOf(settings.subtitleScale.toFloat()) }
     var color by remember { mutableStateOf(settings.textColor) }
@@ -275,14 +277,17 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
                     // Mac ve Windows'taki kullanım satırı (#625): kayıtlı DeepL anahtarının bu ayki karakter kullanımı.
                     if (engine == EngineChoice.DEEPL) DeepLUsageNote(settings)
                 } else {
-                    Field(key, { key = it; keyRejected = false }, stringResource(R.string.settings_key), secret = true)
+                    Field(key, { key = it; keyRejected = false; keyNotStored = false }, stringResource(R.string.settings_key), secret = true)
                     SecondaryButton(stringResource(if (checking) R.string.settings_key_checking else R.string.settings_key_save),
                         enabled = !checking && key.isNotBlank()) {
                         val choice = engine
                         val typed = key.trim()
                         checking = true
                         keyRejected = false
+                        keyNotStored = false
                         scope.launch {
+                            val logName = choice.aiProvider?.id ?: "deepl"
+                            Backend.breadcrumb("API anahtarı testi başladı: $logName")
                             val state = withContext(Dispatchers.IO) {
                                 val provider = choice.aiProvider
                                 if (provider == null) KeyCheck.deepL(typed)
@@ -291,17 +296,26 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
                                     if (model == null) OnlineKeyState.UNREACHABLE else KeyCheck.ai(provider, typed, model)
                                 }
                             }
+                            if (state != OnlineKeyState.VALID) Backend.breadcrumb("API anahtarı testi sonucu: $logName $state")
+                            // Hizmet kabul etse de Keystore'a yazılamayan anahtar kayıtlı sayılmaz (Mac ile aynı).
+                            val stored = KeyCheck.accepted(state) && withContext(Dispatchers.IO) { settings.storeApiKey(choice, typed) }
+                            if (KeyCheck.accepted(state) && !stored) Backend.breadcrumb("API anahtarı gizli depoya kaydedilemedi: $logName")
                             checking = false
-                            if (KeyCheck.accepted(state)) {
-                                settings.setApiKey(choice, typed)
+                            if (stored) {
                                 if (engine == choice) {
                                     saved = true
                                     key = ""
                                 }
-                            } else if (engine == choice) keyRejected = true
+                            } else if (engine == choice) {
+                                if (KeyCheck.accepted(state)) keyNotStored = true else keyRejected = true
+                            }
                         }
                     }
-                    AnimatedNote(if (keyRejected) stringResource(R.string.settings_key_rejected) else null)
+                    AnimatedNote(when {
+                        keyNotStored -> stringResource(R.string.settings_key_not_stored)
+                        keyRejected -> stringResource(R.string.settings_key_rejected)
+                        else -> null
+                    })
                 }
             }
             // Ek talimat (#306) yalnız yapay zekâ motorlarında; DeepL'de yoktur (iPhone ile aynı).

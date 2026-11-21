@@ -749,6 +749,7 @@ public partial class SettingsWindow : Window
             OnlineKeyState.Valid => text.Format("This month: %1$@ of %2$@ characters used.", check.Used.ToString("N0"), check.Limit.ToString("N0")),
             OnlineKeyState.QuotaExceeded => text["This month's DeepL limit is used up. Until it renews, the translation model on this computer translates."],
             OnlineKeyState.Invalid => text["DeepL did not accept this key. Copy it again from your DeepL account page."],
+            OnlineKeyState.KeychainWriteFailed => text["The API key could not be saved to this computer's secure storage."],
             _ => text["DeepL could not be reached. Check your internet connection."],
         }, check.State is not (OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded));
     }
@@ -836,13 +837,14 @@ public partial class SettingsWindow : Window
     {
         var engine = SelectedEngine;
         KeySave.IsEnabled = false;
+        KeyBox.IsEnabled = false;
+        // Deneme sürerken düğme bekleme durumunu gösterir (Mac'teki "Testing…" ile aynı).
+        KeySave.Content = Localizer.Current["Testing…"];
         try
         {
             if (engine == TranslationEngine.Local)
             {
                 CommitLocal();
-                KeySave.IsEnabled = false;
-                KeySave.Content = Localizer.Current["Testing…"];
                 var result = await controller.TestLocalAiAsync(KeyBox.Password);
                 if (controller.HasKey(engine)) KeyBox.Clear();
                 ShowEngine();
@@ -867,7 +869,8 @@ public partial class SettingsWindow : Window
         finally
         {
             KeySave.IsEnabled = engine != TranslationEngine.Local || LocalAiServer.Normalize(LocalAddress.Text) is not null;
-            if (engine == TranslationEngine.Local) KeySave.Content = Localizer.Current["Test connection"];
+            KeyBox.IsEnabled = true;
+            KeySave.Content = Localizer.Current[engine == TranslationEngine.Local ? "Test connection" : "Save and test"];
         }
     }
 
