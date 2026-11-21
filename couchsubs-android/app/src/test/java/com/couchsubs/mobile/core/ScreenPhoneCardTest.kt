@@ -170,6 +170,27 @@ class ScreenPhoneCardTest {
         assertTrue(shown.all { it.box.left >= phone.bounds.left && it.box.right <= phone.bounds.right })
     }
 
+    /**
+     * Otomatik telefon panelinde ([GamePhoneText.groups], satırların yeri düz ekranda) da ana ekranın uygulama adları ve
+     * saat/hava çevrilmez; bileşen ve bildirim yazıları kendi yerinde kalır. Sohbet satırları olduğu gibi kalır (ortak
+     * deneme dosyasının `panels` bölümü; Mac ve Windows aynı dosyayı okur).
+     */
+    @Test
+    fun automaticPanelSkipsAppNamesOnTheHomeScreen() {
+        val panels = root.getJSONArray("panels")
+        for (i in 0 until panels.length()) {
+            val panel = panels.getJSONObject(i)
+            val lines = panel.getJSONArray("lines").let { all ->
+                (0 until all.length()).map { all.getJSONObject(it) }.map {
+                    val box = box(it.getJSONArray("box"))
+                    TextLine(it.getString("text"), box, phoneBox = box)
+                }
+            }
+            val expected = panel.getJSONArray("groups").let { all -> (0 until all.length()).map { all.getString(it) } }
+            assertEquals(panel.getString("name"), expected, GamePhoneText.groups(Reading(lines)).map { it.paragraphs.joinToString("\n") })
+        }
+    }
+
     /** Sohbetin son kısa yanıtı ("Ok") ana ekran sayılmaz; sohbet yine kart olur. */
     @Test
     fun shortChatReplyIsNotAHomeScreen() {

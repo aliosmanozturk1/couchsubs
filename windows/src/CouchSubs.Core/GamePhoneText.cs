@@ -176,8 +176,13 @@ internal static partial class GamePhoneText
     }
 
     // Konuşmada karşı kenara yaslanan yeni balon, önceki satır küçük harfle bitse bile ayrı çevrilir.
+    /// <summary>
+    /// Telefon ekranının blokları, kendi yerlerinde. Ana ekranda uygulama adları (WhatUp, simge etiketleri) çevrilmez
+    /// (<see cref="PhoneChat.WithoutAppNames"/>); saat ve hava harfsiz satır olarak zaten atılır.
+    /// </summary>
     internal static IReadOnlyList<ScreenTranslation.Group> Groups(Reading reading)
     {
+        reading = new Reading(PhoneChat.WithoutAppNames(reading.Lines));
         List<ScreenTranslation.Group> groups = [];
         List<TextLine> run = [];
         bool flat = reading.Lines.All(l => l.PhoneBox.HasValue);

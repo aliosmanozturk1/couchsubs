@@ -176,6 +176,25 @@ public class ScreenPhoneCardTests
     }
 
     [Fact]
+    public void AutomaticPanelSkipsAppNamesOnTheHomeScreen()
+    {
+        // Otomatik telefon panelinde (GamePhoneText.Groups, satırların yeri düz ekranda) da ana ekranın uygulama adları ve
+        // saat/hava çevrilmez; bileşen ve bildirim yazıları kendi yerinde kalır. Sohbet satırları olduğu gibi kalır (ortak
+        // deneme dosyasının panels bölümü; Mac ve Android aynı dosyayı okur).
+        foreach (var panel in Vectors().GetProperty("panels").EnumerateArray())
+        {
+            var reading = new Reading(panel.GetProperty("lines").EnumerateArray().Select(line =>
+            {
+                var box = Box(Numbers(line.GetProperty("box")));
+                return new TextLine(line.GetProperty("text").GetString()!, box) { PhoneBox = box };
+            }));
+            var expected = panel.GetProperty("groups").EnumerateArray().Select(text => text.GetString()).ToList();
+            var groups = GamePhoneText.Groups(reading).Select(group => string.Join('\n', group.Paragraphs)).ToList();
+            Assert.True(expected.SequenceEqual(groups), $"{panel.GetProperty("name").GetString()}: {string.Join(" / ", groups)}");
+        }
+    }
+
+    [Fact]
     public void ShortChatReplyIsNotAHomeScreen()
     {
         var vector = Vectors().GetProperty("cases")[0];

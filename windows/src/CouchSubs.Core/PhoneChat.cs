@@ -194,12 +194,10 @@ internal static class PhoneChat
     }
 
     /// <summary>
-    /// Ana ekranın yazıları: bir arada duran satırlar (bileşenin başlığı ve içeriği, bildirimin satırları) birer blok, her
-    /// satır kendi yerinde ayrı çevrilir (alt satıra sarılmış cümle birleşir). Tek başına duran kısa ad (simge etiketi,
-    /// "WhatUp") uygulamanın adıdır, çevrilmez; saat ve hava zaten harfsiz satırlarla birlikte atılmıştır. Gruplar
-    /// <see cref="ScreenPhoneCard.Role.Home"/> rolündedir: kart kurulmaz, özgün stilinde yerinde çizilir.
+    /// Ana ekranın blokları: arada dar boşluk ve solda aynı hizada duran satırlar (bileşenin başlığı ve içeriği, bildirimin
+    /// satırları) bir blok; yan yana duranlar ayrı.
     /// </summary>
-    internal static IReadOnlyList<ScreenTranslation.Group> HomeGroups(IReadOnlyList<Row> rows, double median, ScreenPhoneCard.Handset handset)
+    internal static List<List<Row>> HomeBlocks(IReadOnlyList<Row> rows, double median)
     {
         var blocks = new List<List<Row>>();
         foreach (var row in rows)
@@ -211,10 +209,42 @@ internal static class PhoneChat
             else
                 blocks.Add([row]);
         }
+        return blocks;
+    }
+
+    /// <summary>Blok tek başına duran kısa bir ad: uygulamanın adı (simge etiketi, "WhatUp"); çevrilmez.</summary>
+    internal static bool IsAppName(IReadOnlyList<Row> block) => block.Count == 1 && IsAppLabel(block[0].Text);
+
+    /// <summary>
+    /// Otomatik telefon panelinin (<see cref="GamePhoneText.Groups"/>) satırları ana ekransa uygulama adları atılmış hâli;
+    /// saat ve hava harfsiz satır olarak zaten çevrilmez, bileşen ve bildirim yazıları kendi yerinde kalır. Satırların yeri
+    /// düz ekranda (<c>PhoneBox</c>) bilinmiyorsa ya da ekran ana ekran değilse satırlar olduğu gibi döner ("Ekranı çevir"
+    /// ile aynı kural).
+    /// </summary>
+    internal static IReadOnlyList<TextLine> WithoutAppNames(IReadOnlyList<TextLine> lines)
+    {
+        if (lines.Count == 0 || !lines.All(line => line.PhoneBox.HasValue)) return lines;
+        List<Row> single = [.. lines.Select(line => new Row([line], line.PhoneBox!.Value, Clean(line.Text)))
+            .Where(row => row.Text.Count(char.IsLetter) >= 2).OrderBy(row => row.Spot.Top)];
+        var rows = JoinedRows(single, HomeJoin);
+        if (rows.Count == 0 || !IsHome(rows, lines)) return lines;
+        var median = rows.Select(row => row.Height).OrderBy(h => h).ElementAt(rows.Count / 2);
+        var names = HomeBlocks(rows, median).Where(IsAppName).SelectMany(block => block[0].Lines).ToList();
+        return [.. lines.Where(line => !names.Any(name => name.Text == line.Text && name.PhoneBox == line.PhoneBox))];
+    }
+
+    /// <summary>
+    /// Ana ekranın yazıları: bir arada duran satırlar (bileşenin başlığı ve içeriği, bildirimin satırları) birer blok, her
+    /// satır kendi yerinde ayrı çevrilir (alt satıra sarılmış cümle birleşir). Tek başına duran kısa ad (simge etiketi,
+    /// "WhatUp") uygulamanın adıdır, çevrilmez; saat ve hava zaten harfsiz satırlarla birlikte atılmıştır. Gruplar
+    /// <see cref="ScreenPhoneCard.Role.Home"/> rolündedir: kart kurulmaz, özgün stilinde yerinde çizilir.
+    /// </summary>
+    internal static IReadOnlyList<ScreenTranslation.Group> HomeGroups(IReadOnlyList<Row> rows, double median, ScreenPhoneCard.Handset handset)
+    {
         var result = new List<ScreenTranslation.Group>();
-        foreach (var block in blocks)
+        foreach (var block in HomeBlocks(rows, median))
         {
-            if (block.Count == 1 && IsAppLabel(block[0].Text)) continue;
+            if (IsAppName(block)) continue;
             var piece = new List<Row>();
             foreach (var row in block)
             {

@@ -175,7 +175,12 @@ object GamePhoneText {
     }
 
     /** Balonlar: düzleştirilmiş ekranda ([TextLine.phoneBox]) alt alta ve hizalı satırlar tek balondur. */
-    fun groups(reading: Reading): List<ScreenTranslation.Group> {
+    /**
+     * Telefon ekranının blokları, kendi yerlerinde. Ana ekranda uygulama adları (WhatUp, simge etiketleri) çevrilmez
+     * ([PhoneChat.withoutAppNames]); saat ve hava harfsiz satır olarak zaten atılır.
+     */
+    fun groups(source: Reading): List<ScreenTranslation.Group> {
+        val reading = Reading(PhoneChat.withoutAppNames(source.lines))
         val flat = reading.lines.all { it.phoneBox != null }
         fun box(line: TextLine): TextBox = (if (flat) line.phoneBox else line.box)!!
         val groups = mutableListOf<ScreenTranslation.Group>()

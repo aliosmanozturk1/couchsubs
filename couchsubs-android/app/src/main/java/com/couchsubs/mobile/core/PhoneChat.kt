@@ -172,12 +172,10 @@ object PhoneChat {
     }
 
     /**
-     * Ana ekranın yazıları: bir arada duran satırlar (bileşenin başlığı ve içeriği, bildirimin satırları) birer blok, her
-     * satır kendi yerinde ayrı çevrilir (alt satıra sarılmış cümle birleşir). Tek başına duran kısa ad (simge etiketi,
-     * "WhatUp") uygulamanın adıdır, çevrilmez; saat ve hava zaten harfsiz satırlarla birlikte atılmıştır. Gruplar
-     * [ScreenPhoneCard.Role.HOME] rolündedir: kart kurulmaz, özgün stilinde yerinde çizilir.
+     * Ana ekranın blokları: arada dar boşluk ve solda aynı hizada duran satırlar (bileşenin başlığı ve içeriği, bildirimin
+     * satırları) bir blok; yan yana duranlar ayrı.
      */
-    internal fun homeGroups(rows: List<Row>, median: Double, handset: ScreenPhoneCard.Handset): List<ScreenTranslation.Group> {
+    internal fun homeBlocks(rows: List<Row>, median: Double): List<List<Row>> {
         val blocks = mutableListOf<MutableList<Row>>()
         for (row in rows) {
             val block = blocks.lastOrNull()
@@ -188,9 +186,38 @@ object PhoneChat {
                 blocks.add(mutableListOf(row))
             }
         }
+        return blocks
+    }
+
+    /** Blok tek başına duran kısa bir ad: uygulamanın adı (simge etiketi, "WhatUp"); çevrilmez. */
+    internal fun isAppName(block: List<Row>): Boolean = block.size == 1 && isAppLabel(block[0].text)
+
+    /**
+     * Otomatik telefon panelinin ([GamePhoneText.groups]) satırları ana ekransa uygulama adları atılmış hâli; saat ve hava
+     * harfsiz satır olarak zaten çevrilmez, bileşen ve bildirim yazıları kendi yerinde kalır. Satırların yeri düz ekranda
+     * (`phoneBox`) bilinmiyorsa ya da ekran ana ekran değilse satırlar olduğu gibi döner ("Ekranı çevir" ile aynı kural).
+     */
+    fun withoutAppNames(lines: List<TextLine>): List<TextLine> {
+        if (lines.isEmpty() || lines.any { it.phoneBox == null }) return lines
+        val single = lines.map { Row(listOf(it), it.phoneBox!!, clean(it.text)) }
+            .filter { row -> row.text.count { it.isLetter() } >= 2 }.sortedBy { it.spot.top }
+        val rows = joinedRows(single, HOME_JOIN)
+        if (rows.isEmpty() || !isHome(rows, lines)) return lines
+        val median = rows.map { it.height }.sorted()[rows.size / 2]
+        val names = homeBlocks(rows, median).filter(::isAppName).flatMap { it[0].lines }
+        return lines.filter { line -> names.none { it.text == line.text && it.phoneBox == line.phoneBox } }
+    }
+
+    /**
+     * Ana ekranın yazıları: bir arada duran satırlar (bileşenin başlığı ve içeriği, bildirimin satırları) birer blok, her
+     * satır kendi yerinde ayrı çevrilir (alt satıra sarılmış cümle birleşir). Tek başına duran kısa ad (simge etiketi,
+     * "WhatUp") uygulamanın adıdır, çevrilmez; saat ve hava zaten harfsiz satırlarla birlikte atılmıştır. Gruplar
+     * [ScreenPhoneCard.Role.HOME] rolündedir: kart kurulmaz, özgün stilinde yerinde çizilir.
+     */
+    internal fun homeGroups(rows: List<Row>, median: Double, handset: ScreenPhoneCard.Handset): List<ScreenTranslation.Group> {
         val result = mutableListOf<ScreenTranslation.Group>()
-        for (block in blocks) {
-            if (block.size == 1 && isAppLabel(block[0].text)) continue
+        for (block in homeBlocks(rows, median)) {
+            if (isAppName(block)) continue
             val piece = mutableListOf<Row>()
             for (row in block) {
                 val continues = row.text.firstOrNull { it.isLetter() }?.isLowerCase() == true &&

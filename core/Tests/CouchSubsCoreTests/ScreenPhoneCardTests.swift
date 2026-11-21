@@ -162,6 +162,26 @@ final class ScreenPhoneCardTests: XCTestCase {
         XCTAssertTrue(shown.allSatisfy { $0.box.left >= phone.bounds.left && $0.box.right <= phone.bounds.right })
     }
 
+    /// Otomatik telefon panelinde (`GamePhoneText.groups`, satırların yeri düz ekranda) da ana ekranın uygulama adları ve
+    /// saat/hava çevrilmez; bileşen ve bildirim yazıları kendi yerinde kalır. Sohbet satırları olduğu gibi kalır (ortak
+    /// deneme dosyasının `panels` bölümü; Windows ve Android aynı dosyayı okur).
+    func testAutomaticPanelSkipsAppNamesOnTheHomeScreen() throws {
+        struct Panel: Decodable {
+            struct Line: Decodable { let text: String; let box: [Double] }
+            let name: String; let lines: [Line]; let groups: [String]
+        }
+        struct File: Decodable { let panels: [Panel] }
+        let url = Bundle.module.url(forResource: "Fixtures", withExtension: nil)!.appendingPathComponent("phone-chat.json")
+        for panel in try JSONDecoder().decode(File.self, from: Data(contentsOf: url)).panels {
+            let reading = Reading(lines: panel.lines.map { line in
+                var text = TextLine(line.text, box: box(line.box))
+                text.phoneBox = box(line.box)
+                return text
+            })
+            XCTAssertEqual(GamePhoneText.groups(reading).map { $0.paragraphs.joined(separator: "\n") }, panel.groups, panel.name)
+        }
+    }
+
     /// Sohbetin son kısa yanıtı ("Ok") ana ekran sayılmaz; sohbet yine kart olur.
     func testShortChatReplyIsNotAHomeScreen() throws {
         let vector = try vectors().cases[0]

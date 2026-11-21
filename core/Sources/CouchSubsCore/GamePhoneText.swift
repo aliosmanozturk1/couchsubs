@@ -159,7 +159,10 @@ enum GamePhoneText {
         })
     }
 
+    /// Telefon ekranının blokları, kendi yerlerinde. Ana ekranda uygulama adları (WhatUp, simge etiketleri) çevrilmez
+    /// (`PhoneChat.withoutAppNames`); saat ve hava harfsiz satır olarak zaten atılır.
     static func groups(_ reading: Reading) -> [ScreenTranslation.Group] {
+        let reading = Reading(lines: PhoneChat.withoutAppNames(reading.lines))
         let flat = reading.lines.allSatisfy { $0.phoneBox != nil }
         func box(_ line: TextLine) -> TextBox { (flat ? line.phoneBox : line.box)! }
         var groups: [ScreenTranslation.Group] = [], run: [TextLine] = []

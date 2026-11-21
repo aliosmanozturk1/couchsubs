@@ -169,11 +169,9 @@ enum PhoneChat {
         }
     }
 
-    /// Ana ekranın yazıları: bir arada duran satırlar (bileşenin başlığı ve içeriği, bildirimin satırları) birer blok, her
-    /// satır kendi yerinde ayrı çevrilir (alt satıra sarılmış cümle birleşir). Tek başına duran kısa ad (simge etiketi,
-    /// "WhatUp") uygulamanın adıdır, çevrilmez; saat ve hava zaten harfsiz satırlarla birlikte atılmıştır. Gruplar `home`
-    /// rolündedir: kart kurulmaz, özgün stilinde yerinde çizilir.
-    static func homeGroups(_ rows: [Row], median: Double, handset: ScreenPhoneCard.Handset) -> [ScreenTranslation.Group] {
+    /// Ana ekranın blokları: arada dar boşluk ve solda aynı hizada duran satırlar (bileşenin başlığı ve içeriği, bildirimin
+    /// satırları) bir blok; yan yana duranlar ayrı.
+    static func homeBlocks(_ rows: [Row], median: Double) -> [[Row]] {
         var blocks: [[Row]] = []
         for row in rows {
             if let last = blocks.last?.last, let first = blocks.last?.first, row.spot.top - last.spot.bottom < median * homeGap,
@@ -183,9 +181,34 @@ enum PhoneChat {
                 blocks.append([row])
             }
         }
+        return blocks
+    }
+
+    /// Blok tek başına duran kısa bir ad: uygulamanın adı (simge etiketi, "WhatUp"); çevrilmez.
+    static func isAppName(_ block: [Row]) -> Bool { block.count == 1 && isAppLabel(block[0].text) }
+
+    /// Otomatik telefon panelinin (`GamePhoneText.groups`) satırları ana ekransa uygulama adları atılmış hâli; saat ve hava
+    /// harfsiz satır olarak zaten çevrilmez, bileşen ve bildirim yazıları kendi yerinde kalır. Satırların yeri düz ekranda
+    /// (`phoneBox`) bilinmiyorsa ya da ekran ana ekran değilse satırlar olduğu gibi döner ("Ekranı çevir" ile aynı kural).
+    static func withoutAppNames(_ lines: [TextLine]) -> [TextLine] {
+        guard !lines.isEmpty, lines.allSatisfy({ $0.phoneBox != nil }) else { return lines }
+        let single = lines.indices.map { Row(lines: [lines[$0]], spot: lines[$0].phoneBox!, text: clean(lines[$0].text)) }
+            .filter { $0.text.filter(\.isLetter).count >= 2 }.sorted { $0.spot.top < $1.spot.top }
+        let rows = joinedRows(single, join: homeJoin)
+        guard !rows.isEmpty, isHome(rows, raw: lines) else { return lines }
+        let median = rows.map(\.height).sorted()[rows.count / 2]
+        let names = homeBlocks(rows, median: median).filter(isAppName).flatMap { $0[0].lines }
+        return lines.filter { line in !names.contains { $0.text == line.text && $0.phoneBox == line.phoneBox } }
+    }
+
+    /// Ana ekranın yazıları: bir arada duran satırlar (bileşenin başlığı ve içeriği, bildirimin satırları) birer blok, her
+    /// satır kendi yerinde ayrı çevrilir (alt satıra sarılmış cümle birleşir). Tek başına duran kısa ad (simge etiketi,
+    /// "WhatUp") uygulamanın adıdır, çevrilmez; saat ve hava zaten harfsiz satırlarla birlikte atılmıştır. Gruplar `home`
+    /// rolündedir: kart kurulmaz, özgün stilinde yerinde çizilir.
+    static func homeGroups(_ rows: [Row], median: Double, handset: ScreenPhoneCard.Handset) -> [ScreenTranslation.Group] {
         var result: [ScreenTranslation.Group] = []
-        for block in blocks {
-            if block.count == 1, isAppLabel(block[0].text) { continue }
+        for block in homeBlocks(rows, median: median) {
+            if isAppName(block) { continue }
             var piece: [Row] = []
             for row in block {
                 if let last = piece.last, !(row.text.first(where: \.isLetter)?.isLowercase == true && !endsSentence(last.text)) {
