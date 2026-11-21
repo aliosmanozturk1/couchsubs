@@ -249,6 +249,27 @@ PS tuşuyla TV kendi HDMI girişine geçince ses geri geliyor ama TV uygulaması
 Bilgi panelindeki ikinci tanı satırının `snd` bölümü TV'nin ses çıkışını ve ses düzeyini gösterir; sorun sürerse bunun
 fotoğrafını paylaşın.
 
+#### Sesi PS5 mi kesiyor?
+
+Çeviri başlayınca iki şey aynı anda olur: CouchSubs ikinci hesapla PS5'e Uzaktan Oynatma ile bağlanır, TV uygulaması
+da PS5 görüntüsünü kendi içinde açar. Ses bu ikisinden hangisinde gidiyor, şu denemeyle ayrılır:
+
+1. Altyazı hedefi olarak TV'yi değil telefonu (**Bu telefonda**) ya da bilgisayar ekranını seçin; TV uygulaması
+   açılmasın.
+2. Çeviriyi başlatın, TV'yi kumandanın giriş tuşuyla PS5'in HDMI girişine alın.
+3. Ses geliyorsa PS5 sesi kesmiyor; sorun TV uygulamasının içindeki HDMI ses yolunda, yukarıdaki üç adım geçerli.
+   Ses burada da yoksa altyazı günlüğüyle, TV ve ses sistemi modeliyle GitHub'da bildirin.
+
+Bilinenler:
+
+- CouchSubs Uzaktan Oynatma'dan gelen sesi istemcide atar (`CHIAKI_AUDIO_DISABLED`); PS5'e ses için bir istek ya da
+  bayrak gönderilmez. libchiaki'de PS5'in TV sesini koruyan ya da kesen bir seçenek yok.
+- Sony'nin [Uzaktan Oynatma ayarları](https://www.playstation.com/en-us/support/games/remote-play-settings/)
+  sayfasında (Ayarlar › Sistem › Uzaktan Oynatma) ses ile ilgili bir seçenek yok.
+- Kullanıcı bildirimlerinde Uzaktan Oynatma sürerken TV'den ses geliyor: Android TV'de Katman modunda (#57) ve LG
+  QNED86T6A'da TV hoparlöründe (#373; aynı TV'de Bluetooth ses cihazında ses yoktu).
+- Xbox başka: uzaktan oynatma sürerken TV'nin sesini kendisi kapatır ve sesi yalnız bağlanan cihaza verir (#379).
+
 ### USB bellekle kurulum
 
 CouchSubs TV'yi ağda bulamazsa (bazı TV'ler ağdan hata ayıklamaya izin vermez):
