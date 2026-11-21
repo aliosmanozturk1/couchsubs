@@ -113,6 +113,7 @@ final class FakeServices: AppServices {
     /// TV'nin eşleşmede döndüğü jeton (Samsung jetonla gelen bağlantıda boş dönebilir).
     var pairKey = "tv-key"
     var onKey: (@Sendable (String) -> Void)?
+    var onOpenResult: (@Sendable (TVOpenProblem?) -> Void)?
     var streamPasscodes: [String?] = []
     func makeStream(console: RegisteredConsole, accountId: Data, loginPasscode: String?) -> StreamControlling {
         streamPasscodes.append(loginPasscode)
@@ -122,11 +123,13 @@ final class FakeServices: AppServices {
     }
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
                     onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void,
-                    consolePort: @escaping @Sendable () -> Int?) -> KeeperControlling {
+                    consolePort: @escaping @Sendable () -> Int?,
+                    onOpenResult: @escaping @Sendable (TVOpenProblem?) -> Void) -> KeeperControlling {
         let keeper = FakeKeeper()
         keepers.append(keeper)
         self.onMoved = onMoved
         self.onKey = onKey
+        self.onOpenResult = onOpenResult
         return keeper
     }
     var bundledTVAppVersion: String? = "0.6.1"
@@ -201,9 +204,10 @@ final class FakeStream: StreamControlling {
 
 final class FakeKeeper: KeeperControlling {
     var running = false
+    var reconnects = 0
     func start(interval: Duration) { running = true }
     func stop() { running = false }
-    func reconnect() {}
+    func reconnect() { reconnects += 1 }
 }
 
 @MainActor
@@ -807,6 +811,24 @@ final class AppModelRunTests: XCTestCase {
         store.save(LGTV(name: "LG TV", host: "127.0.0.1"), for: StoreKey.tv)
         store.save("tv-key", for: StoreKey.tvKey)
         return AppModel(services: services, store: store, defaults: .isolated())
+    }
+
+    /// Mobil sürümü deneyen kullanıcı (21 Kas): "ilk başta olmadı, TV'den de uygulamayı açmak lazımmış". Bekçinin açma
+    /// sonucu ana ekrana gelir; "Otomatik açmayı dene" bekçiyi beklemeden yeniden denetir.
+    func testAutoOpenProblemIsShownAndRetried() async throws {
+        let services = FakeServices()
+        let model = readyModel(services)
+        model.settings.output = .tv
+        await model.start()
+        let keeper = try XCTUnwrap(services.keepers.first)
+        services.onOpenResult?(.unreachable)
+        for _ in 0..<50 where model.tvOpenProblem == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(model.tvOpenProblem, .unreachable)
+        model.retryTVOpen()
+        XCTAssertNil(model.tvOpenProblem)
+        XCTAssertEqual(keeper.reconnects, 1)
+        model.stop()
+        XCTAssertNil(model.tvOpenProblem)
     }
 
     func testDoubleStartCreatesOneSession() async {

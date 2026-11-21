@@ -322,6 +322,42 @@ final class TVKeeperTests: XCTestCase {
         XCTAssertEqual(control.closes, 1, "kopan bağlantı kapatılır")
     }
 
+    func testReportsWhetherTheTVAppCouldBeOpened() async throws {
+        // Açma sessizce başarısız oluyordu; ana ekran nedenini söylesin diye her denemenin sonucu bildirilir.
+        struct Off: Error {}
+        let control = FakeControl(foreground: [])
+        var attempts = 0
+        var results: [TVOpenProblem?] = []
+        let keeper = TVKeeper(connect: {
+            attempts += 1
+            if attempts == 1 { throw Off() }
+            return control
+        }, appId: "com.couchsubs.tv", params: [:], onOpenResult: { results.append($0) })
+        await keeper.tick()                     // TV kapalı
+        await keeper.tick()                     // açıldı
+        XCTAssertEqual(results, [.unreachable, nil])
+
+        var samsungResults: [TVOpenProblem?] = []
+        let samsung = TVKeeper(connect: { throw Off() }, appId: "x", params: [:], appConnected: { false },
+                               onOpenResult: { samsungResults.append($0) })
+        await samsung.tick()
+        XCTAssertEqual(samsungResults, [.unreachable])
+    }
+
+    func testOpenProblemShownByKeyAndBrand() {
+        // Kayıtlı anahtar yokken yanıt vermeyen LG/Samsung "izin yok" sayılır; Android TV kendi nedenini söyler.
+        XCTAssertEqual(TVOpenProblem.shown(.unreachable, brand: .lg, hasKey: false), .notPaired)
+        XCTAssertEqual(TVOpenProblem.shown(.unreachable, brand: .samsung, hasKey: true), .unreachable)
+        XCTAssertEqual(TVOpenProblem.shown(.debugOff, brand: .androidTV, hasKey: false), .debugOff)
+        XCTAssertNil(TVOpenProblem.shown(nil, brand: .lg, hasKey: false))
+        XCTAssertNotEqual(TVOpenText.openOnTV(.androidTV), TVOpenText.openOnTV(.lg))
+        XCTAssertEqual(TVOpenText.openOnTV(.lg), TVOpenText.openOnTV(.samsung))
+        XCTAssertNil(TVOpenText.reason(nil))
+        for problem in [TVOpenProblem.unreachable, .notPaired, .debugOff, .debugNotApproved] {
+            XCTAssertNotNil(TVOpenText.reason(problem))
+        }
+    }
+
     func testSamsungIsLeftAloneWhileTheAppIsConnected() async throws {
         let control = FakeControl(foreground: [])
         let connected = Flag()

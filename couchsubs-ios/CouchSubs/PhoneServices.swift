@@ -72,7 +72,8 @@ protocol PhoneServices: AnyObject {
     /// `onKey`: TV bağlantıda yeni jeton verdi (Samsung); saklanır.
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
                     onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void,
-                    consolePort: @escaping @Sendable () -> Int?) -> KeeperControlling
+                    consolePort: @escaping @Sendable () -> Int?,
+                    onOpenResult: @escaping @Sendable (TVOpenProblem?) -> Void) -> KeeperControlling
     func checkDeepLKey(_ key: String) async -> OnlineKeyCheck
     func testAIKey(provider: AIProvider, key: String, model: String?) async -> Result<String, AIFailure>
 }
@@ -139,11 +140,13 @@ final class LivePhoneServices: PhoneServices {
 
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
                     onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void,
-                    consolePort: @escaping @Sendable () -> Int?) -> KeeperControlling {
+                    consolePort: @escaping @Sendable () -> Int?,
+                    onOpenResult: @escaping @Sendable (TVOpenProblem?) -> Void) -> KeeperControlling {
         switch tv.brand {
         case .androidTV:
             guard let server = params["server"] as? String, !tv.host.isEmpty else { return IdleKeeper() }
-            return AndroidTVKeeper(host: tv.host, port: InstalledTVApp.adbPort(for: tv.host), server: server, appConnected: appConnected)
+            return AndroidTVKeeper(host: tv.host, port: InstalledTVApp.adbPort(for: tv.host), server: server, appConnected: appConnected,
+                                   onOpenResult: onOpenResult)
         case .samsung:
             let token = SamsungTokenHolder(token: key, onChange: onKey)
             let paired = tv.host
@@ -161,14 +164,15 @@ final class LivePhoneServices: PhoneServices {
                 return client
             }, search: { await SamsungDiscovery.search() }, onMoved: onMoved)
             return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.samsungAppId, params: params,
-                            appConnected: appConnected)
+                            appConnected: appConnected, onOpenResult: onOpenResult)
         case .lg:
             let locator = TVLocator(tv: tv, connect: { tv in
                 let client = SSAPClient(tv: tv, clientKey: key)
                 do { _ = try await client.connect() } catch { client.close(); throw error }
                 return client
             }, search: { await LGDiscovery.search() }, onMoved: onMoved)
-            return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.tvAppId, params: params, consolePort: consolePort)
+            return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.tvAppId, params: params, consolePort: consolePort,
+                            onOpenResult: onOpenResult)
         }
     }
 

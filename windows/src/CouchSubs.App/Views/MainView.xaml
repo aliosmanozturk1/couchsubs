@@ -104,6 +104,17 @@
                                Text="{t:T 'The test subtitle did not reach the TV because the TV app is not connected. Open CouchSubs on the TV. If the TV shows a 6-digit code, don\'t type it anywhere: approve it in the “Pair this TV?” window that opens on this computer, then test again.'}"
                                Visibility="{Binding ShowTestTvHint, Converter={StaticResource VisibleIf}}" />
 
+                    <!-- Çeviri sürüyor ama TV uygulaması bağlı değil: CouchSubs TV'de nerede (markaya göre), otomatik açma neden
+                         olmadı ve "Otomatik açmayı dene" (Mac, iPhone ve Android ile aynı). -->
+                    <c:Card Margin="0,12,0,0" Visibility="{Binding ShowTvOpenHint, Converter={StaticResource VisibleIf}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding TvOpenHintText}" Foreground="{DynamicResource textPrimaryBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding TvOpenReasonText}" Foreground="{DynamicResource warningBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Visibility="{Binding HasTvOpenReason, Converter={StaticResource VisibleIf}}" />
+                            <Button Content="{t:T 'Try opening automatically'}" HorizontalAlignment="Left" Margin="0,12,0,0" Padding="16,0" Click="OnRetryTvOpen" />
+                        </StackPanel>
+                    </c:Card>
+
                     <!-- Durum karoları -->
                     <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>

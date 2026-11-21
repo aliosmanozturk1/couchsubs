@@ -168,6 +168,22 @@ public sealed partial class AndroidTvInstaller(string host, string keyDirectory,
         return await adb.RunAsync($"exec:cmd package install -r -S {apk.Length}", apk, cancellationToken);
     }
 
+    /// <summary>
+    /// Kurulu uygulamayı bu bilgisayarın adresiyle açar (kurmadan, sessizce; çeviri başlarken bekçi çağırır). TV bu
+    /// bilgisayarı hiç onaylamadıysa onay sorusu beklenmez: <see cref="AndroidInstallError.NotApproved"/> fırlatılır.
+    /// ADB kapalıysa <see cref="AndroidInstallError.Unreachable"/>.
+    /// </summary>
+    /// <returns><c>am start</c> çıktısı.</returns>
+    public static async Task<string> OpenAsync(string host, string keyDirectory, string? launchParams, int port = DefaultPort,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsReachableAsync(host, port, TimeSpan.FromSeconds(2)))
+            throw new AndroidInstallException(AndroidInstallError.Unreachable, "ADB kapalı");
+        await using var adb = await AdbConnection.ConnectAsync(host, port, LoadOrCreateKey(keyDirectory),
+            () => throw new AndroidInstallException(AndroidInstallError.NotApproved, "onay gerekiyor"), cancellationToken: cancellationToken);
+        return (await adb.RunAsync(StartCommand(launchParams), cancellationToken: cancellationToken)).Trim();
+    }
+
     private Task<AdbConnection> ConnectAsync(CancellationToken cancellationToken) =>
         AdbConnection.ConnectAsync(host, port, LoadOrCreateKey(keyDirectory), OnApprovalNeeded, cancellationToken: cancellationToken);
 

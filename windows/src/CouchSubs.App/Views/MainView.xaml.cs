@@ -293,6 +293,9 @@ public partial class MainView : UserControl
     private void OnConnectTv(object sender, RoutedEventArgs e) => controller.Step = OnboardingStep.Tv;
 
     /// <summary>TV adımı açılır (kurulum kartı orada görünür) ve TV'ye yeniden bakılır.</summary>
+    /// <summary>TV uygulaması bağlı değil: bekçi TV uygulamasını beklemeden yeniden açmaya çalışır.</summary>
+    private void OnRetryTvOpen(object sender, RoutedEventArgs e) => controller.RetryTvOpen();
+
     private async void OnReinstallTvApp(object sender, RoutedEventArgs e)
     {
         controller.Step = OnboardingStep.Tv;

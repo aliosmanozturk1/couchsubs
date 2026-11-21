@@ -301,6 +301,9 @@ fun TargetScreen(onBack: (() -> Unit)? = null, onTvInstall: (() -> Unit)? = null
         )
         // TV'si olmayan ya da monitörde oynayan için: hangi hedef seçilirse seçilsin altyazı ayrıca bir tarayıcıda da görünür.
         SecondScreenTile()
+        // TV kurulumu bitti: her çeviride TV uygulaması kendiliğinden açılmaya çalışılır; açılmazsa TV'den açılır.
+        if (onBack == null && target != SubtitleTarget.PHONE && settings.installedTv != null)
+            Text(stringResource(R.string.tv_open_wizard_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
     }
 }
 

@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+package com.couchsubs.mobile.tv
+
+import com.couchsubs.mobile.R
+import com.couchsubs.mobile.tv.android.AndroidInstallError
+import com.couchsubs.mobile.tv.android.AndroidInstallException
+
+/**
+ * Çeviri başlayınca TV uygulamasını kendiliğinden açma neden olmadı (son deneme). Ana ekranda TV uygulaması bağlı değilken
+ * tek satırla söylenir. Windows (TvOpenProblem) ve Mac/iPhone'daki (TVOpenProblem) ile aynı. Eskiden açma sessizce
+ * başarısız oluyordu: kullanıcı TV'de CouchSubs'ı kendisinin açması gerektiğini bilmiyordu ("ilk başta olmadı, sonra oldu;
+ * TV'den de uygulamayı açmak lazımmış", 21 Kas).
+ */
+enum class TvOpenProblem {
+    /** LG/Samsung: TV yanıt vermedi (kapalı, başka ağda ya da açmayı reddetti). */
+    UNREACHABLE,
+    /** LG/Samsung: bu telefonun TV'den aldığı izin (anahtar) yok; TV'ye yeniden bağlanılmalı. */
+    NOT_PAIRED,
+    /** Android TV: ADB portuna ulaşılamadı (TV kapalı ya da ağ üzerinden hata ayıklama kapalı). */
+    DEBUG_OFF,
+    /** Android TV: TV bu telefonun hata ayıklama iznini onaylamamış (ADB eşleşmesi yok). */
+    DEBUG_NOT_APPROVED;
+
+    companion object {
+        /**
+         * Bildirilen sorun, ekranda gösterilecek olana çevrilir: LG/Samsung'da kayıtlı anahtar yokken yanıt vermeyen TV "izin
+         * yok" sayılır (TV'nin izin sorusu yanıtlanmamış).
+         */
+        fun shown(reported: TvOpenProblem?, brand: TvBrand, hasKey: Boolean): TvOpenProblem? =
+            if (reported == UNREACHABLE && brand != TvBrand.ANDROID_TV && !hasKey) NOT_PAIRED else reported
+
+        /** Android TV'de açılamamanın nedeni: TV hata ayıklama iznini onaylamadıysa ayrı, gerisi "ulaşılamıyor". */
+        fun ofAndroidTv(error: Throwable): TvOpenProblem =
+            when ((error as? AndroidInstallException)?.error) {
+                AndroidInstallError.NOT_APPROVED, AndroidInstallError.NOT_PAIRED -> DEBUG_NOT_APPROVED
+                else -> DEBUG_OFF
+            }
+
+        /** TV markasına göre tek cümle: CouchSubs TV'de nerede bulunur. */
+        fun openOnTv(brand: TvBrand): Int =
+            if (brand == TvBrand.ANDROID_TV) R.string.tv_open_on_tv_android else R.string.tv_open_on_tv_app_list
+
+        /** Otomatik açmanın neden olmadığı (bilinmiyorsa null). */
+        fun reason(problem: TvOpenProblem?): Int? = when (problem) {
+            null -> null
+            UNREACHABLE -> R.string.tv_open_unreachable
+            NOT_PAIRED -> R.string.tv_open_not_paired
+            DEBUG_OFF -> R.string.tv_open_debug_off
+            DEBUG_NOT_APPROVED -> R.string.tv_open_debug_not_approved
+        }
+    }
+}
+
+/**
+ * "Otomatik açmayı dene": ana ekrandan istenir, çeviri hizmetindeki açma döngüleri (LG bekçisi, Samsung, Android TV) bir
+ * sonraki turda beklemeden açar.
+ */
+object TvOpenRetry {
+    private val requested = java.util.concurrent.atomic.AtomicBoolean(false)
+    fun request() = requested.set(true)
+    /** İstek varsa bir kez true döner. */
+    fun take(): Boolean = requested.getAndSet(false)
+    fun clear() = requested.set(false)
+
+    /** En çok [ms] bekler; "Otomatik açmayı dene" istenirse hemen döner (açma döngülerinin varsayılan beklemesi). */
+    fun waitOrRetry(ms: Long, step: Long = 1_000L) {
+        var left = ms
+        while (left > 0 && !take()) {
+            Thread.sleep(minOf(step, left))
+            left -= step
+        }
+    }
+}

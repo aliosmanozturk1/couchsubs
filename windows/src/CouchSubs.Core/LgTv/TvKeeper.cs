@@ -26,9 +26,11 @@ namespace CouchSubs.Core.LgTv;
 /// "uzaktan kumanda" bağlantısı gereksizdi; yeniden kurulan bağlantı TV'de bildirim çıkarıp PS5 kolunu düşürüyordu (#5).
 /// </param>
 /// <param name="consolePort">TV uygulamasının gösterdiği HDMI girişi (1-4; altyazı akışına bağlanırken bildirir), bilinmiyorsa null.</param>
+/// <param name="onOpenResult">Her açma denemesinin sonucu: açıldıysa null, TV'ye ulaşılamadıysa ya da açamadıysa
+/// <see cref="TvOpenProblem.Unreachable"/> (ana ekrandaki satır).</param>
 public sealed class TvKeeper(Func<Task<ITvControl>> connect, string appId, IReadOnlyDictionary<string, string> parameters,
                              Func<bool>? appConnected = null, TimeSpan? relaunchInterval = null, Func<DateTime>? clock = null,
-                             Func<int?>? consolePort = null) : IDisposable
+                             Func<int?>? consolePort = null, Action<TvOpenProblem?>? onOpenResult = null) : IDisposable
 {
     /// <summary>Bu kadar zorla geri getirmeden sonra TV yine girişteyse bekçi çekilir.</summary>
     public const int StandDownAfter = 3;
@@ -71,6 +73,7 @@ public sealed class TvKeeper(Func<Task<ITvControl>> connect, string appId, IRead
     public async Task TickAsync()
     {
         await tickLock.WaitAsync();
+        var opening = control is null;
         try
         {
             if (appConnected is not null)
@@ -83,6 +86,7 @@ public sealed class TvKeeper(Func<Task<ITvControl>> connect, string appId, IRead
                 var fresh = await connect();
                 control = fresh;
                 await fresh.LaunchAsync(appId, parameters);
+                onOpenResult?.Invoke(null);
                 return;
             }
             var time = now();
@@ -121,6 +125,9 @@ public sealed class TvKeeper(Func<Task<ITvControl>> connect, string appId, IRead
         }
         catch
         {
+            // Bağlanıp açma denemesi olmadıysa (TV kapalı, başka ağda, açmayı reddetti) bildirilir; açık bağlantının
+            // kopması bir sonraki denemede bildirilir.
+            if (opening) onOpenResult?.Invoke(TvOpenProblem.Unreachable);
             control?.Dispose();
             control = null;
         }
@@ -139,10 +146,12 @@ public sealed class TvKeeper(Func<Task<ITvControl>> connect, string appId, IRead
         {
             using var fresh = await connect();
             await fresh.LaunchAsync(appId, parameters);
+            onOpenResult?.Invoke(null);
         }
         catch (Exception)
         {
             // TV kapalı ya da ulaşılamıyor; bir sonraki denemede yeniden.
+            onOpenResult?.Invoke(TvOpenProblem.Unreachable);
         }
     }
 

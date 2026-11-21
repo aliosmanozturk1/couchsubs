@@ -22,6 +22,9 @@
                                Text="{t:T 'If you don\'t see it, make sure the CouchSubs TV app is open and connect the TV again.'}" />
                 </StackPanel>
             </c:Card>
+            <!-- TV kurulumu bitti: her çeviride TV uygulaması kendiliğinden açılmaya çalışılır; açılmazsa TV'den açılır. -->
+            <TextBlock x:Name="AutoOpenNote" Style="{StaticResource HintText}" Margin="0,16,0,0" TextWrapping="Wrap"
+                       Text="{t:T 'Every time you start translating, CouchSubs tries to open the TV app by itself. If it doesn\'t open, open CouchSubs on the TV.'}" />
             <TextBlock Style="{StaticResource HintText}" Margin="0,16,0,0" TextWrapping="Wrap"
                        Text="{t:T 'CouchSubs sends the English subtitles it reads to a shared pool, anonymously, to make better Turkish translations for everyone. You can turn this off in Settings.'}" />
         </StackPanel>

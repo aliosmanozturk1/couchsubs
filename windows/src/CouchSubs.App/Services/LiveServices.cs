@@ -130,9 +130,20 @@ public sealed class LiveServices : IAppServices
     public bool RemotePlayInstalled(RemotePlayApp app) => RemotePlayWindowStream.IsInstalled(app);
 
     public IKeeper MakeKeeper(LgTv tv, string? key, IReadOnlyDictionary<string, string> parameters, Func<bool> appConnected, Action<LgTv> onMoved,
-                              Action<string> onKey, Func<int?>? consolePort = null)
+                              Action<string> onKey, Func<int?>? consolePort = null,
+                              Action<TvOpenProblem?>? onOpenResult = null)
     {
-        if (tv.Brand == TvBrand.AndroidTv) return new IdleKeeper();
+        if (tv.Brand == TvBrand.AndroidTv)
+        {
+            // Android TV: ADB açıksa (uygulama bu bilgisayardan kurulduysa) CouchSubs TV bilgisayarın adresiyle açılır ve
+            // bağlanana kadar arada bir yeniden açılır (iPhone ve Android telefonla aynı). Eskiden bilgisayar Android TV'ye
+            // hiç dokunmuyordu. TV yine ekrandaki kodun onayıyla (/pair) eşleşir; erişim anahtarı gitmez.
+            var host = tv.Host;
+            var launch = parameters.TryGetValue("server", out var address)
+                ? JsonSerializer.Serialize(new Dictionary<string, string> { ["server"] = address }) : null;
+            return new AndroidKeeper(new AndroidTvKeeper(() => AndroidTvInstaller.OpenAsync(host, DataDirectory("adb"), launch),
+                appConnected, AndroidOpenProblem, onOpenResult, new TvInstall.InstallLog(TvInstallLogPath).Write));
+        }
         if (tv.Brand == TvBrand.Samsung)
         {
             var token = new SamsungTokenHolder(key, onKey);
@@ -155,7 +166,7 @@ public sealed class LiveServices : IAppServices
             // Önce geliştirici bağlantısı (sdb) denenir; uzaktan kumanda bağlantısıyla açma bazı TV'lerde sessizce çalışmıyordu.
             var host = tv.Host;
             return new Keeper(new TvKeeper(() => Task.FromResult<ITvControl>(new SamsungLauncher(() => OpenSamsungAppAsync(host), samsungLocator.ConnectAsync)),
-                SamsungClient.AppId, parameters, appConnected));
+                SamsungClient.AppId, parameters, appConnected, onOpenResult: onOpenResult));
         }
         var locator = new TvLocator(tv, async target =>
         {
@@ -171,8 +182,12 @@ public sealed class LiveServices : IAppServices
                 throw;
             }
         }, () => LgDiscovery.SearchAsync(), onMoved);
-        return new Keeper(new TvKeeper(locator.ConnectAsync, AppController.TvAppId, parameters, consolePort: consolePort));
+        return new Keeper(new TvKeeper(locator.ConnectAsync, AppController.TvAppId, parameters, consolePort: consolePort, onOpenResult: onOpenResult));
     }
+
+    /// <summary>Android TV'de açılamamanın nedeni: TV hata ayıklama iznini onaylamadıysa ayrı, gerisi "ulaşılamıyor".</summary>
+    internal static TvOpenProblem AndroidOpenProblem(Exception error) =>
+        error is AndroidInstallException { Error: AndroidInstallError.NotApproved } ? TvOpenProblem.DebugNotApproved : TvOpenProblem.DebugOff;
 
     // --- TV uygulamasını kurma ---
 
@@ -446,6 +461,13 @@ public sealed class LiveServices : IAppServices
     }
 
     private sealed class Keeper(TvKeeper keeper) : IKeeper
+    {
+        public void Start(TimeSpan interval) => keeper.Start(interval);
+        public void Stop() => keeper.Stop();
+        public void Reconnect() => keeper.Reconnect();
+    }
+
+    private sealed class AndroidKeeper(AndroidTvKeeper keeper) : IKeeper
     {
         public void Start(TimeSpan interval) => keeper.Start(interval);
         public void Stop() => keeper.Stop();

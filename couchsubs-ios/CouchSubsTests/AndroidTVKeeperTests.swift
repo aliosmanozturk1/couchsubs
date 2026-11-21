@@ -68,6 +68,28 @@ final class AndroidTVKeeperTests: XCTestCase {
         XCTAssertTrue(logged.all[0].contains("açılamadı"))
     }
 
+    /// Açılamamanın nedeni ana ekranda söylenir: hata ayıklama kapalı/ulaşılamıyor ile izin onaylanmadı ayrı.
+    func testReportsWhyTheAppCouldNotBeOpened() {
+        let results = Calls()
+        let failure = Calls()
+        let keeper = AndroidTVKeeper(host: "192.168.1.120", port: 5555, server: "http://192.168.1.124:8787", appConnected: { false },
+                                     relaunchInterval: 0,
+                                     open: { _, _, _ in
+                                         switch failure.all.last {
+                                         case "approve": throw AndroidInstallFailure(error: .notApproved, detail: "onay gerekiyor")
+                                         case "off": throw AndroidInstallFailure(error: .unreachable, detail: "kapalı")
+                                         default: return "Starting"
+                                         }
+                                     }, log: { _ in }, onOpenResult: { results.add($0?.rawValue ?? "ok") })
+        failure.add("off")
+        keeper.tick()
+        failure.add("approve")
+        keeper.tick()
+        failure.add("none")
+        keeper.tick()
+        XCTAssertEqual(results.all, ["debugOff", "debugNotApproved", "ok"])
+    }
+
     func testSavedWirelessPortIsUsedForTheSameTV() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "android-tv-keeper-tests"))
         defaults.removePersistentDomain(forName: "android-tv-keeper-tests")

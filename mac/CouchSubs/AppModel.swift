@@ -86,7 +86,8 @@ protocol AppServices: AnyObject {
     /// `onKey`: TV bağlantıda yeni jeton verdi (Samsung); saklanır.
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
                     onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void,
-                    consolePort: @escaping @Sendable () -> Int?) -> KeeperControlling
+                    consolePort: @escaping @Sendable () -> Int?,
+                    onOpenResult: @escaping @Sendable (TVOpenProblem?) -> Void) -> KeeperControlling
     /// Uygulamayla gelen TV paketinin sürümü (geliştirici derlemesinde paket olmayabilir).
     var bundledTVAppVersion: String? { get }
     func isDevModeOn(host: String) async -> Bool
@@ -259,10 +260,14 @@ final class LiveServices: AppServices {
 
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
                     onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void,
-                    consolePort: @escaping @Sendable () -> Int?) -> KeeperControlling {
+                    consolePort: @escaping @Sendable () -> Int?,
+                    onOpenResult: @escaping @Sendable (TVOpenProblem?) -> Void) -> KeeperControlling {
         switch tv.brand {
         case .androidTV:
-            return IdleKeeper()
+            // ADB açıksa (uygulama bu Mac'ten kurulduysa) CouchSubs TV Mac'in adresiyle açılır ve bağlanana kadar arada bir
+            // yeniden açılır (iPhone, Windows ve Android telefonla aynı). Eskiden Mac Android TV'ye hiç dokunmuyordu.
+            guard TVHelper.executable != nil, let server = params["server"] as? String, !tv.host.isEmpty else { return IdleKeeper() }
+            return AndroidTVKeeper(host: tv.host, server: server, appConnected: appConnected, onOpenResult: onOpenResult)
         case .samsung:
             let token = SamsungTokenHolder(token: key, onChange: onKey)
             let paired = tv.host
@@ -284,7 +289,7 @@ final class LiveServices: AppServices {
             let host = tv.host
             return TVKeeper(connect: { SamsungLauncher(openWithSdb: { await Self.openSamsungApp(host: host) },
                                                        connectRemote: { try await locator.connect() }) },
-                            appId: AppIdentity.samsungAppId, params: params, appConnected: appConnected)
+                            appId: AppIdentity.samsungAppId, params: params, appConnected: appConnected, onOpenResult: onOpenResult)
         case .lg:
             break
         }
@@ -298,7 +303,8 @@ final class LiveServices: AppServices {
             }
             return client
         }, search: { await LGDiscovery.search() }, onMoved: onMoved)
-        return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.tvAppId, params: params, consolePort: consolePort)
+        return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.tvAppId, params: params, consolePort: consolePort,
+                        onOpenResult: onOpenResult)
     }
 
     // MARK: - TV uygulamasını kurma
@@ -626,6 +632,8 @@ final class AppModel: ObservableObject {
     /// Çeviri sürerken Mac'in boşta uykuya geçmesi engellenir (kullanıcı TV'de oynuyor, Mac'e dokunmuyor).
     var isPreventingSleep: Bool { sleepActivity != nil }
     @Published var tvClients = 0
+    /// TV uygulamasını kendiliğinden açmanın son denemesi neden olmadı (ana ekranda tek satır); açıldıysa nil.
+    @Published private(set) var tvOpenProblem: TVOpenProblem?
     @Published var lastSource = ""
     @Published var lastTranslation = ""
     /// Görüntü bir dakikadır geliyor ama bu çeviride tek altyazı satırı gösterilmedi: "oyunun kendi altyazısını açın"
@@ -1029,6 +1037,7 @@ final class AppModel: ObservableObject {
 
         server.onClientsChanged = { [weak self] count in
             self?.tvClients = count
+            if count > 0 { self?.tvOpenProblem = nil }
             // TV uygulaması bağlandı: bu Samsung TV'de kurulu olduğu artık biliniyor (bekçi listeye bakmadan açar).
             if count > 0, let tv = self?.tv, tv.brand == .samsung { SamsungAppKnowledge.shared.mark(host: tv.host) }
         }
@@ -1745,7 +1754,7 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in self?.tvMoved(to: moved) }
             }, onKey: { [weak self] key in
                 Task { @MainActor in self?.store.save(key, for: StoreKey.tvKey) }
-            }, consolePort: { server.consolePort })
+            }, consolePort: { server.consolePort }, onOpenResult: { _ in })
             made.start(interval: .seconds(5))
             temporary = made
         }
@@ -1907,10 +1916,24 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.tvMoved(to: moved) }
         }, onKey: { [weak self] key in
             Task { @MainActor in self?.store.save(key, for: StoreKey.tvKey) }
-        }, consolePort: { server.consolePort })
+        }, consolePort: { server.consolePort }, onOpenResult: { [weak self] problem in
+            Task { @MainActor in self?.openResult(problem, brand: tv.brand) }
+        })
         keeper.start(interval: .seconds(5))
         self.keeper = keeper
         Task { await refreshTVApp() }
+    }
+
+    private func openResult(_ problem: TVOpenProblem?, brand: TVBrand) {
+        guard isRunning, tvClients == 0 else { tvOpenProblem = nil; return }
+        tvOpenProblem = TVOpenProblem.shown(problem, brand: brand, hasKey: !(store.load(String.self, for: StoreKey.tvKey) ?? "").isEmpty)
+    }
+
+    /// Ana ekrandaki "Otomatik açmayı dene": TV uygulaması hemen yeniden açılmaya çalışılır (bekçi beklemeden dener).
+    func retryTVOpen() {
+        tvOpenProblem = nil
+        guard isRunning else { return }
+        if let keeper { keeper.reconnect() } else { startKeeper() }
     }
 
     /// Çeviri sürerken bilgisayar ekranı da açık kalsın mı: görüntü bu Mac'teki Remote Play penceresinden okunuyorsa
@@ -2347,6 +2370,7 @@ final class AppModel: ObservableObject {
             self.keeper = nil
             if closingTVApp { server.exitTVApp() }
         }
+        tvOpenProblem = nil
         pipeline?.reset()
         if pipeline != nil { SubtitleLog.write("oturum bitti") }
         pipeline = nil

@@ -230,6 +230,8 @@ public final class TVKeeper: @unchecked Sendable {
     private let appConnected: (@Sendable () -> Bool)?
     private let consolePort: (@Sendable () -> Int?)?
     private let relaunchInterval: Duration
+    /// Her açma denemesinin sonucu: açıldıysa nil, TV'ye ulaşılamadıysa ya da açamadıysa `.unreachable` (ana ekrandaki satır).
+    private let onOpenResult: (@Sendable (TVOpenProblem?) -> Void)?
     private var control: TVControlling?
     private var loop: Task<Void, Never>?
     private var lastLaunch: ContinuousClock.Instant?
@@ -242,8 +244,10 @@ public final class TVKeeper: @unchecked Sendable {
     public init(connect: @escaping () async throws -> TVControlling, appId: String, params: [String: Any],
                 appConnected: (@Sendable () -> Bool)? = nil, relaunchInterval: Duration = .seconds(30),
                 consolePort: (@Sendable () -> Int?)? = nil,
+                onOpenResult: (@Sendable (TVOpenProblem?) -> Void)? = nil,
                 now: @escaping () -> ContinuousClock.Instant = { .now }) {
         self.now = now
+        self.onOpenResult = onOpenResult
         self.connect = connect
         self.appId = appId
         self.params = params
@@ -275,11 +279,13 @@ public final class TVKeeper: @unchecked Sendable {
             await launchIfAppIsAway(appConnected())
             return
         }
+        let opening = control == nil
         do {
             if control == nil {
                 let fresh = try await connect()
                 control = fresh
                 try await fresh.launch(appId: appId, params: params)
+                onOpenResult?(nil)
                 return
             }
             guard let control else { return }
@@ -317,6 +323,9 @@ public final class TVKeeper: @unchecked Sendable {
             lastForced = time
             try await control.launch(appId: appId, params: params)
         } catch {
+            // Bağlanıp açma denemesi olmadıysa (TV kapalı, başka ağda, açmayı reddetti) bildirilir; açık bağlantının
+            // kopması bir sonraki denemede bildirilir.
+            if opening { onOpenResult?(.unreachable) }
             control?.close()
             control = nil
         }
@@ -326,9 +335,13 @@ public final class TVKeeper: @unchecked Sendable {
         guard !connected else { return }
         if let lastLaunch, ContinuousClock.now - lastLaunch < relaunchInterval { return }
         lastLaunch = .now
-        guard let fresh = try? await connect() else { return }
+        guard let fresh = try? await connect() else {
+            onOpenResult?(.unreachable)
+            return
+        }
         defer { fresh.close() }
-        try? await fresh.launch(appId: appId, params: params)
+        let opened = (try? await fresh.launch(appId: appId, params: params)) != nil
+        onOpenResult?(opened ? nil : .unreachable)
     }
 
     public func start(interval: Duration = .seconds(5)) {

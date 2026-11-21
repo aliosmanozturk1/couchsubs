@@ -517,6 +517,8 @@ final class AndroidTVKeeper: KeeperControlling, @unchecked Sendable {
     private let relaunchInterval: TimeInterval
     private let open: @Sendable (String, UInt16, String?) throws -> String
     private let log: @Sendable (String) -> Void
+    /// Her açma denemesinin sonucu (ana ekrandaki satır): açıldıysa nil.
+    private let onOpenResult: @Sendable (TVOpenProblem?) -> Void
     private let lock = NSLock()
     private var loop: Task<Void, Never>?
     private var lastLaunch: Date?
@@ -525,8 +527,10 @@ final class AndroidTVKeeper: KeeperControlling, @unchecked Sendable {
     init(host: String, port: UInt16, server: String, appConnected: @escaping @Sendable () -> Bool, relaunchInterval: TimeInterval = 30,
          open: @escaping @Sendable (String, UInt16, String?) throws -> String = { host, port, params in
              try AndroidTvInstaller(host: host, port: port).open(launchParams: params)
-         }, log: @escaping @Sendable (String) -> Void = { InstallLog.shared.write($0) }) {
+         }, log: @escaping @Sendable (String) -> Void = { InstallLog.shared.write($0) },
+         onOpenResult: @escaping @Sendable (TVOpenProblem?) -> Void = { _ in }) {
         self.host = host
+        self.onOpenResult = onOpenResult
         self.port = port
         launchParams = AndroidTvInstaller.launchParams(server: server)
         self.appConnected = appConnected
@@ -543,13 +547,27 @@ final class AndroidTVKeeper: KeeperControlling, @unchecked Sendable {
         lastLaunch = now
         lock.unlock()
         let result: String
-        do { result = "açıldı: \(try open(host, port, launchParams))" } catch { result = "açılamadı: \(error)" }
+        do {
+            result = "açıldı: \(try open(host, port, launchParams))"
+            onOpenResult(nil)
+        } catch {
+            result = "açılamadı: \(error)"
+            onOpenResult(Self.problem(error))
+        }
         // Aynı sonuç her denemede yeniden yazılmaz.
         lock.lock()
         let changed = lastResult != result
         lastResult = result
         lock.unlock()
         if changed { log("Android TV (\(host):\(port)) telefonun adresiyle \(result)") }
+    }
+
+    /// Açılamamanın nedeni: TV hata ayıklama iznini onaylamadıysa (ADB eşleşmesi yok) ayrı, gerisi "ulaşılamıyor".
+    static func problem(_ error: Error) -> TVOpenProblem {
+        switch (error as? AndroidInstallFailure)?.error {
+        case .notApproved, .notPaired: .debugNotApproved
+        default: .debugOff
+        }
     }
 
     func start(interval: Duration) {

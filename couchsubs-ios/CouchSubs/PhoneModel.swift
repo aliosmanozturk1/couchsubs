@@ -81,6 +81,8 @@ final class PhoneModel: ObservableObject {
     @Published private(set) var tvClients = 0
     /// Çeviri bir süredir sürüyor ama TV uygulaması bağlanmadı: TV kartının altında ne yapılacağı söylenir.
     @Published private(set) var tvWaitingLong = false
+    /// TV uygulamasını kendiliğinden açmanın son denemesi neden olmadı (TV kartının altında tek satır); açıldıysa nil.
+    @Published private(set) var tvOpenProblem: TVOpenProblem?
     private var tvWaitTask: Task<Void, Never>?
     static let tvWaitLimit: Duration = .seconds(30)
     /// "Test on TV"da TV uygulaması bağlı değil (ya da beklemeden sonra da bağlanmadı): eşleştirme yönergesi gösterilir.
@@ -452,7 +454,10 @@ final class PhoneModel: ObservableObject {
                     guard let self else { return }
                     let connected = self.tvClients == 0 && count > 0
                     self.tvClients = count
-                    if count > 0 { self.tvWaitingLong = false }
+                    if count > 0 {
+                        self.tvWaitingLong = false
+                        self.tvOpenProblem = nil
+                    }
                     // TV uygulaması bağlandı: bu Samsung TV'de kurulu olduğu artık biliniyor (bekçi listeye bakmadan açar).
                     if count > 0, let tv = self.tv, tv.brand == .samsung { SamsungAppKnowledge.shared.mark(host: tv.host) }
                     // TV uygulaması her bağlandığında sürümüne bakılır (eskiyse ana ekranda güncelleme önerilir).
@@ -694,6 +699,7 @@ final class PhoneModel: ObservableObject {
         tvWaitTask?.cancel()
         tvWaitTask = nil
         tvWaitingLong = false
+        tvOpenProblem = nil
         SessionHealth.saveMark(nil, defaults)
         runningSince = nil
         packInUse = nil
@@ -819,9 +825,23 @@ final class PhoneModel: ObservableObject {
             Task { @MainActor in self?.tvMoved(to: moved) }
         }, onKey: { [weak self] key in
             Task { @MainActor in self?.store.save(key, for: StoreKey.tvKey) }
-        }, consolePort: { server.consolePort })
+        }, consolePort: { server.consolePort }, onOpenResult: { [weak self] problem in
+            Task { @MainActor in self?.openResult(problem, brand: tv.brand) }
+        })
         keeper.start(interval: .seconds(5))
         self.keeper = keeper
+    }
+
+    private func openResult(_ problem: TVOpenProblem?, brand: TVBrand) {
+        guard isRunning, tvClients == 0 else { tvOpenProblem = nil; return }
+        tvOpenProblem = TVOpenProblem.shown(problem, brand: brand, hasKey: store.load(String.self, for: StoreKey.tvKey) != nil)
+    }
+
+    /// Ana ekrandaki "Otomatik açmayı dene": TV uygulaması hemen yeniden açılmaya çalışılır (bekçi beklemeden dener).
+    func retryTVOpen() {
+        tvOpenProblem = nil
+        guard isRunning else { return }
+        if keeper == nil { startKeeper() } else { keeper?.reconnect() }
     }
 
     private func outputChanged() {

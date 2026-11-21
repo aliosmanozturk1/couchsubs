@@ -393,7 +393,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public bool HasAccount => accountId is not null;
     public RegisteredConsole? Console => console;
     public LgTv? Tv => tv;
-    public bool IsRunning { get => isRunning; private set => Set(ref isRunning, value, [nameof(Ps5StatusText), nameof(Ps5Tone), nameof(TvTone), nameof(ShowsMainAccountTip)]); }
+    public bool IsRunning { get => isRunning; private set => Set(ref isRunning, value, [nameof(Ps5StatusText), nameof(Ps5Tone), nameof(TvTone), nameof(ShowsMainAccountTip), nameof(ShowTvOpenHint)]); }
     public bool IsStarting { get => isStarting; private set => Set(ref isStarting, value); }
     /// <summary>
     /// Deneme modu (Mac/iPhone demoMode, Android ile aynı): konsol, hesap ve TV olmadan uygulamadaki örnek karelerle çeviri.
@@ -419,13 +419,43 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         _ => text["Retrying the Xbox connection…"],
     };
     public StatusTone Ps5Tone => Ps5ToneFor(sessionState, isRunning);
-    public int TvClients { get => tvClients; private set => Set(ref tvClients, value, [nameof(TvTone), nameof(TvStatusText), nameof(CanReinstallTvApp), nameof(CanReconnectTv), nameof(CanChangeTv), nameof(ShowTestTvHint)]); }
+    public int TvClients { get => tvClients; private set => Set(ref tvClients, value, [nameof(TvTone), nameof(TvStatusText), nameof(CanReinstallTvApp), nameof(CanReconnectTv), nameof(CanChangeTv), nameof(ShowTestTvHint), nameof(ShowTvOpenHint)]); }
 
     /// <summary>
     /// Son "TV'de test et"te TV uygulaması bağlanmadı ve hâlâ bağlı değil: ana ekran eşleştirme yönergesini gösterir. TV'deki
     /// 6 haneli kodun nereye yazılacağı aranıyordu; kod yazılmaz, bu bilgisayarda açılan pencerede onaylanır.
     /// </summary>
     public bool ShowTestTvHint => testTvNotConnected && tvClients == 0;
+
+    /// <summary>
+    /// Çeviri sürüyor, altyazı TV'ye gidiyor ama TV uygulaması bağlı değil: ana ekranda CouchSubs'ın TV'de nerede
+    /// bulunduğu (markaya göre), otomatik açmanın neden olmadığı ve "Otomatik açmayı dene" görünür (Mac, iPhone ve Android
+    /// ile aynı). Eskiden açma sessizce başarısız oluyor, kullanıcı TV'den açması gerektiğini bilmiyordu.
+    /// </summary>
+    public bool ShowTvOpenHint => isRunning && !demoMode && ShowsOnTv && HasTv && tvClients == 0;
+    public string TvOpenHintText => tv is { } target ? text[TvOpenText.OpenOnTv(target.Brand)] : "";
+    /// <summary>Bekçinin son açma denemesi neden olmadı; bilinmiyorsa ya da açıldıysa boş.</summary>
+    public string TvOpenReasonText => TvOpenText.Reason(tvOpenProblem) is { } key ? text[key] : "";
+    public bool HasTvOpenReason => tvOpenProblem is not null;
+    private TvOpenProblem? tvOpenProblem;
+    private TvOpenProblem? OpenProblem
+    {
+        get => tvOpenProblem;
+        set => Set(ref tvOpenProblem, value, [nameof(TvOpenReasonText), nameof(HasTvOpenReason)]);
+    }
+
+    private void OpenResult(TvOpenProblem? problem, TvBrand brand) =>
+        OpenProblem = isRunning && tvClients == 0
+            ? TvOpenText.Shown(problem, brand, !string.IsNullOrEmpty(store.Load<string>(StoreKeys.TvKey))) : null;
+
+    /// <summary>Ana ekrandaki "Otomatik açmayı dene": bekçi TV uygulamasını beklemeden yeniden açmaya çalışır.</summary>
+    public void RetryTvOpen()
+    {
+        OpenProblem = null;
+        if (!isRunning) return;
+        if (keeper is null) StartKeeper();
+        else keeper.Reconnect();
+    }
 
     private bool TestTvNotConnected { get => testTvNotConnected; set => Set(ref testTvNotConnected, value, [nameof(ShowTestTvHint)]); }
 
@@ -844,7 +874,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         // Daha önce "TV'm yok" seçildiyse TV bağlanınca altyazı TV'ye gider.
         if (settings.Output == SubtitleOutput.Computer) Settings = settings with { Output = SubtitleOutput.Tv };
         Changed(nameof(Tv), nameof(CanAdvance), nameof(CanInstallTvApp), nameof(CanReinstallTvApp), nameof(CanReconnectTv), nameof(CanChangeTv), nameof(HasTv), nameof(NeedsTv), nameof(CanStart),
-            nameof(TvStatusText), nameof(TvTone));
+            nameof(TvStatusText), nameof(TvTone), nameof(ShowTvOpenHint), nameof(TvOpenHintText));
         if (target.Brand == TvBrand.Lg) await RefreshTvAppAsync();
         // Samsung girişi ya da Android onayı dakikalar sürebilir; eşleşme beklemesin.
         else _ = RefreshTvAppAsync();
@@ -1739,7 +1769,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (keeper is not null || !ShowsOnTv || !HasTv || tv is not { } target) return;
         var running = server;
         var tvKeeper = services.MakeKeeper(target, store.Load<string>(StoreKeys.TvKey), new Dictionary<string, string> { ["server"] = ServerAddress(target), ["key"] = server.AccessKey },
-            () => running.ConnectedClients > 0, moved => post(() => TvMoved(moved)), key => post(() => store.Save(StoreKeys.TvKey, key)), () => server.ConsolePort);
+            () => running.ConnectedClients > 0, moved => post(() => TvMoved(moved)), key => post(() => store.Save(StoreKeys.TvKey, key)), () => server.ConsolePort,
+            problem => post(() => OpenResult(problem, target.Brand)));
         tvKeeper.Start(TimeSpan.FromSeconds(5));
         keeper = tvKeeper;
         _ = RefreshTvAppAsync();
@@ -1762,7 +1793,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             OverlayAdjusting = false;
             OverlayHidden?.Invoke();
         }
-        Changed(nameof(ShowsOnTv), nameof(ShowsOnComputer), nameof(NeedsTv), nameof(CanStart), nameof(CanAdvance));
+        Changed(nameof(ShowsOnTv), nameof(ShowsOnComputer), nameof(NeedsTv), nameof(CanStart), nameof(CanAdvance), nameof(ShowTvOpenHint));
         UpdateTroubleClocks();
         if (!isRunning) return;
         sleep.Begin(KeepsDisplayOn);
@@ -1883,6 +1914,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         var stoppedKeeper = keeper;
         keeper = null;
         stoppedKeeper?.Stop();
+        OpenProblem = null;
         var exiting = closeTvApp && stoppedKeeper is not null ? server.ExitTvApp() : Task.CompletedTask;
         session?.Stop();
         session?.Dispose();
@@ -3036,6 +3068,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         // TV uygulaması bağlandı: bu TV'de kurulu olduğu artık biliniyor (liste "yok" demiş olsa da).
         if (count > 0 && tv is { Brand: TvBrand.Samsung } connected) SamsungAppKnowledge.Mark(connected.Host);
         TvClients = count;
+        if (count > 0) OpenProblem = null;
         UpdateTroubleClocks();
     });
 

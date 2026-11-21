@@ -208,13 +208,25 @@ class TranslationService : Service() {
     private fun launchTv(key: String) {
         if (!settings.target.showsOnTv) return
         val active = { !destroyed && server?.accessKey == key }
+        val connected = { (server?.connectedClients ?: 0) > 0 }
+        com.couchsubs.mobile.tv.TvOpenRetry.clear()
+        // Açma denemesinin sonucu ana ekrana gider (TV uygulaması bağlı değilken nedeni söylenir).
+        val report: (com.couchsubs.mobile.tv.TvOpenProblem?) -> Unit = { problem ->
+            val tv = settings.installedTv
+            val shown = if (tv == null || connected() || !active()) null else com.couchsubs.mobile.tv.TvOpenProblem.shown(problem, tv.brand,
+                hasKey = settings.secrets.get("tv.control.${tv.brand}.${tv.host}") != null)
+            if (LiveState.status.value.tvOpenProblem != shown) LiveState.update { it.copy(tvOpenProblem = shown) }
+        }
         Thread({ runCatching {
             com.couchsubs.mobile.tv.TvSessionLauncher.launch(settings, subtitlePort, key,
-                adbKeyFile = java.io.File(noBackupFilesDir, "adb/adbkey"), connected = { (server?.connectedClients ?: 0) > 0 },
-                log = { Log.i(TAG, it) }, active = active)
+                adbKeyFile = java.io.File(noBackupFilesDir, "adb/adbkey"), connected = connected,
+                log = { Log.i(TAG, it) }, onOpenResult = report, active = active)
             // LG: PS tuşu TV'yi PS5'in girişine geçirince uygulama geri getirilir (Windows/Mac/iPhone bekçisiyle aynı).
             com.couchsubs.mobile.tv.TvSessionLauncher.keepLgOpen(settings, subtitlePort, key, consolePort = { server?.consolePort },
-                log = { Log.i(TAG, it) }) { active() && settings.target.showsOnTv }
+                log = { Log.i(TAG, it) }, onOpenResult = report) { active() && settings.target.showsOnTv }
+            // Samsung: TV uygulaması bağlı değilken arada bir (ya da "Otomatik açmayı dene"de hemen) yeniden açılır.
+            com.couchsubs.mobile.tv.TvSessionLauncher.keepSamsungOpen(settings, subtitlePort, key, connected = connected,
+                log = { Log.i(TAG, it) }, onOpenResult = report, active = { active() && settings.target.showsOnTv })
         } }, "CouchSubs TV launch").apply { isDaemon = true }.start()
     }
     private lateinit var settings: AppSettings
@@ -487,7 +499,7 @@ class TranslationService : Service() {
         com.couchsubs.mobile.core.SpeakerColors.session.reset()
         subtitleServer.onClientsChanged = { count ->
             val before = LiveState.status.value.connectedTvs
-            LiveState.update { it.copy(connectedTvs = count) }
+            LiveState.update { it.copy(connectedTvs = count, tvOpenProblem = if (count > 0) null else it.tvOpenProblem) }
             if (before == 0 && count > 0) Telemetry.event(Telemetry.TV_CONNECTED, "count" to count)
             // TV uygulaması bağlandı: bu Samsung TV'de kurulu olduğu artık biliniyor (liste "yok" demiş olsa da).
             if (count > 0) settings.installedTv?.takeIf { it.brand == com.couchsubs.mobile.tv.TvBrand.SAMSUNG }
@@ -1110,7 +1122,7 @@ class TranslationService : Service() {
         wakeLock?.takeIf { it.isHeld }?.release()
         wifiLocks.forEach { lock -> runCatching { if (lock.isHeld) lock.release() } }
         wifiLocks = emptyList()
-        LiveState.update { it.copy(running = false, phase = "", streaming = false, framesSince = null, subtitleOffTip = false, current = "", previous = "", regions = emptyList(), screen = emptyList(), screenState = LiveStatus.ScreenState.IDLE) }
+        LiveState.update { it.copy(running = false, phase = "", streaming = false, framesSince = null, subtitleOffTip = false, tvOpenProblem = null, current = "", previous = "", regions = emptyList(), screen = emptyList(), screenState = LiveStatus.ScreenState.IDLE) }
         super.onDestroy()
     }
 }

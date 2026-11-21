@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import CouchSubsCore
 import SwiftUI
 
 struct TestStep: View {
@@ -41,6 +42,10 @@ struct TestStep: View {
                         HintText(text: onComputer ? "If you don't see it, send it again. It shows for a few seconds at the bottom of the screen."
                                      : "If you don't see it, make sure the CouchSubs TV app is open and connect the TV again.")
                     }
+                }
+                // TV kurulumu bitti: her çeviride TV uygulaması kendiliğinden açılmaya çalışılır; açılmazsa TV'den açılır.
+                if !onComputer {
+                    HintText(text: LocalizedStringKey(TVOpenText.wizardNote))
                 }
                 HintText(text: "CouchSubs sends the English subtitles it reads to a shared pool, anonymously, to make better Turkish translations for everyone. You can turn this off in Settings.")
             }

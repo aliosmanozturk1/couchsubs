@@ -641,4 +641,13 @@
     <string name="second_screen_caption">Aynı Wi-Fi\'deki telefon ya da tabletin kamerasıyla kodu okutun. Çeviri sürerken altyazılar o cihazın tarayıcısında büyük görünür; uygulama ya da internet gerekmez.</string>
     <string name="second_screen_offline">Başka bir cihazda göstermek için Wi-Fi\'ye bağlanın.</string>
     <string name="tv_pair_expired">Eşleştirme isteğinin süresi doldu. TV’den yeniden deneyin.</string>
+    <!-- TV uygulamasını kendiliğinden açma: ana ekrandaki yönlendirme ve kurulumun son adımı (Mac/iPhone/Windows ile aynı). -->
+    <string name="tv_open_on_tv_android">CouchSubs TV\'de kendiliğinden açılmadıysa TV\'den açın: Android TV\'de Uygulamalar bölümündedir.</string>
+    <string name="tv_open_on_tv_app_list">CouchSubs TV\'de kendiliğinden açılmadıysa TV\'den açın: TV\'nin uygulamalar listesindedir.</string>
+    <string name="tv_open_unreachable">Otomatik açılamadı: TV yanıt vermedi. TV açık mı, bu cihazla aynı Wi-Fi\'da mı?</string>
+    <string name="tv_open_not_paired">Otomatik açılamadı: bu cihaz TV\'den henüz izin almadı. TV\'ye yeniden bağlanın ve TV\'de izin verin.</string>
+    <string name="tv_open_debug_off">Otomatik açılamadı: TV\'ye hata ayıklama bağlantısıyla ulaşılamıyor. TV açık mı, Geliştirici seçeneklerinde ağ üzerinden hata ayıklama açık mı?</string>
+    <string name="tv_open_debug_not_approved">Otomatik açılamadı: TV bu cihazın hata ayıklama iznini onaylamadı. TV uygulamasını yeniden kurun ve TV\'de izin verin.</string>
+    <string name="tv_open_try">Otomatik açmayı dene</string>
+    <string name="tv_open_wizard_note">Her oyunda çeviriyi başlattığınızda CouchSubs TV uygulamasını kendisi açmaya çalışır; açılmazsa TV\'den CouchSubs\'ı açın.</string>
 </resources>

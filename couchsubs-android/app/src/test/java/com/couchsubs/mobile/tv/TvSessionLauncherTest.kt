@@ -75,4 +75,67 @@ class TvSessionLauncherTest {
             open = { _, port, _ -> assertEquals(5555, port); throw java.io.IOException("ADB kapalı") }, log = { logged += it }, sleep = { rounds++ })
         assertEquals(listOf("Android TV (192.168.1.120:5555) telefonun adresiyle açılamadı: ADB kapalı"), logged)
     }
+
+    /** Mobil sürümü deneyen kullanıcı (21 Kas): açma sessizce başarısız oluyordu; nedeni ana ekrana bildirilir. */
+    @Test fun androidTvReportsWhyItCouldNotOpen() {
+        val results = mutableListOf<TvOpenProblem?>()
+        var rounds = 0
+        val failures = ArrayDeque(listOf<Exception?>(java.io.IOException("ADB kapalı"),
+            com.couchsubs.mobile.tv.android.AndroidInstallException(com.couchsubs.mobile.tv.android.AndroidInstallError.NOT_APPROVED), null))
+        TvSessionLauncher.keepAndroidTvOpen(InstalledTv(TvBrand.ANDROID_TV, "192.168.1.120"), "http://192.168.1.124:8787",
+            active = { rounds < 3 }, connected = { false },
+            open = { _, _, _ -> failures.removeFirst()?.let { throw it }; "Starting" }, sleep = { rounds++ }, onOpenResult = { results += it })
+        assertEquals(listOf(TvOpenProblem.DEBUG_OFF, TvOpenProblem.DEBUG_NOT_APPROVED, null), results)
+    }
+
+    @Test fun openProblemDependsOnTheSavedKey() {
+        assertEquals(TvOpenProblem.NOT_PAIRED, TvOpenProblem.shown(TvOpenProblem.UNREACHABLE, TvBrand.LG, hasKey = false))
+        assertEquals(TvOpenProblem.UNREACHABLE, TvOpenProblem.shown(TvOpenProblem.UNREACHABLE, TvBrand.SAMSUNG, hasKey = true))
+        assertEquals(TvOpenProblem.DEBUG_OFF, TvOpenProblem.shown(TvOpenProblem.DEBUG_OFF, TvBrand.ANDROID_TV, hasKey = false))
+        assertNull(TvOpenProblem.shown(null, TvBrand.LG, hasKey = false))
+        assertNotEquals(TvOpenProblem.openOnTv(TvBrand.ANDROID_TV), TvOpenProblem.openOnTv(TvBrand.LG))
+        assertEquals(TvOpenProblem.openOnTv(TvBrand.SAMSUNG), TvOpenProblem.openOnTv(TvBrand.LG))
+        assertNull(TvOpenProblem.reason(null))
+        TvOpenProblem.entries.forEach { assertNotNull(TvOpenProblem.reason(it)) }
+    }
+
+    @Test fun lgKeeperReportsEachConnectAttempt() {
+        val results = mutableListOf<TvOpenProblem?>()
+        val control = object : LgControl {
+            override fun foregroundAppId() = "com.couchsubs.tv"
+            override fun launch() {}
+            override fun close() {}
+        }
+        val controls = ArrayDeque(listOf<LgControl?>(null, control))
+        var steps = 0
+        LgKeeper.keep(open = { controls.removeFirstOrNull() }, active = { steps++ < 3 }, consolePort = { null }, sleep = { },
+            onOpenResult = { results += it })
+        assertEquals(listOf(TvOpenProblem.UNREACHABLE, null), results)
+    }
+
+    /** "Otomatik açmayı dene" LG'de TV'de ne açık olursa olsun CouchSubs'ı öne getirir. */
+    @Test fun lgKeeperLaunchesOnRetry() {
+        var launches = 0
+        val control = object : LgControl {
+            override fun foregroundAppId() = "com.webos.app.home"
+            override fun launch() { launches++ }
+            override fun close() {}
+        }
+        var steps = 0
+        val retries = ArrayDeque(listOf(false, true))
+        LgKeeper.keep(open = { control }, active = { steps++ < 3 }, consolePort = { null }, sleep = { },
+            retry = { retries.removeFirstOrNull() ?: false })
+        assertEquals(1, launches)
+    }
+
+    /** Samsung: eskiden Android telefon uygulamayı yalnız bir kez açmayı deniyordu; bağlı değilken yeniden açılır. */
+    @Test fun samsungIsReopenedWhileTheAppIsAway() {
+        var rounds = 0
+        var opens = 0
+        TvSessionLauncher.keepSamsungOpen(InstalledTv(TvBrand.SAMSUNG, "192.168.1.50"), connected = { rounds >= 2 }, active = { rounds < 4 },
+            sleep = { rounds++ }) { opens++ }
+        assertEquals(1, opens)
+        TvSessionLauncher.keepSamsungOpen(InstalledTv(TvBrand.LG, "192.168.1.50"), connected = { false }, active = { true }) { opens++ }
+        assertEquals(1, opens)
+    }
 }

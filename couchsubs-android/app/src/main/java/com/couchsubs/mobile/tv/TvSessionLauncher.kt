@@ -99,14 +99,20 @@ object TvSessionLauncher {
      */
     internal fun keepAndroidTvOpen(
         tv: InstalledTv, server: String, active: () -> Boolean, connected: () -> Boolean,
-        open: (String, Int, String?) -> String, log: (String) -> Unit = {}, sleep: (Long) -> Unit = { Thread.sleep(it) },
+        open: (String, Int, String?) -> String, log: (String) -> Unit = {}, sleep: (Long) -> Unit = { TvOpenRetry.waitOrRetry(it) },
+        onOpenResult: (TvOpenProblem?) -> Unit = {},
     ) {
         val adbPort = tv.port.takeIf { it > 0 } ?: com.couchsubs.mobile.tv.android.AdbConnection.DEFAULT_PORT
         val params = com.couchsubs.mobile.tv.android.AndroidTvInstaller.launchParams(server)
         var last: String? = null
         while (active()) {
             if (!connected()) {
-                val result = try { "açıldı: " + open(tv.host, adbPort, params) } catch (error: Exception) { "açılamadı: ${error.message ?: error.javaClass.simpleName}" }
+                val result = try {
+                    "açıldı: " + open(tv.host, adbPort, params).also { onOpenResult(null) }
+                } catch (error: Exception) {
+                    onOpenResult(TvOpenProblem.ofAndroidTv(error))
+                    "açılamadı: ${error.message ?: error.javaClass.simpleName}"
+                }
                 // Aynı sonuç her denemede yeniden yazılmaz.
                 if (result != last) log("Android TV (${tv.host}:$adbPort) telefonun adresiyle $result")
                 last = result
@@ -127,17 +133,38 @@ object TvSessionLauncher {
      * bir daha TV'ye gelmiyordu. TV'nin izin sorusu [launch]'ta yanıtlanmış olmalı (saklı anahtar yoksa bağlanılmaz). Bloklar.
      */
     fun keepLgOpen(settings: AppSettings, port: Int, key: String, consolePort: () -> Int?, log: (String) -> Unit = {},
-                   active: () -> Boolean) {
+                   onOpenResult: (TvOpenProblem?) -> Unit = {}, active: () -> Boolean) {
         val tv = settings.installedTv ?: return
         if (tv.brand != TvBrand.LG || !active()) return
         val remote = InetAddress.getByName(tv.host)
         if (!SubtitleAccess.isLocalPeer(remote)) return
         LgKeeper.keep(open = { serverAddress(remote, port)?.let { LgKeeper.ssapControl(settings, tv, remote, it, key) } },
-            active = active, consolePort = consolePort, log = log)
+            active = active, consolePort = consolePort, log = log, onOpenResult = onOpenResult, retry = TvOpenRetry::take)
     }
 
+    /**
+     * Samsung: [launch]'tan sonra TV uygulaması bağlı değilken en çok [ANDROID_RELAUNCH_MS]'de bir yeniden açar (Windows,
+     * Mac ve iPhone'daki bekçiyle aynı; Samsung önplandaki uygulamayı söylemez, yalnız açılır). "Otomatik açmayı dene"
+     * beklemeyi keser. Eskiden Android telefon Samsung'da uygulamayı yalnız bir kez açmayı deniyordu. Bloklar.
+     */
+    fun keepSamsungOpen(settings: AppSettings, port: Int, key: String, connected: () -> Boolean, log: (String) -> Unit = {},
+                        onOpenResult: (TvOpenProblem?) -> Unit = {}, active: () -> Boolean) =
+        keepSamsungOpen(settings.installedTv, connected, active) {
+            launch(settings, port, key, connected = connected, log = log, onOpenResult = onOpenResult, active = active)
+        }
+
+    internal fun keepSamsungOpen(tv: InstalledTv?, connected: () -> Boolean, active: () -> Boolean,
+                                 sleep: (Long) -> Unit = { TvOpenRetry.waitOrRetry(it) }, open: () -> Unit) {
+        if (tv?.brand != TvBrand.SAMSUNG) return
+        while (active()) {
+            sleep(ANDROID_RELAUNCH_MS)
+            if (active() && !connected()) open()
+        }
+    }
+
+    /** [onOpenResult]: açma denemesinin sonucu (ana ekrandaki satır); TV izni alındıysa ya da açıldıysa null. */
     fun launch(settings: AppSettings, port: Int, key: String, adbKeyFile: java.io.File? = null, connected: () -> Boolean = { false },
-               log: (String) -> Unit = {}, active: () -> Boolean) {
+               log: (String) -> Unit = {}, onOpenResult: (TvOpenProblem?) -> Unit = {}, active: () -> Boolean) {
         val tv = settings.installedTv ?: return
         if (!active()) return
         val remote = InetAddress.getByName(tv.host)
@@ -149,7 +176,7 @@ object TvSessionLauncher {
                 if (!com.couchsubs.mobile.tv.android.AndroidTvInstaller.isReachable(host, adbPort)) throw java.io.IOException("ADB kapalı")
                 com.couchsubs.mobile.tv.android.AndroidTvInstaller(host, adbPort,
                     adbKey = { com.couchsubs.mobile.tv.samsung.AdbKey.loadOrCreate(adbKeyFile) }).open(params)
-            }, log = log)
+            }, log = log, onOpenResult = onOpenResult)
             return
         }
         val tokenKey = "tv.control.${tv.brand}.${tv.host}"
@@ -247,8 +274,12 @@ object TvSessionLauncher {
                 })
                 try { done.await(60, TimeUnit.SECONDS) } finally { socket.close(1000, null); socket.cancel() }
                 // Açılış başarısız olsa bile TV /pair ile onay isteyebilir; sürekli yeniden başlatma yok.
-                if (registered || sent || storedPin != null) return
+                if (registered || sent || storedPin != null) {
+                    onOpenResult(if (registered || sent) null else TvOpenProblem.UNREACHABLE)
+                    return
+                }
             }
+            if (active()) onOpenResult(TvOpenProblem.UNREACHABLE)
         } finally { client.dispatcher.executorService.shutdown(); client.connectionPool.evictAll() }
     }
 }

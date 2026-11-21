@@ -119,6 +119,20 @@ struct MainControls: View {
             if model.testTVNotConnected && model.tvClients == 0 {
                 HintText(text: "The test subtitle did not reach the TV because the TV app is not connected. Open CouchSubs on the TV. If the TV shows a 6-digit code, don't type it anywhere: approve it in the “Pair this TV?” window that opens on this computer, then test again.")
             }
+            // Çeviri sürüyor ama TV uygulaması bağlı değil: CouchSubs TV'de nerede bulunur (markaya göre), otomatik açma neden
+            // olmadı ve "Otomatik açmayı dene" (Windows, iPhone ve Android ile aynı).
+            if model.isRunning, !model.demoMode, model.settings.output.showsOnTV, model.hasTV, model.tvClients == 0, let tv = model.tv {
+                Card {
+                    Text(LocalizedStringKey(TVOpenText.openOnTV(tv.brand))).font(.csCallout).foregroundStyle(Color.csText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let reason = TVOpenText.reason(model.tvOpenProblem) {
+                        Text(LocalizedStringKey(reason)).font(.csCallout).foregroundStyle(Color.csWarning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Button(LocalizedStringKey(TVOpenText.tryButton)) { model.retryTVOpen() }
+                        .buttonStyle(.secondary)
+                }
+            }
             HStack(alignment: .top, spacing: Theme.space("gap")) {
                 if model.demoMode {
                     StatusTile(symbol: "play.rectangle", title: "Demo mode", value: model.ps5StatusText,

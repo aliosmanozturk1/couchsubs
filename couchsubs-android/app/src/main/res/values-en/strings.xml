@@ -632,4 +632,13 @@
     <string name="second_screen_caption">Scan the code with the camera of a phone or tablet on the same Wi-Fi. While translating, the subtitles appear large in its browser; no app or internet needed.</string>
     <string name="second_screen_offline">Connect to Wi-Fi to show subtitles on another device.</string>
     <string name="tv_pair_expired">The pairing request expired. Try again on the TV.</string>
+    <!-- TV uygulamasını kendiliğinden açma: ana ekrandaki yönlendirme ve kurulumun son adımı (Mac/iPhone/Windows ile aynı). -->
+    <string name="tv_open_on_tv_android">If CouchSubs didn\'t open on the TV by itself, open it on the TV: on Android TV it\'s under Apps.</string>
+    <string name="tv_open_on_tv_app_list">If CouchSubs didn\'t open on the TV by itself, open it on the TV: it\'s in the TV\'s app list.</string>
+    <string name="tv_open_unreachable">Couldn\'t open it automatically: the TV didn\'t answer. Is the TV on and on the same Wi-Fi as this device?</string>
+    <string name="tv_open_not_paired">Couldn\'t open it automatically: this device has no permission from the TV yet. Connect the TV again and allow it on the TV.</string>
+    <string name="tv_open_debug_off">Couldn\'t open it automatically: the TV can\'t be reached for debugging. Is the TV on, with network debugging on in Developer options?</string>
+    <string name="tv_open_debug_not_approved">Couldn\'t open it automatically: the TV hasn\'t allowed debugging from this device. Reinstall the TV app and allow it on the TV.</string>
+    <string name="tv_open_try">Try opening automatically</string>
+    <string name="tv_open_wizard_note">Every time you start translating, CouchSubs tries to open the TV app by itself. If it doesn\'t open, open CouchSubs on the TV.</string>
 </resources>

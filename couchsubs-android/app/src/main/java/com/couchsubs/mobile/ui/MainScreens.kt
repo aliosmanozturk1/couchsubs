@@ -310,6 +310,10 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
         AnimatedNote(status.error)
         // TV'ye çevirirken telefon kilitlenebilir: pil kısıtlaması açıksa çeviri ekran kapanınca durabilir.
         if (!status.demo && Services.settings.target.showsOnTv) BackgroundLimitNote()
+        // TV uygulaması bağlı değil: CouchSubs TV'de nerede bulunur (markaya göre), otomatik açma neden olmadı ve
+        // "Otomatik açmayı dene" (Windows, Mac ve iPhone ile aynı).
+        if (!status.demo && Services.settings.target.showsOnTv && status.connectedTvs == 0)
+            Services.settings.installedTv?.let { TvOpenCard(it.brand, status.tvOpenProblem) }
         val current = status.recent.firstOrNull()
         // İlk altyazı gelene kadar ve bağlantı koptuğunda: kolu açınca PS5'te ana hesap seçilmeli (GitHub #231, MainAccountTip).
         if (com.couchsubs.mobile.remoteplay.MainAccountTip.visible(ps5 = !Services.settings.xbox, demo = status.demo,
@@ -364,6 +368,24 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
                     style = Tokens.Type.titleNumeric, color = Tokens.Color.text)
             } },
         )
+    }
+}
+
+/**
+ * Çeviri sürüyor ama TV uygulaması bağlı değil: kullanıcı CouchSubs'ı TV'de kendisinin açması gerektiğini bilmiyordu
+ * ("ilk başta olmadı, TV'den de uygulamayı açmak lazımmış", 21 Kas). Düğme açma döngüsünü beklemeden yeniden denetir.
+ */
+@Composable
+private fun TvOpenCard(brand: com.couchsubs.mobile.tv.TvBrand, problem: com.couchsubs.mobile.tv.TvOpenProblem?) {
+    Tile(Modifier.fillMaxWidth()) {
+        Text(stringResource(com.couchsubs.mobile.tv.TvOpenProblem.openOnTv(brand)), style = Tokens.Type.body, color = Tokens.Color.text)
+        com.couchsubs.mobile.tv.TvOpenProblem.reason(problem)?.let {
+            Text(stringResource(it), style = Tokens.Type.caption, color = Tokens.Color.warning)
+        }
+        SecondaryButton(stringResource(R.string.tv_open_try)) {
+            com.couchsubs.mobile.tv.TvOpenRetry.request()
+            com.couchsubs.mobile.service.LiveState.update { it.copy(tvOpenProblem = null) }
+        }
     }
 }
 

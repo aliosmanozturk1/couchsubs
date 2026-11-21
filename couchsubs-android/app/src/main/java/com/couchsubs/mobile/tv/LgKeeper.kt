@@ -102,19 +102,24 @@ object LgKeeper {
      * açılmış olduğundan yeniden açılmaz, sonraki bağlantılarda (TV kapanıp açıldı) açılır. Bloklar.
      */
     fun keep(open: () -> LgControl?, active: () -> Boolean, consolePort: () -> Int?, rule: LgKeeperRule = LgKeeperRule(),
-             sleep: (Long) -> Unit = { Thread.sleep(it) }, log: (String) -> Unit = {}) {
+             sleep: (Long) -> Unit = { Thread.sleep(it) }, log: (String) -> Unit = {},
+             onOpenResult: (TvOpenProblem?) -> Unit = {}, retry: () -> Boolean = { false }) {
         var control: LgControl? = null
         var first = true
         try {
             while (active()) {
                 if (control == null) {
                     control = try { open() } catch (_: Exception) { null }
-                    if (control == null) { sleep(LgKeeperRule.RECONNECT_MS); continue }
-                    if (!first) try { control.launch() } catch (_: Exception) { control.close(); control = null }
+                    // Ana ekrandaki satır: TV'ye bağlanılamadı (kapalı, başka ağda ya da saklı izin yok).
+                    if (control == null) { onOpenResult(TvOpenProblem.UNREACHABLE); sleep(LgKeeperRule.RECONNECT_MS); continue }
+                    onOpenResult(null)
+                    if (!first || retry()) try { control.launch() } catch (_: Exception) { control.close(); control = null }
                     first = false
                     sleep(LgKeeperRule.FOREGROUND_POLL_MS)
                     continue
                 }
+                // "Otomatik açmayı dene": TV'de ne açık olursa olsun CouchSubs öne getirilir.
+                if (retry()) try { control.launch() } catch (_: Exception) { control.close(); control = null; continue }
                 if (!rule.settling()) {
                     try {
                         val current = control.foregroundAppId()

@@ -69,6 +69,16 @@ try
             return 0;
         }
 
+        case "android-open":
+        {
+            // Çeviri başlarken Mac'in bekçisi kurulu TV uygulamasını Mac'in adresiyle açar; TV onay sorarsa beklenmez
+            // (NotApproved), ADB kapalıysa Unreachable.
+            var started = await AndroidTvInstaller.OpenAsync(Option("--host"), Option("--key-dir"),
+                args.SkipWhile(a => a != "--params").Skip(1).FirstOrDefault(), cancellationToken: cancel.Token);
+            Emit("done", ("version", started), ("installed", true));
+            return 0;
+        }
+
         case "samsung-install":
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(1) };
@@ -106,7 +116,7 @@ try
             return 0;
 
         default:
-            Console.Error.WriteLine("kullanım: couchsubs-tv-helper android-scan | android-install --host IP --package APK --version V --key-dir DİZİN [--open] | samsung-install --host IP --package WGT --version V --profiles DİZİN [--log DOSYA] | samsung-open --host IP --profiles DİZİN [--log DOSYA] | self-test");
+            Console.Error.WriteLine("kullanım: couchsubs-tv-helper android-scan | android-install --host IP --package APK --version V --key-dir DİZİN [--open] | android-open --host IP --key-dir DİZİN [--params JSON] | samsung-install --host IP --package WGT --version V --profiles DİZİN [--log DOSYA] | samsung-open --host IP --profiles DİZİN [--log DOSYA] | self-test");
             return 2;
     }
 }

@@ -18,6 +18,8 @@ data class LiveStatus(
     /** Konsol görüntüsü geliyor (oturum Streaming); arayüz [phase] metnini karşılaştırmak yerine buna bakar. */
     val streaming: Boolean = false,
     val connectedTvs: Int = 0,
+    /** TV uygulamasını kendiliğinden açmanın son denemesi neden olmadı (ana ekranda tek satır); açıldıysa null. */
+    val tvOpenProblem: com.couchsubs.mobile.tv.TvOpenProblem? = null,
     /** Son gösterilen çeviriler, yeniden eskiye. */
     val recent: List<ShownPair> = emptyList(),
     /** Telefon ekranında şu an gösterilen altyazı (yoksa boş). */

@@ -35,7 +35,8 @@ private final class FakeServices: PhoneServices {
     }
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
                     onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void,
-                    consolePort: @escaping @Sendable () -> Int?) -> KeeperControlling { IdleKeeper() }
+                    consolePort: @escaping @Sendable () -> Int?,
+                    onOpenResult: @escaping @Sendable (TVOpenProblem?) -> Void) -> KeeperControlling { IdleKeeper() }
     func checkDeepLKey(_ key: String) async -> OnlineKeyCheck {
         key == "good" ? OnlineKeyCheck(state: .valid, used: 12_345, limit: 500_000) : OnlineKeyCheck(state: .invalid)
     }

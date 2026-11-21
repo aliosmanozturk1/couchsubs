@@ -212,6 +212,7 @@ internal sealed class FakeServices : IAppServices
     public string PairKey { get; set; } = "tv-key";
     /// <summary>Son bekçiye verilen "yeni jeton" geri çağrısı.</summary>
     public Action<string>? OnKey { get; private set; }
+    public Action<TvOpenProblem?>? OnOpenResult { get; private set; }
     /// <summary>Her oturuma verilen PS5 giriş şifresi.</summary>
     public List<string?> StreamPasscodes { get; } = [];
     public IStreamSession MakeStream(RegisteredConsole console, byte[] accountId, string? loginPasscode)
@@ -240,10 +241,12 @@ internal sealed class FakeServices : IAppServices
         return stream;
     }
     public IKeeper MakeKeeper(LgTv tv, string? key, IReadOnlyDictionary<string, string> parameters, Func<bool> appConnected, Action<LgTv> onMoved,
-                              Action<string> onKey, Func<int?>? consolePort = null)
+                              Action<string> onKey, Func<int?>? consolePort = null,
+                              Action<TvOpenProblem?>? onOpenResult = null)
     {
         TvCalls++;
         OnKey = onKey;
+        OnOpenResult = onOpenResult;
         var keeper = new FakeKeeper();
         Keepers.Add(keeper);
         return keeper;
@@ -1279,6 +1282,48 @@ public class AppControllerRunTests
         var controller = AppControllerTests.Make(services, store);
         controller.TestTvWait = TimeSpan.FromMilliseconds(300);
         return (controller, services);
+    }
+
+    /// Mobil sürümü deneyen kullanıcı (21 Kas): "ilk başta olmadı, TV'den de uygulamayı açmak lazımmış". TV uygulaması
+    /// bağlı değilken ana ekran CouchSubs'ın TV'de nerede olduğunu, otomatik açmanın neden olmadığını ve
+    /// "Otomatik açmayı dene"yi gösterir.
+    [Fact]
+    public async Task HomeSaysWhereToOpenTheTvAppAndWhyAutoOpenFailed()
+    {
+        var (controller, services) = SamsungReady();
+        Assert.False(controller.ShowTvOpenHint);
+        await controller.StartAsync();
+        var keeper = Assert.Single(services.Keepers);
+        Assert.True(controller.ShowTvOpenHint);
+        Assert.Contains("app list", controller.TvOpenHintText);
+        Assert.False(controller.HasTvOpenReason);
+        services.OnOpenResult!(TvOpenProblem.Unreachable);
+        Assert.True(controller.HasTvOpenReason);
+        Assert.Contains("didn't answer", controller.TvOpenReasonText);
+        controller.RetryTvOpen();
+        Assert.False(controller.HasTvOpenReason);
+        Assert.Equal(1, keeper.Reconnects);
+        services.OnOpenResult!(TvOpenProblem.Unreachable);
+        controller.Stop();
+        Assert.False(controller.ShowTvOpenHint);
+        Assert.False(controller.HasTvOpenReason);
+        controller.Dispose();
+    }
+
+    [Fact]
+    public void OpenProblemDependsOnTheSavedKey()
+    {
+        Assert.Equal(TvOpenProblem.NotPaired, TvOpenText.Shown(TvOpenProblem.Unreachable, TvBrand.Lg, hasKey: false));
+        Assert.Equal(TvOpenProblem.Unreachable, TvOpenText.Shown(TvOpenProblem.Unreachable, TvBrand.Samsung, hasKey: true));
+        Assert.Equal(TvOpenProblem.DebugOff, TvOpenText.Shown(TvOpenProblem.DebugOff, TvBrand.AndroidTv, hasKey: false));
+        Assert.Null(TvOpenText.Shown(null, TvBrand.Lg, hasKey: false));
+        Assert.Contains("Apps", TvOpenText.OpenOnTv(TvBrand.AndroidTv));
+        foreach (var problem in Enum.GetValues<TvOpenProblem>())
+            Assert.Equal(TvOpenText.Reason(problem), Localizer.ForLanguage("en")[TvOpenText.Reason(problem)!]);
+        var turkish = Localizer.ForLanguage("tr");
+        Assert.Equal("Otomatik açmayı dene", turkish[TvOpenText.TryButton]);
+        Assert.StartsWith("Her oyunda", turkish[TvOpenText.WizardNote]);
+        Assert.StartsWith("CouchSubs TV'de", turkish[TvOpenText.OpenOnTv(TvBrand.Lg)]);
     }
 
     [Fact]

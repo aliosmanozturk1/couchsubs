@@ -337,6 +337,19 @@ struct RunningScreen: View {
                         .font(Mobile.TypeScale.title).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                 }
             }
+            // TV uygulaması bağlı değil: CouchSubs TV'de nerede bulunur (markaya göre), otomatik açma neden olmadı ve
+            // "Otomatik açmayı dene" (Windows, Mac ve Android ile aynı).
+            if model.settings.output.showsOnTV, !model.demoMode, model.tvClients == 0, let tv = model.tv {
+                Tile {
+                    Text(LocalizedStringKey(TVOpenText.openOnTV(tv.brand))).font(Mobile.TypeScale.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let reason = TVOpenText.reason(model.tvOpenProblem) {
+                        MobileNote(text: String(localized: String.LocalizationValue(reason)))
+                    }
+                    Button { model.retryTVOpen() } label: { Label(LocalizedStringKey(TVOpenText.tryButton), systemImage: "arrow.clockwise") }
+                        .buttonStyle(MobileButtonStyle(kind: .secondary, compact: true))
+                }
+            }
             // TV uygulaması 30 saniyede bağlanmadıysa ne yapılacağı (tanı satırı günlüklere yazılır).
             if model.settings.output.showsOnTV, model.tvWaitingLong, model.tvClients == 0 {
                 MobileNote(text: String(localized: "The TV app has not connected. Open CouchSubs on the TV and keep the phone and the TV on the same Wi-Fi (not a guest network). If the TV shows a 6-digit code, approve it in the window that opens on this phone. If it still waits, check that CouchSubs is allowed in Settings › Privacy & Security › Local Network on this iPhone, then stop and start translating again."))

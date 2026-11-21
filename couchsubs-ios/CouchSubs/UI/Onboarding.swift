@@ -523,6 +523,11 @@ struct TargetScreen: View {
             // TV'si olmayan ya da monitörde oynayan için: hangi hedef seçilirse seçilsin altyazı ayrıca bir tarayıcıda da görünür.
             SecondScreenTile()
             if let error { MobileNote(text: error) }
+            // TV kurulumu bitti: her çeviride TV uygulaması kendiliğinden açılmaya çalışılır; açılmazsa TV'den açılır.
+            if setup, model.hasTV, model.settings.output.showsOnTV {
+                Text(LocalizedStringKey(TVOpenText.wizardNote)).font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         } bottom: {
             Button(setup ? "Continue" : "Done", action: onDone)
                 .buttonStyle(.mobilePrimary)
