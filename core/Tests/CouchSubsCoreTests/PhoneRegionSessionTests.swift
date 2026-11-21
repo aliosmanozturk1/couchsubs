@@ -166,4 +166,69 @@ final class PhoneRegionSessionTests: XCTestCase {
         XCTAssertEqual(server.clears, 0)
         XCTAssertEqual(watcher.passes, passes)
     }
+
+    /// Uzun mesajda yan yana iki sözcükte harf oynaması bir tur bekletilir: aynı okuma sürerse gerçek değişikliktir ve
+    /// çevrilir, eski hâline dönerse çeviri ve ekran yerinde kalır (Windows ile aynı).
+    func testLongPhoneMessageConfirmsAdjacentOcrTyposOnce() async throws {
+        let original = "Cool. I'll check it out. Would be nice to clear my head for a second."
+        let alternate = "Cool. I'll check ct ocut. Would be nice to clear my head for a second."
+        for realChange in [false, true] {
+            let reader = Reader(), translator = Translator(), server = Server()
+            var clock = 0
+            let watcher = RegionWatcher(reader: reader, translator: translator, server: server, clock: { clock })
+            let a = GamePhoneTestFrame.phone()
+            // Değişen piksel balonun dışında: OCR yeniden çalışır, balonun yüzeyi aynı kalır.
+            let b = GamePhoneTestFrame.phone(patch: CGRect(x: 183, y: 160, width: 36, height: 12))
+            let pose = try XCTUnwrap(GamePhoneGeometry.locate(a))
+            reader.set([TextLine(original, box: first)])
+            watcher.offer(a, areas: [], phone: pose)
+            try await wait { !watcher.isBusy }
+            XCTAssertEqual(server.sent.count, 1)
+
+            reader.set([TextLine(alternate, box: first)])
+            clock = 450
+            watcher.offer(b, areas: [], phone: pose)
+            try await wait { !watcher.isBusy }
+            XCTAssertEqual(server.sent.count, 1, "bekletilen okuma ekranı değiştirmez")
+            let held = await translator.calls
+            XCTAssertEqual(held.count, 1)
+
+            reader.set([TextLine(realChange ? alternate : original, box: first)])
+            clock = 900
+            watcher.offer(b, areas: [], phone: pose)
+            try await wait { !watcher.isBusy }
+            let calls = await translator.calls
+            XCTAssertEqual(calls.count, realChange ? 2 : 1)
+            XCTAssertEqual(server.sent.last?.text, "Çevrildi: " + (realChange ? alternate : original))
+        }
+    }
+
+    /// İki komşu arasından bir tur düşen balon ekrandan silinmez; ikinci okumada da yoksa silinir.
+    func testOmittingOneBubbleBetweenUnchangedNeighborsRequiresASecondRead() async throws {
+        let rows = [TextBox(left: 0.15, top: 0.20, right: 0.85, bottom: 0.26), TextBox(left: 0.15, top: 0.40, right: 0.85, bottom: 0.46),
+                    TextBox(left: 0.15, top: 0.60, right: 0.85, bottom: 0.66), TextBox(left: 0.15, top: 0.80, right: 0.85, bottom: 0.86)]
+        let full = zip(["How's work going?", "Not great today.", "Sorry to hear it.", "See you later."], rows).map { TextLine($0, box: $1) }
+        for stillMissing in [false, true] {
+            let reader = Reader(), translator = Translator(), server = Server()
+            var clock = 0
+            let watcher = RegionWatcher(reader: reader, translator: translator, server: server, clock: { clock })
+            let a = GamePhoneTestFrame.phone(), b = GamePhoneTestFrame.phone(patch: edit)
+            let pose = try XCTUnwrap(GamePhoneGeometry.locate(a))
+            reader.set(full)
+            watcher.offer(a, areas: [], phone: pose)
+            try await wait { !watcher.isBusy }
+            XCTAssertEqual(server.sent.last?.items.count, 4)
+            let sends = server.sent.count
+            reader.set([full[0], full[1], full[3]])
+            clock = 450
+            watcher.offer(b, areas: [], phone: pose)
+            try await wait { !watcher.isBusy }
+            XCTAssertEqual(server.sent.count, sends)
+            if !stillMissing { reader.set(full) }
+            clock = 900
+            watcher.offer(b, areas: [], phone: pose)
+            try await wait { !watcher.isBusy }
+            XCTAssertEqual(server.sent.last?.items.count, stillMissing ? 3 : 4)
+        }
+    }
 }

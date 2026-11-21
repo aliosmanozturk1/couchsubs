@@ -13,6 +13,30 @@ object GamePhoneText {
     private val misreadTen = Regex("(?<![\\p{L}\\p{N}_@#])(?:IO|I0|lO|l0)(?=\\s+min(?:s|utes?)?\\b)")
     private val sections = setOf("Messages", "Suggested", "Suggestions", "Öneriler", "Mesajlar")
 
+    /**
+     * Aynı uzun mesajda (en az dokuz sözcük) yan yana iki kısa sözcükte birer harf oynamış ("it out" → "ct ocut"): yazı
+     * tanıma sapmasıdır, çeviri hemen yenilenmez. Tek sözcüklük yanıtlar, eklenen/silinen sözcükler, sayılar ve
+     * olumsuzluklar doğrudan işlenir (Windows GamePhoneText.HasAdjacentOcrEdits).
+     */
+    fun hasAdjacentOcrEdits(shown: String, next: String): Boolean {
+        val before = TextMatch.normalize(shown).split(' ')
+        val after = TextMatch.normalize(next).split(' ')
+        if (before.size < 9 || before.size != after.size) return false
+        var first = 0
+        var last = before.size - 1
+        while (first <= last && before[first] == after[first]) first++
+        while (last > first && before[last] == after[last]) last--
+        if (last != first + 1) return false
+        for (i in first..last) {
+            val a = before[i]
+            val b = after[i]
+            val length = maxOf(a.length, b.length)
+            if (minOf(a.length, b.length) < 2 || length > 6 || !a.all { it.isLetter() } || !b.all { it.isLetter() } ||
+                !TextMatch.isSimilar(a, b, 1.0 - 1.0 / length)) return false
+        }
+        return !TextMatch.addsMeaning(next, shown) && !TextMatch.addsMeaning(shown, next)
+    }
+
     fun containsIdentifier(text: String): Boolean =
         (text.contains('@') || text.contains('#')) && identifier.containsMatchIn(text)
 
@@ -64,7 +88,7 @@ object GamePhoneText {
     private fun isContactPair(name: TextLine, preview: TextLine): Boolean {
         val label = name.text.trim()
         val lowerName = label.length in 2..18 && label.all { it.isLowerCase() }
-        if (!(looksLikeName(label) || lowerName) || !preview.text.trim().contains(' ')) return false
+        if (!(looksLikeName(label) || lowerName)) return false
         val a = layout(name) ?: return false
         val b = layout(preview) ?: return false
         val h = a.bottom - a.top
@@ -72,14 +96,22 @@ object GamePhoneText {
             b.top > a.top && b.top - a.bottom < h * 0.7 && b.bottom - b.top < h * 1.8
     }
 
-    /** Sağ kenara dayanan önizlemenin kesik sonu ("after .,") üç nokta olarak okunur. */
+    /**
+     * Sağ kenara dayanan önizlemenin kesik sonu ("after .,", "there ...") tek yazımla üç nokta olur; son sözcük
+     * tamamlanmaz, yalnız noktalama düzelir.
+     */
     private fun previewPunctuation(line: TextLine): TextLine {
         val box = layout(line) ?: return line
         if (box.right < 0.76) return line
-        val tail = line.text.takeLastWhile { it in ".,„" }
-        val stem = line.text.dropLast(tail.length)
-        if (tail.length !in 2..3 || tail.first() != '.' || stem.lastOrNull()?.isLetter() != true || line.text.endsWith("...")) return line
-        return line.copy(text = "$stem...")
+        val text = line.text
+        var start = text.length
+        while (start > 0 && text[start - 1] in ".,„") start--
+        if (text.length - start !in 2..3 || text[start] != '.') return line
+        var wordEnd = start
+        while (wordEnd > 0 && text[wordEnd - 1].isWhitespace()) wordEnd--
+        if (wordEnd == 0 || !text[wordEnd - 1].isLetter()) return line
+        if (wordEnd == start && text.endsWith("...")) return line
+        return line.copy(text = text.substring(0, wordEnd) + "...")
     }
 
     /** Çevrilecek satırlar: yalnız etiketten oluşan satırlar ve tanınan mesaj listesindeki kişi adları çıkarılır. */
@@ -99,7 +131,7 @@ object GamePhoneText {
         while (i + 1 < order.size) {
             val name = order[i]
             val preview = order[i + 1]
-            if (isContactPair(lines[name], lines[preview])) {
+            if (lines[preview].text.trim().contains(' ') && isContactPair(lines[name], lines[preview])) {
                 names.add(name)
                 previews.add(preview)
                 i += 2
@@ -117,6 +149,21 @@ object GamePhoneText {
             return abs(box.left - (first.left + slope * (box.top - first.top))) <= 0.06
         }
         if (!names.all { inColumn(lines[it]) }) return Reading(lines)
+        // Listeyi uzun önizlemeler doğruladı: aynı satır düzenindeki "Okay" gibi tek sözcüklük yanıt da önizlemedir, ad
+        // gibi göründüğü için atılmaz. Önizlemesi olmayan ad yine atılır.
+        i = 0
+        while (i + 1 < order.size) {
+            val name = order[i]
+            val preview = order[i + 1]
+            if (inColumn(lines[name]) && name !in previews && preview !in names && !lines[preview].text.trim().contains(' ') &&
+                looksLikeName(lines[preview].text) && isContactPair(lines[name], lines[preview])) {
+                names.add(name)
+                previews.add(preview)
+                i += 2
+            } else {
+                i += 1
+            }
+        }
         return Reading(lines.indices.mapNotNull { index ->
             val line = lines[index]
             when {
@@ -153,15 +200,22 @@ object GamePhoneText {
             }
         }
         for (line in reading.lines.filter { it.box != null }.sortedBy { box(it).top }) {
-            run.lastOrNull()?.let { if (breaksBlock(box(it), box(line))) finish() }
+            run.lastOrNull()?.let { if (breaksBlock(box(it), box(line), flat && endsSentence(it.text))) finish() }
             run.add(line)
         }
         finish()
         return groups.take(ScreenTranslation.MAX_GROUPS)
     }
 
-    private fun breaksBlock(previous: TextBox, next: TextBox): Boolean {
-        if (next.top - previous.bottom > maxOf(previous.bottom - previous.top, next.bottom - next.top)) return true
+    private fun endsSentence(text: String): Boolean = text.trimEnd().lastOrNull()?.let { it in ".!?" } ?: false
+
+    /**
+     * Düzeltilmiş telefon ekranında satır arası dar, aynı taraftaki ardışık balonların arası daha geniştir: cümle sonundan
+     * sonra satır yüksekliğinin 0,65'inden geniş boşluk yeni balondur; aynı balonda alt satıra geçen ikinci cümle birlikte kalır.
+     */
+    private fun breaksBlock(previous: TextBox, next: TextBox, afterFlatSentence: Boolean): Boolean {
+        val lineHeight = maxOf(previous.bottom - previous.top, next.bottom - next.top)
+        if (next.top - previous.bottom > lineHeight * (if (afterFlatSentence) 0.65 else 1.0)) return true
         val alignedLeft = abs(previous.left - next.left) <= 0.08
         val alignedRight = minOf(previous.left, next.left) > 0.25 && abs(previous.right - next.right) <= 0.045
         return !alignedLeft && !alignedRight

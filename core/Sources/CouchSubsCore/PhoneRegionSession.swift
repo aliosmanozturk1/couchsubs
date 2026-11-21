@@ -44,6 +44,16 @@ final class PhoneRegionSession {
     private var anchors: [(prefix: String, x: Double, y: Double)] = []
     private var needsWork = false
     private var emptyOnce = false
+    /// Soluk satır kurtarmasının hafızası (`GamePhoneReader.readMessages`).
+    private let retry = GamePhoneRetry()
+    /// Son tam yayımlanan okuma: tek turluk OCR atlamasını gerçek değişiklikten ayırmak için.
+    private var shownPage: Page?
+    /// Bu okuma bir tur bekletildi; sonraki okuma her durumda ilerler.
+    private var held = false
+    /// Telefonun boyu (bölgenin yüksekliği): gerçek yakınlaşmada balonların görünüşü hemen yenilenir.
+    private var scale = 0.0
+    /// Kare boyu (piksel): yarım piksellik kutu oynaması yeniden gönderilmez.
+    private var frameSize = (width: 1920, height: 1080)
 
     init(reader: TextReader, translator: TextTranslator, server: RegionSending) {
         self.reader = reader
@@ -63,6 +73,7 @@ final class PhoneRegionSession {
 
     func close() {
         latest = nil
+        shownPage = nil
         task?.cancel()
         publish([])
     }
@@ -78,11 +89,11 @@ final class PhoneRegionSession {
     }
 
     private func read(_ capture: Capture, signature: [UInt8]) async throws -> Page {
-        let reader = self.reader
+        let reader = self.reader, retry = self.retry
         return try await ReadQueue.shared.run(priority: .background, detail: ReadQueue.detail("telefon", capture.frame)) {
             let region = capture.region
             let reading = GamePhoneText.forTranslation(try GamePhoneReader.read(capture.frame, region: region,
-                                                                                pose: capture.pose, reader: reader))
+                                                                                pose: capture.pose, reader: reader, retry: retry))
             let crop = RegionCropper.crop(capture.frame, to: region)
             let place = TextBox(left: region.left, top: region.top, right: region.right, bottom: region.bottom)
             let bubbles = ScreenTranslation.withImages(GamePhoneText.groups(reading), from: crop).map { group in
@@ -99,15 +110,18 @@ final class PhoneRegionSession {
 
     private func update(packLookup: ((String) -> PackMatch?)?, skipsTurkish: Bool, english: Bool) async {
         guard let start = latest, start.isPresent() else { clearMissing(); return }
+        frameSize = (start.frame.width, start.frame.height)
         let signature = RegionCropper.signature(of: RegionCropper.crop(start.frame, to: start.region))
         let changed = page.map {
             !$0.region.isClose(to: start.region, tolerance: 0.01)
                 || ReadScheduler.changed($0.signature, signature, threshold: ReadScheduler.defaultChangeThreshold)
                 || $0.pixels.changed(start.frame, region: start.region)
         } ?? true
+        var fresh = false
         if changed || emptyOnce {
             do { page = try await read(start, signature: signature) }
             catch { page = nil; return }
+            fresh = true
         } else if !needsWork && !emptyOnce { return }
         guard !Task.isCancelled, var current = page, var verified = latest else { return }
         // Okuma sürerken farklı bir sayfa gelmişse eski sayfadan yeni çeviri isteği çıkarma.
@@ -116,9 +130,22 @@ final class PhoneRegionSession {
             current = fresh
         }
         guard latest != nil, !Task.isCancelled else { return }
+        // Yerinde duran iki komşu arasından düşen balon ya da uzun mesajdaki yan yana birkaç bozuk harf tek okumada
+        // ekrandan silinmesin, yeniden çevrilmesin: okuma bir tur bekletilir, sonraki tur mutlaka yeniden okur. Aynı
+        // görünen gerçek değişiklik o turda ilerler (Windows ile aynı).
+        if fresh, !held, let shown = shownPage, !rendered.isEmpty,
+           Self.missingInteriorBubble(shown, current)
+            || (Self.sameLayout(shown, current, frameSize) && GamePhoneText.hasAdjacentOcrEdits(Self.text(shown), Self.text(current))) {
+            held = true
+            page = nil
+            return
+        }
+        held = false
         if current.bubbles.isEmpty {
-            if emptyOnce || rendered.isEmpty {
+            // Boş okuma aynı karede bir kez daha okunur: ilk okumada kaçan mesaj gizlenmesin.
+            if emptyOnce {
                 publish([])
+                shownPage = nil
                 emptyOnce = false
             } else { emptyOnce = true }
             needsWork = false
@@ -132,7 +159,11 @@ final class PhoneRegionSession {
         // önceki yanıtın üstü kendi özgün yazısıyla görünür, bitmiş komşu balonlar okunabilir.
         publish(items(current, translations: available))
         var missing = paragraphs.filter { available[$0] == nil }
-        guard !missing.isEmpty else { needsWork = false; return }
+        guard !missing.isEmpty else {
+            needsWork = false
+            shownPage = current
+            return
+        }
         if !translator.translatesTogether {
             followPage(current)
             for offset in groups.indices {
@@ -172,6 +203,93 @@ final class PhoneRegionSession {
         guard !Task.isCancelled, self.latest != nil else { return }
         publish(items(current, translations: available))
         needsWork = current.bubbles.contains { $0.group.paragraphs.contains { available[$0] == nil } }
+        shownPage = needsWork ? nil : current
+    }
+
+    private static func text(_ page: Page) -> String {
+        page.bubbles.flatMap(\.group.paragraphs).joined(separator: "\n")
+    }
+
+    /// Yalnız tek iç balon eksilmiş: kalanların yazısı ve kutuları aynı sırada, aynı yerde. Kaydırma, yeni yazı ya da
+    /// sayfanın kapanması bu denetime takılmaz.
+    nonisolated static func missingInteriorBubble(_ shownBubbles: [(paragraphs: [String], box: TextBox)],
+                                                  _ current: [(paragraphs: [String], box: TextBox)]) -> Bool {
+        guard current.count >= 2, shownBubbles.count == current.count + 1 else { return false }
+        var missing = false
+        for (index, bubble) in current.enumerated() {
+            var prior = shownBubbles[missing ? index + 1 : index]
+            if prior.paragraphs != bubble.paragraphs {
+                guard !missing, index > 0 else { return false }
+                missing = true
+                prior = shownBubbles[index + 1]
+                guard prior.paragraphs == bubble.paragraphs else { return false }
+            }
+            let a = prior.box, b = bubble.box
+            if abs(a.left - b.left) > 0.012 || abs(a.right - b.right) > 0.012 || abs(a.top - b.top) > 0.012
+                || abs(a.bottom - b.bottom) > 0.012 { return false }
+        }
+        return missing
+    }
+
+    private static func missingInteriorBubble(_ shown: Page, _ current: Page) -> Bool {
+        missingInteriorBubble(shown.bubbles.map { ($0.group.paragraphs, $0.group.box) },
+                              current.bubbles.map { ($0.group.paragraphs, $0.group.box) })
+    }
+
+    /// İki okumanın balonları aynı yerde (iki piksel içinde) ve aynı yüzeyde: telefon kıpırdamadı.
+    private static func sameLayout(_ a: Page, _ b: Page, _ size: (width: Int, height: Int)) -> Bool {
+        guard a.bubbles.count == b.bubbles.count else { return false }
+        let dx = 2.0 / Double(size.width), dy = 2.0 / Double(size.height)
+        return zip(a.bubbles, b.bubbles).allSatisfy { x, y in
+            x.group.paragraphs.count == y.group.paragraphs.count && near(x.group.box, y.group.box, dx, dy)
+                && abs(x.group.lineHeight - y.group.lineHeight) <= dy
+                && nearColor(x.style.background, y.style.background) && nearColor(x.style.foreground, y.style.foreground)
+        }
+    }
+
+    nonisolated static func near(_ a: TextBox, _ b: TextBox, _ dx: Double, _ dy: Double) -> Bool {
+        abs(a.left - b.left) <= dx && abs(a.right - b.right) <= dx && abs(a.top - b.top) <= dy && abs(a.bottom - b.bottom) <= dy
+    }
+
+    /// İki renk her kanalda en çok `tolerance` farklı (palet kanalları sekizli basamaklara yuvarlar; bir basamak fark
+    /// sıkıştırma titreşimidir).
+    nonisolated static func nearColor(_ a: String, _ b: String, _ tolerance: Int = 8) -> Bool {
+        if a == b { return true }
+        func channels(_ hex: String) -> [Int]? {
+            guard hex.count == 7, hex.hasPrefix("#"), let value = Int(hex.dropFirst(), radix: 16) else { return nil }
+            return [(value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF]
+        }
+        guard let x = channels(a), let y = channels(b) else { return false }
+        return zip(x, y).allSatisfy { abs($0 - $1) <= tolerance }
+    }
+
+    /// Aynı balon hareket ederken yeri her gönderide izlenir; küçük OCR kutu farkları yazı boyunu ve satır kırılımını,
+    /// renk örneklemesi zemini sürekli değiştirmesin. Esas alınan, son çizilendir (Windows ile aynı).
+    nonisolated static func stableBlocks(_ items: [ScreenTranslation.Item], previous: [ScreenTranslation.Item]) -> [ScreenTranslation.Item] {
+        items.map { item in
+            var match: ScreenTranslation.Item?
+            for old in previous where old.source == item.source && old.translation == item.translation
+                && abs(old.box.left - item.box.left) <= 0.05 && abs(old.box.top - item.box.top) <= 0.05 {
+                if match != nil { return item } // Aynı yerdeki iki eş mesaj ayırt edilemiyor.
+                match = old
+            }
+            guard let match else { return item }
+            var stable = item
+            let width = item.box.right - item.box.left, height = item.box.bottom - item.box.top
+            let oldWidth = match.box.right - match.box.left, oldHeight = match.box.bottom - match.box.top
+            if oldWidth > 0, abs(width - oldWidth) <= oldWidth * 0.05 { stable.box.right = min(1, item.box.left + oldWidth) }
+            if oldHeight > 0, abs(height - oldHeight) <= oldHeight * 0.10 { stable.box.bottom = min(1, item.box.top + oldHeight) }
+            if abs(item.lineHeight - match.lineHeight) <= match.lineHeight * 0.15 { stable.lineHeight = match.lineHeight }
+            if let style = item.style, let before = match.style {
+                // Ön ve arka renk ayrı ayrı: seçimin gerçek yazı/zemin rengi değişimi korunur.
+                var kept = PhoneTextStyle(background: nearColor(style.background, before.background, 16) ? before.background : style.background,
+                                          foreground: nearColor(style.foreground, before.foreground, 16) ? before.foreground : style.foreground)
+                // İki okunabilir paletin karışımı kontrastı düşürebilir: o durumda güncel çift kullanılır.
+                if kept != before, kept != style, TextStyleSampler.contrast(kept.background, kept.foreground) < 4.5 { kept = style }
+                stable.style = kept
+            }
+            return stable
+        }
     }
 
     private func matches(_ page: Page, _ capture: Capture) -> Bool {
@@ -190,6 +308,7 @@ final class PhoneRegionSession {
 
     private func clearMissing() {
         page = nil
+        shownPage = nil
         emptyOnce = false
         needsWork = false
         publish([])
@@ -224,8 +343,24 @@ final class PhoneRegionSession {
         }
     }
 
-    private func publish(_ items: [ScreenTranslation.Item]) {
+    private func publish(_ fresh: [ScreenTranslation.Item]) {
+        var items = fresh
+        if let region = latest?.region {
+            let height = region.bottom - region.top
+            // Telefon gerçekten yakınlaşıp uzaklaşınca yeni boyutlar hemen kullanılır.
+            if abs(height - scale) > scale * 0.03 {
+                scale = height
+            } else if !rendered.isEmpty {
+                items = Self.stableBlocks(items, previous: rendered)
+            }
+        }
         guard rendered != items else { return }
+        // Aynı yazı bir iki piksel oynadıysa (OCR kutusu, yüzey örneği) yeniden gönderilmez; gerçek hareket birikince gider.
+        let dx = 2.0 / Double(frameSize.width), dy = 2.0 / Double(frameSize.height)
+        if rendered.count == items.count, !items.isEmpty, zip(rendered, items).allSatisfy({ a, b in
+            a.source == b.source && a.translation == b.translation && Self.near(a.box, b.box, dx, dy)
+                && abs(a.lineHeight - b.lineHeight) <= dy && Self.sameSurface(a.style, b.style)
+        }) { return }
         rendered = items
         let boxes = items.map(\.box)
         let box = boxes.dropFirst().reduce(boxes.first) { $0?.union($1) }
@@ -233,6 +368,11 @@ final class PhoneRegionSession {
         server.sendRegion(id: "game-phone", text: items.map(\.translation).joined(separator: "\n"), box: box,
                           lineHeight: heights.isEmpty ? nil : heights[heights.count / 2], icons: nil,
                           blocks: items.isEmpty ? nil : items)
+    }
+
+    private static func sameSurface(_ a: PhoneTextStyle?, _ b: PhoneTextStyle?) -> Bool {
+        guard let a, let b else { return a == b }
+        return nearColor(a.background, b.background) && nearColor(a.foreground, b.foreground)
     }
 
     private func followPage(_ page: Page) {

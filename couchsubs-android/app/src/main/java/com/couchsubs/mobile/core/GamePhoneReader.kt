@@ -38,7 +38,13 @@ object GamePhoneReader {
     /** Okunacak telefon ekranının karedeki sınır dikdörtgeni (sol, üst, sağ, alt; piksel): kare kopyalanırken bu kadarı alınır. */
     fun screenRect(width: Int, height: Int, pose: GamePhoneGeometry.Pose): DoubleArray = Warp(width, height, pose).rect(wholeScreen)
 
-    fun read(frame: PhoneImage, region: CropRegion, pose: GamePhoneGeometry.Pose, reader: (Flat) -> Reading): Reading {
+    /**
+     * [rescue]: telefon açılışının soluk satır kurtarıcısı ([TailRescue]); verilmezse ekran bir kez okunur.
+     */
+    fun read(
+        frame: PhoneImage, region: CropRegion, pose: GamePhoneGeometry.Pose, rescue: TailRescue? = null,
+        reader: (Flat) -> Reading,
+    ): Reading {
         val warp = Warp(frame.width, frame.height, pose)
         val dy = warp.dy
         if (!(dy > 0 && region.right > region.left && region.bottom > region.top)) return Reading.Empty
@@ -88,13 +94,135 @@ object GamePhoneReader {
             fun y(n: Double) = ((n / frame.height - region.top) / (region.bottom - region.top)).coerceIn(0.0, 1.0)
             return TextBox(x(q[0]), y(q[1]), x(q[2]), y(q[3]))
         }
-        return Reading(reader(Flat(out, width, height)).lines.map { original ->
+        val flat = Flat(out, width, height)
+        val reading = rescue?.read(flat, reader) ?: reader(flat)
+        return Reading(reading.lines.map { original ->
             original.copy(
                 phoneBox = original.box, box = original.box?.let(::map),
                 words = original.words?.map { TextWord(it.text, map(it.box)) },
                 icons = original.icons?.map { IconSlot(map(it.box), it.text, it.image) },
             )
         })
+    }
+}
+
+/**
+ * Bir balonun alt satırı okunup üstündeki satır (soluk yazı) kaybolabilir: aynı karede alt satırın üstünde harf izi varsa
+ * yalnız o şeridin kontrastı artırılıp şerit bir kez daha okunur; ikinci okuma aynı alt satırı aynı yerde bulursa eksik
+ * satır eklenir. Başarısız deneme aynı alt satır için iki saniye tekrarlanmaz (Mac/iPhone GamePhoneReader.swift, Windows
+ * GamePhoneReader.ReadMessages ile aynı kurallar). Tek telefon açılışına aittir.
+ */
+class TailRescue(private val clock: () -> Long = { System.nanoTime() / 1_000_000 }) {
+    private var failedTail: String? = null
+    private var retryAfter = 0L
+
+    fun read(flat: GamePhoneReader.Flat, reader: (GamePhoneReader.Flat) -> Reading): Reading {
+        val reading = reader(flat)
+        if (reading.lines.size < 3) return reading
+        val tail = reading.lines.maxByOrNull { it.box?.bottom ?: 0.0 }!!
+        val b = tail.box ?: return reading
+        val text = tail.text.trimStart()
+        if (b.top <= 0.65 || text.isEmpty() || !text[0].isLowerCase() || tail.text.none { it.isWhitespace() }) return reading
+        val h = b.bottom - b.top
+        if ((tail.confidence ?: 0f) < 0.85f || (tail.text == failedTail && clock() < retryAfter) || h <= 0 || h > 0.12 ||
+            reading.lines.any { it !== tail && it.box?.let { a -> isPrecedingLine(a, b) } == true }) return reading
+        var top = floor((b.top - 1.6 * h) * flat.height).toInt().coerceAtLeast(0)
+        var end = ceil((b.bottom + 0.35 * h) * flat.height).toInt().coerceAtMost(flat.height)
+        // NV21 çift boy ister: şerit bir satır büyütülür.
+        if ((end - top) % 2 == 1) { if (end < flat.height) end++ else if (top > 0) top-- }
+        if (end - top < 2 || !hasTextEdges(flat, b, h)) return reading
+        failedTail = tail.text
+        retryAfter = clock() + 2000
+        val band = enhancedBand(flat, top, end, backgroundLevel(flat, b))
+        val retry = try { reader(band) } catch (error: Exception) { return reading }
+        val strip = TextBox(0.0, top.toDouble() / flat.height, 1.0, end.toDouble() / flat.height)
+        fun map(box: TextBox) = box.placedIn(strip)
+        val key = TextMatch.normalize(tail.text)
+        val confirms = retry.lines.any { line ->
+            val box = line.box ?: return@any false
+            TextMatch.normalize(line.text) == key && abs(map(box).top - b.top) < h * 0.5 && abs(box.left - b.left) < 0.08
+        }
+        if (!confirms) return reading
+        val missing = retry.lines.filter { line ->
+            val box = line.box ?: return@filter false
+            isPrecedingLine(map(box), b) && line.text.any { it.isWhitespace() } && line.text.count { it.isLetter() } >= 4 &&
+                (line.confidence ?: 0f) >= 0.94f
+        }.take(2)
+        if (missing.size != 1) return reading
+        val line = missing[0]
+        val recoveredBox = map(line.box!!)
+        // İlk okuma aynı satırın yalnız son sözcüklerini bulmuş olabilir: üstüne ikinci bir kutu konmaz.
+        if (reading.lines.any { it !== tail && it.box?.let { existing -> sameRow(existing, recoveredBox) } == true }) return reading
+        failedTail = null
+        val recovered = line.copy(
+            box = recoveredBox,
+            words = line.words?.map { TextWord(it.text, map(it.box)) },
+            icons = line.icons?.map { IconSlot(map(it.box), it.text, it.image) },
+        )
+        return Reading((reading.lines + recovered).sortedBy { it.box?.top ?: 0.0 })
+    }
+
+    private fun sameRow(a: TextBox, b: TextBox): Boolean {
+        val overlap = minOf(a.bottom, b.bottom) - maxOf(a.top, b.top)
+        return minOf(a.right, b.right) > maxOf(a.left, b.left) && overlap >= 0.5 * minOf(a.bottom - a.top, b.bottom - b.top)
+    }
+
+    private fun isPrecedingLine(a: TextBox, b: TextBox): Boolean {
+        val h = b.bottom - b.top
+        val distance = (b.top + b.bottom - a.top - a.bottom) / 2
+        return distance > h * 0.4 && distance < h * 1.55 && (abs(a.left - b.left) < 0.08 || abs(a.right - b.right) < 0.05)
+    }
+
+    private fun luma(flat: GamePhoneReader.Flat, x: Int, y: Int): Int = flat.nv21[y * flat.width + x].toInt() and 0xff
+
+    /** Balonun zemini: kutudaki örneklerin ortancası (harfler ve kenar yumuşatması ölçümü bozmasın). */
+    private fun backgroundLevel(flat: GamePhoneReader.Flat, anchor: TextBox): Int {
+        val levels = IntArray(256)
+        val columns = 24
+        val rows = 8
+        for (y in 0 until rows) {
+            val v = anchor.top + (y + 0.5) / rows * (anchor.bottom - anchor.top)
+            val row = (v * flat.height).toInt().coerceIn(0, flat.height - 1)
+            for (x in 0 until columns) {
+                val u = anchor.left + (x + 0.5) / columns * (anchor.right - anchor.left)
+                levels[luma(flat, (u * flat.width).toInt().coerceIn(0, flat.width - 1), row)]++
+            }
+        }
+        var sum = 0
+        for (i in levels.indices) {
+            sum += levels[i]
+            if (sum >= columns * rows / 2) return i
+        }
+        return 0
+    }
+
+    /** Şeridin kopyası, zeminden farkı altı kat büyütülmüş griyle (renk düzlemleri nötr). */
+    private fun enhancedBand(flat: GamePhoneReader.Flat, top: Int, end: Int, background: Int): GamePhoneReader.Flat {
+        val height = end - top
+        val out = ByteArray(flat.width * height * 3 / 2)
+        java.util.Arrays.fill(out, flat.width * height, out.size, 128.toByte())
+        for (y in 0 until height) for (x in 0 until flat.width) {
+            out[y * flat.width + x] = (160 + 6 * (luma(flat, x, top + y) - background)).coerceIn(0, 255).toByte()
+        }
+        return GamePhoneReader.Flat(out, flat.width, height)
+    }
+
+    /** Alt satırın üstündeki satırlarda soluk harf izi: en az iki satırda yedi küçük parlaklık basamağı (tek çizgi yetmez). */
+    private fun hasTextEdges(flat: GamePhoneReader.Flat, tail: TextBox, h: Double): Boolean {
+        val left = (tail.left * flat.width).toInt().coerceIn(0, flat.width - 1)
+        val right = (tail.right * flat.width).toInt().coerceIn(left, flat.width - 1)
+        var rows = 0
+        for (k in 0 until 8) {
+            val y = ((tail.top - h * (0.2 + k * 0.12)) * flat.height).toInt().coerceIn(0, flat.height - 1)
+            var edges = 0
+            var x = left
+            while (x + 3 < right) {
+                if (abs(luma(flat, x + 3, y) - luma(flat, x, y)) >= 3 && ++edges >= 7) break
+                x += 2
+            }
+            if (edges >= 7 && ++rows >= 2) return true
+        }
+        return false
     }
 }
 

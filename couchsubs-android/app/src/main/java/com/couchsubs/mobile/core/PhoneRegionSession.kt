@@ -25,6 +25,71 @@ internal class PhoneRegionSession(
     companion object {
         const val ID = SubtitleServer.GAME_PHONE_ID
         const val INTERVAL_MS = 450L
+
+        /**
+         * Aynı balon ekranda yerini izler, ama küçük OCR kutu farkları yazı boyunu ve satır kırılımını, renk örneği de
+         * zemini sürekli değiştirmesin: genişlik %5'ten, yükseklik %10'dan, satır yüksekliği %15'ten az oynadıysa ve
+         * renkler 16 basamaktan yakınsa son gönderilen değer kalır. Aynı yerde iki eş mesaj varsa ayırt edilemez,
+         * dokunulmaz (Windows RegionWatcher.StablePhoneBlocks ile aynı).
+         */
+        fun steady(items: List<ScreenTranslation.Item>, previous: List<ScreenTranslation.Item>): List<ScreenTranslation.Item> =
+            items.map { item ->
+                var match: ScreenTranslation.Item? = null
+                for (old in previous) {
+                    if (old.source != item.source || old.translation != item.translation ||
+                        abs(old.box.left - item.box.left) > 0.05 || abs(old.box.top - item.box.top) > 0.05) continue
+                    if (match != null) return@map item
+                    match = old
+                }
+                val before = match ?: return@map item
+                var box = item.box
+                val width = box.right - box.left
+                val height = box.bottom - box.top
+                val oldWidth = before.box.right - before.box.left
+                val oldHeight = before.box.bottom - before.box.top
+                if (oldWidth > 0 && abs(width - oldWidth) <= oldWidth * 0.05) box = box.copy(right = minOf(1.0, box.left + oldWidth))
+                if (oldHeight > 0 && abs(height - oldHeight) <= oldHeight * 0.10) box = box.copy(bottom = minOf(1.0, box.top + oldHeight))
+                val line = if (abs(item.lineHeight - before.lineHeight) <= before.lineHeight * 0.15) before.lineHeight else item.lineHeight
+                var surface = item.surface
+                val old = before.surface
+                if (surface != null && old != null) {
+                    // Ön ve arka renk ayrı ayrı: seçimin gerçek yazı/zemin rengi değişimi korunur.
+                    surface = surface.copy(
+                        foreground = if (nearColor(surface.foreground, old.foreground, 16)) old.foreground else surface.foreground,
+                        background = if (nearColor(surface.background, old.background, 16)) old.background else surface.background,
+                    )
+                    // İki ayrı okunur paletin karışımı kontrastı düşürebilir: o zaman güncel çift kullanılır.
+                    if (surface != old && surface != item.surface && contrast(surface.background, surface.foreground) < 4.5) surface = item.surface
+                }
+                item.copy(box = box, lineHeight = line, surface = surface)
+            }
+
+        /** Kanallar en çok [tolerance] farklı (palet sekizli basamaklara yuvarlar; bir basamak sıkıştırma titreşimidir). */
+        fun nearColor(a: String, b: String, tolerance: Int): Boolean {
+            if (a == b) return true
+            if (a.length != 7 || b.length != 7) return false
+            for (i in 1 until 7 step 2) {
+                val x = a.substring(i, i + 2).toIntOrNull(16) ?: return false
+                val y = b.substring(i, i + 2).toIntOrNull(16) ?: return false
+                if (abs(x - y) > tolerance) return false
+            }
+            return true
+        }
+
+        /** WCAG 2 kontrast oranı (1–21). */
+        fun contrast(a: String, b: String): Double {
+            fun luminance(hex: String): Double {
+                val value = hex.removePrefix("#").toIntOrNull(16) ?: 0
+                fun linear(n: Int): Double {
+                    val c = n / 255.0
+                    return if (c <= 0.03928) c / 12.92 else Math.pow((c + 0.055) / 1.055, 2.4)
+                }
+                return 0.2126 * linear((value shr 16) and 0xff) + 0.7152 * linear((value shr 8) and 0xff) + 0.0722 * linear(value and 0xff)
+            }
+            val x = luminance(a)
+            val y = luminance(b)
+            return (maxOf(x, y) + 0.05) / (minOf(x, y) + 0.05)
+        }
     }
 
     private class Bubble(val group: ScreenTranslation.Group, val style: TextSurface)
@@ -44,6 +109,15 @@ internal class PhoneRegionSession(
     private var anchors: List<Anchor> = emptyList()
     private var needsWork = false
     private var emptyOnce = false
+    private val rescue = TailRescue()
+    /** Çevirisi tam gösterilen son sayfa: tek okumalık OCR sapmasını gerçek değişiklikten ayırmak için. */
+    private var shownPage: Page? = null
+    /** Son okuma bir kez bekletildi; sonraki tur mutlaka yeniden okur ve sonucu kabul eder. */
+    private var held = false
+    private var recheck = false
+    /** Son gönderilen bloklar ve o anki telefon boyu ([steady]). */
+    private var sent: List<ScreenTranslation.Item> = emptyList()
+    private var sentScale = 0.0
 
     fun observe(capture: PhoneCapture) {
         if (!closed) latest = capture
@@ -69,7 +143,7 @@ internal class PhoneRegionSession(
 
     private fun read(capture: PhoneCapture, signature: ByteArray): Page {
         val region = capture.region
-        val reading = GamePhoneText.forTranslation(GamePhoneReader.read(capture.image, region, capture.pose, reader))
+        val reading = GamePhoneText.forTranslation(GamePhoneReader.read(capture.image, region, capture.pose, rescue, reader))
         val place = region.box
         val groups = GamePhoneText.groups(reading)
         val icons = if (groups.any { it.icons != null }) capture.image.gray(region) else null
@@ -87,13 +161,26 @@ internal class PhoneRegionSession(
             !it.region.isClose(start.region, 0.01) || RegionSignature.changed(it.signature, signature) ||
                 it.pixels.changed(start.image, start.region)
         } ?: true
-        if (changed || emptyOnce) {
-            page = try {
+        if (changed || emptyOnce || recheck) {
+            recheck = false
+            val fresh = try {
                 read(start, signature)
             } catch (error: Exception) {
                 page = null
                 return
             }
+            // Yerinde duran iki komşu arasından düşen balon ya da uzun mesajdaki birkaç bozuk harf tek okumada ekrandan
+            // silinmez, çeviri yenilenmez: sonraki tur mutlaka yeniden okur; aynı görünen gerçek değişiklik o turda ilerler.
+            val previous = shownPage
+            if (!held && previous != null && previous.region.isClose(fresh.region, 0.01) &&
+                (missingInteriorBubble(previous, fresh) ||
+                    (sameLayout(previous, fresh, start.image) && GamePhoneText.hasAdjacentOcrEdits(text(previous), text(fresh))))) {
+                held = true
+                recheck = true
+                return
+            }
+            held = false
+            page = fresh
         } else if (!needsWork) {
             return
         }
@@ -169,6 +256,47 @@ internal class PhoneRegionSession(
         if (closed) return
         publish(items(current, available))
         needsWork = current.bubbles.any { bubble -> bubble.group.paragraphs.any { available[it] == null } }
+        if (!needsWork) shownPage = current
+    }
+
+    private fun text(page: Page): String = page.bubbles.flatMap { it.group.paragraphs }.joinToString(" ")
+
+    /**
+     * Yalnız tek iç balon eksilmiş: kalanların yazısı ve kutuları aynı sırada aynı yerde (0,012), eksilen ilk balon değil
+     * ve çevirisi gösteriliyordu. Bu bir OCR atlaması olabilir; kaydırma, yeni yazı ya da sayfanın kapanması buna takılmaz.
+     */
+    private fun missingInteriorBubble(previous: Page, current: Page): Boolean {
+        val before = previous.bubbles
+        val now = current.bubbles
+        if (now.size < 2 || before.size != now.size + 1) return false
+        var missing = false
+        for (i in now.indices) {
+            val block = now[i].group
+            var prior = before[if (missing) i + 1 else i].group
+            if (prior.paragraphs != block.paragraphs) {
+                if (missing || i == 0 || before[i].group.paragraphs.any { translations[it] == null }) return false
+                missing = true
+                prior = before[i + 1].group
+                if (prior.paragraphs != block.paragraphs) return false
+            }
+            if (abs(block.box.left - prior.box.left) > 0.012 || abs(block.box.right - prior.box.right) > 0.012 ||
+                abs(block.box.top - prior.box.top) > 0.012 || abs(block.box.bottom - prior.box.bottom) > 0.012) return false
+        }
+        return missing
+    }
+
+    /** Aynı yerleşim: balon sayısı ve sınırları aynı, kutular iki pikselden az oynamış, zemin/yazı rengi yakın. */
+    private fun sameLayout(previous: Page, current: Page, frame: PhoneImage): Boolean {
+        val dx = 2.0 / frame.width
+        val dy = 2.0 / frame.height
+        if (previous.bubbles.size != current.bubbles.size) return false
+        return previous.bubbles.zip(current.bubbles).all { (a, b) ->
+            a.group.paragraphs.size == b.group.paragraphs.size &&
+                abs(a.group.box.left - b.group.box.left) <= dx && abs(a.group.box.right - b.group.box.right) <= dx &&
+                abs(a.group.box.top - b.group.box.top) <= dy && abs(a.group.box.bottom - b.group.box.bottom) <= dy &&
+                abs(a.group.lineHeight - b.group.lineHeight) <= dy &&
+                nearColor(a.style.background, b.style.background, 8) && nearColor(a.style.foreground, b.style.foreground, 8)
+        }
     }
 
     private fun matches(page: Page, capture: PhoneCapture): Boolean =
@@ -189,6 +317,9 @@ internal class PhoneRegionSession(
 
     private fun clearMissing() {
         page = null
+        shownPage = null
+        held = false
+        recheck = false
         emptyOnce = false
         needsWork = false
         publish(emptyList())
@@ -222,9 +353,19 @@ internal class PhoneRegionSession(
             ScreenTranslation.item(group, group.paragraphs.map(IconText::protect), result)?.copy(surface = bubble.style)
         }
 
-    private fun publish(items: List<ScreenTranslation.Item>): Unit = synchronized(this) {
+    private fun publish(fresh: List<ScreenTranslation.Item>): Unit = synchronized(this) {
         // Kapanan telefonun bekleyen çevirisi oyunun üstüne çizilmez.
-        if (closed && items.isNotEmpty()) return
+        if (closed && fresh.isNotEmpty()) return
+        // Telefon gerçekten yakınlaşıp uzaklaşınca (%3) yeni boyutlar hemen kullanılır; yoksa aynı balonun görünüşü sabit.
+        page?.region?.let { region ->
+            val scale = region.bottom - region.top
+            if (abs(scale - sentScale) > sentScale * 0.03) {
+                sentScale = scale
+                sent = emptyList()
+            }
+        }
+        val items = if (sent.isEmpty()) fresh else steady(fresh, sent)
+        sent = items
         if (rendered == items) return
         rendered = items
         val box = items.map { it.box }.reduceOrNull { a, b -> a.union(b) }

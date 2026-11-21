@@ -248,7 +248,7 @@ class GamePhoneTextTest {
             line("May", 0.25), line("Don't leave yet.", 0.29), line("Messages", 0.42),
             line("Rose", 0.54), line("Meet me at 06:40.", 0.58))
         val kept = GamePhoneText.forTranslation(Reading(rows))
-        assertEquals(listOf("Suggestions", "call me after ...", "Don't leave yet.", "Messages", "Meet me at 06:40."), kept.lines.map { it.text })
+        assertEquals(listOf("Suggestions", "call me after...", "Don't leave yet.", "Messages", "Meet me at 06:40."), kept.lines.map { it.text })
         assertTrue(GamePhoneText.forTranslation(Reading(rows.drop(1))).lines.map { it.text }.contains("May"))
     }
 
@@ -452,4 +452,82 @@ class PhoneRegionSessionTest {
         assertEquals(0, server.clears)
         assertEquals(passes, watcher.passes)
     }
+
+    /** Uzun mesajda yan yana iki sözcükteki OCR sapması bir kez daha okunur; ikinci okumada da varsa gerçek değişikliktir. */
+    private fun adjacentTypo(realChange: Boolean) {
+        val original = "Cool. I'll check it out. Would be nice to clear my head for a second."
+        val alternate = "Cool. I'll check ct ocut. Would be nice to clear my head for a second."
+        val reader = Reader()
+        val translator = Translator()
+        val server = Server()
+        val watcher = watcher(reader, translator, server)
+        val a = TestPhoneImage.phone()
+        val b = TestPhoneImage.phone(patch = intArrayOf(232, 120, 18, 30))
+        val pose = GamePhoneGeometry.locate(a)!!
+        reader.lines = listOf(TextLine(original, first))
+        watcher.observePhone(PhoneCapture(a, pose))
+        watcher.offer()
+        wait { !watcher.isBusy }
+        val sends = server.sent.size
+        reader.lines = listOf(TextLine(alternate, first))
+        clock = 450
+        watcher.observePhone(PhoneCapture(b, pose))
+        watcher.offer()
+        wait { !watcher.isBusy }
+        assertEquals(2, reader.count.get())
+        assertEquals(sends, server.sent.size)
+        assertEquals(1, translator.calls.size)
+        reader.lines = listOf(TextLine(if (realChange) alternate else original, first))
+        clock = 900
+        watcher.observePhone(PhoneCapture(b, pose))
+        watcher.offer()
+        wait { !watcher.isBusy }
+        assertEquals(3, reader.count.get())
+        assertEquals(if (realChange) 2 else 1, translator.calls.size)
+        assertEquals(if (realChange) "Çevrildi: $alternate" else "Çevrildi: $original", server.sent.last().text)
+    }
+
+    @Test
+    fun longMessageConfirmsAdjacentOcrTyposOnce() = adjacentTypo(realChange = false)
+
+    @Test
+    fun longMessageRealChangeIsShownOnTheSecondRead() = adjacentTypo(realChange = true)
+
+    /** İki komşusu yerinde dururken tek okumada düşen balon ekrandan silinmez; ikinci okumada da yoksa silinir. */
+    private fun missingBubble(stillMissing: Boolean) {
+        val reader = Reader()
+        val translator = Translator()
+        val server = Server()
+        val watcher = watcher(reader, translator, server)
+        val a = TestPhoneImage.phone()
+        val b = TestPhoneImage.phone(patch = intArrayOf(232, 120, 18, 30))
+        val pose = GamePhoneGeometry.locate(a)!!
+        val full = listOf(TextLine("How's work?", TextBox(0.15, 0.10, 0.60, 0.16)), TextLine("Not great.", TextBox(0.15, 0.40, 0.60, 0.46)),
+            TextLine("See you.", TextBox(0.15, 0.75, 0.60, 0.81)))
+        reader.lines = full
+        watcher.observePhone(PhoneCapture(a, pose))
+        watcher.offer()
+        wait { !watcher.isBusy }
+        assertEquals(3, server.sent.last().items.size)
+        val sends = server.sent.size
+        reader.lines = listOf(full[0], full[2])
+        clock = 450
+        watcher.observePhone(PhoneCapture(b, pose))
+        watcher.offer()
+        wait { !watcher.isBusy }
+        assertEquals(sends, server.sent.size)
+        if (!stillMissing) reader.lines = full
+        clock = 900
+        watcher.observePhone(PhoneCapture(b, pose))
+        watcher.offer()
+        wait { !watcher.isBusy }
+        assertEquals(if (stillMissing) 2 else 3, server.sent.last().items.size)
+        assertTrue(stillMissing || server.sent.none { it.items.size == 2 })
+    }
+
+    @Test
+    fun omittedInteriorBubbleWaitsForASecondRead() = missingBubble(stillMissing = false)
+
+    @Test
+    fun interiorBubbleStillMissingOnTheSecondReadIsRemoved() = missingBubble(stillMissing = true)
 }

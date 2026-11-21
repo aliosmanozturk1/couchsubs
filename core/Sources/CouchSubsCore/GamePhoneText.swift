@@ -7,6 +7,25 @@ enum GamePhoneText {
     private static let chatWord = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_@#.-])(?:2gether|4u)(?![\p{L}\p{N}_])"#)
     private static let misreadTen = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_@#])(?:IO|I0|lO|l0)(?=\s+min(?:s|utes?)?\b)"#)
 
+    /// Aynı uzun mesajda yan yana iki kısa sözcükte birer harf oynamış ("it out" → "ct ocut"): yazı tanıma sapması, yeni
+    /// mesaj değil. Tek sözcüklü seçenekler, eklenen/silinen sözcükler, sayılar ve olumsuzluklar doğrudan işlenir (Windows ile aynı).
+    static func hasAdjacentOcrEdits(_ shown: String, _ next: String) -> Bool {
+        let before = TextMatch.normalize(shown).split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        let after = TextMatch.normalize(next).split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        guard before.count >= 9, before.count == after.count else { return false }
+        var first = 0, last = before.count - 1
+        while first <= last && before[first] == after[first] { first += 1 }
+        while last > first && before[last] == after[last] { last -= 1 }
+        guard last == first + 1 else { return false }
+        for i in first...last {
+            let a = before[i], b = after[i]
+            let length = max(a.count, b.count)
+            guard min(a.count, b.count) >= 2, length <= 6, a.allSatisfy(\.isLetter), b.allSatisfy(\.isLetter),
+                  TextMatch.isSimilar(a, b, threshold: 1.0 - 1.0 / Double(length)) else { return false }
+        }
+        return !TextMatch.addsMeaning(next, to: shown) && !TextMatch.addsMeaning(shown, to: next)
+    }
+
     static func containsIdentifier(_ text: String) -> Bool {
         (text.contains("@") || text.contains("#")) && identifier.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
     }
@@ -71,8 +90,7 @@ enum GamePhoneText {
     private static func isContactPair(_ name: TextLine, _ preview: TextLine) -> Bool {
         let label = name.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowerName = (2...18).contains(label.count) && label.allSatisfy(\.isLowercase)
-        guard looksLikeName(label) || lowerName, preview.text.trimmingCharacters(in: .whitespacesAndNewlines).contains(" "),
-              let a = layout(name), let b = layout(preview) else { return false }
+        guard looksLikeName(label) || lowerName, let a = layout(name), let b = layout(preview) else { return false }
         let h = a.bottom - a.top
         return a.left > 0.1 && a.left < 0.48 && abs(a.left - b.left) <= 0.06 &&
             b.top > a.top && b.top - a.bottom < h * 0.7 && b.bottom - b.top < h * 1.8
@@ -82,10 +100,13 @@ enum GamePhoneText {
         guard let box = layout(line), box.right >= 0.76 else { return line }
         let tail = line.text.reversed().prefix { ".,„".contains($0) }
         let stem = line.text.dropLast(tail.count)
-        guard (2...3).contains(tail.count), tail.last == ".", stem.last?.isLetter == true,
-              !line.text.hasSuffix("...") else { return line }
+        // "there ..", "there ...", "there..." tek yazımla: "there..." (son sözcük tamamlanmaz).
+        guard (2...3).contains(tail.count), tail.last == "." else { return line }
+        let word = stem.reversed().drop(while: \.isWhitespace).reversed()
+        guard word.last?.isLetter == true else { return line }
+        if word.count == stem.count && line.text.hasSuffix("...") { return line }
         var copy = line
-        copy.text = String(stem) + "..."
+        copy.text = String(word) + "..."
         return copy
     }
 
@@ -103,7 +124,8 @@ enum GamePhoneText {
         var i = 0
         while i + 1 < order.count {
             let name = order[i], preview = order[i + 1]
-            if isContactPair(lines[name], lines[preview]) {
+            if lines[preview].text.trimmingCharacters(in: .whitespacesAndNewlines).contains(" "),
+               isContactPair(lines[name], lines[preview]) {
                 names.append(name)
                 previews.insert(preview)
                 i += 2
@@ -117,6 +139,19 @@ enum GamePhoneText {
             return abs(box.left - (first.left + slope * (box.top - first.top))) <= 0.06
         }
         guard names.allSatisfy({ inColumn(lines[$0]) }) else { return Reading(lines: lines) }
+        // Listeyi uzun önizlemeler doğruladı: aynı satır düzenindeki "Okay" gibi tek sözcüklük yanıt, kişi adına benziyor
+        // diye atılmaz; önizlemesi olarak kalır (Windows ile aynı).
+        var k = 0
+        while k + 1 < order.count {
+            let name = order[k], preview = order[k + 1]
+            let text = lines[preview].text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if inColumn(lines[name]), !previews.contains(name), !names.contains(preview), !text.contains(" "),
+               looksLikeName(lines[preview].text), isContactPair(lines[name], lines[preview]) {
+                names.append(name)
+                previews.insert(preview)
+                k += 2
+            } else { k += 1 }
+        }
         return Reading(lines: lines.indices.compactMap { index in
             let line = lines[index]
             if previews.contains(index) { return previewPunctuation(line) }
@@ -145,15 +180,23 @@ enum GamePhoneText {
                                 lineHeight: heights[heights.count / 2], icons: icons.isEmpty ? nil : [icons]))
         }
         for line in reading.lines.filter({ $0.box != nil }).sorted(by: { box($0).top < box($1).top }) {
-            if let previous = run.last, breaksBlock(box(previous), box(line)) { finish() }
+            if let previous = run.last,
+               breaksBlock(box(previous), box(line), afterFlatSentence: flat && endsSentence(previous.text)) { finish() }
             run.append(line)
         }
         finish()
         return Array(groups.prefix(ScreenTranslation.maxGroups))
     }
 
-    private static func breaksBlock(_ previous: TextBox, _ next: TextBox) -> Bool {
-        if next.top - previous.bottom > max(previous.bottom - previous.top, next.bottom - next.top) { return true }
+    private static func endsSentence(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).last.map { ".!?".contains($0) } ?? false
+    }
+
+    /// Düzeltilmiş telefon görüntüsünde satır arası dar, ardışık balonlar arasındaki boşluk daha geniştir: cümle sonundan
+    /// sonra 0,65 satırdan geniş boşluk yeni balondur; aynı balonda alt satıra geçen ikinci cümle birlikte kalır.
+    private static func breaksBlock(_ previous: TextBox, _ next: TextBox, afterFlatSentence: Bool) -> Bool {
+        let lineHeight = max(previous.bottom - previous.top, next.bottom - next.top)
+        if next.top - previous.bottom > lineHeight * (afterFlatSentence ? 0.65 : 1) { return true }
         let alignedLeft = abs(previous.left - next.left) <= 0.08
         let alignedRight = min(previous.left, next.left) > 0.25 && abs(previous.right - next.right) <= 0.045
         return !alignedLeft && !alignedRight
