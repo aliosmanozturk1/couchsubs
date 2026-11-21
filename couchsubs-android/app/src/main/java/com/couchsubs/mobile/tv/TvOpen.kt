@@ -87,7 +87,14 @@ object TvOpenRetry {
  * saniye de buna yetiyordu. TV uygulaması (0.9.54 ve öncesi) parametreli açılışta kayıtlı katman tercihine dönüp ekranı
  * kapatıyordu. Artık: bu çeviride bir kez bağlanan uygulama bir daha açılmaz; hiç bağlanmadıysa en çok [maxOpens] kez,
  * aralarında en az [intervalMs]; "Otomatik açmayı dene" ([reset]) sıfırlar. Uygulama TV'de zaten çalışıyorsa `am start` hiç
- * gönderilmez (AndroidTvInstaller.ALREADY_RUNNING) ve açılış sayılmaz.
+ * gönderilmez (AndroidTvInstaller.ALREADY_RUNNING).
+ *
+ * X'te bildirildi (Android TV, beta.77): "izni sürekli yeniden istiyor". Kanıtlı (kod): sınır yalnız gerçekten gönderilen
+ * `am start`'ları sayıyordu. TV bu cihazı "Her zaman izin ver" işaretlenmeden onayladıysa ya da hiç onaylamadıysa her deneme
+ * "açılamadı" oluyor, uygulama TV'de çalışıp bağlı değilse "zaten açık" oluyor, ikisi de sayılmıyordu: bekçi çeviri boyunca
+ * 30 sn'de bir yeni ADB bağlantısı açıyor, TV her seferinde "Hata ayıklamaya izin verilsin mi?" diye soruyordu. (ADB anahtarı
+ * kalıcıdır; soru anahtar değiştiği için değil, onay kalıcı verilmediği için yineleniyordu.) Artık her ADB bağlantısı, sonucu
+ * ne olursa olsun bir deneme sayılır: çeviri başına en çok [maxOpens] bağlantı.
  */
 class AndroidTvOpenRule(private val maxOpens: Int = DEFAULT_MAX_OPENS, private val intervalMs: Long = DEFAULT_INTERVAL_MS) {
     companion object {
@@ -95,26 +102,35 @@ class AndroidTvOpenRule(private val maxOpens: Int = DEFAULT_MAX_OPENS, private v
         const val DEFAULT_INTERVAL_MS = 30_000L
     }
 
+    /** Açılan ADB bağlantıları (açıldı, zaten açık ya da açılamadı); sınır bunu sayar. */
+    var attempts = 0
+        private set
+    /** Gerçekten gönderilen `am start`'lar. */
     var opens = 0
         private set
     var everConnected = false
         private set
     private var lastAttempt: Long? = null
 
-    /** Bu kontrolde açma denensin mi ([now]: ms, tekdüze saat); true dönerse deneme zamanı yazılır. */
+    /**
+     * Bu kontrolde ADB bağlantısı açılıp açma denensin mi ([now]: ms, tekdüze saat); true dönerse deneme sayılır. Uygulama
+     * bağlıyken hiç bağlantı açılmaz.
+     */
     @Synchronized fun shouldTry(connected: Boolean, now: Long): Boolean {
         if (connected) { everConnected = true; return false }
-        if (everConnected || opens >= maxOpens) return false
+        if (everConnected || attempts >= maxOpens) return false
         lastAttempt?.let { if (now - it < intervalMs) return false }
         lastAttempt = now
+        attempts++
         return true
     }
 
     /** `am start` gerçekten gönderildi (uygulama kapalıydı). */
     @Synchronized fun opened() { opens++ }
 
-    /** "Otomatik açmayı dene": yeniden en çok [maxOpens] kez, beklemeden. */
+    /** "Otomatik açmayı dene": yeniden en çok [maxOpens] deneme, beklemeden. */
     @Synchronized fun reset() {
+        attempts = 0
         opens = 0
         everConnected = false
         lastAttempt = null

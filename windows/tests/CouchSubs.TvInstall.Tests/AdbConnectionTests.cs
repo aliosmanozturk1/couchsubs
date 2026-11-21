@@ -325,6 +325,29 @@ public class AdbConnectionTests
         Assert.Equal(first.ExportParameters(false).Modulus, second.ExportParameters(false).Modulus);
     }
 
+    /// <summary>
+    /// TV'nin onayı anahtara verilir: aynı anda anahtar isteyen işlemler (Mac'te kurulum yardımcısı ve bekçi) aynı anahtarı
+    /// almalı, geride geçici dosya kalmamalı; bozuk dosyanın yerine yenisi yazılır.
+    /// </summary>
+    [Fact]
+    public async Task KeyIsTheSameForConcurrentCallersAndACorruptFileIsReplaced()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        var keys = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(() => AndroidTvInstaller.LoadOrCreateKey(dir))));
+        using var stored = AndroidTvInstaller.LoadOrCreateKey(dir);
+        foreach (var key in keys)
+        {
+            Assert.Equal(stored.ExportParameters(false).Modulus, key.ExportParameters(false).Modulus);
+            key.Dispose();
+        }
+        Assert.Equal(["adbkey"], Directory.GetFiles(dir).Select(Path.GetFileName));
+
+        File.WriteAllText(Path.Combine(dir, "adbkey"), "bozuk");
+        using var replaced = AndroidTvInstaller.LoadOrCreateKey(dir);
+        using var again = AndroidTvInstaller.LoadOrCreateKey(dir);
+        Assert.Equal(replaced.ExportParameters(false).Modulus, again.ExportParameters(false).Modulus);
+    }
+
     [Fact]
     public void VersionIsReadFromDumpsys()
     {

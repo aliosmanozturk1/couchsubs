@@ -65,13 +65,23 @@ public enum TVOpenText {
 /// - hiç bağlanmadıysa en çok `maxOpens` kez, aralarında en az `interval` saniye açılır;
 /// - "Otomatik açmayı dene" ve uykudan dönüş (`reset`) sayacı sıfırlar.
 /// Uygulama TV'de zaten çalışıyorsa (ekranı ya da katmanı) `am start` hiç gönderilmez (ADB tarafı `AndroidTVApp.isRunning`
-/// ile bakar) ve bu açılış sayılmaz.
+/// ile bakar).
+///
+/// X'te bildirildi (Android TV, beta.77): "izni sürekli yeniden istiyor". Kanıtlı (kod): sınır yalnız gerçekten gönderilen
+/// `am start`'ları sayıyordu. TV bu cihazı "Her zaman izin ver" işaretlenmeden onayladıysa ya da hiç onaylamadıysa her deneme
+/// "açılamadı" oluyor, uygulama TV'de çalışıp bağlı değilse "zaten açık" oluyor, ikisi de sayılmıyordu: bekçi çeviri boyunca
+/// 30 sn'de bir yeni ADB bağlantısı açıyor, TV her seferinde "Hata ayıklamaya izin verilsin mi?" diye soruyordu. (ADB
+/// anahtarı dört platformda kalıcıdır; soru anahtar değiştiği için değil, onay kalıcı verilmediği için yineleniyordu.)
+/// Artık her ADB bağlantısı, sonucu ne olursa olsun bir deneme sayılır: çeviri başına en çok `maxOpens` bağlantı.
 public struct AndroidTVOpenRule: Sendable {
     public static let defaultMaxOpens = 3
     public static let defaultInterval: TimeInterval = 30
 
     public let maxOpens: Int
     public let interval: TimeInterval
+    /// Açılan ADB bağlantıları (açıldı, zaten açık ya da açılamadı); sınır bunu sayar.
+    public private(set) var attempts = 0
+    /// Gerçekten gönderilen `am start`'lar.
     public private(set) var opens = 0
     public private(set) var everConnected = false
     private var lastAttempt: TimeInterval?
@@ -81,20 +91,23 @@ public struct AndroidTVOpenRule: Sendable {
         self.interval = interval
     }
 
-    /// Bu kontrolde açma denensin mi (`now`: saniye, tekdüze saat). true dönerse deneme zamanı yazılır.
+    /// Bu kontrolde ADB bağlantısı açılıp açma denensin mi (`now`: saniye, tekdüze saat). true dönerse deneme sayılır.
+    /// Uygulama bağlıyken hiç bağlantı açılmaz.
     public mutating func shouldTry(connected: Bool, now: TimeInterval) -> Bool {
         if connected { everConnected = true; return false }
-        if everConnected || opens >= maxOpens { return false }
+        if everConnected || attempts >= maxOpens { return false }
         if let lastAttempt, now - lastAttempt < interval { return false }
         lastAttempt = now
+        attempts += 1
         return true
     }
 
     /// `am start` gerçekten gönderildi (uygulama kapalıydı).
     public mutating func opened() { opens += 1 }
 
-    /// "Otomatik açmayı dene" ya da uykudan dönüş: yeniden en çok `maxOpens` kez, beklemeden.
+    /// "Otomatik açmayı dene" ya da uykudan dönüş: yeniden en çok `maxOpens` deneme, beklemeden.
     public mutating func reset() {
+        attempts = 0
         opens = 0
         everConnected = false
         lastAttempt = nil

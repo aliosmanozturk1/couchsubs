@@ -87,8 +87,30 @@ class TvSessionLauncherTest {
             active = { rounds < 120 }, connected = { false },
             open = { _, _, _ -> tries++; if (rounds < 30) com.couchsubs.mobile.tv.android.AndroidTvInstaller.ALREADY_RUNNING else "Starting" },
             sleep = { rounds++; rounds == 100 }, now = { rounds * 5_000L })
-        // 0-29. turlar (150 sn) uygulama çalışıyor: 5 deneme, sayılmaz; sonra 3 açılış; 100. turda yeniden dene: 3 açılış daha.
-        assertEquals(5 + 3 + 3, tries)
+        // X (beta.77), "izni sürekli yeniden istiyor": "zaten açık" da bir ADB bağlantısıdır ve sayılır (eskiden sayılmıyor,
+        // 30 sn'de bir sınırsız bağlantı açılıyordu). İlk 3 deneme; 100. turda yeniden dene: 3 deneme daha.
+        assertEquals(3 + 3, tries)
+    }
+
+    /** X (beta.77): onaysız TV'de her ADB bağlantısı izin sorusu açar; çeviri boyunca en çok üç kez sorulur. */
+    @Test fun unapprovedAndroidTvIsNotAskedOverAndOver() {
+        var rounds = 0
+        var tries = 0
+        TvSessionLauncher.keepAndroidTvOpen(InstalledTv(TvBrand.ANDROID_TV, "192.168.1.120"), "http://192.168.1.124:8787",
+            active = { rounds < 720 }, connected = { false },
+            open = { _, _, _ -> tries++
+                throw com.couchsubs.mobile.tv.android.AndroidInstallException(com.couchsubs.mobile.tv.android.AndroidInstallError.NOT_APPROVED) },
+            sleep = { rounds++; false }, now = { rounds * 5_000L })
+        assertEquals(3, tries)
+    }
+
+    @Test fun connectedAndroidTvAppNeverGetsAnAdbConnection() {
+        var rounds = 0
+        var tries = 0
+        TvSessionLauncher.keepAndroidTvOpen(InstalledTv(TvBrand.ANDROID_TV, "192.168.1.120"), "http://192.168.1.124:8787",
+            active = { rounds < 720 }, connected = { true }, open = { _, _, _ -> tries++; "Starting" },
+            sleep = { rounds++; false }, now = { rounds * 5_000L })
+        assertEquals(0, tries)
     }
 
     @Test fun runningTvAppIsRecognised() {

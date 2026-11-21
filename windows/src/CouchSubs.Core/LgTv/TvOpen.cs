@@ -61,7 +61,14 @@ public static class TvOpenText
 /// kadar geçen birkaç saniye de buna yetiyordu. TV uygulaması (0.9.54 ve öncesi) parametreli açılışta kayıtlı katman
 /// tercihine dönüp ekranı kapatıyordu. Artık: bu çeviride bir kez bağlanan uygulama bir daha açılmaz; hiç bağlanmadıysa
 /// en çok <c>maxOpens</c> kez, aralarında en az <c>interval</c>; "Otomatik açmayı dene" ve uykudan dönüş sıfırlar.
-/// Uygulama TV'de zaten çalışıyorsa <c>am start</c> hiç gönderilmez (<see cref="AlreadyRunning"/>) ve açılış sayılmaz.
+/// Uygulama TV'de zaten çalışıyorsa <c>am start</c> hiç gönderilmez (<see cref="AlreadyRunning"/>).
+///
+/// X'te bildirildi (Android TV, beta.77): "izni sürekli yeniden istiyor". Kanıtlı (kod): sınır yalnız gerçekten gönderilen
+/// <c>am start</c>'ları sayıyordu. TV bu cihazı "Her zaman izin ver" işaretlenmeden onayladıysa ya da hiç onaylamadıysa her
+/// deneme "açılamadı" oluyor, uygulama TV'de çalışıp bağlı değilse "zaten açık" oluyor, ikisi de sayılmıyordu: bekçi çeviri
+/// boyunca 30 sn'de bir yeni ADB bağlantısı açıyor, TV her seferinde "Hata ayıklamaya izin verilsin mi?" diye soruyordu.
+/// (ADB anahtarı kalıcıdır; soru anahtar değiştiği için değil, onay kalıcı verilmediği için yineleniyordu.) Artık her ADB
+/// bağlantısı, sonucu ne olursa olsun bir deneme sayılır: çeviri başına en çok <c>maxOpens</c> bağlantı.
 /// </remarks>
 public sealed class AndroidTvOpenRule(int maxOpens = AndroidTvOpenRule.DefaultMaxOpens, TimeSpan? interval = null)
 {
@@ -71,25 +78,33 @@ public sealed class AndroidTvOpenRule(int maxOpens = AndroidTvOpenRule.DefaultMa
     public const string AlreadyRunning = "zaten açık";
 
     private DateTime? lastAttempt;
+    /// <summary>Açılan ADB bağlantıları (açıldı, zaten açık ya da açılamadı); sınır bunu sayar.</summary>
+    public int Attempts { get; private set; }
+    /// <summary>Gerçekten gönderilen <c>am start</c>'lar.</summary>
     public int Opens { get; private set; }
     public bool EverConnected { get; private set; }
 
-    /// <summary>Bu kontrolde açma denensin mi; true dönerse deneme zamanı yazılır.</summary>
+    /// <summary>
+    /// Bu kontrolde ADB bağlantısı açılıp açma denensin mi; true dönerse deneme sayılır. Uygulama bağlıyken hiç bağlantı
+    /// açılmaz.
+    /// </summary>
     public bool ShouldTry(bool connected, DateTime now)
     {
         if (connected) { EverConnected = true; return false; }
-        if (EverConnected || Opens >= maxOpens) return false;
+        if (EverConnected || Attempts >= maxOpens) return false;
         if (lastAttempt is { } last && now - last < (interval ?? DefaultInterval)) return false;
         lastAttempt = now;
+        Attempts++;
         return true;
     }
 
     /// <summary><c>am start</c> gerçekten gönderildi (uygulama kapalıydı).</summary>
     public void Opened() => Opens++;
 
-    /// <summary>"Otomatik açmayı dene" ya da uykudan dönüş: yeniden en çok <c>maxOpens</c> kez, beklemeden.</summary>
+    /// <summary>"Otomatik açmayı dene" ya da uykudan dönüş: yeniden en çok <c>maxOpens</c> deneme, beklemeden.</summary>
     public void Reset()
     {
+        Attempts = 0;
         Opens = 0;
         EverConnected = false;
         lastAttempt = null;
