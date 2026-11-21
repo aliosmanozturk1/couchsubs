@@ -154,6 +154,9 @@ altyazı metni bilgisayardan çıkmaz. Hız bilgisayarınıza bağlıdır; ekran
 7-8 milyar parametreli bir model (ör. Qwen 2.5 7B) bir altyazıyı genellikle bir iki saniyede çevirir. Model yanıt
 vermezse o satır her zamanki ücretsiz çeviriyle gelir.
 
+Ekran kartınıza göre hangi modelin (Gemma 4) seçileceği, PolyStrata ve LM Studio ile büyük modeli küçük kartta
+çalıştırma ve sansürsüz çeviri için hazır Ek talimat: [docs/yerel-model.md](docs/yerel-model.md) (topluluk rehberi).
+
 **Ollama ile**
 
 1. [ollama.com/download](https://ollama.com/download)'dan Ollama'yı kurup açın.
@@ -292,7 +295,8 @@ On Windows, if SmartScreen appears, choose **More info › Run anyway**.
 **Local AI translation:** in **Settings › Translation** choose **Local model** to translate with a model running on your
 own computer through [Ollama](https://ollama.com) (`ollama pull qwen2.5:7b`, address `http://127.0.0.1:11434/v1`) or
 [LM Studio](https://lmstudio.ai) (local server, `http://localhost:1234/v1`). No key, quota or cost, and subtitle text
-stays on your computer; **Test connection** checks the server and the model.
+stays on your computer; **Test connection** checks the server and the model. Which model fits your graphics card
+(community guide, Turkish): [docs/yerel-model.md](docs/yerel-model.md).
 
 **Shortcuts** (while translating, even with CouchSubs in the background): on Windows **Num 9** or **Ctrl+Shift+9**
 translates the screen; Num 1–3, 5, 0, 7 and 8 also work as Ctrl+Shift+1–3, 5, 0, 7 and 8, so laptops without a numeric
