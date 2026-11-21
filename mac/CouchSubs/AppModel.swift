@@ -123,29 +123,6 @@ struct BundledTVApp: Equatable {
     }
 }
 
-/// Bekçinin Samsung'da TV uygulamasını açma yolu: önce geliştirici bağlantısı (sdb), olmazsa uzaktan kumanda bağlantısı
-/// (8002, ilk bağlantıda TV izin sorar). Samsung önplandaki uygulamayı söylemez; bekçi yalnız açar.
-final class SamsungLauncher: TVControlling, @unchecked Sendable {
-    private let openWithSdb: () async -> Bool
-    private let connectRemote: () async throws -> TVControlling
-
-    init(openWithSdb: @escaping () async -> Bool, connectRemote: @escaping () async throws -> TVControlling) {
-        self.openWithSdb = openWithSdb
-        self.connectRemote = connectRemote
-    }
-
-    func launch(appId: String, params: [String: Any]) async throws {
-        if await openWithSdb() { return }
-        let remote = try await connectRemote()
-        defer { remote.close() }
-        try await remote.launch(appId: appId, params: params)
-    }
-
-    func foregroundAppId() async throws -> String { "" }
-
-    func close() {}
-}
-
 /// Denetlenemeyen TV'ler için: TV uygulaması kendisi bağlanır.
 final class IdleKeeper: KeeperControlling {
     func start(interval: Duration) {}

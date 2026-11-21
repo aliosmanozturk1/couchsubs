@@ -709,6 +709,7 @@
     <string name="tv_open_not_paired">Otomatik açılamadı: bu cihaz TV\'den henüz izin almadı. TV\'ye yeniden bağlanın ve TV\'de izin verin.</string>
     <string name="tv_open_debug_off">Otomatik açılamadı: TV\'ye hata ayıklama bağlantısıyla ulaşılamıyor. TV açık mı, Geliştirici seçeneklerinde ağ üzerinden hata ayıklama açık mı?</string>
     <string name="tv_open_debug_not_approved">Otomatik açılamadı: TV bu cihazın hata ayıklama iznini onaylamadı. TV uygulamasını yeniden kurun ve TV\'de izin verin.</string>
+    <string name="tv_open_not_opened">Otomatik açılamadı: TV açma komutunu aldı ama CouchSubs\'ı açmadı. Kumandayla TV\'den açın.</string>
     <string name="tv_open_try">Otomatik açmayı dene</string>
     <string name="tv_open_wizard_note">Her oyunda çeviriyi başlattığınızda CouchSubs TV uygulamasını kendisi açmaya çalışır; açılmazsa TV\'den CouchSubs\'ı açın.</string>
     <string name="engine_local">Yerel model</string>

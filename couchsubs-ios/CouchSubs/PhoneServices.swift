@@ -169,8 +169,12 @@ final class LivePhoneServices: PhoneServices {
                 }
                 return client
             }, search: { await SamsungDiscovery.search() }, onMoved: onMoved)
-            return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.samsungAppId, params: params,
-                            appConnected: appConnected, onOpenResult: onOpenResult)
+            // Önce geliştirici bağlantısı (sdb) denenir (Mac ve Windows ile aynı): uzaktan kumanda bağlantısıyla açmayı bazı
+            // TV'ler sessizce yok sayıyor, kullanıcı CouchSubs'ı kumandayla açmak zorunda kalıyordu (TestFlight build 27).
+            let host = tv.host
+            return TVKeeper(connect: { SamsungLauncher(openWithSdb: { await Self.openSamsungApp(host: host) },
+                                                       connectRemote: { try await locator.connect() }) },
+                            appId: AppIdentity.samsungAppId, params: params, appConnected: appConnected, onOpenResult: onOpenResult)
         case .lg:
             let locator = TVLocator(tv: tv, connect: { tv in
                 let client = SSAPClient(tv: tv, clientKey: key)
@@ -180,6 +184,12 @@ final class LivePhoneServices: PhoneServices {
             return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.tvAppId, params: params, consolePort: consolePort,
                             onOpenResult: onOpenResult)
         }
+    }
+
+    /// Kurulu Samsung TV uygulamasını geliştirici bağlantısıyla açar; sdb portu (26101) kapalıysa beklemeden false.
+    static func openSamsungApp(host: String) async -> Bool {
+        guard !host.isEmpty, await DevModeInstaller.isPortOpen(host: host, port: 26101) else { return false }
+        return await Task.detached(priority: .utility) { SamsungInstaller(host: host, signIn: nil).openApp() }.value
     }
 
     func checkDeepLKey(_ key: String) async -> OnlineKeyCheck { await DeepLTranslator.check(key: key) }

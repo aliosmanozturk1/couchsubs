@@ -19,7 +19,9 @@ enum class TvOpenProblem {
     /** Android TV: ADB portuna ulaşılamadı (TV kapalı ya da ağ üzerinden hata ayıklama kapalı). */
     DEBUG_OFF,
     /** Android TV: TV bu telefonun hata ayıklama iznini onaylamamış (ADB eşleşmesi yok). */
-    DEBUG_NOT_APPROVED;
+    DEBUG_NOT_APPROVED,
+    /** Samsung: açma komutu gitti ama TV uygulaması [TvSessionLauncher.SAMSUNG_OPEN_CHECK_MS] içinde bağlanmadı (TV komutu yok saydı). */
+    NOT_OPENED;
 
     companion object {
         /**
@@ -47,6 +49,7 @@ enum class TvOpenProblem {
             NOT_PAIRED -> R.string.tv_open_not_paired
             DEBUG_OFF -> R.string.tv_open_debug_off
             DEBUG_NOT_APPROVED -> R.string.tv_open_debug_not_approved
+            NOT_OPENED -> R.string.tv_open_not_opened
         }
     }
 }

@@ -605,6 +605,23 @@ final class SamsungInstaller {
         return readInstalledVersion(device)
     }
 
+    /// Kurulu TV uygulamasını geliştirici bağlantısıyla (sdb, `was_execute`) açar; arka plandaysa öne getirir (bekçi, bkz.
+    /// `SamsungLauncher`; Mac ve Windows'taki samsung-open ile aynı). sdb izin sormaz, TV'de bildirim çıkarmaz.
+    /// Geliştirici modu kapalıysa ya da Host PC IP başka cihazınsa false.
+    func openApp() -> Bool {
+        log.write("--- Samsung: TV uygulaması bağlı değil, açılıyor (TV \(host))")
+        do {
+            let device = try connect()
+            defer { device.close() }
+            let reply = try device.shell("0 was_execute \(Self.appId)")
+            log.write("Uygulama açılıyor: \(reply.trimmingCharacters(in: .whitespacesAndNewlines))")
+            return SamsungLauncher.sdbLaunched(reply)
+        } catch {
+            log.write("Uygulama açılamadı: \(error)")
+            return false
+        }
+    }
+
     /// TV'deki CouchSubs yoksa ya da `version`'dan eskiyse imzalayıp kurar, sonra açar.
     func ensureInstalled(wgt: () throws -> [UInt8], version: String?) throws -> Result {
         log.write("--- Samsung kurulumu (iPhone) başlıyor: TV \(host), paket \(version ?? "?")")

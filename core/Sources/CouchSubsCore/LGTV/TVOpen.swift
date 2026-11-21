@@ -16,6 +16,8 @@ public enum TVOpenProblem: String, Sendable, Equatable {
     case debugOff
     /// Android TV: TV bu cihazın hata ayıklama iznini onaylamamış (ADB eşleşmesi yok).
     case debugNotApproved
+    /// Samsung: açma komutu gitti ama TV uygulaması `TVKeeper.samsungOpenCheck` içinde bağlanmadı (TV komutu yok saydı).
+    case notOpened
 
     /// Bekçinin bildirdiği sorun, ekranda gösterilecek olana çevrilir: LG/Samsung'da kayıtlı anahtar yokken yanıt vermeyen
     /// TV "izin yok" sayılır (TV'nin izin sorusu yanıtlanmamış).
@@ -44,6 +46,7 @@ public enum TVOpenText {
         case .notPaired: "Couldn't open it automatically: this device has no permission from the TV yet. Connect the TV again and allow it on the TV."
         case .debugOff: "Couldn't open it automatically: the TV can't be reached for debugging. Is the TV on, with network debugging on in Developer options?"
         case .debugNotApproved: "Couldn't open it automatically: the TV hasn't allowed debugging from this device. Reinstall the TV app and allow it on the TV."
+        case .notOpened: "Couldn't open it automatically: the TV got the open command but didn't open CouchSubs. Open it on the TV with the remote."
         }
     }
 

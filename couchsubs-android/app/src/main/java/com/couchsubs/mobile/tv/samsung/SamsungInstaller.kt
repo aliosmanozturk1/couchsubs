@@ -61,7 +61,10 @@ class SamsungInstaller(
         /** Bu sürüme kadar (dahil) TV, kurulumdan önce dağıtıcının cihaz profilini (device-profile.xml) ister. */
         const val DEVICE_PROFILE_UP_TO = "4.0"
 
-        fun isTooOld(platform: String) = platform.isNotEmpty() && SamsungDiagnostics.isNewer(MINIMUM_TIZEN, platform)
+        /** `0 was_execute` yanıtı uygulamanın açıldığını söylüyor mu ("app_id[…] launched"; Windows/Mac/iPhone ile aynı). */
+        fun sdbLaunched(reply: String): Boolean = reply.contains("] launched") && !reply.contains("fail", ignoreCase = true)
+
+        fun isTooOld(platform: String) =platform.isNotEmpty() && SamsungDiagnostics.isNewer(MINIMUM_TIZEN, platform)
 
         fun needsDeviceProfile(platform: String) =
             platform.isNotEmpty() && !isTooOld(platform) && !SamsungDiagnostics.isNewer(platform, DEVICE_PROFILE_UP_TO)
@@ -163,6 +166,25 @@ class SamsungInstaller(
 
     /** Yalnız TV'deki CouchSubs sürümünü okur (kurmaz, açmaz); uygulama yoksa null. Güncelleme denetimi için. */
     fun installedVersion(): String? = connect().use { readInstalledVersion(it) }
+
+    /**
+     * Kurulu TV uygulamasını geliştirici bağlantısıyla (sdb, `was_execute`) açar; arka plandaysa öne getirir (Windows, Mac ve
+     * iPhone'daki bekçiyle aynı). sdb izin sormaz, TV'de bildirim çıkarmaz. Geliştirici modu kapalıysa ya da Host PC IP başka
+     * cihazınsa false.
+     */
+    fun openApp(): Boolean {
+        log.write("--- Samsung: TV uygulaması bağlı değil, açılıyor (TV $host)")
+        return try {
+            connect().use { device ->
+                val reply = device.shell("0 was_execute $APP_ID")
+                log.write("Uygulama açılıyor: ${reply.trim()}")
+                sdbLaunched(reply)
+            }
+        } catch (error: Exception) {
+            log.write("Uygulama açılamadı: ${error.message}")
+            false
+        }
+    }
 
     private fun installCore(wgt: () -> ByteArray, version: String?): Result {
         progress(InstallStep.CONNECTING)

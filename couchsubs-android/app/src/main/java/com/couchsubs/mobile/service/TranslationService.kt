@@ -321,16 +321,31 @@ class TranslationService : Service() {
                 hasKey = settings.secrets.get("tv.control.${tv.brand}.${tv.host}") != null)
             if (LiveState.status.value.tvOpenProblem != shown) LiveState.update { it.copy(tvOpenProblem = shown) }
         }
+        // Samsung: önce geliştirici bağlantısı (sdb `was_execute`); sdb portu kapalıysa beklemeden uzaktan kumandaya geçilir.
+        val openWithSdb: () -> Boolean = {
+            val tv = settings.installedTv
+            tv != null && tv.brand == com.couchsubs.mobile.tv.TvBrand.SAMSUNG &&
+                com.couchsubs.mobile.tv.android.AndroidTvInstaller.isReachable(tv.host, com.couchsubs.mobile.tv.samsung.SdbConnection.PORT) &&
+                com.couchsubs.mobile.tv.samsung.SamsungInstaller(
+                    host = tv.host,
+                    profilesDirectory = java.io.File(noBackupFilesDir, "samsung"),
+                    adbKey = { com.couchsubs.mobile.tv.samsung.AdbKey.loadOrCreate(java.io.File(noBackupFilesDir, "sdb/adbkey")) },
+                    certificates = com.couchsubs.mobile.tv.samsung.SamsungCertificates(),
+                    signIn = null,
+                    log = com.couchsubs.mobile.tv.samsung.InstallLog(java.io.File(filesDir, "tvinstall.log")),
+                ).openApp()
+        }
         Thread({ runCatching {
             com.couchsubs.mobile.tv.TvSessionLauncher.launch(settings, subtitlePort, key,
                 adbKeyFile = java.io.File(noBackupFilesDir, "adb/adbkey"), connected = connected,
-                log = { Log.i(TAG, it) }, onOpenResult = report, active = active)
+                log = { Log.i(TAG, it) }, onOpenResult = report, openWithSdb = openWithSdb, active = active)
             // LG: PS tuşu TV'yi PS5'in girişine geçirince uygulama geri getirilir (Windows/Mac/iPhone bekçisiyle aynı).
             com.couchsubs.mobile.tv.TvSessionLauncher.keepLgOpen(settings, subtitlePort, key, consolePort = { server?.consolePort },
                 log = { Log.i(TAG, it) }, onOpenResult = report) { active() && settings.target.showsOnTv }
             // Samsung: TV uygulaması bağlı değilken arada bir (ya da "Otomatik açmayı dene"de hemen) yeniden açılır.
             com.couchsubs.mobile.tv.TvSessionLauncher.keepSamsungOpen(settings, subtitlePort, key, connected = connected,
-                log = { Log.i(TAG, it) }, onOpenResult = report, active = { active() && settings.target.showsOnTv })
+                log = { Log.i(TAG, it) }, onOpenResult = report, openWithSdb = openWithSdb,
+                lastResult = { LiveState.status.value.tvOpenProblem }, active = { active() && settings.target.showsOnTv })
         } }, "CouchSubs TV launch").apply { isDaemon = true }.start()
     }
     private lateinit var settings: AppSettings

@@ -17,6 +17,8 @@ public enum TvOpenProblem
     DebugOff,
     /// <summary>Android TV: TV bu cihazın hata ayıklama iznini onaylamamış (ADB eşleşmesi yok).</summary>
     DebugNotApproved,
+    /// <summary>Samsung: açma komutu gitti ama TV uygulaması <see cref="TvKeeper.SamsungOpenCheck"/> içinde bağlanmadı (TV komutu yok saydı).</summary>
+    NotOpened,
 }
 
 /// <summary>TV uygulaması bağlı değilken ana ekranda görünen yönlendirme metinleri (Localizable.xcstrings anahtarları).</summary>
@@ -41,6 +43,7 @@ public static class TvOpenText
         TvOpenProblem.NotPaired => "Couldn't open it automatically: this device has no permission from the TV yet. Connect the TV again and allow it on the TV.",
         TvOpenProblem.DebugOff => "Couldn't open it automatically: the TV can't be reached for debugging. Is the TV on, with network debugging on in Developer options?",
         TvOpenProblem.DebugNotApproved => "Couldn't open it automatically: the TV hasn't allowed debugging from this device. Reinstall the TV app and allow it on the TV.",
+        TvOpenProblem.NotOpened => "Couldn't open it automatically: the TV got the open command but didn't open CouchSubs. Open it on the TV with the remote.",
         _ => null,
     };
 

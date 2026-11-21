@@ -439,6 +439,40 @@ public final class SamsungClient: NSObject, TVControlling, URLSessionDelegate, @
     }
 }
 
+/// Bekçinin Samsung'da TV uygulamasını açma yolu: önce geliştirici bağlantısı (sdb `0 was_execute`), olmazsa uzaktan kumanda
+/// bağlantısı (8002, ilk bağlantıda TV izin sorar). Samsung önplandaki uygulamayı söylemez; bekçi yalnız açar.
+///
+/// Mac ve Windows sdb'yi Tizen 9.0'da uzaktan kumandayla açma sessizce çalışmadığı için (#412) önce deniyordu; iPhone
+/// (ve Android telefon) yalnız uzaktan kumanda yolunu kullanıyordu: TV komutu alıp açmayınca kullanıcı CouchSubs'ı
+/// kumandayla açmak zorunda kalıyordu (iPhone, TestFlight build 27, 21 Kas). sdb yalnız TV'nin geliştirici modu açık ve
+/// Host PC IP bu cihazsa çalışır (telefondan kurulduysa öyledir); değilse hemen uzaktan kumandaya geçilir.
+public final class SamsungLauncher: TVControlling, @unchecked Sendable {
+    private let openWithSdb: () async -> Bool
+    private let connectRemote: () async throws -> TVControlling
+
+    public init(openWithSdb: @escaping () async -> Bool, connectRemote: @escaping () async throws -> TVControlling) {
+        self.openWithSdb = openWithSdb
+        self.connectRemote = connectRemote
+    }
+
+    public func launch(appId: String, params: [String: Any]) async throws {
+        if await openWithSdb() { return }
+        let remote = try await connectRemote()
+        defer { remote.close() }
+        try await remote.launch(appId: appId, params: params)
+    }
+
+    public func foregroundAppId() async throws -> String { "" }
+
+    public func close() {}
+
+    /// `0 was_execute` yanıtı uygulamanın açıldığını söylüyor mu ("app_id[…] launched"); Windows'taki
+    /// SamsungTvInstaller.Launched ile aynı.
+    public static func sdbLaunched(_ reply: String) -> Bool {
+        reply.contains("] launched") && reply.range(of: "fail", options: .caseInsensitive) == nil
+    }
+}
+
 /// Yerel ağdaki Samsung TV'leri SSDP ile bulur.
 public enum SamsungDiscovery {
     static let searchTarget = "urn:samsung.com:device:RemoteControlReceiver:1"

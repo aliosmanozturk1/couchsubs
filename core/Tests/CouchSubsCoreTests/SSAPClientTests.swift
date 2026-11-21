@@ -358,6 +358,66 @@ final class TVKeeperTests: XCTestCase {
         }
     }
 
+    func testSamsungFirstOpenIsImmediateAndIgnoredCommandIsReported() async throws {
+        // iPhone, Samsung (TestFlight build 27): TV açma komutunu alıp CouchSubs'ı açmıyordu; ekranda neden yoktu.
+        let control = FakeControl(foreground: [])
+        var time = ContinuousClock.now
+        var results: [TVOpenProblem?] = []
+        let keeper = TVKeeper(connect: { control }, appId: "x", params: [:], appConnected: { false },
+                              onOpenResult: { results.append($0) }, now: { time })
+        await keeper.tick()                     // çeviri başlar başlamaz (beklemeden) açar
+        XCTAssertEqual(control.launches.count, 1)
+        XCTAssertEqual(results, [nil])
+        time += .seconds(10)
+        await keeper.tick()                     // henüz bekleniyor
+        XCTAssertEqual(results, [nil])
+        time += TVKeeper.samsungOpenCheck
+        await keeper.tick()                     // uygulama bağlanmadı → "TV açmadı"
+        XCTAssertEqual(results, [nil, .notOpened])
+        time += .seconds(10)
+        await keeper.tick()                     // 30 sn doldu → yeniden açar; neden satırı silinmez
+        XCTAssertEqual(control.launches.count, 2)
+        XCTAssertEqual(results, [nil, .notOpened])
+        keeper.reconnect()                      // "Otomatik açmayı dene": hemen açar
+        await keeper.tick()
+        XCTAssertEqual(control.launches.count, 3)
+        XCTAssertEqual(results, [nil, .notOpened, nil])
+        XCTAssertNotNil(TVOpenText.reason(.notOpened))
+    }
+
+    func testSamsungConnectedAppIsNotReportedAsNotOpened() async throws {
+        let control = FakeControl(foreground: [])
+        let connected = Flag()
+        var time = ContinuousClock.now
+        var results: [TVOpenProblem?] = []
+        let keeper = TVKeeper(connect: { control }, appId: "x", params: [:], appConnected: { connected.value },
+                              onOpenResult: { results.append($0) }, now: { time })
+        await keeper.tick()
+        connected.value = true
+        time += TVKeeper.samsungOpenCheck
+        await keeper.tick()
+        connected.value = false                 // kullanıcı sonradan çıktı: yeni açma, eski komut "açmadı" sayılmaz
+        time += .seconds(20)
+        await keeper.tick()
+        XCTAssertEqual(results, [nil, nil])
+    }
+
+    func testSamsungLauncherTriesDeveloperConnectionFirst() async throws {
+        let remote = FakeControl(foreground: [])
+        var remoteConnects = 0
+        let bySdb = SamsungLauncher(openWithSdb: { true }, connectRemote: { remoteConnects += 1; return remote })
+        try await bySdb.launch(appId: "x", params: [:])
+        XCTAssertEqual(remoteConnects, 0)
+        let byRemote = SamsungLauncher(openWithSdb: { false }, connectRemote: { remoteConnects += 1; return remote })
+        try await byRemote.launch(appId: "x", params: [:])
+        XCTAssertEqual(remoteConnects, 1)
+        XCTAssertEqual(remote.launches.count, 1)
+        XCTAssertEqual(remote.closes, 1)
+        XCTAssertTrue(SamsungLauncher.sdbLaunched("launch app CouchSubsT.CouchSubs\napp_id[CouchSubsT.CouchSubs] launched\n"))
+        XCTAssertFalse(SamsungLauncher.sdbLaunched("app_id[CouchSubsT.CouchSubs] launch start\napp_id[CouchSubsT.CouchSubs] launch failed"))
+        XCTAssertFalse(SamsungLauncher.sdbLaunched(""))
+    }
+
     func testSamsungIsLeftAloneWhileTheAppIsConnected() async throws {
         let control = FakeControl(foreground: [])
         let connected = Flag()

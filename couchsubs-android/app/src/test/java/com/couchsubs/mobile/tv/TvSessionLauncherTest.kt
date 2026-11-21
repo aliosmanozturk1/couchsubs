@@ -188,12 +188,30 @@ class TvSessionLauncherTest {
 
     /** Samsung: eskiden Android telefon uygulamayı yalnız bir kez açmayı deniyordu; bağlı değilken yeniden açılır. */
     @Test fun samsungIsReopenedWhileTheAppIsAway() {
-        var rounds = 0
+        // Her turda iki bekleme: 15 sn (açıldı mı) ve 30 sn'ye kalan.
+        var sleeps = 0
         var opens = 0
-        TvSessionLauncher.keepSamsungOpen(InstalledTv(TvBrand.SAMSUNG, "192.168.1.50"), connected = { rounds >= 2 }, active = { rounds < 4 },
-            sleep = { rounds++ }) { opens++ }
+        var notOpened = 0
+        TvSessionLauncher.keepSamsungOpen(InstalledTv(TvBrand.SAMSUNG, "192.168.1.50"), connected = { sleeps >= 4 }, active = { sleeps < 6 },
+            sleep = { sleeps++; false }, notOpened = { notOpened++ }) { opens++ }
         assertEquals(1, opens)
+        assertEquals(2, notOpened)
         TvSessionLauncher.keepSamsungOpen(InstalledTv(TvBrand.LG, "192.168.1.50"), connected = { false }, active = { true }) { opens++ }
         assertEquals(1, opens)
+    }
+
+    /** "Otomatik açmayı dene" beklemeyi keser: "açmadı" denetimi atlanır, hemen açılır. */
+    @Test fun samsungRetryOpensWithoutWaiting() {
+        var sleeps = 0
+        var opens = 0
+        var notOpened = 0
+        TvSessionLauncher.keepSamsungOpen(InstalledTv(TvBrand.SAMSUNG, "192.168.1.50"), connected = { false }, active = { opens < 1 },
+            sleep = { sleeps++; true }, notOpened = { notOpened++ }) { opens++ }
+        assertEquals(1, opens)
+        assertEquals(1, sleeps)
+        assertEquals(0, notOpened)
+        assertTrue(com.couchsubs.mobile.tv.samsung.SamsungInstaller.sdbLaunched("app_id[CouchSubsT.CouchSubs] launched"))
+        assertFalse(com.couchsubs.mobile.tv.samsung.SamsungInstaller.sdbLaunched("app_id[CouchSubsT.CouchSubs] launch failed"))
+        assertEquals(com.couchsubs.mobile.R.string.tv_open_not_opened, TvOpenProblem.reason(TvOpenProblem.NOT_OPENED))
     }
 }
