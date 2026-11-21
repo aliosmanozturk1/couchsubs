@@ -72,8 +72,8 @@
                             </StackPanel>
                             <StackPanel x:Name="ComputerPlacementPanel" Margin="0,0,0,12">
                                 <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
-                                           Text="{t:T 'On the computer screen, move the subtitle by dragging its window: press Adjust the subtitle window.'}" />
-                                <Button HorizontalAlignment="Left" Margin="0,8,0,0" Content="{t:T 'Adjust the subtitle window'}" Click="OnAdjustOverlay" />
+                                           Text="{t:T 'On the computer screen, move and resize the subtitle with the mouse: press Position the subtitles.'}" />
+                                <Button HorizontalAlignment="Left" Margin="0,8,0,0" Content="{t:T 'Position the subtitles'}" Click="OnAdjustOverlay" />
                             </StackPanel>
                             <TextBlock Text="{t:T 'Background'}" Margin="0,0,0,8" />
                             <Grid Margin="0,0,0,12">

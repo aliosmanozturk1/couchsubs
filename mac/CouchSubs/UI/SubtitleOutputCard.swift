@@ -82,7 +82,7 @@ private struct ComputerScreenOptions: View {
     }
 
     private var adjust: some View {
-        Button("Adjust the subtitle window") { model.overlayAdjusting = true }
+        Button("Position the subtitles") { model.overlayAdjusting = true }
             .buttonStyle(.secondary)
             .disabled(model.overlayAdjusting)
     }

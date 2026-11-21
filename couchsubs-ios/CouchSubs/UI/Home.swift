@@ -428,10 +428,38 @@ struct SubtitleScreen: View {
     @State private var landscape = true
     /// Bu açılışın döndürme numarası (`Orientation.hold`).
     @State private var orientationToken = 0
+    /// Parmakla verilen yazı boyu çarpanı ve yer (varsayılan yerden ekran yüksekliğine oranla kaydırma); kalıcıdır, TV'nin
+    /// yazı boyuna dokunmaz (bkz. PhoneSubtitleLayout; Android'de aynı ayarlar).
+    @AppStorage("couchsubs.phoneSubtitleScale") private var phoneScale = 1.0
+    @AppStorage("couchsubs.phoneSubtitleOffset") private var phoneOffset = 0.0
+    @GestureState private var dragged: CGFloat = 0
+    @GestureState private var pinched: CGFloat = 1
+    @State private var screenHeight: CGFloat = 0
+
+    /// Sürükleme ve iki parmak hareketi sürerken anlık değerler; bitince kaydedilir.
+    private var liveScale: Double { PhoneSubtitleLayout.scale(from: phoneScale, magnification: Double(pinched)) }
+    private var liveOffset: Double { PhoneSubtitleLayout.offset(from: phoneOffset, moved: Double(dragged), height: Double(screenHeight)) }
+
+    private var placeGesture: some Gesture {
+        SimultaneousGesture(
+            DragGesture(minimumDistance: 10)
+                .updating($dragged) { value, state, _ in state = value.translation.height }
+                .onEnded { value in
+                    phoneOffset = PhoneSubtitleLayout.offset(from: phoneOffset, moved: Double(value.translation.height), height: Double(screenHeight))
+                },
+            MagnificationGesture()
+                .updating($pinched) { value, state, _ in state = value }
+                .onEnded { value in phoneScale = PhoneSubtitleLayout.scale(from: phoneScale, magnification: Double(value)) })
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
             Color.black.ignoresSafeArea()
+                .background(GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { screenHeight = proxy.size.height }
+                        .onChange(of: proxy.size.height) { screenHeight = $0 }
+                })
             VStack(spacing: Mobile.Space.inline) {
                 ForEach(Array(model.phoneLines.enumerated()), id: \.element.id) { index, line in
                     // Uzun çeviri en çok 3 satıra dengeli bölünür; sığmazsa yazı biraz küçülür (bkz. SubtitleWrap).
@@ -449,6 +477,8 @@ struct SubtitleScreen: View {
             }
             .padding(.horizontal, Mobile.Space.screen)
             .padding(.bottom, Mobile.Space.screen * 2)
+            // Parmakla yukarı ya da aşağı taşınır (ekranın en çok %40'ı); yazı ekrandan çıkmaz.
+            .offset(y: CGFloat(liveOffset) * screenHeight)
             // Ek alanların (görev, telefon, bildirim) çevirisi oyundaki yerinde küçük kutuda (TV'deki gibi).
             GeometryReader { proxy in
                 ForEach(model.phoneRegions) { region in
@@ -498,11 +528,18 @@ struct SubtitleScreen: View {
                 }
             }
             .allowsHitTesting(false)
-            Text("The screen stays on · brightness is lowered automatically")
-                .font(Mobile.TypeScale.caption)
-                .foregroundStyle(Mobile.Palette.tertiary)
-                .padding(.bottom, Mobile.Space.inline)
+            VStack(spacing: 2) {
+                Text("Drag the subtitle up or down; pinch to change the text size.")
+                Text("The screen stays on · brightness is lowered automatically")
+            }
+            .font(Mobile.TypeScale.caption)
+            .foregroundStyle(Mobile.Palette.tertiary)
+            .multilineTextAlignment(.center)
+            .padding(.bottom, Mobile.Space.inline)
+            .allowsHitTesting(false)
         }
+        .contentShape(Rectangle())
+        .gesture(placeGesture)
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: Mobile.Space.inline) {
                 MobilePill(text: statusText, live: model.sessionState == .streaming)
@@ -555,7 +592,7 @@ struct SubtitleScreen: View {
         return model.packsActive ? String(localized: "PS5 connected · ready translation") : String(localized: "PS5 connected")
     }
 
-    private var scale: Double { Double(model.settings.style.fontSize) / Double(SubtitleStyle().fontSize) }
+    private var scale: Double { Double(model.settings.style.fontSize) / Double(SubtitleStyle().fontSize) * liveScale }
 
     /// "#RRGGBB" → renk; geçersizse nil.
     private static func screenColor(_ hex: String?) -> Color? {

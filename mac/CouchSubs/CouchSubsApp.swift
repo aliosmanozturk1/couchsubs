@@ -73,7 +73,7 @@ struct CouchSubsApp: App {
                      isInserted: Binding(get: { model.step == .done && model.settings.output.showsOnComputer }, set: { _ in })) {
             Toggle("Clicks pass through", isOn: Binding(get: { model.settings.overlayClickThrough },
                                                         set: { model.settings.overlayClickThrough = $0 }))
-            Button("Adjust the subtitle window") { model.overlayAdjusting = true }
+            Button("Position the subtitles") { model.overlayAdjusting = true }
             Divider()
             Button("Open CouchSubs") {
                 if #available(macOS 14, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }

@@ -745,8 +745,18 @@ final class AppModel: ObservableObject {
     var overlayScreenText = ""
     /// Yerindeki "Ekranı çevir" çevirilerini süresi dolunca kaldırır (TV'deki gibi yeni altyazı onları kaldırmaz).
     var overlayScreenExpiry: Task<Void, Never>?
-    /// Pencerenin yeri ve genişliği ayarlanıyor: örnek yazı görünür, tıklamalar geçmez.
+    /// Pencerenin yeri ve boyu ayarlanıyor ("Altyazıyı konumlandır"): örnek yazı görünür, tıklamalar geçmez. Yeni yer
+    /// `commitOverlayEdit()` ile kaydedilir; başka yoldan kapanırsa (Esc, altyazı bilgisayardan kalktı) pencere eski
+    /// yerine döner.
     @Published var overlayAdjusting = false
+    /// Altyazı penceresinin kaydetme işi (SubtitleOverlayController verir).
+    var overlayCommit: (() -> Void)?
+
+    /// Bitti, çift tık ya da Enter: yeni yer kaydedilir, düzenleme kapanır.
+    func commitOverlayEdit() {
+        if overlayAdjusting { overlayCommit?() }
+        overlayAdjusting = false
+    }
     var overlayStack = SubtitleStack()
     /// "Yayın penceresi" açık: altyazı bilgisayar ekranında gösterilmese de satırlar yığına gelir (bkz. StreamWindow.swift).
     @Published var streamWindowOpen = false {

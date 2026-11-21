@@ -21,7 +21,7 @@ struct TestStep: View {
                     }
                     .buttonStyle(CSButtonStyle(kind: sent ? .secondary : .primary))
                     if onComputer {
-                        Button("Adjust the subtitle window") { model.overlayAdjusting = true }
+                        Button("Position the subtitles") { model.overlayAdjusting = true }
                             .buttonStyle(.secondary)
                             .disabled(model.overlayAdjusting)
                     }
@@ -30,7 +30,8 @@ struct TestStep: View {
                     Card(title: onComputer ? "Do you see it on the screen?" : "Do you see it on the TV?") {
                         HStack(spacing: Theme.space("m")) {
                             Button("Yes, I see it") {
-                                model.overlayAdjusting = false
+                                // Konumlandırılırken "Evet" denirse yeni yer kaydedilir (Bitti gibi).
+                                model.commitOverlayEdit()
                                 model.advance()
                             }
                             .buttonStyle(.primary)

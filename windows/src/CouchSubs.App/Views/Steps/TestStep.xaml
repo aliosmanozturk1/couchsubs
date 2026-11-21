@@ -10,7 +10,7 @@
             <StackPanel Orientation="Horizontal">
                 <Button x:Name="Send" Content="{t:T 'Send test subtitle'}" Style="{StaticResource PrimaryButton}" Click="OnSend" />
                 <!-- TV seçilmediyse ("TV'm yok") pencerenin yeri burada ayarlanabilir. -->
-                <Button x:Name="Adjust" Content="{t:T 'Adjust the subtitle window'}" Margin="12,0,0,0" Click="OnAdjust" Visibility="Collapsed" />
+                <Button x:Name="Adjust" Content="{t:T 'Position the subtitles'}" Margin="12,0,0,0" Click="OnAdjust" Visibility="Collapsed" />
             </StackPanel>
             <c:Card x:Name="Question" Title="{t:T 'Do you see it on the TV?'}" Margin="0,16,0,0" Visibility="Collapsed">
                 <StackPanel>

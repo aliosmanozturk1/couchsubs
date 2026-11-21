@@ -39,7 +39,8 @@ public partial class TestStep : UserControl
 
     private void OnYes(object sender, RoutedEventArgs e)
     {
-        Controller.OverlayAdjusting = false;
+        // Konumlandırılırken "Evet" denirse yeni yer kaydedilir (Bitti gibi).
+        Controller.CommitOverlayEdit();
         Controller.Advance();
     }
 

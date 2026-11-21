@@ -1789,8 +1789,18 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     private bool overlayAdjusting;
 
-    /// <summary>Pencerenin yeri ve genişliği ayarlanıyor: örnek yazı görünür, tıklamalar geçmez.</summary>
-    public bool OverlayAdjusting { get => overlayAdjusting; set => Set(ref overlayAdjusting, value); }
+    /// <summary>Pencerenin yeri ve boyu ayarlanıyor ("Altyazıyı konumlandır"): örnek yazı görünür, tıklamalar geçmez;
+    /// değişiklik <see cref="CommitOverlayEdit"/> ile kaydedilir, başka yoldan kapanırsa (Esc, altyazı bilgisayardan
+    /// kalktı) kaydedilmez.</summary>
+    public bool OverlayAdjusting
+    {
+        get => overlayAdjusting;
+        set
+        {
+            if (value != overlayAdjusting) OverlayDraft = null;
+            Set(ref overlayAdjusting, value);
+        }
+    }
 
     private bool hotkeysPaused;
 
@@ -1805,6 +1815,24 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     /// <summary>Taşınan ya da genişletilen pencerenin yeri kaydedilir.</summary>
     public void SaveOverlayBounds(OverlayBounds bounds) => Settings = settings with { Overlay = bounds };
+
+    /// <summary>Düzenlenirken pencerenin son yeri ve boyu; kaydedilmemiştir (<see cref="CommitOverlayEdit"/> kaydeder).</summary>
+    public OverlayBounds? OverlayDraft { get; set; }
+
+    /// <summary>"Altyazıyı konumlandır" bitti (çift tık, Enter ya da Bitti): yeni yer kaydedilir, düzenleme kapanır.</summary>
+    public void CommitOverlayEdit()
+    {
+        if (OverlayAdjusting && OverlayDraft is { } draft) SaveOverlayBounds(draft);
+        OverlayDraft = null;
+        OverlayAdjusting = false;
+    }
+
+    /// <summary>Esc: düzenleme kapanır, kayıt değişmez; pencere düzenlemeden önceki yerine döner.</summary>
+    public void CancelOverlayEdit()
+    {
+        OverlayDraft = null;
+        OverlayAdjusting = false;
+    }
 
     private void OnSubtitleEvent(SubtitleEvent e)
     {

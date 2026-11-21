@@ -211,8 +211,8 @@ private struct AppearanceCard: View {
                 }
             }
             if model.settings.output.showsOnComputer {
-                HintText(text: "On the computer screen, move the subtitle by dragging its window: press Adjust the subtitle window.")
-                Button("Adjust the subtitle window") { model.overlayAdjusting = true }.buttonStyle(.secondary)
+                HintText(text: "On the computer screen, move and resize the subtitle with the mouse: press Position the subtitles.")
+                Button("Position the subtitles") { model.overlayAdjusting = true }.buttonStyle(.secondary)
             }
             Slider(value: Binding(get: { Double(model.settings.style.background) },
                                   set: { model.settings.style.background = Int($0.rounded()) }), in: 0...100) {

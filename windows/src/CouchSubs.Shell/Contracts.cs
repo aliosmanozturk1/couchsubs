@@ -85,7 +85,20 @@ public static class SubtitleOutputs
 public enum AppAppearance { Dark, Light, System }
 
 /// <summary>Bilgisayar ekranındaki altyazı penceresinin yeri ve genişliği (WPF birimiyle; tüm ekranları kapsayan düzlemde).</summary>
-public sealed record OverlayBounds(double Left, double Top, double Width);
+public sealed record OverlayBounds(double Left, double Top, double Width)
+{
+    /// <summary>Yüksekliğin yazı boyundan hesaplanan yüksekliğe oranı ("Altyazıyı konumlandır"da üst ya da alt kenardan
+    /// değişir; yazı boyu değişince pencere aynı oranda kalır). Eski kayıtlarda 1.</summary>
+    public double HeightScale { get; init; } = 1;
+    /// <summary>Pencerenin kaydedildiği ekranın aygıt adı (ör. <c>\\.\DISPLAY2</c>); eski kayıtlarda null.</summary>
+    public string? Screen { get; init; }
+    /// <summary>O ekranın sol üst köşesine göre yer: ekranların dizilişi değişse de pencere aynı ekranda açılır.</summary>
+    public double? ScreenLeft { get; init; }
+    public double? ScreenTop { get; init; }
+}
+
+/// <summary>Bağlı bir ekran: aygıt adı ve tüm ekranları kapsayan düzlemdeki alanı (WPF birimiyle).</summary>
+public readonly record struct DisplayArea(string Name, ScreenArea Area);
 
 /// <summary>
 /// Ayarlardaki çeviri motoru seçimi. Ücretsiz olan cihaz üstü modeldir; bulut motorları kullanıcının kendi anahtarıyla

@@ -97,13 +97,25 @@ public sealed partial class SubtitleOverlayWindow : Window
             SetWindowLongPtr(handle, GwlExStyle, (IntPtr)(style | WsExNoActivate | WsExToolWindow));
             ApplyClickThrough();
         });
-        // Tıklamalar geçmiyorsa pencere her yerinden sürüklenir.
+        // Tıklamalar geçmiyorsa pencere her yerinden sürüklenir. Konumlandırılırken çift tık yeni yeri kaydeder.
         MouseLeftButtonDown += (_, e) => Guard("sürükleme", () =>
         {
             if (e.OriginalSource is Thumb or ButtonBase || e.ButtonState != MouseButtonState.Pressed) return;
+            if (controller.OverlayAdjusting && e.ClickCount == 2)
+            {
+                Commit();
+                return;
+            }
             try { DragMove(); }
             catch (InvalidOperationException) { return; /* düğme bu arada bırakıldı */ }
             SaveBounds();
+        });
+        // Konumlandırılırken Enter kaydeder, Esc vazgeçer (pencere o sırada odağı alabilir).
+        KeyDown += (_, e) => Guard("tuş", () =>
+        {
+            if (!controller.OverlayAdjusting) return;
+            if (e.Key is Key.Enter or Key.Return) { Commit(); e.Handled = true; }
+            else if (e.Key == Key.Escape) { controller.CancelOverlayEdit(); e.Handled = true; }
         });
         controller.OverlayEvent += OnEvent;
         controller.OverlayHidden += OnHidden;
@@ -128,6 +140,7 @@ public sealed partial class SubtitleOverlayWindow : Window
         {
             // Yazı boyu, rengi ya da zemini değişmiş olabilir; kutular yeniden kurulur.
             if (e.PropertyName == nameof(AppController.Settings)) boxes.Clear();
+            if (e.PropertyName == nameof(AppController.OverlayAdjusting)) AdjustingChanged();
             ApplyClickThrough();
             FitHeight();
             Refresh();
@@ -357,37 +370,51 @@ public sealed partial class SubtitleOverlayWindow : Window
         });
         var done = new Button { Content = Localizer.Current["Done"], Margin = new Thickness(12, 0, 0, 0) };
         if (Application.Current?.TryFindResource("PrimaryButton") is Style primary) done.Style = primary;
-        done.Click += (_, _) => Guard("Bitti", () => controller.OverlayAdjusting = false);
+        done.Click += (_, _) => Guard("Bitti", Commit);
         var bar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(12) };
-        bar.Children.Add(new TextBlock
+        var hints = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        hints.Children.Add(new TextBlock
         {
             Text = Localizer.Current["Drag to move, drag the edges to resize."],
             Foreground = Brushes.White,
             FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
         });
+        hints.Children.Add(new TextBlock
+        {
+            Text = Localizer.Current["Double-click or press Enter to save, Esc to cancel."],
+            Foreground = Brushes.White,
+            Opacity = 0.8,
+        });
+        bar.Children.Add(hints);
         bar.Children.Add(done);
         adjustLayer.Children.Add(bar);
         adjustLayer.Children.Add(MakeHandle(HorizontalAlignment.Left, accent));
         adjustLayer.Children.Add(MakeHandle(HorizontalAlignment.Right, accent));
+        adjustLayer.Children.Add(MakeHeightHandle(VerticalAlignment.Top, accent));
+        adjustLayer.Children.Add(MakeHeightHandle(VerticalAlignment.Bottom, accent));
+    }
+
+    private static Thumb Handle(Brush accent, double width, double height, Cursor cursor)
+    {
+        var face = new FrameworkElementFactory(typeof(Border));
+        face.SetValue(Border.BackgroundProperty, accent);
+        face.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+        return new Thumb
+        {
+            Width = width,
+            Height = height,
+            Cursor = cursor,
+            Template = new ControlTemplate(typeof(Thumb)) { VisualTree = face },
+        };
     }
 
     /// <summary>Kenardan genişletme: ortası yerinde kalır, iki yana eşit büyür.</summary>
     private Thumb MakeHandle(HorizontalAlignment side, Brush accent)
     {
-        var face = new FrameworkElementFactory(typeof(Border));
-        face.SetValue(Border.BackgroundProperty, accent);
-        face.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
-        var thumb = new Thumb
-        {
-            Width = 6,
-            Height = 48,
-            Margin = new Thickness(6, 0, 6, 0),
-            HorizontalAlignment = side,
-            VerticalAlignment = VerticalAlignment.Center,
-            Cursor = Cursors.SizeWE,
-            Template = new ControlTemplate(typeof(Thumb)) { VisualTree = face },
-        };
+        var thumb = Handle(accent, 6, 48, Cursors.SizeWE);
+        thumb.Margin = new Thickness(6, 0, 6, 0);
+        thumb.HorizontalAlignment = side;
+        thumb.VerticalAlignment = VerticalAlignment.Center;
         thumb.DragDelta += (_, e) => Guard("genişletme", () =>
         {
             var grow = side == HorizontalAlignment.Right ? e.HorizontalChange : -e.HorizontalChange;
@@ -400,6 +427,64 @@ public sealed partial class SubtitleOverlayWindow : Window
         });
         thumb.DragCompleted += (_, _) => Guard("genişletme", SaveBounds);
         return thumb;
+    }
+
+    /// <summary>Üst ya da alt kenardan boy: karşı kenar yerinde kalır; oran kaydedilir, yazı boyu değişince korunur.</summary>
+    private Thumb MakeHeightHandle(VerticalAlignment side, Brush accent)
+    {
+        var thumb = Handle(accent, 48, 6, Cursors.SizeNS);
+        thumb.Margin = new Thickness(0, 6, 0, 6);
+        thumb.HorizontalAlignment = HorizontalAlignment.Center;
+        thumb.VerticalAlignment = side;
+        thumb.DragDelta += (_, e) => Guard("boy", () =>
+        {
+            var bottom = Top + Height;
+            if (!double.IsFinite(bottom)) return;
+            var baseHeight = BaseHeight;
+            var grow = side == VerticalAlignment.Top ? -e.VerticalChange : e.VerticalChange;
+            heightScale = OverlayPlacement.HeightScaleFor(Height + grow, baseHeight);
+            var height = Math.Round(baseHeight * heightScale);
+            if (side == VerticalAlignment.Top) Top = bottom - height;
+            Height = height;
+        });
+        thumb.DragCompleted += (_, _) => Guard("boy", SaveBounds);
+        return thumb;
+    }
+
+    /// <summary>Yazı boyundan hesaplanan yükseklik (oran 1).</summary>
+    private double BaseHeight => OverlayPlacement.Height(controller.Settings.Style.FontSize, Scale);
+
+    /// <summary>Kullanıcının üst ya da alt kenardan verdiği yükseklik oranı.</summary>
+    private double heightScale = 1;
+
+    /// <summary>Düzenleme açıldı ya da kapandı. Kapanınca pencere kayıtlı yere döner: Esc ile vazgeçildiyse eski yere,
+    /// kaydedildiyse yeni yere. Düzenlenirken pencere odağı alabilir (Enter ve Esc için).</summary>
+    private void AdjustingChanged()
+    {
+        if (handle != IntPtr.Zero)
+        {
+            var style = (long)GetWindowLongPtr(handle, GwlExStyle);
+            var wanted = controller.OverlayAdjusting ? style & ~WsExNoActivate : style | WsExNoActivate;
+            if (wanted != style) SetWindowLongPtr(handle, GwlExStyle, (IntPtr)wanted);
+        }
+        Focusable = controller.OverlayAdjusting;
+        if (controller.OverlayAdjusting)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (!controller.OverlayAdjusting || !IsVisible) return;
+                Activate();
+                Focus();
+            }, DispatcherPriority.Background);
+        }
+        else PlaceFromSettings();
+    }
+
+    /// <summary>Düzenlemeyi bitirir ve yeni yeri kaydeder.</summary>
+    private void Commit()
+    {
+        SaveBounds();
+        controller.CommitOverlayEdit();
     }
 
     /// <summary>"Tıklamalar geçsin" açıksa (ve yeri ayarlanmıyorsa) fare pencereden geçer.</summary>
@@ -415,7 +500,7 @@ public sealed partial class SubtitleOverlayWindow : Window
     /// <summary>Pencere en çok üç satıra (ve satırların kaymasına) yetecek kadar yüksektir; alt kenarı sabit kalır.</summary>
     private void FitHeight()
     {
-        var height = OverlayPlacement.Height(controller.Settings.Style.FontSize, Scale);
+        var height = Math.Round(BaseHeight * heightScale);
         if (Math.Abs(Height - height) < 0.5) return;
         var bottom = double.IsNaN(Top) ? double.NaN : Top + Height;
         Height = height;
@@ -428,21 +513,27 @@ public sealed partial class SubtitleOverlayWindow : Window
     /// </summary>
     private void PlaceFromSettings()
     {
-        var height = OverlayPlacement.Height(controller.Settings.Style.FontSize, Scale);
+        var height = BaseHeight;
         var work = SystemParameters.WorkArea;
         var place = OverlayPlacement.Place(controller.Settings.Overlay,
             new ScreenArea(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
                 SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight),
-            new ScreenArea(work.Left, work.Top, work.Width, work.Height), height);
-        Height = height;
+            new ScreenArea(work.Left, work.Top, work.Width, work.Height), height, Displays.All(this));
+        heightScale = place.HeightScale;
+        Height = Math.Round(height * heightScale);
         Width = place.Width;
         Left = place.Left;
         Top = place.Top;
     }
 
-    /// <summary>NaN ya da sonsuz değer JSON'a yazılamaz (ayar kaydı hata verirdi); öyleyse kaydedilmez.</summary>
+    /// <summary>
+    /// Yeri, boyu ve bulunduğu ekranı kaydeder. "Altyazıyı konumlandır" açıkken yalnız taslak tutulur; Enter, çift tık ya da
+    /// Bitti kaydeder, Esc vazgeçer. NaN ya da sonsuz değer JSON'a yazılamaz (ayar kaydı hata verirdi); öyleyse kaydedilmez.
+    /// </summary>
     private void SaveBounds()
     {
-        if (OverlayPlacement.ToSave(Left, Top, Width) is { } bounds) controller.SaveOverlayBounds(bounds);
+        if (OverlayPlacement.ToSave(Left, Top, Width, Height, BaseHeight, Displays.All(this)) is not { } bounds) return;
+        if (controller.OverlayAdjusting) controller.OverlayDraft = bounds;
+        else controller.SaveOverlayBounds(bounds);
     }
 }

@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 package com.couchsubs.mobile.ui
 
+import com.couchsubs.mobile.core.PhoneSubtitleLayout
 import com.couchsubs.mobile.core.SpeakerColors
 import com.couchsubs.mobile.core.SubtitleWrap
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -102,7 +110,20 @@ class PhoneSubtitleActivity : ComponentActivity() {
                     PipSubtitleView(status)
                     return@CouchSubsTheme
                 }
-                Box(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().padding(Tokens.Space.screen)) {
+                // Parmakla yukarı-aşağı taşıma ve iki parmakla yazı boyu: kalıcı, TV'ye dokunmaz (iPhone ile aynı sınırlar).
+                var phoneScale by remember { mutableFloatStateOf(settings.phoneSubtitleScale) }
+                var phoneOffset by remember { mutableFloatStateOf(settings.phoneSubtitleOffset) }
+                var areaHeight by remember { mutableIntStateOf(0) }
+                Box(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().padding(Tokens.Space.screen)
+                    .onSizeChanged { areaHeight = it.height }
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            phoneOffset = PhoneSubtitleLayout.offset(phoneOffset, pan.y, size.height.toFloat())
+                            phoneScale = PhoneSubtitleLayout.scale(phoneScale, zoom)
+                            settings.phoneSubtitleOffset = phoneOffset
+                            settings.phoneSubtitleScale = phoneScale
+                        }
+                    }) {
                     Row(Modifier.fillMaxWidth().align(Alignment.TopCenter), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
                         val connected = status.running && status.streaming
@@ -118,9 +139,12 @@ class PhoneSubtitleActivity : ComponentActivity() {
                         ) { TranslationService.translateScreen() }
                         IconAction(Icons.Filled.Close, stringResource(R.string.close)) { finish() }
                     }
-                    Column(Modifier.align(Alignment.Center).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                    Column(Modifier.align(Alignment.Center).fillMaxWidth()
+                        .offset { androidx.compose.ui.unit.IntOffset(0, (phoneOffset * areaHeight).roundToInt()) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
                         val style = Tokens.Type.subtitleLandscape
+                        val scale = scale * phoneScale
                         val previous = status.previous
                         // Uzun çeviri en çok 3 satıra dengeli bölünür; sığmazsa yazı biraz küçülür (bkz. SubtitleWrap).
                         if (stackPrevious && previous.isNotEmpty() && status.current.isNotEmpty() && previous != status.current) {
@@ -135,8 +159,11 @@ class PhoneSubtitleActivity : ComponentActivity() {
                             style = style.copy(fontSize = style.fontSize * scale * current.scale, lineHeight = style.lineHeight * scale * current.scale),
                             color = color, textAlign = TextAlign.Center)
                     }
-                    Text(stringResource(R.string.subtitle_screen_note), style = Tokens.Type.caption, color = Tokens.Color.secondary,
-                        modifier = Modifier.align(Alignment.BottomCenter))
+                    Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.subtitle_screen_gesture_hint), style = Tokens.Type.caption, color = Tokens.Color.secondary,
+                            textAlign = TextAlign.Center)
+                        Text(stringResource(R.string.subtitle_screen_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                    }
                     // "Ekranı çevir" sonuçları: her çeviri kendi yazısının yerinde, aynı boyda ve özgün yazının stilinde
                     // (TV'deki gibi); GTA 6 telefonunun yazıları yanında mesaj kartı olarak gelir.
                     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {

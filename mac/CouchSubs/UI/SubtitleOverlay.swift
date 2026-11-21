@@ -7,8 +7,9 @@ import SwiftUI
 
 /// Bilgisayar ekranındaki altyazı penceresi: kenarsız, her pencerenin (tam ekran uygulamalar dahil) üstünde, saydam
 /// zeminli bir panel. Odağı almaz; "Tıklamalar geçsin" açıkken fare alttaki pencereye (oyun, PS Remote Play) gider.
-/// Satırlar TV uygulamasıyla aynı yığından gelir (bkz. AppModel+ComputerScreen.swift). Yeri, genişliği ve ekranı
-/// macOS'un pencere kaydıyla hatırlanır.
+/// Satırlar TV uygulamasıyla aynı yığından gelir (bkz. AppModel+ComputerScreen.swift). "Altyazıyı konumlandır" ile
+/// sürüklenir, kenarlarından boyutlanır; çift tık, Enter ya da Bitti yeri, boyu ve ekranı kaydeder (OverlayFrameMemory),
+/// Esc vazgeçer.
 @MainActor
 final class SubtitleOverlayController {
     private weak var model: AppModel?
@@ -27,12 +28,21 @@ final class SubtitleOverlayController {
         let fontSize: Int
     }
 
+    /// Eski sürümlerin macOS pencere kaydı; yeni kayıt yoksa bir kez okunur.
     static let autosaveName = "CouchSubsSubtitleWindow"
+    /// "Altyazıyı konumlandır" ile kaydedilen yer, ekran ve boy (OverlayFrameMemory, JSON).
+    static let frameKey = "couchsubs.overlayFrame"
     static let minWidth: CGFloat = 320
+    /// Yüksekliğin yazı boyundan hesaplanana oranı (üst ya da alt kenardan değişir).
+    private var heightScale: Double = 1
+    /// Düzenleme başlarken pencerenin yeri ve oranı; Esc ile buraya dönülür.
+    private var editStart: (frame: NSRect, heightScale: Double)?
+    private var committed = false
 
     func attach(_ model: AppModel) {
         guard self.model == nil else { return }
         self.model = model
+        model.overlayCommit = { [weak self] in self?.commit() }
         update()
         // Modeldeki görünürlük, tıklama ve yazı boyu değişince pencere güncellenir. objectWillChange değişiklikten önce
         // gelir; güncelleme bir sonraki turda yeni değerlerle yapılır.
@@ -48,7 +58,17 @@ final class SubtitleOverlayController {
         let fontSize = model.settings.style.fontSize
         let state = Shown(visible: visible, ignoresMouse: ignoresMouse, adjusting: model.overlayAdjusting, fontSize: fontSize)
         guard state != shown else { return }
+        let wasAdjusting = shown?.adjusting ?? false
         shown = state
+        // Düzenleme kaydedilmeden kapandı (Esc, altyazı bilgisayardan kalktı): pencere eski yerine döner.
+        if wasAdjusting, !state.adjusting {
+            if !committed, let start = editStart, let panel {
+                heightScale = start.heightScale
+                panel.setFrame(start.frame, display: true)
+            }
+            editStart = nil
+            committed = false
+        }
         guard visible else {
             panel?.orderOut(nil)
             return
@@ -58,6 +78,31 @@ final class SubtitleOverlayController {
         panel.adjusting = model.overlayAdjusting
         fit(panel, fontSize: fontSize)
         if !panel.isVisible { panel.orderFrontRegardless() }
+        if state.adjusting, !wasAdjusting {
+            editStart = (panel.frame, heightScale)
+            committed = false
+            // Enter ve Esc için klavye bu panele gelir (uygulama öne gelmez, oyun arkada kalır).
+            panel.makeKey()
+        }
+    }
+
+    /// Yeni yeri, ekranı ve boyu kaydeder (Bitti, çift tık, Enter).
+    private func commit() {
+        guard let panel, let model else { return }
+        let base = Double(baseHeight(panel, fontSize: model.settings.style.fontSize))
+        if let memory = OverlayFrameMemory(frame: panel.frame, baseHeight: base, displays: Self.displays()),
+           let data = try? JSONEncoder().encode(memory) {
+            UserDefaults.standard.set(data, forKey: Self.frameKey)
+        }
+        committed = true
+    }
+
+    /// Bağlı ekranlar: kimlik (CGDirectDisplayID), ad ve çerçeve.
+    private static func displays() -> [OverlayFrameMemory.Display] {
+        NSScreen.screens.map { screen in
+            let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+            return OverlayFrameMemory.Display(id: id, name: screen.localizedName, frame: screen.frame)
+        }
     }
 
     private func makePanel(_ model: AppModel) -> OverlayPanel {
@@ -76,16 +121,26 @@ final class SubtitleOverlayController {
         let content = SubtitleOverlayView(geometry: geometry, actions: OverlayActions(
             move: { [weak self] in self?.move() },
             resize: { [weak self] edge in self?.resize(edge) },
+            resizeHeight: { [weak self] edge in self?.resizeHeight(edge) },
             endMove: { [weak self] in self?.moveStart = nil }))
             .environmentObject(model)
         let host = FirstMouseHostingView(rootView: content)
         // Pencerenin boyunu içerik değil kullanıcı (ve yazı boyu) belirler.
         host.sizingOptions = []
         panel.contentView = host
-        if !panel.setFrameUsingName(Self.autosaveName) || !Self.isOnScreen(panel.frame) {
+        panel.onCommit = { [weak model] in model?.commitOverlayEdit() }
+        panel.onCancel = { [weak model] in model?.overlayAdjusting = false }
+        // Kayıtlı ekran bağlıysa ona göre; yoksa eski sürümün pencere kaydı; o da yoksa ana ekranın altında ortada.
+        // Pencere artık her taşınışta kendiliğinden kaydedilmez: yalnız Bitti, çift tık ya da Enter kaydeder.
+        let base = Double(baseHeight(panel, fontSize: model.settings.style.fontSize))
+        if let data = UserDefaults.standard.data(forKey: Self.frameKey),
+           let memory = try? JSONDecoder().decode(OverlayFrameMemory.self, from: data),
+           let frame = memory.frame(baseHeight: base, displays: Self.displays()) {
+            heightScale = OverlayFrameMemory.clampHeightScale(memory.heightScale)
+            panel.setFrame(frame, display: false)
+        } else if !panel.setFrameUsingName(Self.autosaveName) || !Self.isOnScreen(panel.frame) {
             panel.setFrame(Self.defaultFrame(), display: false)
         }
-        panel.setFrameAutosaveName(Self.autosaveName)
         screenObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeScreenNotification, object: panel,
                                                                 queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -103,10 +158,29 @@ final class SubtitleOverlayController {
         let screen = panel.screen ?? NSScreen.main
         let scale = (screen?.frame.height ?? 1080) / 1080
         if geometry.scale != scale { geometry.scale = scale }
-        let font = CGFloat(fontSize) * scale
-        let height = (font * 8.1 + 140 * scale).rounded()
+        let height = (baseHeight(panel, fontSize: fontSize) * CGFloat(heightScale)).rounded()
         var frame = panel.frame
         guard abs(frame.height - height) > 0.5 else { return }
+        frame.size.height = height
+        panel.setFrame(frame, display: true)
+    }
+
+    /// Yazı boyundan hesaplanan yükseklik (oran 1), pencerenin bulunduğu ekrana göre.
+    private func baseHeight(_ panel: NSPanel, fontSize: Int) -> CGFloat {
+        let scale = ((panel.screen ?? NSScreen.main)?.frame.height ?? 1080) / 1080
+        return (CGFloat(fontSize) * scale * 8.1 + 140 * scale).rounded()
+    }
+
+    /// Üst ya da alt kenardan boy: karşı kenar yerinde kalır; oran kaydedilir, yazı boyu değişince korunur.
+    private func resizeHeight(_ edge: VerticalEdge) {
+        guard let panel, let model, let start = dragStart() else { return }
+        let delta = NSEvent.mouseLocation.y - start.mouse.y
+        let base = baseHeight(panel, fontSize: model.settings.style.fontSize)
+        heightScale = OverlayFrameMemory.heightScale(height: Double(start.frame.height + (edge == .top ? delta : -delta)), baseHeight: Double(base))
+        let height = (base * CGFloat(heightScale)).rounded()
+        var frame = start.frame
+        // macOS'ta y yukarı doğru artar: üst kenar sürüklenirken alt kenar, alt kenar sürüklenirken üst kenar sabit.
+        if edge == .bottom { frame.origin.y = start.frame.maxY - height }
         frame.size.height = height
         panel.setFrame(frame, display: true)
     }
@@ -163,15 +237,32 @@ final class OverlayGeometry: ObservableObject {
 struct OverlayActions {
     let move: () -> Void
     let resize: (HorizontalEdge) -> Void
+    let resizeHeight: (VerticalEdge) -> Void
     let endMove: () -> Void
 }
 
-/// Odağı yalnız yeri ayarlanırken alabilen panel; oyun ya da PS Remote Play klavyeyi kaybetmez.
+/// Odağı yalnız yeri ayarlanırken alabilen panel; oyun ya da PS Remote Play klavyeyi kaybetmez. Ayarlanırken Enter
+/// kaydeder, Esc vazgeçer.
 final class OverlayPanel: NSPanel {
     var adjusting = false
+    var onCommit: (() -> Void)?
+    var onCancel: (() -> Void)?
 
     override var canBecomeKey: Bool { adjusting }
     override var canBecomeMain: Bool { false }
+
+    override func keyDown(with event: NSEvent) {
+        guard adjusting else { return super.keyDown(with: event) }
+        switch event.keyCode {
+        case 36, 76: onCommit?() // Return, sayısal tuş takımındaki Enter
+        case 53: onCancel?() // Esc
+        default: super.keyDown(with: event)
+        }
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        if adjusting { onCancel?() } else { super.cancelOperation(sender) }
+    }
 }
 
 /// Öndeki uygulama değişmeden ilk tıklama da (taşıma, "Bitti") çalışsın.
@@ -197,8 +288,11 @@ struct SubtitleOverlayView: View {
                     .overlay(RoundedRectangle(cornerRadius: Theme.radius("card"))
                         .strokeBorder(Color.csAccent, style: StrokeStyle(lineWidth: 2, dash: [8, 6])))
                     .gesture(moveGesture)
+                    // Çift tık yeni yeri kaydeder (Enter ve Bitti gibi).
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { model.commitOverlayEdit() })
                 adjustBar
                 resizeHandles
+                heightHandles
             }
             VStack(spacing: 14 * scale) {
                 // Kendiliğinden bulunan ekran yazıları (items) saydam pencerede gösterilmez: bu pencere kullanıcının seçtiği
@@ -238,13 +332,20 @@ struct SubtitleOverlayView: View {
     private var adjustBar: some View {
         VStack {
             HStack(spacing: Theme.space("m")) {
-                Text("Drag to move, drag the edges to resize.")
-                    .font(.csCallout.weight(.semibold))
-                    .foregroundStyle(.white)
-                Button("Done") { model.overlayAdjusting = false }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Drag to move, drag the edges to resize.")
+                        .font(.csCallout.weight(.semibold))
+                    Text("Double-click or press Enter to save, Esc to cancel.")
+                        .font(.csCallout)
+                        .opacity(0.8)
+                }
+                .foregroundStyle(.white)
+                Button("Done") { model.commitOverlayEdit() }
                     .buttonStyle(.primary)
             }
             .padding(Theme.space("m"))
+            // Üst kenardaki boy tutamağıyla çakışmasın.
+            .padding(.top, 10)
             Spacer()
         }
     }
@@ -255,6 +356,28 @@ struct SubtitleOverlayView: View {
             Spacer()
             handle(.trailing)
         }
+    }
+
+    private var heightHandles: some View {
+        VStack {
+            heightHandle(.top)
+            Spacer()
+            heightHandle(.bottom)
+        }
+    }
+
+    private func heightHandle(_ edge: VerticalEdge) -> some View {
+        Capsule()
+            .fill(Color.csAccent)
+            .frame(width: 48, height: 6)
+            .frame(width: 120, height: 14)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                .onChanged { _ in actions.resizeHeight(edge) }
+                .onEnded { _ in actions.endMove() })
+            .onHover { inside in
+                if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+            }
     }
 
     private func handle(_ edge: HorizontalEdge) -> some View {

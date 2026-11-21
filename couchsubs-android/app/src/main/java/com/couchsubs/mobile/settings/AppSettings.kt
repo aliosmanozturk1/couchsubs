@@ -576,6 +576,16 @@ class AppSettings(context: Context) : AreaStore {
         get() = prefs.getInt("subtitleScale", 100).coerceIn(MIN_SUBTITLE_SCALE, MAX_SUBTITLE_SCALE)
         set(value) = prefs.edit().putInt("subtitleScale", value.coerceIn(MIN_SUBTITLE_SCALE, MAX_SUBTITLE_SCALE)).apply()
 
+    /** "Bu telefonda" ekranında iki parmakla verilen yazı boyu çarpanı (TV'ye dokunmaz; iPhone ile aynı sınırlar). */
+    var phoneSubtitleScale: Float
+        get() = com.couchsubs.mobile.core.PhoneSubtitleLayout.clampScale(prefs.getFloat("phoneSubtitleScale", 1f))
+        set(value) = prefs.edit().putFloat("phoneSubtitleScale", com.couchsubs.mobile.core.PhoneSubtitleLayout.clampScale(value)).apply()
+
+    /** "Bu telefonda" ekranında parmakla verilen yer: varsayılan yerden ekran yüksekliğine oranla kaydırma (negatif: yukarı). */
+    var phoneSubtitleOffset: Float
+        get() = com.couchsubs.mobile.core.PhoneSubtitleLayout.clampOffset(prefs.getFloat("phoneSubtitleOffset", 0f))
+        set(value) = prefs.edit().putFloat("phoneSubtitleOffset", com.couchsubs.mobile.core.PhoneSubtitleLayout.clampOffset(value)).apply()
+
     /** Profil › Kullanım verisi: hata ve kullanım istatistikleri (Firebase, Meta olay adları). Varsayılan açık. */
     var usageData: Boolean
         get() = prefs.getBoolean("usageData", true)
