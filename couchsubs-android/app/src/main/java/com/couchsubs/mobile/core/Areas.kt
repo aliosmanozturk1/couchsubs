@@ -793,7 +793,8 @@ class RegionWatcher(
         reads++
         // Altyazı alanındaki ya da altyazı hattının okuduğu satırlar ekran yazısı değildir; altyazı iki yerde çizilmesin
         // (bkz. [SubtitleEcho]). Menüde ve görev satırının kendi alanında yalnız metin eşleşmesi uygulanır.
-        val geometry = (area.auto || GameAreaPresets.isPreset(area.id)) && !area.menu && area.id != MissionLine.AREA_ID
+        val geometry = (area.auto || GameAreaPresets.isPreset(area.id)) && !area.menu && area.id != MissionLine.AREA_ID &&
+            !ScreenNotices.isNotice(area.id)
         val own = subtitleEcho?.filter(reading, area.region.box, geometry) ?: reading
         val text = if (area.auto) AutoText.clean(own, area.menu) else own
         var candidate = candidate(text, area.region, crop.frame, keepPrompts = area.menu, auto = area.auto)

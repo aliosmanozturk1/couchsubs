@@ -159,9 +159,12 @@ public sealed class Reading
     /// Tek satırlık etkileşim/HUD etiketi ("TAKE AMMO PACK (0/3)", <see cref="ButtonPrompts.IsActionLabel"/>) ve sahne
     /// yazısı (tabela, tişört; <see cref="SceneText"/>) altyazı bloğu sayılmaz. <paramref name="band"/>: bu oturumda
     /// altyazının okunduğu yükseklikler; <paramref name="dropped"/>: sahne yazısı sayılıp atılan her blok ve nedeni
-    /// (altyazı günlüğü için).
+    /// (altyazı günlüğü için). "Tam ekran" alanda ekranın kenarındaki bildirim kartı (<see cref="ScreenNotices.IsNotice(TextBox)"/>)
+    /// altyazı bloğu sayılmaz, <paramref name="notices"/> ile bildirilir (satır kutuları alana oranlı); kendi yerinde
+    /// çevrilir. Önceden ortalanmış blok yokken altyazı seçilip ekranın ortasında çiziliyordu.
     /// </summary>
-    public Reading SubtitleBlock(TextBox area, SubtitleBand? band = null, Action<Reading, string>? dropped = null)
+    public Reading SubtitleBlock(TextBox area, SubtitleBand? band = null, Action<Reading, string>? dropped = null,
+                                 Action<Reading>? notices = null)
     {
         if (Lines.Count == 0 || Lines.Any(line => line.Box is null)) return IsActionLabel ? Empty : this;
         var blocks = new List<List<TextLine>>();
@@ -178,6 +181,11 @@ public sealed class Reading
             if (reading.IsMenu || reading.IsActionLabel) return false;
             if (SceneText.Reason(reading, area, band) is not { } reason) return true;
             dropped?.Invoke(reading, reason);
+            return false;
+        }).Where(reading =>
+        {
+            if (!ScreenNotices.IsWholeScreen(area) || !ScreenNotices.IsNotice(reading.Box!.Value.PlacedIn(area))) return true;
+            notices?.Invoke(reading);
             return false;
         }).ToList();
         var centered = candidates.Where(reading =>

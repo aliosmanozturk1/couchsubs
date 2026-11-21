@@ -132,6 +132,13 @@ class SubtitlePipeline(
      * kendi yerinde ve özgün stilinde gösterilir (bkz. [MissionLine]).
      */
     @Volatile var onMissionChanged: ((CropRegion?) -> Unit)? = null
+    private val notices = ScreenNotices()
+
+    /**
+     * Ekranın kenarındaki bildirim kartlarının alanları değişti (boş: hiç yok). Bildirim altyazıya girmez; alanları
+     * "auto-notice-<n>" ek alanı olarak kendi yerinde ve özgün stilinde gösterilir (bkz. [ScreenNotices]).
+     */
+    @Volatile var onNoticesChanged: ((List<ExtraArea>) -> Unit)? = null
     /**
      * Altyazının son okunan satırları ve alanı; ekran yazısı okuyucuları bunlarla altyazıyı dışlar (bkz. [SubtitleEcho]).
      * Uygulama [SubtitleEcho.shared] verir.
@@ -205,6 +212,8 @@ class SubtitlePipeline(
         val rows = raw.withoutButtonPrompts().withoutOcrNoise().joiningRows()
         var missionChanged = false
         var missionRegion: CropRegion? = null
+        var noticesChanged = false
+        var noticeAreas: List<ExtraArea> = emptyList()
         val reading = synchronized(lock) {
             val filtered = stickyRows.filter(rows, now())
             if (mission.observe(stickyRows.removed, area, now())) {
@@ -212,8 +221,21 @@ class SubtitlePipeline(
                 missionRegion = mission.region
             }
             // Bu oturumda altyazının okunduğu yükseklikteki kısa satır tabela sayılmaz; atılan blok günlüğe (GitHub #822).
-            filtered.subtitleBlock(area, subtitleBand) { block, reason -> logSceneText(block.text, reason) }
-                .also { subtitleBand.record(it, area) }
+            val edge = mutableListOf<Reading>()
+            filtered.subtitleBlock(area, subtitleBand, notices = { block ->
+                edge.add(Reading(block.lines.map { it.copy(box = it.box?.placedIn(area)) }))
+            }) { block, reason -> logSceneText(block.text, reason) }.also {
+                subtitleBand.record(it, area)
+                if (notices.observe(edge, now())) {
+                    noticesChanged = true
+                    noticeAreas = notices.areas
+                }
+            }
+        }
+        // Kenardaki bildirim kartı altyazının yerinde (ekranın ortasında) değil, kendi yerinde çevrilir.
+        if (noticesChanged) {
+            onLog?.invoke(if (noticeAreas.isEmpty()) "kenar bildirimi kalktı" else "kenar bildirimi kendi yerinde gösteriliyor (${noticeAreas.size})")
+            onNoticesChanged?.invoke(noticeAreas)
         }
         // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. [SubtitleEcho]).
         echo?.record(reading, area)
@@ -573,6 +595,7 @@ class SubtitlePipeline(
         subtitleBand.reset()
         loggedSceneText.clear()
         mission.reset()
+        notices.reset()
         echo?.reset()
         if (stabilizer.reset() == StabilizerAction.Clear) sender.clear()
     }

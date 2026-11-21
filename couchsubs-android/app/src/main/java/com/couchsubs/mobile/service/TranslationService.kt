@@ -365,6 +365,8 @@ class TranslationService : Service() {
     @Volatile private var presetAreas: List<com.couchsubs.mobile.core.ExtraArea> = emptyList()
     /** Altyazı hattının altyazıdan ayırdığı görev satırının ek alanı ([com.couchsubs.mobile.core.MissionLine]); yoksa boş. */
     @Volatile private var missionAreas: List<com.couchsubs.mobile.core.ExtraArea> = emptyList()
+    /** Altyazı hattının altyazıdan ayırdığı kenar bildirimlerinin ek alanları ([com.couchsubs.mobile.core.ScreenNotices]); yoksa boş. */
+    @Volatile private var noticeAreas: List<com.couchsubs.mobile.core.ExtraArea> = emptyList()
     @Volatile private var playedGame: String? = null
 
     /**
@@ -687,6 +689,10 @@ class TranslationService : Service() {
                     listOf(com.couchsubs.mobile.core.ExtraArea(com.couchsubs.mobile.core.MissionLine.AREA_ID, "Mission", region, auto = true))
                 else emptyList()
             }
+            // "Tam ekran" alanda ekranın kenarındaki bildirim kartı (sağ altta mesaj önizlemesi, solda kayan bildirim) altyazıya
+            // girmez; kendi yerinde ve özgün stilinde gösterilir, ekranın ortasına çizilmez (Windows ve Mac ile aynı).
+            noticeAreas = emptyList()
+            onNoticesChanged = { areas -> noticeAreas = areas }
             onPackMissed = { text -> linePool.offer(text) }
             // Altyazı alanında okunup sahne yazısı sayılan bloklar nedeniyle günlüğe (GitHub #822).
             onLog = { Log.i(TAG, it) }
@@ -780,7 +786,9 @@ class TranslationService : Service() {
             offerGamePhone(frame)
             offerScreenText(frame)
             // Ek alanlar saniyede bir, kendi iş parçacığında okunur; altyazı okumasını beklemez, onu bekletmez.
-            regionWatcher?.offer(extraAreas + presetAreas + missionAreas + autoAreas, { r ->
+            // Oyun telefonu açıkken telefonun yazıları telefon okuyucusundadır; kenar bildirimi sayılmaz.
+            val notices = if (phoneOpen) emptyList() else noticeAreas
+            regionWatcher?.offer(extraAreas + presetAreas + missionAreas + notices + autoAreas, { r ->
                 SubtitleReader.copyRegion(frame, r)?.let {
                     com.couchsubs.mobile.core.RegionWatcher.Crop(it, com.couchsubs.mobile.core.RegionSignature.of(it.nv21, it.width, it.height), it.gray, it.color)
                 }

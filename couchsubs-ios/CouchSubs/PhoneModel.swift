@@ -225,6 +225,8 @@ final class PhoneModel: ObservableObject {
     private var screenTextBusy = false
     /// Altyazı hattının altyazıdan ayırdığı görev satırının bölgesi (bkz. `MissionLine`); yoksa nil.
     private var missionRegion: CropRegion?
+    /// Altyazı hattının altyazıdan ayırdığı kenar bildirimlerinin alanları (bkz. `ScreenNotices`); yoksa boş.
+    private var noticeAreas: [ExtraArea] = []
     /// Hatta aynı anda tek kare girer. Durdurma ve yeni hat kapıyı sıfırlar; takılan okuma hattı yeniden kurdurur (Mac ile aynı).
     private var frameGate = FrameGate()
     /// Çözücüden gelen son kare (ana iş parçacığında bekleyen en çok bir kare); çeviri sürerken var.
@@ -1011,6 +1013,10 @@ final class PhoneModel: ObservableObject {
         // stilinde gösterilir (Windows ile aynı). Kapalıysa ayrıca gösterilmez.
         missionRegion = nil
         pipeline.onMissionChanged = { [weak self] region in self?.missionRegion = region }
+        // "Tam ekran" alanda ekranın kenarındaki bildirim kartı (sağ altta mesaj önizlemesi, solda kayan bildirim) altyazıya
+        // girmez; kendi yerinde ve özgün stilinde gösterilir, ekranın ortasına çizilmez (Windows ve Android ile aynı).
+        noticeAreas = []
+        pipeline.onNoticesChanged = { [weak self] areas in self?.noticeAreas = areas }
         pipeline.skipsTurkish = settings.targetLanguage == "tr"
         pipeline.watchSubtitleBackground = settings.watchSubtitleBackground
         pipeline.onSpeech = { [weak self] lines in self?.speak(lines) }
@@ -1140,6 +1146,8 @@ final class PhoneModel: ObservableObject {
         if settings.autoScreenText, let missionRegion {
             areas.append(ExtraArea(id: MissionLine.areaId, name: "Mission", region: missionRegion, auto: true))
         }
+        // Oyun telefonu açıkken telefonun yazıları telefon okuyucusundadır; kenar bildirimi sayılmaz.
+        if pose == nil { areas += noticeAreas }
         areas += screenTextAreas(frame, capturedAt: capturedAt, watched: areas, phoneOpen: pose != nil)
         if regionWatcher == nil, !areas.isEmpty || pose != nil { regionWatcher = makeRegionWatcher(packLookup: current.packLookup) }
         regionWatcher?.offer(frame, areas: areas, phone: pose)

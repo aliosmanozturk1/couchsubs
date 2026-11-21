@@ -454,7 +454,8 @@ public sealed partial class RegionWatcher
         if (SubtitleEcho is { } echo)
         {
             var place = new TextBox(area.Region.Left, area.Region.Top, area.Region.Right, area.Region.Bottom);
-            var geometry = (area.Auto || area.RequiresPanel) && !area.Menu && area.Id != MissionLine.AreaId;
+            var geometry = (area.Auto || area.RequiresPanel) && !area.Menu && area.Id != MissionLine.AreaId
+                && !ScreenNotices.IsNotice(area.Id);
             reading = echo.Filter(reading, place, geometry);
         }
         return MakeCandidate(reading, area.Region, image, SplitsMenuRows(Game?.Invoke()), auto: area.Auto, menu: area.Menu);

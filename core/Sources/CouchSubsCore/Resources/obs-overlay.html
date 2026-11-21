@@ -280,34 +280,36 @@
     for (var id in regions) styleRegion(regions[id]);
   }
 
-  /// Ek alanın kutusu yazının karedeki yerine (box: 0-1 kesirler) oturur; yeri bilinmiyorsa üstte ortadadır.
+  /// Kutunun sayıları geçerli mi (0–1 arası, sağ soldan, alt üstten büyük; TV'deki validBox ile aynı).
+  function validBox(b) {
+    if (!b || typeof b !== 'object' ||
+        ![b.left, b.top, b.right, b.bottom].every(function (n) { return typeof n === 'number' && n >= 0 && n <= 1; })) return null;
+    return b.right > b.left && b.bottom > b.top ? b : null;
+  }
+
+  /// Ek alanın kutusu yazının karedeki yerine (box: 0-1 kesirler) oturur. Yeri bilinmeyen alan çizilmez (showRegion):
+  /// önceden üstte ortaya, sıfır alanlı kutuda ekranın ortasına çiziliyordu (TV ile aynı).
   function styleRegion(node) {
-    if (node.className === 'phone-blocks') return;
+    if (node.className === 'phone-blocks' || !node.box) return;
     var box = node.box;
     delete node.dataset.baseTransform;
     node.style.fontSize = pixels(Math.max(12, baseSize * 0.55));
     node.style.color = line.style.color || '#fff';
     if (pageColor) node.style.background = '#000';
-    if (box) {
-      node.style.left = (box.left * 100) + '%';
-      node.style.top = (box.top * 100) + '%';
-      node.style.transform = '';
-      node.style.minWidth = ((box.right - box.left) * 100) + 'vw';
-      node.style.maxWidth = (Math.max(box.right - box.left, Math.min(0.45, 1 - box.left)) * 100) + 'vw';
-    } else {
-      node.style.left = '50%';
-      node.style.top = '4%';
-      node.style.transform = 'translateX(-50%)';
-      node.style.minWidth = '';
-      node.style.maxWidth = '60vw';
-    }
+    node.style.left = (box.left * 100) + '%';
+    node.style.top = (box.top * 100) + '%';
+    node.style.transform = '';
+    node.style.minWidth = ((box.right - box.left) * 100) + 'vw';
+    node.style.maxWidth = (Math.max(box.right - box.left, Math.min(0.45, 1 - box.left)) * 100) + 'vw';
   }
 
-  /// Ek alan olayı: metin boşsa alanın kutusu kalkar (TV ve uygulama pencereleriyle aynı).
+  /// Ek alan olayı: metin boşsa ya da yeri bilinmiyorsa (geçersiz kutu) alanın kutusu kalkar; çeviri asla ortaya
+  /// çizilmez (TV ve uygulama pencereleriyle aynı).
   function showRegion(id, text, box, blocks) {
     if (!id) return;
     var node = regions[id];
-    if (!text) {
+    box = validBox(box);
+    if (!text || !box) {
       if (node) { regionsBox.removeChild(node); delete regions[id]; }
       resolveLayers();
       avoidRegions();
@@ -334,7 +336,7 @@
     node.className = 'region';
     node.textContent = text;
     resolveLayers();
-    node.box = box || null;
+    node.box = box;
     styleRegion(node);
     avoidRegions();
   }

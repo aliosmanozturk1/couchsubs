@@ -191,6 +191,13 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
 
     private readonly MissionLine mission = new();
     /// <summary>
+    /// Ekranın kenarındaki bildirim kartlarının alanları değişti (boş: hiç yok). Bildirim altyazıya girmez; alanları
+    /// "auto-notice-&lt;n&gt;" ek alanı olarak kendi yerinde ve özgün stilinde gösterilir (bkz. <see cref="ScreenNotices"/>).
+    /// Okuma iş parçacığında çağrılır.
+    /// </summary>
+    public event Action<IReadOnlyList<WatchedArea>>? NoticesChanged;
+    private readonly ScreenNotices notices = new();
+    /// <summary>
     /// Altyazının son okunan satırları ve alanı; ekran yazısı okuyucuları bunlarla altyazıyı dışlar (bkz.
     /// <see cref="SubtitleEcho"/>). Uygulama (AppController) hatla ek alan okuyucusuna aynı örneği verir.
     /// </summary>
@@ -326,10 +333,22 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             MissionChanged?.Invoke(missionRegion);
         }
         Reading reading;
+        var edge = new List<Reading>();
+        bool noticesMoved;
+        IReadOnlyList<WatchedArea> noticeAreas;
         lock (gate)
         {
-            reading = rows.SubtitleBlock(area, subtitleBand, (block, reason) => LogSceneText(block.Text, reason));
+            reading = rows.SubtitleBlock(area, subtitleBand, (block, reason) => LogSceneText(block.Text, reason),
+                                         block => edge.Add(block.PlacedIn(area)));
             subtitleBand.Record(reading, area);
+            noticesMoved = notices.Observe(edge, now());
+            noticeAreas = notices.Areas;
+        }
+        // Kenardaki bildirim kartı altyazının yerinde (ekranın ortasında) değil, kendi yerinde çevrilir.
+        if (noticesMoved)
+        {
+            Write(noticeAreas.Count == 0 ? "kenar bildirimi kalktı" : $"kenar bildirimi kendi yerinde gösteriliyor ({noticeAreas.Count})");
+            NoticesChanged?.Invoke(noticeAreas);
         }
         // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. SubtitleEcho). Menüde altyazı gönderilmez; okunan
         // menü satırları altyazı sayılmaz (yoksa menünün kendi çevirisi metin eşleşmesiyle atılırdı).
@@ -1040,6 +1059,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             subtitleBand.Reset();
             loggedSceneText.Clear();
             mission.Reset();
+            notices.Reset();
             Echo?.Reset();
             if (stabilizer.Reset() == StabilizerAction.Clear) sender.Clear();
         }

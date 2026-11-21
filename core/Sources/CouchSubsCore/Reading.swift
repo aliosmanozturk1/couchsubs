@@ -174,8 +174,12 @@ public struct Reading: Equatable, Sendable {
     /// Tek satırlık etkileşim/HUD etiketi ("TAKE AMMO PACK (0/3)", `ButtonPrompts.isActionLabel`) ve sahne yazısı
     /// (tabela, tişört; `SceneText`) altyazı bloğu sayılmaz. `band`: bu oturumda altyazının okunduğu yükseklikler
     /// (`SubtitleBand`); `dropped`: sahne yazısı sayılıp atılan her blok ve nedeni (altyazı günlüğü için).
+    /// "Tam ekran" alanda ekranın kenarındaki bildirim kartı (`ScreenNotices.isNotice`) altyazı bloğu sayılmaz, `notices`
+    /// ile bildirilir (satır kutuları alana oranlı); kendi yerinde çevrilir. Önceden ortalanmış blok yokken altyazı seçilip
+    /// ekranın ortasında çiziliyordu.
     public func subtitleBlock(in area: TextBox, band: SubtitleBand = SubtitleBand(),
-                              dropped: ((Reading, String) -> Void)? = nil) -> Reading {
+                              dropped: ((Reading, String) -> Void)? = nil,
+                              notices: ((Reading) -> Void)? = nil) -> Reading {
         guard !lines.isEmpty, lines.allSatisfy({ $0.box != nil }) else { return isActionLabel ? .empty : self }
         var blocks: [[TextLine]] = []
         for line in lines.sorted(by: { $0.box!.top < $1.box!.top }) {
@@ -191,6 +195,11 @@ public struct Reading: Equatable, Sendable {
             guard !block.isMenu, !block.isActionLabel else { return false }
             guard let reason = SceneText.reason(block, in: area, band: band) else { return true }
             dropped?(block, reason)
+            return false
+        }.filter { block in
+            guard ScreenNotices.isWholeScreen(area), let box = block.box?.placed(in: area), ScreenNotices.isNotice(box)
+            else { return true }
+            notices?(block)
             return false
         }
         let centered = candidates.filter { reading in

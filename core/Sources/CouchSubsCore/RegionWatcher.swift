@@ -288,9 +288,11 @@ public final class RegionWatcher {
         reads += 1
         onReadMs?(now() - started)
         // Altyazı alanındaki ya da altyazı hattının okuduğu satırlar ekran yazısı değildir; altyazı iki yerde çizilmesin
-        // (bkz. `SubtitleEcho`). Menüde ve görev satırının kendi alanında yalnız metin eşleşmesi uygulanır.
+        // (bkz. `SubtitleEcho`). Menüde, görev satırının ve kenar bildiriminin kendi alanında
+        // yalnız metin eşleşmesi uygulanır.
         let place = TextBox(left: region.left, top: region.top, right: region.right, bottom: region.bottom)
         let geometry = (area.auto || GameAreaPresets.isPreset(area.id)) && !area.menu && area.id != MissionLine.areaId
+            && !ScreenNotices.isNotice(id: area.id)
         let own = subtitleEcho?.filter(reading, place: place, geometry: geometry) ?? reading
         let candidate = Self.candidate(own, in: region, frame: crop, auto: area.auto, menu: area.menu)
         if state.lastRead == candidate.key {

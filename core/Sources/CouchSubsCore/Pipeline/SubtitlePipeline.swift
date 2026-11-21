@@ -123,6 +123,10 @@ public final class SubtitlePipeline {
     /// Görev satırının bölgesi değişti (nil: görev kalktı). Görev altyazıya girmez; bölgesi "auto-mission" ek alanı olarak
     /// kendi yerinde ve özgün stilinde gösterilir (bkz. `MissionLine`).
     public var onMissionChanged: ((CropRegion?) -> Void)?
+    private var notices = ScreenNotices()
+    /// Ekranın kenarındaki bildirim kartlarının alanları değişti (boş: hiç yok). Bildirim altyazıya girmez; alanları
+    /// "auto-notice-<n>" ek alanı olarak kendi yerinde ve özgün stilinde gösterilir (bkz. `ScreenNotices`).
+    public var onNoticesChanged: (([ExtraArea]) -> Void)?
     /// Altyazının son okunan satırları ve alanı; ekran yazısı okuyucuları bunlarla altyazıyı dışlar (bkz. `SubtitleEcho`).
     /// Uygulama `SubtitleEcho.shared` verir.
     public var echo: SubtitleEcho?
@@ -269,8 +273,14 @@ public final class SubtitlePipeline {
             log(mission.region == nil ? "görev satırı kalktı" : "görev satırı kendi yerinde gösteriliyor")
             onMissionChanged?(mission.region)
         }
-        let reading = rows.subtitleBlock(in: place, band: subtitleBand) { [weak self] block, reason in
+        var edge: [Reading] = []
+        let reading = rows.subtitleBlock(in: place, band: subtitleBand, dropped: { [weak self] block, reason in
             self?.logSceneText(block.text, reason)
+        }, notices: { edge.append($0.placed(in: place)) })
+        // Kenardaki bildirim kartı altyazının yerinde (ekranın ortasında) değil, kendi yerinde çevrilir.
+        if notices.observe(edge, at: now()) {
+            log(notices.areas.isEmpty ? "kenar bildirimi kalktı" : "kenar bildirimi kendi yerinde gösteriliyor (\(notices.areas.count))")
+            onNoticesChanged?(notices.areas)
         }
         subtitleBand.record(reading, in: place)
         // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. `SubtitleEcho`).
@@ -742,6 +752,7 @@ public final class SubtitlePipeline {
         subtitleBand.reset()
         loggedSceneText.removeAll()
         mission.reset()
+        notices.reset()
         echo?.reset()
         if stabilizer.reset() == .clear { server.clear() }
     }

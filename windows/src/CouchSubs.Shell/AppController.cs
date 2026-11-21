@@ -2949,6 +2949,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         built.Log = SubtitleLog.Write;
         built.PackName = () => services.GamePacks?.SearchScope;
         built.MissionChanged += OnMissionChanged;
+        built.NoticesChanged += OnNoticesChanged;
         ConnectPacks(built);
         ApplyWaits(built);
         OnlineIssue = null;
@@ -2980,6 +2981,25 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private int screenTextBusy;
     /// <summary>Altyazıdan ayrılan görev satırının ek alanı (bkz. <see cref="MissionLine"/>); yoksa null.</summary>
     private WatchedArea? missionArea;
+    /// <summary>Altyazıdan ayrılan kenar bildirimlerinin ek alanları (bkz. <see cref="ScreenNotices"/>); yoksa boş.</summary>
+    private IReadOnlyList<WatchedArea> noticeAreas = [];
+
+    /// <summary>
+    /// "Tam ekran" alanda ekranın kenarındaki bildirim kartı (sağ altta mesaj önizlemesi, solda kayan bildirim) altyazıya
+    /// girmez: bölgesi "auto-notice-&lt;n&gt;" ek alanı olur, çevirisi kendi yerinde ve özgün stilinde görünür; ekranın ortasına
+    /// çizilmez. Bildirim kalkınca alan çıkar (Mac ve Android ile aynı).
+    /// </summary>
+    private void OnNoticesChanged(IReadOnlyList<WatchedArea> areas)
+    {
+        var request = false;
+        lock (regionGate)
+        {
+            noticeAreas = areas;
+            ComposeWatchedAreas();
+            if (areas.Count > 0 && regionWatcher is null && !watcherRequested) request = watcherRequested = true;
+        }
+        if (request) post(UpdateRegionWatcher);
+    }
 
     /// <summary>
     /// Altyazı hattı görev satırını altyazıdan ayırdı: bölgesi "auto-mission" ek alanı olur, çevirisi kendi yerinde ve özgün
@@ -3003,8 +3023,10 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private void ComposeWatchedAreas()
     {
         presetAreas = presetRunning ? settings.PresetAreas(gameSense.Current?.Name, phoneArea is not null) : [];
+        // Oyun telefonu açıkken telefonun yazıları telefon okuyucusundadır; kenar bildirimi sayılmaz.
         watchedAreas = [.. savedWatchedAreas, .. presetAreas, .. autoAreas,
-                        .. missionArea is null ? [] : new[] { missionArea }, .. phoneArea is null ? [] : new[] { phoneArea }];
+                        .. missionArea is null ? [] : new[] { missionArea }, .. phoneArea is null ? noticeAreas : [],
+                        .. phoneArea is null ? [] : new[] { phoneArea }];
     }
 
     /// <summary>
@@ -3035,12 +3057,13 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             // Otomatik ekran yazısı kapandı (ya da çeviri durdu): görev satırının ayrı kutusu da kalkar; görev yine
             // altyazıya girmez ama altyazı alanı dışında hiçbir yazı çevrilmez.
             if (!running || !settings.AutoScreenText) missionArea = null;
+            if (!running) noticeAreas = [];
             savedWatchedAreas = running ? settings.WatchedAreas() : [];
             presetRunning = running;
             ComposeWatchedAreas();
             if (watchedAreas.Count == 0)
             {
-                if (phoneTracker is null && screenText is null && missionArea is null)
+                if (phoneTracker is null && screenText is null && missionArea is null && noticeAreas.Count == 0)
                 {
                     regionWatcher?.Reset();
                     regionWatcher = null;
@@ -3052,7 +3075,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 if (services.MakeReader(settings.SourceLanguage, settings.OcrEngine) is not { } reader)
                 {
                     // Okuyucu kurulamadıysa her örnekte tekrar açma. Yeni telefon veya ayar değişikliği yeniden dener.
-                    watcherRequested = phoneArea is not null || autoAreas.Count > 0 || missionArea is not null;
+                    watcherRequested = phoneArea is not null || autoAreas.Count > 0 || missionArea is not null || noticeAreas.Count > 0;
                     return;
                 }
                 regionWatcher = new RegionWatcher(reader, MakeTranslator(), server) { Log = SubtitleLog.Write, SubtitleEcho = SubtitleEcho };
@@ -3093,6 +3116,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             screenText?.Reset();
             autoAreas = [];
             missionArea = null;
+            noticeAreas = [];
             ComposeWatchedAreas();
             regionWatcher?.Reset();
             if (discard) regionWatcher = null;

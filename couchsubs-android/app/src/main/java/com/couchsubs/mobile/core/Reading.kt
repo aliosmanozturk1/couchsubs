@@ -147,9 +147,14 @@ class Reading(lines: List<TextLine>) {
      * bilinmiyorsa okuma olduğu gibi kalır. [area]: okunan alanın karedeki yeri. Tek satırlık etkileşim/HUD etiketi
      * ("TAKE AMMO PACK (0/3)", [ButtonPrompts.isActionLabel]) ve sahne yazısı (tabela, tişört; [SceneText]) altyazı
      * bloğu sayılmaz. [band]: bu oturumda altyazının okunduğu yükseklikler; [dropped]: sahne yazısı sayılıp atılan her
-     * blok ve nedeni (altyazı günlüğü için).
+     * blok ve nedeni (altyazı günlüğü için). "Tam ekran" alanda ekranın kenarındaki bildirim kartı ([ScreenNotices.isNotice])
+     * altyazı bloğu sayılmaz, [notices] ile bildirilir (satır kutuları alana oranlı); kendi yerinde çevrilir. Önceden
+     * ortalanmış blok yokken altyazı seçilip ekranın ortasında çiziliyordu.
      */
-    fun subtitleBlock(area: TextBox, band: SubtitleBand? = null, dropped: ((Reading, String) -> Unit)? = null): Reading {
+    fun subtitleBlock(
+        area: TextBox, band: SubtitleBand? = null, notices: ((Reading) -> Unit)? = null,
+        dropped: ((Reading, String) -> Unit)? = null,
+    ): Reading {
         if (lines.isEmpty() || lines.any { it.box == null }) return if (isActionLabel) Empty else this
         val blocks = mutableListOf<MutableList<TextLine>>()
         for (line in lines.sortedBy { it.box!!.top }) {
@@ -162,6 +167,10 @@ class Reading(lines: List<TextLine>) {
             if (block.isMenu || block.isActionLabel) return@filter false
             val reason = SceneText.reason(block, area, band) ?: return@filter true
             dropped?.invoke(block, reason)
+            false
+        }.filter { block ->
+            if (!ScreenNotices.isWholeScreen(area) || !ScreenNotices.isNotice(block.box!!.placedIn(area))) return@filter true
+            notices?.invoke(block)
             false
         }
         val centered = candidates.filter { reading ->
