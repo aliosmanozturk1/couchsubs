@@ -69,6 +69,27 @@ class PackStoreTest {
         assertEquals(listOf("gta-v", "rdr2"), server.downloads)
     }
 
+    /** "Yeni bir paket geldiğinde": ilk indirme bildirilmez, sonraki yeni ya da güncellenen paket bildirilir (iPhone ile aynı). */
+    @Test
+    fun onlyLaterDownloadsAreAnnounced() {
+        val dir = Files.createTempDirectory("packs").toFile()
+        var now = 1_000L
+        val server = FakeServer(listOf(remote("gta-v", gta)), mutableMapOf("gta-v" to gta, "rdr2" to rdr))
+        val store = PackStore(dir, server, { now })
+        val first = store.refresh()
+        assertTrue(first.firstCheck)
+        assertFalse(com.couchsubs.mobile.packs.PackNotice.shouldNotify(true, first.firstCheck, first.downloadedPacks.size, appVisible = false))
+        server.packs = listOf(remote("gta-v", gta), remote("rdr2", rdr))
+        now += PackStore.REFRESH_INTERVAL_MS + 1
+        val later = store.refresh()
+        assertFalse(later.firstCheck)
+        assertEquals(listOf("RDR2"), later.downloadedPacks.map { it.title })
+        assertTrue(com.couchsubs.mobile.packs.PackNotice.shouldNotify(true, later.firstCheck, later.downloadedPacks.size, appVisible = false))
+        assertFalse(com.couchsubs.mobile.packs.PackNotice.shouldNotify(false, later.firstCheck, later.downloadedPacks.size, appVisible = false))
+        assertFalse(com.couchsubs.mobile.packs.PackNotice.shouldNotify(true, later.firstCheck, later.downloadedPacks.size, appVisible = true))
+        assertEquals("A, B, C +2", com.couchsubs.mobile.packs.PackNotice.titles(listOf("A", "B", "C", "D", "E")))
+    }
+
     @Test
     fun weeklyRefreshUpdatesChangedAndRemovesDroppedPacks() {
         val dir = Files.createTempDirectory("packs").toFile()

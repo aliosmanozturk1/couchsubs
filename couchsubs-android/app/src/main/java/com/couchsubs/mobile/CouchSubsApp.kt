@@ -190,6 +190,10 @@ object Services {
         try {
             val result = packStore.refresh(force, maxAgeMs)
             if (result.downloaded.isNotEmpty() || result.removed.isNotEmpty()) onChanged?.invoke()
+            // "Yeni bir paket geldiğinde" (Profil; iPhone ile aynı): yeni ya da güncellenen paket bildirilir.
+            if (com.couchsubs.mobile.packs.PackNotice.shouldNotify(settings.notifyNewPacks, result.firstCheck, result.downloadedPacks.size,
+                    com.couchsubs.mobile.service.ConnectionAlert.appVisible()))
+                application.let { app -> com.couchsubs.mobile.packs.PackNotice.post(app, result.downloadedPacks.map { it.title }) }
             if (!result.skipped) {
                 packStatus.value = packStatus(result)
                 if (result.failed.isNotEmpty()) Log.w(TAG, "paketler inemedi: ${result.failed}")

@@ -179,6 +179,9 @@
     <string name="profile_psn">PSN account</string>
     <string name="profile_psn_missing">Not connected</string>
     <string name="notify_packs">When a new pack arrives</string>
+    <string name="channel_packs">Game packs</string>
+    <string name="packs_notice_title">New game packs</string>
+    <string name="packs_notice_body">New or updated: %1$s</string>
 
     <string name="settings">Settings</string>
     <string name="settings_engine">Translation engine</string>

@@ -12,7 +12,7 @@ struct ProfileScreen: View {
     @EnvironmentObject private var model: PhoneModel
     @EnvironmentObject private var app: AppModel
     @Binding var path: [Route]
-    @AppStorage("notifyPackUpdates") private var notifyPackUpdates = true
+    @AppStorage(PackNotice.settingKey) private var notifyPackUpdates = true
     @AppStorage(PhoneModel.notifyDisconnectKey) private var notifyDisconnect = true
     @AppStorage(UsageData.key) private var usageData = true
     @State private var confirmPSNSignOut = false
@@ -173,6 +173,7 @@ struct ProfileScreen: View {
         .onChange(of: usageData) { value in app.analytics.setCollection(value) }
         // Bağlantı bildirimi açılınca izin hemen istenir (yoksa ilk çeviride).
         .onChange(of: notifyDisconnect) { value in if value { model.requestNotificationPermission() } }
+        .onChange(of: notifyPackUpdates) { value in if value { model.requestNotificationPermission() } }
         .onAppear { app.analytics.screen("profile") }
         .confirmationDialog("Sign out of PSN?", isPresented: $confirmPSNSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { model.signOutPSN() }

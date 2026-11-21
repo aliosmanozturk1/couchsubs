@@ -57,6 +57,9 @@ final class AppModel: ObservableObject {
                 library.reload()
                 analytics.log(.packsUpdated(count: downloaded))
                 onPacksChanged?()
+                // "Yeni paketler ve güncellemeler" (Profil; Android ile aynı kural): ilk indirme bildirilmez.
+                let (titles, first) = (await packStore.lastDownloaded.map(\.title), await packStore.lastWasFirstCheck)
+                PackNotice.postIfWanted(titles: titles, firstCheck: first)
             }
             packStatus = .ready
             return nil

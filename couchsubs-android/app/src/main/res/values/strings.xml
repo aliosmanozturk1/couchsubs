@@ -182,6 +182,9 @@
     <string name="profile_psn">PSN hesabı</string>
     <string name="profile_psn_missing">Bağlı değil</string>
     <string name="notify_packs">Yeni paket geldiğinde</string>
+    <string name="channel_packs">Oyun paketleri</string>
+    <string name="packs_notice_title">Yeni oyun paketleri</string>
+    <string name="packs_notice_body">Yeni ya da güncellenen: %1$s</string>
 
     <string name="settings">Ayarlar</string>
     <string name="settings_engine">Çeviri motoru</string>

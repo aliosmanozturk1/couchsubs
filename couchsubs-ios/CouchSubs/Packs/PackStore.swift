@@ -109,6 +109,8 @@ actor PackStore {
     private(set) var lastDownloadCount = 0
     /// Son yenilemede inen paketler (sunucudaki başlık ve satır sayısıyla); "Paketleri şimdi güncelle" özeti için.
     private(set) var lastDownloaded: [PackManifest.Entry] = []
+    /// Son yenileme bu kurulumdaki ilk paket indirmesiydi: inenler "yeni paket" diye bildirilmez (Android ile aynı).
+    private(set) var lastWasFirstCheck = false
 
     /// Listeyi alır, eksik ya da değişmiş paketleri indirir, listede olmayanları siler. `force` false ise son bakıştan
     /// `maxAge` geçmeden hiçbir şey yapmaz. Dönen değer: indirilen (yeni ya da güncellenen) paket sayısı.
@@ -123,6 +125,7 @@ actor PackStore {
         let manager = FileManager.default
         try manager.createDirectory(at: filesDirectory, withIntermediateDirectories: true)
         let previous = cachedManifest()
+        lastWasFirstCheck = previous?.packs.isEmpty ?? true
         var downloaded = 0
         // Bir paket inmeyince (ağ, 429, SHA-256) ötekiler yine iner; eskiden ilk hatada bütün yenileme bırakılıyor, liste
         // kaydedilmediği için her açılışta hepsi baştan indiriliyor ve sıradaki paketler (ör. gta-6) hiç gelmiyordu.

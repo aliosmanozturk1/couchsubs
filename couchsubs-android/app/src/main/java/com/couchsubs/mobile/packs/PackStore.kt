@@ -63,6 +63,8 @@ class PackStore(
         val offline: Boolean = false,
         /** İnen paketler (sunucudaki başlık ve satır sayısıyla); "Paketleri güncelle" özeti için ([PackUpdateSummary]). */
         val downloadedPacks: List<RemotePack> = emptyList(),
+        /** Bu kurulumda sunucuya ilk bakış: inen paketler "yeni" sayılmaz (bildirim gösterilmez). */
+        val firstCheck: Boolean = false,
     )
 
     private val lock = Any()
@@ -139,7 +141,7 @@ class PackStore(
         // Başarısız indirme ya da checksum doğrulaması sonraki yenilemede yeniden denensin diye kontrol zamanı ilerletilmez.
         writeManifest(if (retry) checked else clock(), kept)
         Refresh(downloaded, removed, failed = failed, offline = failed.isNotEmpty() && networkFailures == failed.size,
-            downloadedPacks = downloadedPacks)
+            downloadedPacks = downloadedPacks, firstCheck = checked == 0L && current.isEmpty())
     }
 
     /** Ayarlardan "indirilen paketleri sil". */
