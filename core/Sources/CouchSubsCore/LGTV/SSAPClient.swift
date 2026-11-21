@@ -198,19 +198,37 @@ public final class SSAPClient: NSObject, TVControlling, URLSessionDelegate, @unc
 /// girişten geri getirildiyse ve TV yine girişteyse bekçi çekilir ("PS kapalıyken HDMI değiştirince TV sürekli
 /// CouchSubs'a geri atıyor"). Kullanıcı CouchSubs'ı TV'de kendisi açınca, bağlantı yenilenince ya da çeviri yeniden
 /// başlayınca bekçi işine döner. SimpLink/CEC'in bir iki kez girişe geçirmesi sınırın altında kalır (Windows ile aynı).
+///
+/// PS tuşu (HDMI-CEC "One Touch Play") TV'yi konsolun kendi HDMI girişine geçirir; oyunda PS menüsü her açıldığında olur.
+/// TV uygulaması gösterdiği girişi bildirdiyse (`consolePort`) o girişe geçiş kullanıcı ısrarı sayılmaz, uygulama her
+/// seferinde geri getirilir; yalnız bir dakikada `consoleLoopLimit` kez olursa (bitmeyen CEC döngüsü) bekçi çekilir. Başka
+/// HDMI numarası ve yayın eskisi gibi sayılır, başka uygulamalara (Netflix) dokunulmaz. LG'de önplan `foregroundPoll`'da
+/// bir sorulur: eskiden 5 sn'de bir soruluyordu, PS tuşundan sonra çeviri 5-6 sn ekrandan gidiyordu ve kısa sürede dört
+/// PS basışı bekçiyi çekiyordu (X, Kas 2026; Windows ve Android ile aynı).
 public final class TVKeeper: @unchecked Sendable {
     /// Bu kadar zorla geri getirmeden sonra TV yine girişteyse bekçi çekilir.
     public static let standDownAfter = 3
     public static let standDownWindow: Duration = .seconds(90)
+    /// LG'de önplandaki uygulamanın sorulma aralığı (açık SSAP bağlantısında tek istek; TV'de bir şey göstermez).
+    public static let foregroundPoll: Duration = .seconds(1)
+    /// Geri getirdikten sonra bu kadar beklenir: TV uygulamayı öne alırken önplan bir an eski girişi gösterir.
+    public static let launchSettle: Duration = .seconds(2)
+    /// Konsol girişinden bir dakikada bu kadar geri getirmeden sonra bekçi çekilir (bitmeyen CEC döngüsü).
+    public static let consoleLoopLimit = 10
+    public static let consoleLoopWindow: Duration = .seconds(60)
     private let now: () -> ContinuousClock.Instant
     /// Uygulamanın girişten geri getirildiği anlar (pencere içindekiler).
     private var forced: [ContinuousClock.Instant] = []
+    /// Uygulamanın konsol girişinden (PS tuşu) geri getirildiği anlar.
+    private var consoleReturns: [ContinuousClock.Instant] = []
+    private var lastForced: ContinuousClock.Instant?
     /// Kullanıcı girişte kalmakta ısrar etti; bekçi uygulamayı öne getirmiyor.
     public private(set) var stoodDown = false
     private let connect: () async throws -> TVControlling
     private let appId: String
     private let params: [String: Any]
     private let appConnected: (@Sendable () -> Bool)?
+    private let consolePort: (@Sendable () -> Int?)?
     private let relaunchInterval: Duration
     private var control: TVControlling?
     private var loop: Task<Void, Never>?
@@ -220,20 +238,35 @@ public final class TVKeeper: @unchecked Sendable {
     /// `relaunchInterval`'da bir dokunulur: uygulama açılır, bağlantı hemen kapatılır. Samsung önplandaki uygulamayı
     /// söylemediği için sürekli açık "uzaktan kumanda" bağlantısı gereksizdi; birkaç saniyede bir yeniden kurulan
     /// bağlantı TV'de "uzaktan kumanda bağlandı" bildirimi çıkarıyor, PS5 kolunu düşürüyordu (#5).
+    /// `consolePort`: TV uygulamasının gösterdiği HDMI girişi (1-4; altyazı akışına bağlanırken bildirir), bilinmiyorsa nil.
     public init(connect: @escaping () async throws -> TVControlling, appId: String, params: [String: Any],
                 appConnected: (@Sendable () -> Bool)? = nil, relaunchInterval: Duration = .seconds(30),
+                consolePort: (@Sendable () -> Int?)? = nil,
                 now: @escaping () -> ContinuousClock.Instant = { .now }) {
         self.now = now
         self.connect = connect
         self.appId = appId
         self.params = params
         self.appConnected = appConnected
+        self.consolePort = consolePort
         self.relaunchInterval = relaunchInterval
     }
 
     /// Kullanıcının bilerek açtığı uygulamalara (Netflix vb.) dokunulmaz; yalnız giriş ve yayın ekranları.
     static func isInputOrLiveTV(_ appId: String) -> Bool {
         appId.hasPrefix("com.webos.app.hdmi") || appId.hasPrefix("com.webos.app.externalinput") || appId == "com.webos.app.livetv"
+    }
+
+    /// Önplandaki uygulama, TV uygulamasının gösterdiği HDMI girişi mi (LG: `com.webos.app.hdmi2`).
+    static func isConsoleInput(_ appId: String, port: Int?) -> Bool {
+        guard let port, (1...4).contains(port) else { return false }
+        return appId == "com.webos.app.hdmi\(port)"
+    }
+
+    /// Kontrol aralığı: LG'de PS tuşundan sonra en geç ~2 sn'de geri gelinsin diye en çok `foregroundPoll`; Samsung'da
+    /// verilen aralık (TV'ye yine en çok `relaunchInterval`'da bir dokunulur).
+    public func pollInterval(_ requested: Duration) -> Duration {
+        appConnected == nil && requested > Self.foregroundPoll ? Self.foregroundPoll : requested
     }
 
     /// Bir kontrol. Hata fırlatmaz; bağlantı sorununda bir sonraki kontrolde yeniden dener.
@@ -250,23 +283,38 @@ public final class TVKeeper: @unchecked Sendable {
                 return
             }
             guard let control else { return }
+            let time = now()
+            if let lastForced, time - lastForced < Self.launchSettle { return }
             let current = try await control.foregroundAppId()
             if current == appId {
                 // Uygulama önde. Bekçi çekilmişken öndeyse kullanıcı onu kendisi açmıştır: bekçi işine döner.
                 if stoodDown {
                     stoodDown = false
                     forced.removeAll()
+                    consoleReturns.removeAll()
                 }
                 return
             }
             guard Self.isInputOrLiveTV(current), !stoodDown else { return }
-            let time = now()
+            if Self.isConsoleInput(current, port: consolePort?()) {
+                // PS tuşu: konsol TV'yi kendi girişine geçirdi. Kullanıcı ısrarı sayılmaz, hemen geri getirilir.
+                consoleReturns.removeAll { time - $0 > Self.consoleLoopWindow }
+                if consoleReturns.count >= Self.consoleLoopLimit {
+                    stoodDown = true
+                    return
+                }
+                consoleReturns.append(time)
+                lastForced = time
+                try await control.launch(appId: appId, params: params)
+                return
+            }
             forced.removeAll { time - $0 > Self.standDownWindow }
             if forced.count >= Self.standDownAfter {
                 stoodDown = true
                 return
             }
             forced.append(time)
+            lastForced = time
             try await control.launch(appId: appId, params: params)
         } catch {
             control?.close()
@@ -285,10 +333,11 @@ public final class TVKeeper: @unchecked Sendable {
 
     public func start(interval: Duration = .seconds(5)) {
         loop?.cancel()
+        let delay = pollInterval(interval)
         loop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.tick()
-                try? await Task.sleep(for: interval)
+                try? await Task.sleep(for: delay)
             }
         }
     }
@@ -300,6 +349,8 @@ public final class TVKeeper: @unchecked Sendable {
         lastLaunch = nil
         stoodDown = false
         forced.removeAll()
+        consoleReturns.removeAll()
+        lastForced = nil
     }
 
     public func stop() {

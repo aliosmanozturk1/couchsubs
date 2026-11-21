@@ -273,4 +273,97 @@ public class TvKeeperTests
         Assert.Equal(3, attempts);
         Assert.Equal(2, control.Launches.Count);
     }
+
+    [Fact]
+    public async Task PsButtonOnTheConsoleInputIsNeverCountedAsInsisting()
+    {
+        // X (Kas 2026): oyunda PS tuşu TV'yi PS5'in girişine (CEC) geçiriyor. Eskiden her basış "ısrar" sayılıyordu;
+        // 90 sn'de dördüncü basışta bekçi çekiliyor, çeviri bir daha TV'ye gelmiyordu.
+        var presses = 8;
+        var foreground = new List<string> { "com.couchsubs.tv" };
+        for (var i = 0; i < presses; i++) foreground.AddRange(["com.webos.app.hdmi2", "com.couchsubs.tv"]);
+        var control = new FakeControl([.. foreground]);
+        var time = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        var keeper = new TvKeeper(() => Task.FromResult<ITvControl>(control), "com.couchsubs.tv", new Dictionary<string, string>(),
+            clock: () => time, consolePort: () => 2);
+        await keeper.TickAsync(); // bağlanır ve başlatır
+        await keeper.TickAsync(); // uygulama önde
+        for (var i = 0; i < presses; i++)
+        {
+            time += TimeSpan.FromSeconds(5);
+            await keeper.TickAsync(); // PS tuşu → konsol girişi → hemen geri getir
+            time += TimeSpan.FromSeconds(3);
+            await keeper.TickAsync(); // uygulama yine önde
+        }
+        Assert.False(keeper.StoodDown);
+        Assert.Equal(1 + presses, control.Launches.Count);
+    }
+
+    [Fact]
+    public async Task AnotherHdmiNumberIsStillRespected()
+    {
+        // Konsol HDMI 2'de; kullanıcı HDMI 1'e (başka cihaz) geçiyor: eskisi gibi üç geri getirmeden sonra bekçi çekilir.
+        var control = new FakeControl(Enumerable.Repeat("com.webos.app.hdmi1", 5).Prepend("com.couchsubs.tv").ToArray());
+        var time = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        var keeper = new TvKeeper(() => Task.FromResult<ITvControl>(control), "com.couchsubs.tv", new Dictionary<string, string>(),
+            clock: () => time, consolePort: () => 2);
+        await keeper.TickAsync();
+        await keeper.TickAsync();
+        for (var i = 0; i <= TvKeeper.StandDownAfter; i++)
+        {
+            time += TimeSpan.FromSeconds(10);
+            await keeper.TickAsync();
+        }
+        Assert.True(keeper.StoodDown);
+        Assert.Equal(1 + TvKeeper.StandDownAfter, control.Launches.Count);
+    }
+
+    [Fact]
+    public async Task EndlessConsoleBounceStandsDown()
+    {
+        // TV her geri getirmede konsol girişine dönüyorsa (bitmeyen CEC döngüsü) bekçi bir dakikada sınırda çekilir.
+        var control = new FakeControl(Enumerable.Repeat("com.webos.app.hdmi3", 30).Prepend("com.couchsubs.tv").ToArray());
+        var time = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        var keeper = new TvKeeper(() => Task.FromResult<ITvControl>(control), "com.couchsubs.tv", new Dictionary<string, string>(),
+            clock: () => time, consolePort: () => 3);
+        await keeper.TickAsync();
+        await keeper.TickAsync();
+        for (var i = 0; i < 20; i++)
+        {
+            time += TimeSpan.FromSeconds(3);
+            await keeper.TickAsync();
+        }
+        Assert.True(keeper.StoodDown);
+        Assert.Equal(1 + TvKeeper.ConsoleLoopLimit, control.Launches.Count);
+    }
+
+    [Fact]
+    public async Task WaitsForTheAppToComeForwardBeforeLookingAgain()
+    {
+        // Geri getirdikten hemen sonra önplan bir an eski girişi gösterir: ikinci kez açılmaz, sayılmaz.
+        var control = new FakeControl("com.couchsubs.tv", "com.webos.app.hdmi1", "com.webos.app.hdmi1", "com.couchsubs.tv");
+        var time = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        var keeper = new TvKeeper(() => Task.FromResult<ITvControl>(control), "com.couchsubs.tv", new Dictionary<string, string>(), clock: () => time);
+        await keeper.TickAsync();
+        await keeper.TickAsync();
+        time += TimeSpan.FromSeconds(1);
+        await keeper.TickAsync(); // girişte → geri getir
+        time += TimeSpan.FromSeconds(1);
+        await keeper.TickAsync(); // daha öne gelmedi: bekle
+        Assert.Equal(2, control.Launches.Count);
+    }
+
+    [Fact]
+    public void LgPollsEverySecondSamsungKeepsItsInterval()
+    {
+        var control = new FakeControl();
+        var lg = new TvKeeper(() => Task.FromResult<ITvControl>(control), "com.couchsubs.tv", new Dictionary<string, string>());
+        var samsung = new TvKeeper(() => Task.FromResult<ITvControl>(control), "x", new Dictionary<string, string>(), () => true);
+        Assert.Equal(TimeSpan.FromSeconds(1), lg.PollInterval(TimeSpan.FromSeconds(5)));
+        Assert.Equal(TimeSpan.FromSeconds(5), samsung.PollInterval(TimeSpan.FromSeconds(5)));
+        Assert.True(TvKeeper.IsConsoleInput("com.webos.app.hdmi2", 2));
+        Assert.False(TvKeeper.IsConsoleInput("com.webos.app.hdmi2", 1));
+        Assert.False(TvKeeper.IsConsoleInput("com.webos.app.hdmi2", null));
+        Assert.False(TvKeeper.IsConsoleInput("com.webos.app.livetv", 2));
+    }
 }

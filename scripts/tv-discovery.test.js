@@ -88,6 +88,11 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
 
   class FakeEventSource {
     constructor(url) {
+      // Bildirilen HDMI girişi (?hdmi=2) ayrı tutulur; adres karşılaştırmaları onsuz yapılır.
+      const parsed = new URL(url);
+      this.hdmi = parsed.searchParams.get('hdmi');
+      parsed.searchParams.delete('hdmi');
+      url = parsed.toString().replace(/\/events\?$/, '/events');
       this.url = url;
       this.readyState = 0;
       this.closed = false;
@@ -211,6 +216,11 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
     storage,
     failStream: () => streams[streams.length - 1].onerror({}),
     lastOpened: () => opened[opened.length - 1],
+    // Son açılan akışın bildirdiği HDMI girişi (yoksa null).
+    lastHdmi: () => streams[streams.length - 1].hdmi,
+    streamCount: () => streams.length,
+    // Açık akış arka planda kopar ve tarayıcı yeniden denemeye düşer (readyState 0) ya da tümüyle kapanır (2).
+    dropStream(state) { const s = streams[streams.length - 1]; s.readyState = state; if (s.onerror) s.onerror({}); },
     element: (id) => document.getElementById(id),
     // Açık bağlantıya bilgisayardan olay gelir.
     emit(name, data) {
@@ -897,4 +907,78 @@ test('eşleştirme kodu bekleme kutusunun dışında, panelin üstünde ve katma
   const hidden = /style\.textContent = '([^']*)display: none/.exec(android)[1];
   assert(!hidden.includes('#pairing'), 'katman modu kodu gizliyor');
   assert(hidden.includes('#waiting'));
+});
+
+// X (Kas 2026, LG): PS tuşu TV'yi PS5'in girişine geçiriyor; uygulama arka plana düşüp 1 sn siyah ekrandan sonra çeviri
+// gelmiyordu. Bilgisayar/telefon bekçisi uygulamayı geri getirince bağlantı hemen yeniden kurulmalı ve son satır çizilmeli.
+test('LG: altyazı akışı gösterilen HDMI girişini bildirir; giriş değişince akış yeni girişle yeniden açılır', () => {
+  const tv = startTv({ saved: 'http://192.168.1.109:8787', alive: new Set(['http://192.168.1.109:8787']), hasLocalAddress: false,
+    savedHdmi: 2 });
+  tv.clock.advance(1000);
+  assert.strictEqual(tv.lastOpened(), 'http://192.168.1.109:8787/events');
+  assert.strictEqual(tv.lastHdmi(), '2');
+  const before = tv.streamCount();
+  tv.key(51); // 3: kullanıcı girişi değiştirdi
+  tv.clock.advance(1000);
+  assert.strictEqual(tv.streamCount(), before + 1);
+  assert.strictEqual(tv.lastHdmi(), '3');
+  assert.strictEqual(tv.openStreams().length, 1);
+  tv.key(51); // aynı giriş yeniden seçildi: akış yeniden açılmaz
+  tv.clock.advance(1000);
+  assert.strictEqual(tv.streamCount(), before + 1);
+});
+
+test('LG: arka planda kopan bağlantı uygulama öne gelince beklemeden kurulur, süresi dolmamış son satır yeniden çizilir', () => {
+  const tv = startTv({ saved: 'http://192.168.1.109:8787', alive: new Set(['http://192.168.1.109:8787']), hasLocalAddress: false,
+    savedHdmi: 2 });
+  tv.clock.advance(1000);
+  tv.emit('subtitle', { text: 'Seni bekliyordum.', duration: 6000 });
+  assert.strictEqual(tv.element('subtitle').className, '');
+  // PS tuşu: TV girişe geçti, uygulama arka planda; bağlantı koptu ve tarayıcı yeniden denemede bekliyor.
+  tv.setHidden(true);
+  tv.dropStream(0);
+  tv.clock.advance(800);
+  const before = tv.streamCount();
+  // Bekçi uygulamayı geri getirdi (≤ 2 sn): eskiden 5 sn'lik yeniden deneme beklenirdi.
+  tv.setHidden(false);
+  tv.clock.advance(150);
+  assert.strictEqual(tv.streamCount(), before + 1, 'öne gelince bağlantı hemen kurulmadı');
+  assert.strictEqual(tv.openStreams().length, 1);
+  assert.strictEqual(tv.lastHdmi(), '2');
+  assert.strictEqual(tv.element('subtitle').className, '');
+  assert.strictEqual(tv.element('subtitle-text').textContent, 'Seni bekliyordum.');
+});
+
+test('LG: bekçi uygulamayı yeniden açınca kapanmış bağlantı hemen kurulur; açık bağlantıya dokunulmaz', () => {
+  const tv = startTv({ saved: 'http://192.168.1.109:8787', alive: new Set(['http://192.168.1.109:8787']), hasLocalAddress: false,
+    savedHdmi: 1 });
+  tv.clock.advance(1000);
+  const count = tv.streamCount();
+  tv.relaunch({ server: 'http://192.168.1.109:8787' });
+  tv.clock.advance(150);
+  assert.strictEqual(tv.streamCount(), count, 'açık bağlantı yeniden kuruldu');
+  tv.dropStream(2);
+  tv.relaunch({ server: 'http://192.168.1.109:8787' });
+  tv.clock.advance(150);
+  assert.strictEqual(tv.streamCount(), count + 1);
+  assert.strictEqual(tv.openStreams().length, 1);
+});
+
+test('"temizle" gelen ya da süresi dolan satır öne gelişte yeniden çizilmez', () => {
+  const tv = startTv({ saved: 'http://192.168.1.109:8787', alive: new Set(['http://192.168.1.109:8787']), hasLocalAddress: false,
+    closeWhenHidden: true });
+  tv.clock.advance(1000);
+  tv.emit('subtitle', { text: 'Kısa satır.', duration: 3000 });
+  tv.setHidden(true);
+  tv.clock.advance(4000);
+  tv.setHidden(false);
+  tv.clock.advance(1000);
+  assert.strictEqual(tv.element('subtitle').className, 'hidden');
+  tv.emit('subtitle', { text: 'Uzun satır.', duration: 60000 });
+  tv.emit('clear', {});
+  tv.clock.advance(6000);
+  tv.setHidden(true);
+  tv.setHidden(false);
+  tv.clock.advance(1000);
+  assert.strictEqual(tv.element('subtitle').className, 'hidden');
 });

@@ -130,7 +130,7 @@ public sealed class LiveServices : IAppServices
     public bool RemotePlayInstalled(RemotePlayApp app) => RemotePlayWindowStream.IsInstalled(app);
 
     public IKeeper MakeKeeper(LgTv tv, string? key, IReadOnlyDictionary<string, string> parameters, Func<bool> appConnected, Action<LgTv> onMoved,
-                              Action<string> onKey)
+                              Action<string> onKey, Func<int?>? consolePort = null)
     {
         if (tv.Brand == TvBrand.AndroidTv) return new IdleKeeper();
         if (tv.Brand == TvBrand.Samsung)
@@ -171,7 +171,7 @@ public sealed class LiveServices : IAppServices
                 throw;
             }
         }, () => LgDiscovery.SearchAsync(), onMoved);
-        return new Keeper(new TvKeeper(locator.ConnectAsync, AppController.TvAppId, parameters));
+        return new Keeper(new TvKeeper(locator.ConnectAsync, AppController.TvAppId, parameters, consolePort: consolePort));
     }
 
     // --- TV uygulamasını kurma ---

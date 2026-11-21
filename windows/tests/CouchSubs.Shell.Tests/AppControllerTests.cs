@@ -233,7 +233,7 @@ internal sealed class FakeServices : IAppServices
         return stream;
     }
     public IKeeper MakeKeeper(LgTv tv, string? key, IReadOnlyDictionary<string, string> parameters, Func<bool> appConnected, Action<LgTv> onMoved,
-                              Action<string> onKey)
+                              Action<string> onKey, Func<int?>? consolePort = null)
     {
         TvCalls++;
         OnKey = onKey;

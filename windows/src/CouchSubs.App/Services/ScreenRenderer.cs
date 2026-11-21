@@ -121,7 +121,7 @@ public static class ScreenRenderer
         public Task<TvPairing> PairTvAsync(LgTv tv, string? key, string server, string accessKey) => throw new NotSupportedException();
         public IStreamSession MakeStream(RegisteredConsole console, byte[] accountId, string? loginPasscode) => throw new NotSupportedException();
         public IKeeper MakeKeeper(LgTv tv, string? key, IReadOnlyDictionary<string, string> parameters, Func<bool> appConnected, Action<LgTv> onMoved,
-                                  Action<string> onKey) => throw new NotSupportedException();
+                                  Action<string> onKey, Func<int?>? consolePort = null) => throw new NotSupportedException();
         public string? BundledTvAppVersion => null;
         public Task<bool> IsDevModeOnAsync(string host) => Task.FromResult(false);
         public Task<string> FetchDevKeyAsync(string host, string passphrase) => throw new NotSupportedException();

@@ -692,8 +692,9 @@ public interface IAppServices
     /// <param name="appConnected">TV uygulaması bilgisayara bağlı mı (Samsung'da bağlıyken TV'ye dokunulmaz).</param>
     /// <param name="onMoved">TV ağda yeni bir adreste bulununca çağrılır.</param>
     /// <param name="onKey">TV bağlantıda yeni jeton verdi (Samsung); saklanır.</param>
+    /// <param name="consolePort">TV uygulamasının gösterdiği HDMI girişi (LG bekçisi PS tuşunu buna göre tanır).</param>
     IKeeper MakeKeeper(LgTv tv, string? key, IReadOnlyDictionary<string, string> parameters, Func<bool> appConnected, Action<LgTv> onMoved,
-                       Action<string> onKey);
+                       Action<string> onKey, Func<int?>? consolePort = null);
     /// <summary>Uygulamayla gelen TV paketinin sürümü (geliştirici derlemesinde paket olmayabilir).</summary>
     string? BundledTvAppVersion { get; }
     Task<bool> IsDevModeOnAsync(string host);

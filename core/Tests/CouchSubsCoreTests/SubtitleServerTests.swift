@@ -45,6 +45,22 @@ final class SubtitleServerTests: XCTestCase {
         XCTAssertTrue(lines.contains { $0.hasPrefix("data:") && $0.contains("\"text\":\"Merhaba dostum\"") && $0.contains("\"replace\":true") })
     }
 
+    /// TV uygulaması gösterdiği HDMI girişini akışa bağlanırken bildirir; bekçi PS tuşunu bununla tanır.
+    func testRemembersTheHdmiInputTheTVAppShows() async throws {
+        let server = SubtitleServer(port: 0)
+        let port = try await server.start()
+        defer { server.stop() }
+        XCTAssertNil(server.consolePort)
+        let (bytes, _) = try await URLSession.shared.bytes(from: URL(string: "http://127.0.0.1:\(port)/events?hdmi=3")!)
+        try await waitUntil { server.connectedClients == 1 }
+        XCTAssertEqual(server.consolePort, 3)
+        bytes.task.cancel()
+        XCTAssertNil(SubtitleServer.hdmiPort("9"))
+        XCTAssertNil(SubtitleServer.hdmiPort("12"))
+        XCTAssertNil(SubtitleServer.hdmiPort(nil))
+        XCTAssertEqual(SubtitleServer.hdmiPort("4"), 4)
+    }
+
     /// Konuşana göre renk açıkken adlı satır `speakers` alanını taşır; adsız satırda ve ayar kapalıyken alan yoktur.
     func testSubtitleCarriesSpeakerColorsWhenEnabled() async throws {
         let server = SubtitleServer(port: 0)

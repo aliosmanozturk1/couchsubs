@@ -238,6 +238,21 @@ TV, PS5'i kendi HDMI girişinde (kendi görüntü ayarları, oyun modu ve HDR il
 LG (webOS) ve Samsung (Tizen) TV uygulamaları HDMI'yi her zaman kendi içinde gösterir, bu TV'lerde Katman modu yoktur;
 oyun modu ya da HDR'nin kapanması bu TV'lerin uygulamalara koyduğu bir sınırdır.
 
+### LG'de Oyun Yöneticisi (Game Dashboard) açılmıyorsa
+
+LG'ye göre Oyun Yöneticisi (Game Optimizer) için konsolun HDMI ile bağlı ve TV'nin **harici girişinin konsola ayarlı**
+olması gerekir. CouchSubs TV uygulaması açıkken TV'de önde olan uygulamadır, PS5 girişi değil; bu yüzden ayar tuşu Oyun
+Yöneticisi yerine TV'nin genel menüsünü açar. Oyun modu, VRR gibi ayarları yapmak için önce çeviriyi durdurun, TV'de
+PS5'in HDMI girişine geçin, ayarları yapın, sonra çeviriyi yeniden başlatın.
+Çeviri sürerken TV PS5 girişine geçerse CouchSubs uygulamayı birkaç saniye içinde geri getirir.
+
+### LG'de PS tuşuna basınca çeviri kayboluyorsa
+
+PS tuşu (HDMI-CEC, LG'de SimpLink) TV'yi PS5'in girişine geçirir; ekran bir an kararır ve CouchSubs arka plana düşer.
+Bilgisayar ya da telefon uygulamayı 1-2 saniye içinde geri getirir, altyazı bağlantısı hemen yeniden kurulur (TV
+uygulaması 0.9.49 ve sonrası). PS5'in girişine geçiş "kullanıcı başka girişe geçti" sayılmaz; başka bir HDMI numarasına
+ya da yayına geçerseniz CouchSubs üç denemeden sonra sizi zorlamaz.
+
 ### LG'de altyazı var ama oyunun sesi yok
 
 Ses, TV'nin sesi soundbar ya da ev sinema sistemine (HDMI ARC/eARC, optik, Bluetooth) verdiği düzende kesilebiliyor;

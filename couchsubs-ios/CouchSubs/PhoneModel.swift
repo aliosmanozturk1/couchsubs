@@ -786,7 +786,7 @@ final class PhoneModel: ObservableObject {
             Task { @MainActor in self?.tvMoved(to: moved) }
         }, onKey: { [weak self] key in
             Task { @MainActor in self?.store.save(key, for: StoreKey.tvKey) }
-        })
+        }, consolePort: { server.consolePort })
         keeper.start(interval: .seconds(5))
         self.keeper = keeper
     }

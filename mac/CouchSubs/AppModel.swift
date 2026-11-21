@@ -85,7 +85,8 @@ protocol AppServices: AnyObject {
     /// `appConnected`: TV uygulaması bilgisayara bağlı mı (Samsung'da bağlıyken TV'ye dokunulmaz).
     /// `onKey`: TV bağlantıda yeni jeton verdi (Samsung); saklanır.
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
-                    onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void) -> KeeperControlling
+                    onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void,
+                    consolePort: @escaping @Sendable () -> Int?) -> KeeperControlling
     /// Uygulamayla gelen TV paketinin sürümü (geliştirici derlemesinde paket olmayabilir).
     var bundledTVAppVersion: String? { get }
     func isDevModeOn(host: String) async -> Bool
@@ -257,7 +258,8 @@ final class LiveServices: AppServices {
     }
 
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
-                    onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void) -> KeeperControlling {
+                    onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void,
+                    consolePort: @escaping @Sendable () -> Int?) -> KeeperControlling {
         switch tv.brand {
         case .androidTV:
             return IdleKeeper()
@@ -296,7 +298,7 @@ final class LiveServices: AppServices {
             }
             return client
         }, search: { await LGDiscovery.search() }, onMoved: onMoved)
-        return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.tvAppId, params: params)
+        return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.tvAppId, params: params, consolePort: consolePort)
     }
 
     // MARK: - TV uygulamasını kurma
@@ -1737,7 +1739,7 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in self?.tvMoved(to: moved) }
             }, onKey: { [weak self] key in
                 Task { @MainActor in self?.store.save(key, for: StoreKey.tvKey) }
-            })
+            }, consolePort: { server.consolePort })
             made.start(interval: .seconds(5))
             temporary = made
         }
@@ -1898,7 +1900,7 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.tvMoved(to: moved) }
         }, onKey: { [weak self] key in
             Task { @MainActor in self?.store.save(key, for: StoreKey.tvKey) }
-        })
+        }, consolePort: { server.consolePort })
         keeper.start(interval: .seconds(5))
         self.keeper = keeper
         Task { await refreshTVApp() }

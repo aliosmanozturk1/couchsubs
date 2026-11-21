@@ -110,6 +110,9 @@ class SubtitleServer(
         /** Oyun içi telefonun çevirisini taşıyan ek alanın kimliği (Mac/iPhone ve Windows ile aynı). */
         const val GAME_PHONE_ID = "game-phone"
 
+        /** `hdmi` parametresi: 1-4 arası tek rakam, değilse null. */
+        fun hdmiPort(value: String?): Int? = value?.singleOrNull()?.takeIf { it in '1'..'4' }?.let { it - '0' }
+
         /** `/hello` yanıtı: uygulama, kurulum kimliği ve bağlı TV sayısı (Mac ve Windows ile aynı biçim). */
         fun helloBody(id: String, tvs: Int): String =
             "{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"${id.filter { it.isLetterOrDigit() && it.code < 128 || it == '-' }}\",\"tvs\":${maxOf(0, tvs)}}"
@@ -264,6 +267,14 @@ class SubtitleServer(
 
     val connectedClients: Int get() = synchronized(lock) { clients.count { !it.viewer } }
 
+    /**
+     * TV uygulamasının gösterdiği HDMI girişi (1-4): altyazı akışına bağlanırken `/events?hdmi=2` ile bildirir. Bağlantı
+     * kopsa da son bildirilen akılda kalır. LG bekçisi PS tuşunun TV'yi konsol girişine geçirmesini kullanıcının başka
+     * girişe geçmesinden bununla ayırır (Windows ve Mac/iPhone ile aynı). Eski TV uygulaması bildirmez: null.
+     */
+    @Volatile var consolePort: Int? = null
+        private set
+
     /** Sunucuyu başlatır ve dinlenen portu döner (port 0 ise rastgele seçilen). */
     fun start(): Int {
         val socket = ServerSocket()
@@ -405,6 +416,7 @@ class SubtitleServer(
                     // Anahtarsız OBS sayfası eski bir OBS adresidir; TV uygulamasının eski olduğu anlamına gelmez.
                     val notify = synchronized(lock) { (access.legacy && !obs && !hasLegacyClient).also { if (it) hasLegacyClient = true } }
                     if (notify) onLegacyClient?.invoke()
+                    if (!obs) hdmiPort(request.parameter("hdmi"))?.let { consolePort = it }
                     openStream(socket, obs, cors, checkedKey)
                 }
                 // TV uygulaması ağdaki CouchSubs'ı bu yanıtla tanır.

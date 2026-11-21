@@ -56,6 +56,31 @@ public class SubtitleServerTests
         Assert.Contains(lines, l => l.StartsWith("data:") && l.Contains("\"text\":\"Merhaba dostum\"") && l.Contains("\"replace\":true"));
     }
 
+    /// TV uygulaması gösterdiği HDMI girişini akışa bağlanırken bildirir; bekçi PS tuşunu bununla tanır.
+    [Fact]
+    public async Task RemembersTheHdmiInputTheTvAppShows()
+    {
+        using var server = new SubtitleServer(0);
+        var port = await server.StartAsync();
+        Assert.Null(server.ConsolePort);
+        using (var obs = await Http.GetAsync($"http://127.0.0.1:{port}/events?viewer=obs&hdmi=1", HttpCompletionOption.ResponseHeadersRead))
+        {
+            await Task.Delay(100);
+            Assert.Null(server.ConsolePort); // izleyici (OBS) giriş bildirmez
+        }
+        using (var response = await Http.GetAsync($"http://127.0.0.1:{port}/events?hdmi=3", HttpCompletionOption.ResponseHeadersRead))
+        {
+            await WaitUntil(() => server.ConnectedClients == 1);
+            Assert.Equal(3, server.ConsolePort);
+        }
+        await WaitUntil(() => server.ConnectedClients == 0);
+        Assert.Equal(3, server.ConsolePort); // bağlantı kopsa da akılda kalır
+        Assert.Null(SubtitleServer.ParseHdmiPort("9"));
+        Assert.Null(SubtitleServer.ParseHdmiPort("12"));
+        Assert.Null(SubtitleServer.ParseHdmiPort(null));
+        Assert.Equal(4, SubtitleServer.ParseHdmiPort("4"));
+    }
+
     /// Konuşana göre renk açıkken adlı satır "speakers" alanını taşır; kapalıyken ve adsız satırda alan yoktur.
     [Fact]
     public async Task SubtitleCarriesSpeakerColorsOnlyWhenEnabled()

@@ -224,6 +224,19 @@ public final class SubtitleServer: @unchecked Sendable {
         queue.sync { clients.count - viewers.count }
     }
 
+    private var reportedPort: Int?
+
+    /// TV uygulamasının gösterdiği HDMI girişi (1-4): altyazı akışına bağlanırken `/events?hdmi=2` ile bildirir. Bağlantı
+    /// kopsa da son bildirilen akılda kalır. Bekçi (TVKeeper) PS tuşunun TV'yi konsol girişine geçirmesini kullanıcının
+    /// başka girişe geçmesinden bununla ayırır (Windows ve Android ile aynı). Eski TV uygulaması bildirmez: nil.
+    public var consolePort: Int? { queue.sync { reportedPort } }
+
+    /// `hdmi` parametresi: 1-4 arası tek rakam, değilse nil.
+    static func hdmiPort(_ value: String?) -> Int? {
+        guard let value, value.count == 1, let port = Int(value), (1...4).contains(port) else { return nil }
+        return port
+    }
+
     /// Dinleyici açık ve bağlantı kabul ediyor. iPhone'da uygulama arka planda askıya alınınca iOS dinleyiciyi
     /// kapatabiliyor; eskiden bu sessiz kalıyor, sunucu "başlamış" sayıldığı için TV bir daha bağlanamıyordu.
     public var isListening: Bool { queue.sync { listening } }
@@ -584,6 +597,7 @@ public final class SubtitleServer: @unchecked Sendable {
                 legacySeen = true
                 if let handler = onLegacyClient { DispatchQueue.main.async { handler() } }
             }
+            if !obs, let port = Self.hdmiPort(request.parameter("hdmi")) { reportedPort = port }
             openStream(connection, viewer: obs, cors: cors)
         } else if method == "GET" && path == "/obs" {
             respondAndClose(connection, status: "200 OK", data: Self.obsOverlay, type: "text/html; charset=utf-8", cors: cors)

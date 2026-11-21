@@ -71,7 +71,8 @@ protocol PhoneServices: AnyObject {
     func makeStream(console: RegisteredConsole, accountId: Data, loginPasscode: String?) -> StreamControlling
     /// `onKey`: TV bağlantıda yeni jeton verdi (Samsung); saklanır.
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
-                    onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void) -> KeeperControlling
+                    onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void,
+                    consolePort: @escaping @Sendable () -> Int?) -> KeeperControlling
     func checkDeepLKey(_ key: String) async -> OnlineKeyCheck
     func testAIKey(provider: AIProvider, key: String, model: String?) async -> Result<String, AIFailure>
 }
@@ -137,7 +138,8 @@ final class LivePhoneServices: PhoneServices {
     }
 
     func makeKeeper(tv: LGTV, key: String?, params: [String: Any], appConnected: @escaping @Sendable () -> Bool,
-                    onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void) -> KeeperControlling {
+                    onMoved: @escaping (LGTV) -> Void, onKey: @escaping @Sendable (String) -> Void,
+                    consolePort: @escaping @Sendable () -> Int?) -> KeeperControlling {
         switch tv.brand {
         case .androidTV:
             guard let server = params["server"] as? String, !tv.host.isEmpty else { return IdleKeeper() }
@@ -166,7 +168,7 @@ final class LivePhoneServices: PhoneServices {
                 do { _ = try await client.connect() } catch { client.close(); throw error }
                 return client
             }, search: { await LGDiscovery.search() }, onMoved: onMoved)
-            return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.tvAppId, params: params)
+            return TVKeeper(connect: { try await locator.connect() }, appId: AppIdentity.tvAppId, params: params, consolePort: consolePort)
         }
     }
 

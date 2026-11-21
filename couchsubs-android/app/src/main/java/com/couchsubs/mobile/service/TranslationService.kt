@@ -199,10 +199,14 @@ class TranslationService : Service() {
     @Volatile private var subtitlePort = 8787
     private fun launchTv(key: String) {
         if (!settings.target.showsOnTv) return
+        val active = { !destroyed && server?.accessKey == key }
         Thread({ runCatching {
             com.couchsubs.mobile.tv.TvSessionLauncher.launch(settings, subtitlePort, key,
                 adbKeyFile = java.io.File(noBackupFilesDir, "adb/adbkey"), connected = { (server?.connectedClients ?: 0) > 0 },
-                log = { Log.i(TAG, it) }) { !destroyed && server?.accessKey == key }
+                log = { Log.i(TAG, it) }, active = active)
+            // LG: PS tuşu TV'yi PS5'in girişine geçirince uygulama geri getirilir (Windows/Mac/iPhone bekçisiyle aynı).
+            com.couchsubs.mobile.tv.TvSessionLauncher.keepLgOpen(settings, subtitlePort, key, consolePort = { server?.consolePort },
+                log = { Log.i(TAG, it) }) { active() && settings.target.showsOnTv }
         } }, "CouchSubs TV launch").apply { isDaemon = true }.start()
     }
     private lateinit var settings: AppSettings

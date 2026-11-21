@@ -1355,7 +1355,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             var running = server;
             temporary = services.MakeKeeper(target, store.Load<string>(StoreKeys.TvKey),
                 new Dictionary<string, string> { ["server"] = ServerAddress(target), ["key"] = running.AccessKey }, () => running.ConnectedClients > 0,
-                moved => post(() => TvMoved(moved)), key => post(() => store.Save(StoreKeys.TvKey, key)));
+                moved => post(() => TvMoved(moved)), key => post(() => store.Save(StoreKeys.TvKey, key)), () => server.ConsolePort);
             temporary.Start(TimeSpan.FromSeconds(5));
         }
         OpeningTvAppForTest = true;
@@ -1722,7 +1722,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (keeper is not null || !ShowsOnTv || !HasTv || tv is not { } target) return;
         var running = server;
         var tvKeeper = services.MakeKeeper(target, store.Load<string>(StoreKeys.TvKey), new Dictionary<string, string> { ["server"] = ServerAddress(target), ["key"] = server.AccessKey },
-            () => running.ConnectedClients > 0, moved => post(() => TvMoved(moved)), key => post(() => store.Save(StoreKeys.TvKey, key)));
+            () => running.ConnectedClients > 0, moved => post(() => TvMoved(moved)), key => post(() => store.Save(StoreKeys.TvKey, key)), () => server.ConsolePort);
         tvKeeper.Start(TimeSpan.FromSeconds(5));
         keeper = tvKeeper;
         _ = RefreshTvAppAsync();

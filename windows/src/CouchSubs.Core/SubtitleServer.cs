@@ -228,6 +228,22 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
 
     private int TvCount() => clients.Count(c => !c.Viewer);
 
+    private int? consolePort;
+
+    /// <summary>
+    /// TV uygulamasının gösterdiği HDMI girişi (1-4): altyazı akışına bağlanırken <c>/events?hdmi=2</c> ile bildirir.
+    /// Bağlantı kopsa da son bildirilen akılda kalır. Bekçi (TvKeeper) PS tuşunun TV'yi konsol girişine geçirmesini
+    /// kullanıcının başka girişe geçmesinden bununla ayırır. Eski TV uygulaması bildirmez: null.
+    /// </summary>
+    public int? ConsolePort
+    {
+        get { lock (gate) return consolePort; }
+    }
+
+    /// <summary><c>hdmi</c> parametresi: 1-4 arası tek rakam, değilse null.</summary>
+    public static int? ParseHdmiPort(string? value) =>
+        value is { Length: 1 } && value[0] is >= '1' and <= '4' ? value[0] - '0' : null;
+
     /// <summary>OBS'de "Tarayıcı kaynağı" olarak eklenen altyazı katmanı (<c>GET /obs</c>; Mac ile aynı dosya).</summary>
     public static byte[] ObsOverlay { get; } = LoadObsOverlay();
 
@@ -563,7 +579,7 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
                 var obs = request.Parameter("viewer") == "obs";
                 // Anahtarsız OBS sayfası eski bir OBS adresidir; TV uygulamasının eski olduğu anlamına gelmez.
                 if (legacy && !obs && Interlocked.Exchange(ref legacySeen, 1) == 0) LegacyClientConnected?.Invoke();
-                await OpenStream(tcp, obs, cors, checkedKey);
+                await OpenStream(tcp, obs, cors, checkedKey, obs ? null : ParseHdmiPort(request.Parameter("hdmi")));
             }
             else if (method == "GET" && path == "/obs") await RespondAndClose(tcp, ObsOverlay, "text/html; charset=utf-8", cors);
             // TV uygulaması ağdaki bilgisayarı bu yanıtla tanır.
@@ -625,7 +641,7 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
         tcp.Dispose();
     }
 
-    private async Task OpenStream(TcpClient tcp, bool viewer, string cors, string checkedKey)
+    private async Task OpenStream(TcpClient tcp, bool viewer, string cors, string checkedKey, int? hdmi = null)
     {
         var head = new StringBuilder()
             .Append("HTTP/1.1 200 OK\r\n")
@@ -642,6 +658,7 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
             if (accessKey != checkedKey) { tcp.Dispose(); return; }
             if (lastStyle is { } style) head.Append(StyleFrame(style, SetApart));
             clients.Add(client);
+            if (hdmi is not null) consolePort = hdmi;
             count = TvCount();
         }
         await Write(client, head.ToString());

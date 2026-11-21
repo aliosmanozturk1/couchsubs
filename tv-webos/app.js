@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.48';
+  var APP_VERSION = '0.9.49';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -19,6 +19,10 @@
   // Kumandayla seçilen port kayıtlıysa o kullanılır, yoksa PS5 otomatik aranır.
   var savedPort = Number(load('hdmi'));
   var hdmiPort = savedPort || 1;
+  // Gösterilen HDMI girişi (showHdmi çağrılınca) ve altyazı akışına bildirilen giriş. Bilgisayar/telefon bekçisi PS
+  // tuşunun TV'yi bu girişe geçirmesini kullanıcının başka girişe geçmesinden ayırır (/events?hdmi=2).
+  var shownPort = 0;
+  var streamPort = 0;
 
   var bottomPercent = 7;
   // Çevirinin yeri: oyundaki İngilizce altyazının üstünü örterek (cover), üstünde (above), altında (below)
@@ -46,6 +50,11 @@
 
   var hideTimer = null;
   var panelTimer = null;
+  // Gösterilen satırın kalkacağı an (showSubtitle) ve bilgisayardan gelen son satır: uygulama arka plana düşüp (PS tuşu,
+  // TV girişe geçti) geri geldiğinde ya da bağlantı yeniden kurulunca süresi dolmamışsa yeniden çizilir.
+  var shownUntil = 0;
+  var lastLine = null;
+  var RESTORE_MIN_MS = 800;
 
   // Bilgisayarın "temizle" olayı satırı bundan erken kaldırmaz: oyundaki satır çeviri gelirken kalkmışsa yazı TV'de
   // bir an görünüp kayboluyordu. Süre, bilgisayarın okuma süresi kuralıyla aynıdır; üst sınırı daha kısadır.
@@ -67,7 +76,7 @@
     var el = $('st-diag');
     if (!el) return;
     el.textContent = 'sub ' + diag.subtitles + ' · clear ' + diag.clears + ' · drop ' + diag.drops +
-      ' · bg ' + diag.backgrounded + ' · hide ' + diag.lastHide + ' · ' + diag.place +
+      ' · bg ' + diag.backgrounded + (diag.revived ? ' · revived ' + diag.revived : '') + ' · hide ' + diag.lastHide + ' · ' + diag.place +
       (window.__screenSaverStatus ? ' · saver ' + window.__screenSaverStatus : '') +
       (diag.error ? ' · err ' + diag.error : '');
     renderPlatformDiag();
@@ -195,6 +204,9 @@
 
   function showHdmi(port) {
     setStatus('st-hdmi', String(port));
+    shownPort = port;
+    // Akış başka girişle açılmışsa bilgisayar/telefon yeni girişi öğrensin diye yeniden açılır (giriş değişince bir kez).
+    if (eventSource && server && streamPort !== port && !pausedByHidden && !demoRunning()) connectStream(server);
     var statuses = {
       loading: ['loading', 'muted'],
       ready: ['videoReady', 'ok'],
@@ -808,6 +820,7 @@
     clearTimeout(hideTimer);
     // Geçersiz ya da çok kısa süre yazıyı gösterir göstermez kaldırmasın.
     var ms = duration > 0 ? Math.max(MIN_VISIBLE_MS, duration) : Math.min(8000, 2000 + text.length * 60);
+    shownUntil = now + ms;
     hideTimer = setTimeout(function () { hideSubtitle('timer'); }, ms);
   }
 
@@ -1580,7 +1593,8 @@
       return;
     }
     setStatus('st-conn', t('connecting'), 'muted');
-    eventSource = new EventSource(authenticatedUrl(address, '/events'));
+    streamPort = shownPort;
+    eventSource = new EventSource(authenticatedUrl(address, '/events' + (shownPort ? '?hdmi=' + shownPort : '')));
     lastActivity = Date.now();
     eventSource.onopen = function () {
       lastActivity = Date.now();
@@ -1591,6 +1605,7 @@
       dropTimer = null;
       setStatus('st-conn', t('connected'), 'ok');
       learnServer(address);
+      restoreLastLine();
     };
     eventSource.onerror = function () {
       var failedGeneration = connectionGeneration;
@@ -1619,10 +1634,16 @@
     onEvent('subtitle', function (data) {
       diag.subtitles++;
       renderDiag();
-      if (data.text) showSubtitle(data.text, data.duration, data.box, data.paragraphs === true, data.replace === true,
+      if (!data.text) return;
+      showSubtitle(data.text, data.duration, data.box, data.paragraphs === true, data.replace === true,
         speakerMap(data.speakers));
+      lastLine = { text: data.text, box: data.box, paragraphs: data.paragraphs === true, speakers: data.speakers, until: shownUntil };
     });
-    onEvent('clear', onClear);
+    onEvent('clear', function () {
+      // Oyundaki satır kalktı: geri gelişte yeniden çizilmez (tutma süresi yine onClear'da).
+      lastLine = null;
+      onClear();
+    });
     onEvent('screen', function (data) { showScreen(data.items, data.duration); });
     onEvent('screen-clear', hideScreen);
     onEvent('region', showRegion);
@@ -2221,10 +2242,40 @@
     setStatus('st-conn', t('reconnecting'), 'bad');
   }
 
+  // Bağlantı arka planda bırakılmıştı ve yeniden kuruluyor: true.
   function resumeAfterHidden() {
-    if (!pausedByHidden) return;
+    if (!pausedByHidden) return false;
     pausedByHidden = false;
     if (server) connect(server);
+    return true;
+  }
+
+  // --- Öne gelince altyazıyı hemen geri getirme (LG, Android TV) ---
+  // PS tuşu (HDMI-CEC) TV'yi PS5'in girişine geçirince uygulama arka plana düşer; bilgisayar/telefon bekçisi onu 1-2 sn
+  // içinde geri getirir. Arka plandayken bağlantı kopmuş ya da yeniden denemede bekliyor olabilir: eskiden bağlantı
+  // bekçisinin 10 sn'lik turu ya da tarayıcının yeniden denemesi beklenir, bu arada çeviri gelmiyordu. Öne gelince (ve
+  // bilgisayar uygulamayı yeniden açınca) bağlantı açık değilse ya da sessizleşmişse hemen yeniden kurulur; süresi
+  // dolmamış son satır yeniden çizilir.
+  var REVIVE_SILENCE_MS = 20000;
+
+  function reviveStream() {
+    if (!server || pausedByHidden || pairingActive || demoRunning()) return;
+    var open = eventSource && eventSource.readyState === 1;
+    if (open && !(pingSeen && Date.now() - lastActivity > REVIVE_SILENCE_MS)) {
+      restoreLastLine();
+      return;
+    }
+    diag.revived = (diag.revived || 0) + 1;
+    renderDiag();
+    connect(server);
+  }
+
+  // Son satır hâlâ geçerliyse (süresi dolmadı, "temizle" gelmedi) ve ekranda değilse kalan süresiyle yeniden çizilir.
+  function restoreLastLine() {
+    if (!lastLine || $('subtitle').className !== 'hidden') return;
+    var left = lastLine.until - Date.now();
+    if (left < RESTORE_MIN_MS) { lastLine = null; return; }
+    showSubtitle(lastLine.text, left, lastLine.box, lastLine.paragraphs, false, speakerMap(lastLine.speakers));
   }
 
   document.addEventListener('visibilitychange', function () {
@@ -2232,7 +2283,7 @@
       noteHidden();
       dropWhileHidden();
     } else {
-      resumeAfterHidden();
+      if (!resumeAfterHidden()) reviveStream();
       noteVisible();
     }
   });
@@ -2404,7 +2455,12 @@
   });
 
   // Uygulama zaten açıkken yeniden başlatılırsa (ör. CouchSubs onu öne getirdiğinde) parametreler burada gelir.
-  platform.onRelaunch(function (raw) { applyParams(parseParams(raw)); });
+  // Aynı adresle yeniden açılış (bekçi PS tuşundan sonra uygulamayı öne getirdi): bağlantı açık değilse hemen kurulur.
+  platform.onRelaunch(function (raw) {
+    var before = connectionGeneration;
+    applyParams(parseParams(raw));
+    if (connectionGeneration === before && !document.hidden) reviveStream();
+  });
 
   platform.init();
   window.applyI18n();

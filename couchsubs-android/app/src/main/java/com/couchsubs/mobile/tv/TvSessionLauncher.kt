@@ -115,14 +115,34 @@ object TvSessionLauncher {
         }
     }
 
+    /** Telefonun TV'ye bakan adresiyle altyazı sunucusu ("http://192.168.1.20:8787"); bilinemezse null. */
+    private fun serverAddress(remote: InetAddress, port: Int): String? {
+        val own = DatagramSocket().use { it.connect(InetSocketAddress(remote, 9)); it.localAddress.hostAddress } ?: return null
+        return "http://${if (own.contains(':')) "[$own]" else own}:$port"
+    }
+
+    /**
+     * LG: [launch]'tan sonra çeviri sürdükçe CouchSubs TV'yi önde tutar ([LgKeeper]; Windows/Mac/iPhone'daki bekçiyle aynı
+     * kural). Eskiden Android telefon uygulamayı bir kez açıp bırakıyordu; PS tuşu TV'yi PS5'in girişine geçirince çeviri
+     * bir daha TV'ye gelmiyordu. TV'nin izin sorusu [launch]'ta yanıtlanmış olmalı (saklı anahtar yoksa bağlanılmaz). Bloklar.
+     */
+    fun keepLgOpen(settings: AppSettings, port: Int, key: String, consolePort: () -> Int?, log: (String) -> Unit = {},
+                   active: () -> Boolean) {
+        val tv = settings.installedTv ?: return
+        if (tv.brand != TvBrand.LG || !active()) return
+        val remote = InetAddress.getByName(tv.host)
+        if (!SubtitleAccess.isLocalPeer(remote)) return
+        LgKeeper.keep(open = { serverAddress(remote, port)?.let { LgKeeper.ssapControl(settings, tv, remote, it, key) } },
+            active = active, consolePort = consolePort, log = log)
+    }
+
     fun launch(settings: AppSettings, port: Int, key: String, adbKeyFile: java.io.File? = null, connected: () -> Boolean = { false },
                log: (String) -> Unit = {}, active: () -> Boolean) {
         val tv = settings.installedTv ?: return
         if (!active()) return
         val remote = InetAddress.getByName(tv.host)
         if (!SubtitleAccess.isLocalPeer(remote)) return
-        val own = DatagramSocket().use { it.connect(InetSocketAddress(remote, 9)); it.localAddress.hostAddress } ?: return
-        val server = "http://${if (own.contains(':')) "[$own]" else own}:$port"
+        val server = serverAddress(remote, port) ?: return
         if (tv.brand == TvBrand.ANDROID_TV) {
             if (adbKeyFile == null) return
             keepAndroidTvOpen(tv, server, active, connected, open = { host, adbPort, params ->

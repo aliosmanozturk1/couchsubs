@@ -225,6 +225,81 @@ final class TVKeeperTests: XCTestCase {
         XCTAssertEqual(control.launches.count, 13)
     }
 
+    func testPSButtonOnTheConsoleInputIsNeverCountedAsInsisting() async throws {
+        // X (Kas 2026): oyunda PS tuşu TV'yi PS5'in girişine (CEC) geçiriyor. Eskiden her basış "ısrar" sayılıyordu;
+        // 90 sn'de dördüncü basışta bekçi çekiliyor, çeviri bir daha TV'ye gelmiyordu (Windows ile aynı test).
+        let presses = 8
+        var foreground = ["com.couchsubs.tv"]
+        for _ in 0..<presses { foreground += ["com.webos.app.hdmi2", "com.couchsubs.tv"] }
+        let control = FakeControl(foreground: foreground)
+        var time = ContinuousClock.now
+        let keeper = TVKeeper(connect: { control }, appId: "com.couchsubs.tv", params: [:], consolePort: { 2 }, now: { time })
+        await keeper.tick()
+        await keeper.tick()
+        for _ in 0..<presses {
+            time += .seconds(5)
+            await keeper.tick()   // PS tuşu → konsol girişi → hemen geri getir
+            time += .seconds(3)
+            await keeper.tick()   // uygulama yine önde
+        }
+        XCTAssertFalse(keeper.stoodDown)
+        XCTAssertEqual(control.launches.count, 1 + presses)
+    }
+
+    func testAnotherHdmiNumberIsStillRespected() async throws {
+        // Konsol HDMI 2'de; kullanıcı HDMI 1'e (başka cihaz) geçiyor: eskisi gibi üç geri getirmeden sonra bekçi çekilir.
+        let control = FakeControl(foreground: ["com.couchsubs.tv"] + Array(repeating: "com.webos.app.hdmi1", count: 5))
+        var time = ContinuousClock.now
+        let keeper = TVKeeper(connect: { control }, appId: "com.couchsubs.tv", params: [:], consolePort: { 2 }, now: { time })
+        await keeper.tick()
+        await keeper.tick()
+        for _ in 0...TVKeeper.standDownAfter {
+            time += .seconds(10)
+            await keeper.tick()
+        }
+        XCTAssertTrue(keeper.stoodDown)
+        XCTAssertEqual(control.launches.count, 1 + TVKeeper.standDownAfter)
+    }
+
+    func testEndlessConsoleBounceStandsDown() async throws {
+        let control = FakeControl(foreground: ["com.couchsubs.tv"] + Array(repeating: "com.webos.app.hdmi3", count: 30))
+        var time = ContinuousClock.now
+        let keeper = TVKeeper(connect: { control }, appId: "com.couchsubs.tv", params: [:], consolePort: { 3 }, now: { time })
+        await keeper.tick()
+        await keeper.tick()
+        for _ in 0..<20 {
+            time += .seconds(3)
+            await keeper.tick()
+        }
+        XCTAssertTrue(keeper.stoodDown)
+        XCTAssertEqual(control.launches.count, 1 + TVKeeper.consoleLoopLimit)
+    }
+
+    func testWaitsForTheAppToComeForwardBeforeLookingAgain() async throws {
+        let control = FakeControl(foreground: ["com.couchsubs.tv", "com.webos.app.hdmi1", "com.webos.app.hdmi1", "com.couchsubs.tv"])
+        var time = ContinuousClock.now
+        let keeper = TVKeeper(connect: { control }, appId: "com.couchsubs.tv", params: [:], now: { time })
+        await keeper.tick()
+        await keeper.tick()
+        time += .seconds(1)
+        await keeper.tick()   // girişte → geri getir
+        time += .seconds(1)
+        await keeper.tick()   // daha öne gelmedi: bekle
+        XCTAssertEqual(control.launches.count, 2)
+    }
+
+    func testLGPollsEverySecondSamsungKeepsItsInterval() {
+        let control = FakeControl(foreground: [])
+        let lg = TVKeeper(connect: { control }, appId: "com.couchsubs.tv", params: [:])
+        let samsung = TVKeeper(connect: { control }, appId: "x", params: [:], appConnected: { true })
+        XCTAssertEqual(lg.pollInterval(.seconds(5)), .seconds(1))
+        XCTAssertEqual(samsung.pollInterval(.seconds(5)), .seconds(5))
+        XCTAssertTrue(TVKeeper.isConsoleInput("com.webos.app.hdmi2", port: 2))
+        XCTAssertFalse(TVKeeper.isConsoleInput("com.webos.app.hdmi2", port: 1))
+        XCTAssertFalse(TVKeeper.isConsoleInput("com.webos.app.hdmi2", port: nil))
+        XCTAssertFalse(TVKeeper.isConsoleInput("com.webos.app.livetv", port: 2))
+    }
+
     func testReconnectsWhenTVWasOffOrConnectionDropped() async throws {
         struct Off: Error {}
         let control = FakeControl(foreground: [])
