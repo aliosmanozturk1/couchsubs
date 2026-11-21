@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.50';
+  var APP_VERSION = '0.9.51';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -248,6 +248,8 @@
       platform.pictureDiagnostics(function (text) {
         $('row-window').style.display = text ? '' : 'none';
         if (text) setStatus('st-window', text, 'muted');
+        // Panelin gerçek ölçüsü HDMI açılırken okunur; Sarı tuş listede ona göre görünür (#304).
+        formatKeys();
       });
     } catch (e) {}
   }
@@ -2296,7 +2298,8 @@
   // "1–4: HDMI girişi · 0: …" satırını tuş başına bir satıra böler; tuş adı vurgu renginde.
   function formatKeys() {
     var el = $('keys');
-    var text = el.textContent;
+    // Her seferinde i18n metninden kurulur: Samsung panelin ölçüsünü sonradan öğrenince liste yeniden kurulur.
+    var text = t('keys');
     // Geniş ekranlı Samsung'da (21:9, 32:9) Sarı tuş HDMI görüntüsünü sığdırır ya da ekranı doldurur (#304); 4K
     // Samsung'da görüntü ekranı doldurmuyorsa sıradaki pencere yöntemini dener.
     var modes = pictureModes();

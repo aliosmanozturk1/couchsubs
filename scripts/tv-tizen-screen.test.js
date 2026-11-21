@@ -58,6 +58,11 @@ async function render(page, width, height, extra = {}) {
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true,
       screenWidth: width, screenHeight: height }, sessionId);
     await send('Page.enable', {}, sessionId);
+    // extra.display: Tizen SystemInfo DISPLAY (platform.js paneli sayfa yüklenirken okur).
+    if (extra.display) {
+      await send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.tizen = { systeminfo: { getPropertyValue: ' +
+        'function (name, ok) { ok(name === "DISPLAY" ? ' + JSON.stringify(extra.display) + ' : { connected: [] }); } } };' }, sessionId);
+    }
     await send('Page.navigate', { url: pathToFileURL(page).href }, sessionId);
     const expression = `new Promise(function (done) { setTimeout(function () {
       function box(el) { var b = el.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }; }
@@ -82,6 +87,7 @@ async function render(page, width, height, extra = {}) {
           zoom: document.documentElement.style.zoom || '',
           panel: box(document.getElementById('panel')),
           subtitle: box(document.getElementById('subtitle')),
+          keys: document.getElementById('keys').textContent,
         };
       }
       var shots = [];
@@ -172,8 +178,9 @@ test('Samsung paketi: ultrawide ve 16:9 ekranda sayfa ekranın tamamına çizili
       assert.deepEqual(zoom.inner, [3840, 2160]);
       assert.equal(zoom.zoom, '2');
       assert.deepEqual(zoom.rects.at(-1), [...FULL, '@3840']);
+      // Panelin alt kenarı Pencere satırının uzunluğuna bağlı (yöntemler ve panel ölçüsü yazılır, satır kaydırılır).
       for (const key of ['panel', 'subtitle']) {
-        for (const side of ['left', 'right', 'top', 'bottom']) {
+        for (const side of key === 'panel' ? ['left', 'right', 'top'] : ['left', 'right', 'top', 'bottom']) {
           assert.ok(Math.abs(zoom[key][side] - hold[key][side] * hold.scale) < 2, key + ' ' + side + ' ' + JSON.stringify([hold, zoom]));
         }
       }
@@ -181,6 +188,23 @@ test('Samsung paketi: ultrawide ve 16:9 ekranda sayfa ekranın tamamına çizili
       assert.equal(page2.viewport, 'width=1920');
       assert.equal(page2.zoom, '');
       assert.deepEqual(page2.rects.at(-1), [...FULL, '@1920']);
+    });
+
+    await t.test('Ekranı 1920x1080 bildiren ultra geniş monitör (#304, DISPLAY 3440x1440): pencere 2560lık görünümde, tuş listesinde Sarı', async () => {
+      // 0.9.49 fotoğrafı: 'scr 1920x1080 dpr 1 page 1920x1080 vv 1 · 100% ok · area 0,0,1920,1080 · fit', listede Sarı yok.
+      const [hold, zoom] = await render(page, 1920, 1080,
+        { cssBounds: true, yellow: 1, display: { resolutionWidth: 3440, resolutionHeight: 1440 } });
+      const FULL = ['0', '0', '100%', '100%'];
+      // Panelin pikselindeki 16:9 kutu reddedilir; '100%' panelin 16:9 kutusunun genişliğindeki görünümde istenir.
+      assert.deepEqual(hold.rects, [[...FULL, '@1920'], ['440px', '0px', '2560px', '1440px', '@1920'], [...FULL, '@2560']]);
+      assert.equal(hold.viewport, 'width=1920');
+      assert.match(hold.keys, /(Sarı|Yellow)/);
+      // Sarı (zoom): sayfa 2560'lık görünümde 1,33 kat; panel ve altyazı aynı yerde.
+      assert.equal(zoom.viewport, 'width=2560');
+      assert.deepEqual(zoom.rects.at(-1), [...FULL, '@2560']);
+      for (const side of ['left', 'right', 'top', 'bottom']) {
+        assert.ok(Math.abs(zoom.subtitle[side] - hold.subtitle[side] * 2560 / 1920) < 2, side + ' ' + JSON.stringify([hold, zoom]));
+      }
     });
 
     await t.test('telefon ve Android uygulamasının paketleri de aynı görünümü yazar', () => {

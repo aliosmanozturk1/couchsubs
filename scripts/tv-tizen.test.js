@@ -19,6 +19,7 @@ const code = fs.readFileSync(path.join(tizenDir, 'platform.js'), 'utf8');
 // opts.reject(rect): true ise show o dikdörtgeni ayrıca reddeder; opts.picture: kayıtlı seçim.
 // opts.follow: görünüm değişince innerWidth/innerHeight de değişir ('width=device-width' ekranın ölçüsü, 'width=N' N
 // genişlik, 16:9). opts.cssBounds: TVWindow sınırı ve '100%' penceresi o anki sayfa ölçüsü (4K Samsung QN900A).
+// opts.display: Tizen SystemInfo DISPLAY özelliği; opts.model: webapis.productinfo.getRealModel().
 function load(innerWidth, innerHeight, opts = {}) {
   let window = null;
   const meta = { content: 'width=device-width', setAttribute(name, value) {
@@ -82,12 +83,16 @@ function load(innerWidth, innerHeight, opts = {}) {
   const resetWindow = () => { current = ['0px', '0px', fullArea[0] + 'px', fullArea[1] + 'px']; };
   const tizen = {
     systeminfo: {
-      getPropertyValue(name, ok) { ok({ connected: [{ type: 'HDMI', number: 1 }], disconnected: [] }); },
+      getPropertyValue(name, ok, fail) {
+        if (name === 'DISPLAY') return opts.display ? ok(opts.display) : fail && fail(new Error('none'));
+        ok({ connected: [{ type: 'HDMI', number: 1 }], disconnected: [] });
+      },
     },
     tvwindow,
   };
+  const webapis = opts.model ? { productinfo: { getRealModel: () => opts.model } } : undefined;
   const document = { querySelector: (q) => (q === 'meta[name="viewport"]' ? meta : null), documentElement: { style: {} } };
-  vm.runInNewContext(code, { window, document, tizen, setTimeout, clearTimeout, setInterval });
+  vm.runInNewContext(code, { window, document, tizen, webapis, setTimeout, clearTimeout, setInterval });
   const diagnostics = [];
   window.COUCHSUBS_PLATFORM.pictureDiagnostics((text) => diagnostics.push(text));
   // accepted: Samsung'un kabul ettiği istekler (reddedilen denemeler hariç).
@@ -213,7 +218,7 @@ test('Tanı satırı: bildirilen ölçüler, alan, seçim, istek ve sonucu', () 
   // 16:9 TV'de de ölçüler yazılır (tek show).
   const tv = load(1920, 1080, { screen: [1920, 1080] });
   playHdmi(tv);
-  assert.match(tv.diagnostics.at(-1), /page 1920x1080 · 100% ok · area 0,0,1920,1080 · fit$/);
+  assert.match(tv.diagnostics.at(-1), /page 1920x1080 · panel 1920x1080 1\.78 scr \(dsp - cap -\) · 100% ok · area 0,0,1920,1080 · fit$/);
 });
 
 test('100% penceresi de açılamazsa tanı satırına yazılır, durum inputError', () => {
@@ -521,4 +526,64 @@ test('Ultra geniş monitör fiziksel koordinat kullanıyorsa 16:9 kutu fiziksel 
   assert.deepEqual(playHdmi(loaded), [FULL, ['440px', '0px', '2560px', '1440px']]);
   const fill = load(2580, 1080, { screen: [3440, 1440], physical: true, picture: 'fill' });
   assert.deepEqual(playHdmi(fill), [FULL, ['0px', '0px', '3440px', '1440px']]);
+});
+
+// #304, 0.9.49: ultra geniş Samsung monitör (Odyssey G8 türü) ekranı 1920x1080 bildiriyor: 'scr 1920x1080 dpr 1 page
+// 1920x1080 vv 1 · 100% ok · area 0,0,1920,1080 · fit'. Sayfa panelde 16:9 kutuda, görüntü kutudan da küçük; geniş ekran
+// ve 4K yolları ekranın bildirdiği ölçüye baktığı için hiçbiri devreye girmiyordu. Panel DISPLAY/model'den okunur.
+const G8_SCREEN = { screen: [1920, 1080], follow: true, cssBounds: true };
+
+test('modelPanel: Samsung monitör model adından ultra geniş panel; TV ve 16:9 monitör null', () => {
+  const { platform } = load(1920, 1080);
+  assert.deepEqual([...platform.modelPanel('LS34DG850SUXEN')], [3440, 1440]);
+  assert.deepEqual([...platform.modelPanel('S34BG85')], [3440, 1440]);
+  assert.deepEqual([...platform.modelPanel('LS49CG954SUXEN')], [5120, 1440]);
+  assert.deepEqual([...platform.modelPanel('LS57CG952NUXEN')], [7680, 2160]);
+  assert.equal(platform.modelPanel('QE75QN900A'), null);
+  assert.equal(platform.modelPanel('UE55KS9000'), null);
+  assert.equal(platform.modelPanel('LS32BM700UUXEN'), null);
+  assert.equal(platform.modelPanel(''), null);
+});
+
+test('Ekranı 1920 bildiren ultra geniş monitör (DISPLAY 3440x1440): pencere yöntemleri ve Sarı devrede, tanı satırında panel', () => {
+  const loaded = load(1920, 1080, { ...G8_SCREEN, display: { resolutionWidth: 3440, resolutionHeight: 1440 } });
+  // Sarı tuş listesinde (app.js pictureModes'a bakar).
+  assert.equal(loaded.platform.pictureModes(), 'hold');
+  playAsync(loaded);
+  // Önce panelin pikselinde 16:9 kutu (alan dışı, reddedilir), sonra görünüm panelin 16:9 kutusunun genişliğinde (2560).
+  assert.deepEqual(loaded.shown[1].rect, ['440px', '0px', '2560px', '1440px']);
+  assert.deepEqual(loaded.shown.at(-1).page, [2560, 1440]);
+  assert.deepEqual(loaded.current(), ['0px', '0px', '2560px', '1440px']);
+  assert.equal(loaded.meta.content, 'width=1920');
+  const line = loaded.diagnostics.at(-1);
+  assert.match(line, /scr 1920x1080 page 1920x1080 · panel 3440x1440 2\.39 dsp \(dsp 3440x1440 cap -\)/);
+  assert.match(line, /· auto · physical 440,0,2560,1440 fail NotSupportedError hold vw 2560 ok/);
+  // Sarı sıradaki yöntem: zoom (sayfa 2560'lık görünümde 1,33 kat), sonra page.
+  assert.equal(loaded.platform.togglePicture(() => {}), 'zoom');
+  drain(loaded);
+  assert.equal(loaded.meta.content, 'width=2560');
+  assert.ok(Math.abs(loaded.platform.pageZoom() - 2560 / 1920) < 1e-9);
+  assert.equal(loaded.platform.togglePicture(() => {}), 'page');
+  drain(loaded);
+  assert.equal(loaded.meta.content, 'width=1920');
+  assert.deepEqual(loaded.current(), ['0px', '0px', '1920px', '1080px']);
+});
+
+test('Ultra geniş monitör DISPLAY 1920x1080 dese de model adından (LS34…) ya da milimetre oranından panel bulunur', () => {
+  const byModel = load(1920, 1080, { ...G8_SCREEN, model: 'LS34DG850SUXEN' });
+  assert.equal(byModel.platform.pictureModes(), 'hold');
+  playAsync(byModel);
+  assert.match(byModel.diagnostics.at(-1), /panel 3440x1440 2\.39 model \(dsp - cap - LS34DG850SUXEN\)/);
+  const byMm = load(1920, 1080, { ...G8_SCREEN,
+    display: { resolutionWidth: 1920, resolutionHeight: 1080, physicalWidth: 797, physicalHeight: 334 } });
+  assert.equal(byMm.platform.pictureModes(), 'hold');
+  playAsync(byMm);
+  assert.match(byMm.diagnostics.at(-1), /panel 3436x1440 2\.39 ~mm \(dsp 1920x1080 797x334mm cap -\)/);
+});
+
+test('16:9 1080p TV (DISPLAY 1920x1080, 16:9 milimetre): Sarı yok, tek 100% penceresi', () => {
+  const loaded = load(1920, 1080, { screen: [1920, 1080],
+    display: { resolutionWidth: 1920, resolutionHeight: 1080, physicalWidth: 1210, physicalHeight: 680 }, model: 'UE55KS9000' });
+  assert.equal(loaded.platform.pictureModes(), null);
+  assert.deepEqual(playHdmi(loaded), [FULL]);
 });
