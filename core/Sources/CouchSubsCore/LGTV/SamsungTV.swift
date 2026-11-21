@@ -242,6 +242,15 @@ public final class SamsungAppKnowledge: @unchecked Sendable {
         }
     }
 
+    /// Eşleşmiş TV ağda yeni adreste bulundu (modem yeni adres verdi, bkz. `TVLocator`): eski adreste kurulu olduğu
+    /// biliniyorsa yeni adres de bilinen sayılır. Bilgi adrese bağlı olduğundan, adresi değişen TV'de bekçi önce listeye
+    /// bakıyor, liste geliştirici moduyla kurulan uygulamayı içermiyorsa uygulamayı hiç açmıyordu (beta.62'de adres
+    /// değişse de açıyordu; Windows'taki Carry ile aynı).
+    public func carry(from old: String?, to new: String?) {
+        guard Self.normalized(new) != nil, isKnown(host: old) else { return }
+        mark(host: new)
+    }
+
     public func forget(host: String?) {
         guard let host = Self.normalized(host) else { return }
         lock.withLock {

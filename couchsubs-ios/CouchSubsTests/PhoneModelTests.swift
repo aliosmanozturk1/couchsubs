@@ -102,6 +102,67 @@ final class PhoneModelTests: XCTestCase {
         XCTAssertEqual(model.settings.output, .tv)
     }
 
+    private func pairCall(_ method: String, _ model: PhoneModel, _ query: String = "") async throws -> (Int, [String: String]) {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(model.serverPort)/pair\(query)")!)
+        request.httpMethod = method
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: String] ?? [:]
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0, body)
+    }
+
+    private func waitForRequest(_ model: PhoneModel, id: String?) async throws {
+        for _ in 0..<200 where model.tvPairingRequest?.id != id { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(model.tvPairingRequest?.id, id)
+    }
+
+    /// TestFlight, 21 Kas: TV kod beklerken sunucu yeniden açılınca (sağlık yoklaması, arka plandan dönüş) istek siliniyor,
+    /// TV "Eşleştirme tamamlanmadı" diyor, telefondaki onay hiçbir şey yapmıyordu. İstek yeniden açılıştan sağ çıkar,
+    /// onay TV'ye anahtarı verir; eşleşmiş TV'nin anahtarı yeniden açılıştan sonra da geçerlidir.
+    func testTVPairingSurvivesServerRestart() async throws {
+        let model = makeModel()
+        await model.openTVPairing()
+        XCTAssertTrue(model.tvPairingOpened)
+        let (status, ticket) = try await pairCall("POST", model)
+        XCTAssertEqual(status, 200)
+        let id = try XCTUnwrap(ticket["id"])
+        try await waitForRequest(model, id: id)
+        await model.restartServer()
+        XCTAssertEqual(model.tvPairingRequest?.id, id)
+        model.resolveTVPairing(try XCTUnwrap(model.tvPairingRequest), accept: true)
+        XCTAssertNil(model.tvPairingRequest)
+        let (_, approved) = try await pairCall("GET", model, "?id=" + id)
+        XCTAssertEqual(approved["key"], model.subtitleAccessKey)
+        await model.restartServer()
+        let (_, valid) = try await pairCall("GET", model, "?validate=1&k=" + model.subtitleAccessKey)
+        XCTAssertEqual(valid["state"], "valid")
+        // "TV eşleştir"in iki dakikası yeniden açılışta kapanmaz: yeni TV isteği arayüze ulaşır.
+        let (again, next) = try await pairCall("POST", model)
+        XCTAssertEqual(again, 200)
+        try await waitForRequest(model, id: next["id"])
+        model.resolveTVPairing(try XCTUnwrap(model.tvPairingRequest), accept: false)
+        XCTAssertNil(model.tvPairingRequest)
+    }
+
+    /// TV'de Tamam ile yeniden denenince telefondaki istek yenisiyle değişir; eski pencereden verilen onay yok sayılır ve
+    /// yeni istek ekranda kalır.
+    func testTVRetryReplacesTheShownRequest() async throws {
+        let model = makeModel()
+        await model.openTVPairing()
+        let (_, first) = try await pairCall("POST", model)
+        try await waitForRequest(model, id: first["id"])
+        let old = try XCTUnwrap(model.tvPairingRequest)
+        try await Task.sleep(nanoseconds: 2_100_000_000)
+        let (status, second) = try await pairCall("POST", model)
+        XCTAssertEqual(status, 200)
+        try await waitForRequest(model, id: second["id"])
+        model.resolveTVPairing(old, accept: true)
+        XCTAssertEqual(model.tvPairingRequest?.id, second["id"])
+        model.resolveTVPairing(try XCTUnwrap(model.tvPairingRequest), accept: true)
+        let (_, approved) = try await pairCall("GET", model, "?id=" + (second["id"] ?? ""))
+        XCTAssertEqual(approved["state"], "approved")
+    }
+
     /// Ayarlar'daki PS5 giriş şifresi oturuma verilir; yalnız 4 hane kaydedilir.
     func testLoginPasscodeIsPassedToTheSession() async throws {
         let model = makeModel()

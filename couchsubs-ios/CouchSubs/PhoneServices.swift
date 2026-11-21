@@ -144,7 +144,10 @@ final class LivePhoneServices: PhoneServices {
             return AndroidTVKeeper(host: tv.host, port: InstalledTVApp.adbPort(for: tv.host), server: server, appConnected: appConnected)
         case .samsung:
             let token = SamsungTokenHolder(token: key, onChange: onKey)
+            let paired = tv.host
             let locator = TVLocator(tv: tv, connect: { tv in
+                // Adresi değişen TV'de kurulu olduğu bilgisi yeni adrese de geçer (yoksa bekçi listeye bakıp açmayabilir).
+                SamsungAppKnowledge.shared.carry(from: paired, to: tv.host)
                 let client = SamsungClient(tv: tv, token: token.current)
                 do {
                     let received = try await client.connect()

@@ -187,6 +187,10 @@ struct SettingsScreen: View {
         } content: {
             Tile {
                 Button("Pair TV") { Task { await model.openTVPairing() } }
+                if model.tvPairingOpened, model.tvPairingRequest == nil, model.tvClients == 0 {
+                    MobileNote(text: String(localized: "Pairing is open for 2 minutes. Open CouchSubs on the TV; if the TV says pairing did not finish, press OK on its remote. When the TV shows a code, approve it in the window that opens on this phone."),
+                               tone: Mobile.Palette.secondary)
+                }
                 // OBS katmanı adresi (Mac ve Windows'taki gibi adres görünür ve kopyalanır; telefonda ayrıca paylaşılır).
                 Text("OBS overlay").font(Mobile.TypeScale.headline)
                 Text(verbatim: model.subtitleViewerAddress)

@@ -133,7 +133,7 @@ public final class SubtitleServer: @unchecked Sendable {
     private var speechNumber = 0
     private var key: String
     private let allowLegacy: Bool
-    public let pairing = SubtitlePairing()
+    public let pairing: SubtitlePairing
     public var onPairingRequest: (@Sendable (SubtitlePairing.Ticket) -> Void)?
     private var legacySeen = false
     public var onLegacyClient: (@Sendable () -> Void)?
@@ -193,8 +193,10 @@ public final class SubtitleServer: @unchecked Sendable {
     public let instanceId: String
 
     public init(port: UInt16 = 8787, pingInterval: TimeInterval = 15, key: String? = nil,
-                allowLegacy: Bool = SubtitleAccess.allowLegacyClients, instanceId: String = SubtitleServer.installationId) {
+                allowLegacy: Bool = SubtitleAccess.allowLegacyClients, instanceId: String = SubtitleServer.installationId,
+                pairing: SubtitlePairing = SubtitlePairing()) {
         requestedPort = port
+        self.pairing = pairing
         self.pingInterval = pingInterval
         self.key = key ?? SubtitleAccess.createKey()
         self.allowLegacy = allowLegacy
@@ -313,8 +315,11 @@ public final class SubtitleServer: @unchecked Sendable {
 
     private var startContinuation: CheckedContinuation<UInt16, Error>?
 
-    public func stop() {
-        pairing.setSession(false)
+    /// `keepPairing`: sunucu hemen yeniden açılacaksa (dinleyici düştü, port geri alınıyor) eşleştirme durumu korunur.
+    /// Eskiden her kapanış onay bekleyen isteği ve "TV eşleştir" süresini siliyordu: TV'de kod beklerken sunucu yeniden
+    /// açılınca TV "Eşleştirme tamamlanmadı" diyor, telefondaki pencere artık geçersiz isteği gösteriyordu.
+    public func stop(keepPairing: Bool = false) {
+        if !keepPairing { pairing.setSession(false) }
         queue.sync {
             listening = false
             pingTimer?.cancel()

@@ -1221,6 +1221,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>TV ağda yeni bir adreste bulundu.</summary>
     public void TvMoved(LgTv moved)
     {
+        if (moved.Brand == TvBrand.Samsung) SamsungAppKnowledge.Carry(tv?.Host, moved.Host);
         tv = moved;
         store.Save(StoreKeys.Tv, moved);
         Changed(nameof(Tv));

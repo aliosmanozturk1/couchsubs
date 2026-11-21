@@ -152,7 +152,7 @@ class Reading(lines: List<TextLine>) {
         val blocks = mutableListOf<MutableList<TextLine>>()
         for (line in lines.sortedBy { it.box!!.top }) {
             val placed = line.box!!.placedIn(area)
-            val index = blocks.indexOfLast { belongs(placed, it, area) }
+            val index = blocks.indexOfLast { belongs(placed, line.text, it, area) }
             if (index >= 0) blocks[index].add(line) else blocks.add(mutableListOf(line))
         }
         val candidates = blocks.map { Reading(it) }.filter { !it.isMenu && !it.isActionLabel }
@@ -170,15 +170,20 @@ class Reading(lines: List<TextLine>) {
     /**
      * Bloğun son satırının hemen altında ve yatayda onunla üst üste binen satır o bloğa aittir. Aradaki boşluk satır
      * yüksekliğinin 0,6'sından büyükse ya da yazı boyları 1,25 kattan çok farklıysa ayrı bloktur (altyazıya bitişik görev
-     * satırı ayrılır; Windows ve Mac ile aynı).
+     * satırı ayrılır; Windows ve Mac ile aynı). Yazı boyu yalnız iki satır da en az üç sözcükken karşılaştırılır ve alttaki
+     * satır üsttekinin devamıysa ([continues]) hiç karşılaştırılmaz: satır kutusu harflere göre ölçülür, "now." gibi kısa ve
+     * büyük harfsiz/kuyruksuz satırın kutusu daha alçak çıkıyor, cümlenin devamı ayrı blok sayılıp tek başına çevriliyordu
+     * (GitHub #715).
      */
-    private fun belongs(box: TextBox, block: List<TextLine>, area: TextBox): Boolean {
+    private fun belongs(box: TextBox, text: String, block: List<TextLine>, area: TextBox): Boolean {
         val last = block.last().box!!.placedIn(area)
         val own = box.bottom - box.top
         val previous = last.bottom - last.top
         val height = maxOf(own, previous)
         if (box.top - last.bottom > height * 0.6 || box.top < last.top) return false
-        if (maxOf(own, previous) > 1.25 * minOf(own, previous)) return false
+        val upper = block.last().text
+        val comparable = wordCount(text) >= 3 && wordCount(upper) >= 3 && !continues(upper, text)
+        if (comparable && maxOf(own, previous) > 1.25 * minOf(own, previous)) return false
         val overlap = minOf(box.right, last.right) - maxOf(box.left, last.left)
         val narrower = minOf(box.right - box.left, last.right - last.left)
         return overlap > 0 && overlap >= narrower * 0.5
