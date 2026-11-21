@@ -81,7 +81,7 @@ public sealed class PaddleOcrReader : ITextReader
 
     public Reading ReadLines(Frame image, bool deep)
     {
-        if (image.Width < 8 || image.Height < 8) return Reading.Empty;
+        if (image.Width < 8 || image.Height < 8 || !WindowsOcrReader.Usable(image)) return Reading.Empty;
         Reading reading;
         // Oturum paylaşılır; içinde takılan bir okuma kilidi bırakmazsa yeni kurulan hat da sonsuza dek beklerdi (#679).
         // Kilit süresinde alınamazsa hata verilir: sarmalayıcı (FallbackTextReader) kareyi Windows'un yazı tanımasıyla okur,

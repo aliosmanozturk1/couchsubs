@@ -10,6 +10,23 @@ public sealed class Frame(byte[] pixels, int width, int height, int stride)
     public int Height { get; } = height;
     public int Stride { get; } = stride;
 
+    /// <summary>
+    /// Boyutlar diziye uyuyor mu: genişlik, yükseklik ve satır aralığı negatif değil, satır en az <c>genişlik × 4</c> bayt
+    /// ve dizi son satırın sonuna kadar yetiyor. Kurulurken bir kez hesaplanır (kare değiştirilemez). Tutarsız kare
+    /// okunmaz (<c>WindowsOcrReader</c>), piksel döngüleri ona girmez; dizinin dışına taşan okuma olmaz (GitHub #587).
+    /// </summary>
+    public bool IsConsistent { get; } = Fits(pixels, width, height, stride);
+
+    /// <summary>Günlük için: "genişlik x yükseklik, satır aralığı, dizi boyu".</summary>
+    public string Layout => $"{Width}x{Height}, stride {Stride}, {Pixels?.Length ?? -1} bayt";
+
+    private static bool Fits(byte[]? pixels, int width, int height, int stride)
+    {
+        if (pixels is null || width < 0 || height < 0 || stride < 0) return false;
+        if (width == 0 || height == 0) return true;
+        return (long)stride >= (long)width * 4 && pixels.LongLength >= ((long)(height - 1) * stride) + ((long)width * 4);
+    }
+
     public static Frame Blank(int width, int height) => new(new byte[width * height * 4], width, height, width * 4);
 
     /// <summary>Yerel kodun verdiği tamponun kopyası (tampon yalnız geri çağrı süresince geçerlidir).</summary>
@@ -30,6 +47,7 @@ public sealed class Frame(byte[] pixels, int width, int height, int stride)
         width = Math.Clamp(width, 0, Width - x);
         height = Math.Clamp(height, 0, Height - y);
         var result = Blank(width, height);
+        if (!IsConsistent) return result;
         for (var row = 0; row < height; row++)
             Buffer.BlockCopy(Pixels, ((y + row) * Stride) + (x * 4), result.Pixels, row * result.Stride, width * 4);
         return result;
@@ -39,6 +57,7 @@ public sealed class Frame(byte[] pixels, int width, int height, int stride)
     public Frame Scaled(int factor)
     {
         var result = Blank(Width * factor, Height * factor);
+        if (!IsConsistent || Width == 0 || Height == 0) return result;
         for (var ty = 0; ty < result.Height; ty++)
         {
             var sy = Math.Min(((ty + 0.5) / factor) - 0.5, Height - 1.0);
@@ -69,6 +88,7 @@ public sealed class Frame(byte[] pixels, int width, int height, int stride)
     public Frame Resized(int width, int height)
     {
         var result = Blank(width, height);
+        if (!IsConsistent || Width == 0 || Height == 0) return result;
         double scaleX = (double)Width / width, scaleY = (double)Height / height;
         for (var ty = 0; ty < height; ty++)
         {
@@ -107,6 +127,7 @@ public static class TextImage
     /// </summary>
     public static Frame WhiteTextOnly(Frame image, int radius = 5)
     {
+        if (!image.IsConsistent) return image;
         int width = image.Width, height = image.Height;
         var bright = new bool[width * height];
         // Koyu piksellerin toplamlı tablosu: bir pencerede koyu piksel var mı tek adımda bulunur.
@@ -167,7 +188,7 @@ public static class RegionCropper
     {
         const int width = ReadScheduler.SignatureWidth, height = ReadScheduler.SignatureHeight;
         var samples = new byte[width * height];
-        if (image.Width == 0 || image.Height == 0) return samples;
+        if (image.Width == 0 || image.Height == 0 || !image.IsConsistent) return samples;
         for (var y = 0; y < height; y++)
         {
             var row = (y * image.Height / height) * image.Stride;
@@ -198,12 +219,20 @@ public interface ITextReader
 }
 
 /// <summary>
-/// OCR geniş bölgede "Go!" gibi kısa satırları sık sık hiç bulmaz. Bölgede yazı çıkmazsa
-/// ortadaki şerit (altyazılar ortalıdır) ve bölgenin tamamı büyütülerek aynı anda yeniden okunur;
-/// ikisi de yazı bulursa şeridinki seçilir. Aynı anda okumak, boş karede yeni satırı geç fark etmeyi önler.
+/// OCR geniş bölgede "Go!" gibi kısa satırları sık sık hiç bulmaz. Bölgede yazı çıkmazsa ortadaki şerit (altyazılar
+/// ortalıdır), sonra bölgenin tamamı büyütülerek yeniden okunur; yazı bulan ilk okuma kullanılır (şerit önce).
+///
+/// Mac'teki <c>VisionReader.firstLines</c> ile aynı: iki yedek okuma <b>sırayla</b> yapılır ve bölgenin tamamının
+/// büyütmesinin uzun kenarı <see cref="MaxFallbackDimension"/> ile sınırlanır. Eskiden ikisi <c>Parallel.For</c> ile aynı
+/// anda başlatılıyordu; yazı tanıma motoru zaten tek okumaya kilitli olduğu için kazanç yalnız hazırlıktaydı, 1440p
+/// pencerede ise her boş karede iki iş parçacığı aynı anda 15 MB'lık iki katına büyütülmüş kareler ayırıyordu. Uzun
+/// oturumdaki erişim ihlali (GitHub #587) bu paralel okumada görülüyordu.
 /// </summary>
 public static class ReadingFallback
 {
+    /// <summary>Yedek okumada büyütülmüş bölgenin uzun kenarı (piksel; Mac'te <c>maxFallbackDimension</c>).</summary>
+    public const int MaxFallbackDimension = 1920;
+
     /// <summary>Satırsız eski biçim: bulunan yazı tek metin olarak döner.</summary>
     public static string FirstReading(Frame image, Func<Frame, string> recognize) =>
         FirstLines(image, frame => Reading.FromText(recognize(frame))).Text;
@@ -211,19 +240,24 @@ public static class ReadingFallback
     public static Reading FirstLines(Frame image, Func<Frame, Reading> recognize)
     {
         var reading = recognize(image);
-        if (reading.Lines.Count > 0) return reading;
+        if (reading.Lines.Count > 0 || image.Width == 0 || image.Height == 0) return reading;
 
         // Şeritte bulunan satırın yeri şeridin değil bölgenin tamamının oranlarıyla verilir.
         var (x, width) = CenterStrip(image, 0.4);
         var stripArea = new TextBox((double)x / image.Width, 0, (double)(x + width) / image.Width, 1);
-        Func<Reading>[] fallbacks =
-        [
-            () => recognize(image.Crop(x, 0, width, image.Height).Scaled(2)).PlacedIn(stripArea),
-            () => recognize(image.Scaled(2)),
-        ];
-        var results = new Reading[fallbacks.Length];
-        Parallel.For(0, fallbacks.Length, index => results[index] = fallbacks[index]());
-        return results.FirstOrDefault(r => r.Lines.Count > 0) ?? Reading.Empty;
+        var strip = recognize(image.Crop(x, 0, width, image.Height).Scaled(2)).PlacedIn(stripArea);
+        if (strip.Lines.Count > 0) return strip;
+        var whole = recognize(ScaledForFallback(image));
+        return whole.Lines.Count > 0 ? whole : Reading.Empty;
+    }
+
+    /// <summary>İki katına büyütme; uzun kenar <see cref="MaxFallbackDimension"/>'ı aşacaksa oran ona göre düşer (en az 1).</summary>
+    internal static Frame ScaledForFallback(Frame image)
+    {
+        var longest = Math.Max(image.Width, image.Height);
+        if (longest * 2 <= MaxFallbackDimension) return image.Scaled(2);
+        var scale = Math.Max(1, (double)MaxFallbackDimension / longest);
+        return image.Resized(Math.Max(1, (int)(image.Width * scale)), Math.Max(1, (int)(image.Height * scale)));
     }
 
     private static (int X, int Width) CenterStrip(Frame image, double widthFraction)

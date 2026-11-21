@@ -204,6 +204,35 @@ internal static class CrashWatch
                 var target = (int*)0x12345678;
                 *target = 1;
                 break;
+            case "paralel-yonetilen":
+                // #587'deki yığının biçimi: Parallel.For iş parçacığında yönetilen kodda geçersiz adrese yazma.
+                System.Threading.Tasks.Parallel.For(0, 2, index => { if (index == 1) WriteInvalid(); else Thread.Sleep(200); });
+                break;
+            case "kisa-kare":
+                // #587 için sınanan varsayım: AutoLevel'da dizinin dışına taşan bir yönetilen istisna, Parallel.For iş
+                // parçacığında dağıtılırken erişim ihlaline dönüşüyor mu? Eski AutoLevel döngüsü kısa diziyle binlerce kez
+                // paralel çalıştırılır; her biri IndexOutOfRangeException olmalı, süreç çökmemeli. Ardından bugünkü okuma
+                // aynı kısa kareyi atlamalı (istisnasız, boş okuma).
+                var thrown = 0;
+                for (var round = 0; round < 200; round++)
+                {
+                    try
+                    {
+                        System.Threading.Tasks.Parallel.For(0, 16, _ =>
+                        {
+                            try { OldAutoLevelHistogram(new Core.Frame(new byte[(640 * 120 * 4) - 4096], 640, 120, 640 * 4)); }
+                            catch (IndexOutOfRangeException) { Interlocked.Increment(ref thrown); throw; }
+                        });
+                    }
+                    catch (AggregateException) { }
+                }
+                var reader = WindowsOcrReader.CreateWithoutEngine();
+                var shortFrame = new Core.Frame(new byte[1000], 640, 120, 640 * 4);
+                var reading = reader.ReadLines(shortFrame, deep: true);
+                var screen = reader.ReadScreen(shortFrame);
+                Console.WriteLine($"kisa-kare: {thrown} IndexOutOfRangeException, okuma {reading.Lines.Count} satır, ekran {screen.Lines.Count} satır");
+                CrashRecords.EndSession(folder, Environment.ProcessId);
+                return thrown == 200 * 16 && reading.Lines.Count == 0 && screen.Lines.Count == 0 ? 0 : 7;
             case "bos":
                 try
                 {
@@ -218,6 +247,27 @@ internal static class CrashWatch
                 break;
         }
         return 5; // buraya gelinmemeli
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static unsafe void WriteInvalid()
+    {
+        var target = (int*)0x12345678;
+        *target = 1;
+    }
+
+    /// <summary>beta.67'deki AutoLevel'ın ilk döngüsü, denetimsiz hâliyle (yalnız "kisa-kare" denemesi için).</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static int OldAutoLevelHistogram(Core.Frame image)
+    {
+        var hist = new int[256];
+        for (var y = 0; y < image.Height; y++)
+            for (var x = 0; x < image.Width; x++)
+            {
+                var i = (y * image.Stride) + (x * 4);
+                hist[(image.Pixels[i + 2] * 3 + image.Pixels[i + 1] * 6 + image.Pixels[i]) / 10]++;
+            }
+        return hist[0];
     }
 
     [System.Runtime.InteropServices.DllImport("kernel32.dll")]

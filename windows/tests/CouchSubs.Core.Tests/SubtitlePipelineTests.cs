@@ -674,19 +674,82 @@ public class ReadingFallbackTests
         Assert.Equal(1, calls);
     }
 
-    /// Bölge boşken iki yedek okuma art arda değil aynı anda yapılır; yeni satır daha erken fark edilir.
+    /// Mac'teki gibi: yedek okumalar sırayla, aynı iş parçacığında yapılır (GitHub #587); şerit yazı bulursa bölgenin
+    /// tamamı hiç büyütülmez.
     [Fact]
-    public void FallbackReadingsRunAtTheSameTime()
+    public void FallbackReadingsRunOneAfterAnother()
     {
-        // İki yedek okuma birbirini bekler; art arda yapılsalardı buluşamaz, süre dolardı.
-        using var barrier = new Barrier(2);
-        var met = 0;
+        var thread = Environment.CurrentManagedThreadId;
+        var widths = new List<int>();
+        var busy = 0;
         ReadingFallback.FirstReading(Image, candidate =>
         {
-            if (candidate.Width != 64 && barrier.SignalAndWait(TimeSpan.FromSeconds(10))) Interlocked.Increment(ref met);
+            Assert.Equal(1, Interlocked.Increment(ref busy));
+            Assert.Equal(thread, Environment.CurrentManagedThreadId);
+            widths.Add(candidate.Width);
+            Interlocked.Decrement(ref busy);
             return "";
         });
-        Assert.Equal(2, met);
+        var stripWidth = (int)Math.Round(64 * 0.4) * 2;
+        Assert.Equal([64, stripWidth, 128], widths);
+
+        widths.Clear();
+        ReadingFallback.FirstReading(Image, candidate => { widths.Add(candidate.Width); return candidate.Width == stripWidth ? "Go!" : ""; });
+        Assert.Equal([64, stripWidth], widths);
+    }
+
+    /// Bölgenin tamamının büyütmesi Mac'teki gibi uzun kenarda 1920 pikselle sınırlanır (1440p pencerede 3686 genişlik
+    /// yerine 1920).
+    [Fact]
+    public void WholeRegionZoomIsCappedLikeTheMac()
+    {
+        var small = ReadingFallback.ScaledForFallback(Frame.Blank(400, 100));
+        Assert.Equal((800, 200), (small.Width, small.Height));
+        var large = ReadingFallback.ScaledForFallback(Frame.Blank(1843, 504));
+        Assert.Equal(1920, large.Width);
+        Assert.Equal((int)(504 * (1920.0 / 1843)), large.Height);
+        var huge = ReadingFallback.ScaledForFallback(Frame.Blank(3000, 600));
+        Assert.Equal((3000, 600), (huge.Width, huge.Height));
+    }
+}
+
+/// <summary>Boyutları dizisine uymayan kare (GitHub #587): piksel döngüleri dizinin dışına taşmaz, istisna atmaz.</summary>
+public class InconsistentFrameTests
+{
+    public static TheoryData<int, int, int, int> Broken => new()
+    {
+        { 100, 40, 400, 100 * 40 * 4 - 1 },   // dizi bir bayt kısa
+        { 100, 40, 512, 100 * 40 * 4 },       // satır aralığı büyük, dizi dolgusuz ayrılmış
+        { 100, 40, 300, 100 * 40 * 4 },       // satır aralığı genişlikten kısa
+        { -1, 40, 400, 16000 },
+        { 100, -1, 400, 16000 },
+    };
+
+    [Theory]
+    [MemberData(nameof(Broken))]
+    public void BrokenFramesAreDetectedAndSkipped(int width, int height, int stride, int length)
+    {
+        var frame = new Frame(new byte[length], width, height, stride);
+        Assert.False(frame.IsConsistent);
+        Assert.Contains($"stride {stride}", frame.Layout);
+        Assert.Same(frame, TextImage.WhiteTextOnly(frame));
+        Assert.DoesNotContain(RegionCropper.Signature(frame), b => b != 0);
+        if (width > 0 && height > 0)
+        {
+            Assert.Equal((width * 2, height * 2), (frame.Scaled(2).Width, frame.Scaled(2).Height));
+            Assert.Equal(10, frame.Resized(10, 10).Width);
+            Assert.Equal(width / 2, frame.Crop(0, 0, width / 2, height).Width);
+            Assert.Equal(Reading.Empty, ReadingFallback.FirstLines(frame, _ => Reading.Empty));
+        }
+    }
+
+    [Fact]
+    public void PaddedAndEmptyFramesAreConsistent()
+    {
+        Assert.True(new Frame(new byte[(39 * 512) + 400], 100, 40, 512).IsConsistent);
+        Assert.True(Frame.Blank(0, 0).IsConsistent);
+        Assert.True(Frame.Blank(2560, 1440).IsConsistent);
+        Assert.True(Frame.Blank(10, 10).Crop(20, 20, 5, 5).IsConsistent);
     }
 }
 

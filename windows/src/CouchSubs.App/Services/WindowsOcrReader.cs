@@ -42,9 +42,25 @@ public sealed class WindowsOcrReader : ITextReader
     public string Read(Frame image, bool deep) => string.Join(' ', ReadLines(image, deep).Lines.Select(line => line.Text));
 
     // Büyütülmüş yedek okumalarda (boş bölge) yalnız eski iki hazırlık denenir; işlemci yükü artmasın.
-    public Reading ReadLines(Frame image, bool deep) =>
-        deep ? ReadingFallback.FirstLines(image, frame => ReferenceEquals(frame, image) ? Recognize(frame) : Recognize(frame, allowChain: false))
-             : Recognize(image);
+    public Reading ReadLines(Frame image, bool deep)
+    {
+        if (!Usable(image)) return Reading.Empty;
+        return deep ? ReadingFallback.FirstLines(image, frame => ReferenceEquals(frame, image) ? Recognize(frame) : Recognize(frame, allowChain: false))
+                    : Recognize(image);
+    }
+
+    private static int inconsistentNoted;
+
+    /// <summary>
+    /// Boyutları dizisine uymayan kare (<see cref="Frame.IsConsistent"/>) okunmaz: piksel döngüleri dizinin dışına
+    /// taşardı. Böyle bir kare bugünkü yakalama yollarından gelmemeli; gelirse altyazi.log'a bir kez yazılır (GitHub #587).
+    /// </summary>
+    internal static bool Usable(Frame image)
+    {
+        if (image.IsConsistent) return true;
+        if (Interlocked.Exchange(ref inconsistentNoted, 1) == 0) SubtitleLog.Write($"tutarsız kare atlandı: {image.Layout}");
+        return false;
+    }
 
     /// <summary>
     /// "Ekranı çevir": kare olduğu gibi okunur, yalnız beyaz yazı bırakılan okumadan da ham okumanın bulmadığı satırlar
@@ -54,6 +70,7 @@ public sealed class WindowsOcrReader : ITextReader
     /// </summary>
     public Reading ReadScreen(Frame image)
     {
+        if (!Usable(image)) return Reading.Empty;
         if (image.Width < 40 || image.Height < 40) return RecognizeOnce(image);
         if (UseAutoLevel) image = AutoLevel(image);
         return ScreenTranslation.Combined(RecognizeOnce(image), RecognizeOnce(TextImage.WhiteTextOnly(image)));
@@ -105,6 +122,7 @@ public sealed class WindowsOcrReader : ITextReader
     /// </summary>
     public static Frame AutoLevel(Frame image)
     {
+        if (!image.IsConsistent || image.Width == 0 || image.Height == 0) return image;
         var hist = new int[256];
         for (var y = 0; y < image.Height; y++)
             for (var x = 0; x < image.Width; x++)
@@ -246,6 +264,7 @@ public sealed class WindowsOcrReader : ITextReader
     /// </summary>
     public static Frame ShadowText(Frame image, int radius, int minBright, int maxSpread, int darkLuma, bool colored = false)
     {
+        if (!image.IsConsistent) return image;
         int width = image.Width, height = image.Height;
         var bright = new bool[width * height];
         var dark = new int[(width + 1) * (height + 1)];
@@ -290,12 +309,12 @@ public sealed class WindowsOcrReader : ITextReader
     private Reading RecognizeOnce(Frame image)
     {
         // OCR motoru çok küçük ya da çok büyük görüntüyü reddeder.
-        if (image.Width < 40 || image.Height < 40 || image.Width > OcrEngine.MaxImageDimension || image.Height > OcrEngine.MaxImageDimension)
+        if (!image.IsConsistent || image.Width < 40 || image.Height < 40 || image.Width > OcrEngine.MaxImageDimension || image.Height > OcrEngine.MaxImageDimension)
             return Reading.Empty;
         using var bitmap = new SoftwareBitmap(BitmapPixelFormat.Bgra8, image.Width, image.Height, BitmapAlphaMode.Premultiplied);
         BitmapPixels.Write(image, bitmap);
         // Bir OcrEngine aynı anda iki okuma yapamaz ("Another RecognizeAsync operation is already running");
-        // ReadingFallback iki büyütülmüş okumayı paralel başlatıyordu, biri hata verip okuma boş dönüyordu.
+        // ReadingFallback eskiden iki büyütülmüş okumayı paralel başlatıyordu, biri hata verip okuma boş dönüyordu.
         if (engine is null) return Reading.Empty;
         OcrResult result;
         lock (engineGate) result = engine.RecognizeAsync(bitmap).AsTask().GetAwaiter().GetResult();
