@@ -256,6 +256,8 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
       document.hidden = hidden;
       for (const fn of documentListeners.visibilitychange || []) fn({});
     },
+    // Android TV: Activity onStop/onStart (document.hidden değişmeden; tv-android/platform.js __onBackground).
+    pageHidden(hidden) { window.__pageHidden(hidden); },
     // TV çözünürlük değişikliği bildirir (Samsung addVideoResolutionChangeListener).
     changeResolution(info) { resolutionCallback(info); },
     // Kumanda tuşu.
@@ -650,6 +652,24 @@ test('Samsung: arka plana düşen uygulama bağlantıyı kapatır, yeniden bağl
   tv.clock.advance(1000);
   assert.strictEqual(tv.openStreams().length, 1);
   assert.strictEqual(tv.lastOpened(), 'http://192.168.1.109:8787/events');
+});
+
+// X (TCL Q6C Google TV): PS5 60 Hz'e geçince TV kendi HDMI oynatıcısını öne çekiyor, CouchSubs arka planda kalıyordu;
+// bağlantı açık kaldığı için telefon "TV bağlı" görüyor, deneme yazısı bile görünmeyen sayfaya gidiyordu.
+test('Android TV uygulama içi: Activity arka plana düşünce bağlantı bırakılır, öne gelince kurulur', () => {
+  const tv = startTv({ saved: 'http://192.168.1.109:8787', alive: new Set(['http://192.168.1.109:8787']),
+    hasLocalAddress: false, closeWhenHidden: true });
+  tv.clock.advance(1000);
+  assert.strictEqual(tv.openStreams().length, 1);
+  tv.pageHidden(true);
+  assert.strictEqual(tv.openStreams().length, 0);
+  // Telefon adresi bildirse de (AddressReceiver) arka plandayken bağlanılmaz.
+  tv.relaunch({ server: 'http://192.168.1.109:8787' });
+  tv.clock.advance(60000);
+  assert.strictEqual(tv.openStreams().length, 0);
+  tv.pageHidden(false);
+  tv.clock.advance(1000);
+  assert.strictEqual(tv.openStreams().length, 1);
 });
 
 test('arka plandayken yeni adres gelirse öne gelince o adrese bağlanılır', () => {

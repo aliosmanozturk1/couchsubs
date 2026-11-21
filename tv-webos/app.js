@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.65';
+  var APP_VERSION = '0.9.66';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -2484,15 +2484,19 @@
     showSubtitle(lastLine.text, left, lastLine.box, lastLine.paragraphs, false, speakerMap(lastLine.speakers));
   }
 
-  document.addEventListener('visibilitychange', function () {
-    if (document.hidden) {
+  function pageVisibility(hidden) {
+    if (hidden) {
       noteHidden();
       dropWhileHidden();
     } else {
       if (!resumeAfterHidden()) reviveStream();
       noteVisible();
     }
-  });
+  }
+  // Ekranın görünmez olduğunu document.hidden'dan başka yoldan bilen platform (Android TV: Activity onStop/onStart) çağırır.
+  window.__pageHidden = pageVisibility;
+
+  document.addEventListener('visibilitychange', function () { pageVisibility(document.hidden); });
 
   // --- Panel ve kumanda ---
 
