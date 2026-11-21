@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.70';
+  var APP_VERSION = '0.9.71';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -1084,6 +1084,10 @@
   // kutu eskisi gibi siyah kalır.
   var STYLED_MIN_SCALE = 0.8;
   var STYLED_LABEL_MIN_SCALE = 0.6;
+  // GTA 6 telefonunun mesajı kendi balonunun üstünde ("bubble"): Türkçe balona sığana kadar satır kırılır ve yazı en çok
+  // %35 küçülür; okunabilirlik sınırı 1080p'de 18 piksel. Yine sığmazsa balon aşağı doğru uzar (yazı kesilmez).
+  var BUBBLE_MIN_SCALE = 0.65;
+  var BUBBLE_MIN_FONT = 18;
   var CONDENSED_FONT = '"Roboto Condensed", "Arial Narrow", "Helvetica Neue Condensed", "LG Smart UI Condensed", sans-serif';
 
   // Öğeye özgün yazının görünüşü uygulandı mı.
@@ -1175,8 +1179,13 @@
       // Özgün yazı tek satırsa ("ROB VICKI'S BOSS" başlığı) Türkçesi de önce tek satırda tutulur, sığmazsa küçülür; en
       // küçük boyda da sığmıyorsa satır kırılır.
       var singleOriginal = boxHeight <= line * 1.6 + 2 * pad * height;
-      var label = styled && item.text.indexOf('\n') < 0 && (item.text.split(/\s+/).length <= 2 || singleOriginal);
+      var bubble = styled && item.bubble === true;
+      var label = styled && !bubble && item.text.indexOf('\n') < 0 && (item.text.split(/\s+/).length <= 2 || singleOriginal);
       if (styled) floor = Math.max(label ? 10 : SCREEN_MIN_FONT, Math.round(size * (label ? STYLED_LABEL_MIN_SCALE : STYLED_MIN_SCALE)));
+      if (bubble) {
+        floor = Math.min(size, Math.max(Math.round(BUBBLE_MIN_FONT * height / 1080), Math.round(size * BUBBLE_MIN_SCALE)));
+        el.className += ' bubble';
+      }
       if (label) {
         el.style.whiteSpace = 'nowrap';
         // Tek satırlık etiket özgün satırın dikey ortasında durur (yazı küçülse de özgün yazının yerinde).

@@ -76,6 +76,39 @@ final class ScreenPhoneCardTests: XCTestCase {
         return item
     }
 
+    /// Kartsız (varsayılan ayar): her mesajın çevirisi kendi balonunun yerinde, kart zemini yok; kişi adı çevrilmediği
+    /// için özgün hâli görünür kalır; telefon dışındaki yazı balon sayılmaz.
+    func testWithoutTheCardEachMessageStaysOnItsOwnBubble() {
+        let phone = handset(upright)
+        let outside = ScreenTranslation.Item(source: "Find the car", translation: "Arabayı bul",
+                                             box: TextBox(left: 0.30, top: 0.10, right: 0.50, bottom: 0.13), lineHeight: 0.025)
+        let incoming = item("Where are you man", "Neredesin adamım", role: .incoming, top: 0.2)
+        let outgoing = item("On my way", "Yoldayım", role: .outgoing, top: 0.3, left: 0.6, right: 0.93)
+        let items = [outside, item("Brian", "Brian", role: .header, top: 0.06, unchanged: true), incoming, outgoing]
+        let shown = ScreenTranslation.present(items, phone: phone, card: false)
+        XCTAssertEqual(shown.map(\.translation), ["Arabayı bul", "Neredesin adamım", "Yoldayım"])
+        XCTAssertEqual(shown.map(\.bubble), [false, true, true])
+        XCTAssertFalse(shown.contains(where: ScreenPhoneCard.isBackdrop))
+        XCTAssertEqual(shown[1].box, incoming.box)
+        XCTAssertEqual(shown[2].box, outgoing.box)
+        XCTAssertEqual(SubtitleServer.json(shown[1])["bubble"] as? Bool, true)
+        XCTAssertNil(SubtitleServer.json(shown[0])["bubble"])
+    }
+
+    /// Çeviriler balonların üstündeyken sohbet kayınca/değişince ilk yoklamada kalkar (`hide`), durulunca yeniden
+    /// çevrilir; kartlı izleme eskisi gibi bekler.
+    func testInPlaceTranslationsLeaveAsSoonAsTheChatMoves() {
+        let a = [UInt8](repeating: 40, count: 768), b = [UInt8](repeating: 200, count: 768)
+        let place = TextBox(left: 0.6, top: 0.2, right: 0.8, bottom: 0.85)
+        let inPlace = ScreenPhoneFollow(hidesOnChange: true), card = ScreenPhoneFollow()
+        for follow in [inPlace, card] { follow.settled(place, signature: a) }
+        XCTAssertEqual(inPlace.step(place, signature: a), .keep)
+        XCTAssertEqual(inPlace.step(place, signature: b), .hide)
+        XCTAssertEqual(inPlace.step(place, signature: b), .refresh)
+        XCTAssertEqual(card.step(place, signature: b), .wait)
+        XCTAssertEqual(card.step(place, signature: b), .refresh)
+    }
+
     func testPhoneMessagesBecomeACardBesideThePhone() {
         let phone = handset(upright)
         var outside = ScreenTranslation.Item(source: "Find the car", translation: "Arabayı bul",

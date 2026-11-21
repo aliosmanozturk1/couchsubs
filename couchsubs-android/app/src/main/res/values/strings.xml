@@ -350,6 +350,8 @@
     <string name="settings_fast_reading">Değişmeyen altyazı alanını daha sık oku</string>
     <string name="settings_fast_reading_short">Altyazı alanı değişmemiş görünüyorsa 20 yerine 2 kare sonra yeniden oku. Daha fazla CPU kullanır.</string>
     <string name="settings_game_phone">GTA 6\'daki telefonu otomatik çevir (deneysel)</string>
+    <string name="settings_phone_chat_card">GTA 6 telefonunun çevirisini telefonun yanında kartta göster</string>
+    <string name="settings_phone_chat_card_short">Kapalıyken her mesaj kendi balonunun üstünde, balonun renginde çevrilir.</string>
     <string name="settings_subtitle_background">Altyazı zeminini izle (GTA 6, deneysel)</string>
     <string name="settings_subtitle_background_short">GTA 6’nın altyazı ayarlarında arka planı Solid (opak) olarak seçin. Yalnızca koyu lacivert altyazı zeminindeki yazılar çevrilir.</string>
     <string name="settings_misread_wait">Bozuk okunan satır için bekleme</string>

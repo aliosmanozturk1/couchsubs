@@ -33,6 +33,11 @@ public static class ScreenTranslation
         internal bool Unchanged { get; init; }
         /// <summary>Telefondaki yazının rolü ve düz ekrandaki yeri; kart bunlarla dizilir (<see cref="ScreenPhoneCard.Layout"/>).</summary>
         internal ScreenPhoneCard.Placement? Phone { get; init; }
+        /// <summary>
+        /// GTA 6 telefonunun mesajı kendi balonunun üstünde, yerinde (kartsız): TV çeviriyi balona sığdırır (yazı okunabilir
+        /// sınıra kadar küçülür, satır kırılır; sığmazsa balon biraz aşağı uzar). Mac ile aynı.
+        /// </summary>
+        public bool Bubble { get; init; }
         /// <summary>Birden çok parça var: TV satır satır, sola yaslı gösterir.</summary>
         public bool Paragraphs => Translation.Contains('\n');
     }
@@ -91,7 +96,7 @@ public static class ScreenTranslation
     public static async Task<IReadOnlyList<Item>> TranslateAsync(
         Reading reading, ITextTranslator translator,
         Action<IReadOnlyList<Item>>? progress = null, CancellationToken cancellationToken = default, Frame? frame = null,
-        PhoneChatMemory? memory = null, ScreenPhoneCard.Handset? handset = null)
+        PhoneChatMemory? memory = null, ScreenPhoneCard.Handset? handset = null, bool phoneCard = true)
     {
         var items = new List<Item>();
         var phone = handset ?? (frame is null ? null : ScreenPhoneCard.Phone(frame));
@@ -133,7 +138,7 @@ public static class ScreenTranslation
                 next += group.Paragraphs.Count;
                 if (Build(group, protectedGroups[g], translated, keep) is { } item) items.Add(Styled(item, frame));
             }
-            var all = Present(items, phone);
+            var all = Present(items, phone, phoneCard);
             if (all.Count > 0) progress?.Invoke(all);
             return all;
         }
@@ -158,10 +163,10 @@ public static class ScreenTranslation
             }
             if (Build(group, protectedGroups[g], translated, keep) is not { } item) continue;
             items.Add(Styled(item, frame));
-            var shown = Present(items, phone);
+            var shown = Present(items, phone, phoneCard);
             if (shown.Count > 0) progress?.Invoke(shown);
         }
-        return Present(items, phone);
+        return Present(items, phone, phoneCard);
     }
 
     /// <summary>
@@ -202,9 +207,15 @@ public static class ScreenTranslation
         };
     }
 
-    /// <summary>Gösterilecek öğeler: telefon varsa kartı dizilir; çevirisi aslıyla aynı öğeler (kart dışında) atılır.</summary>
-    internal static IReadOnlyList<Item> Present(IReadOnlyList<Item> items, ScreenPhoneCard.Handset? phone) =>
-        WithoutDuplicates([.. (phone is not null ? ScreenPhoneCard.Layout(items, phone) : items).Where(item => !item.Unchanged)]);
+    /// <summary>
+    /// Gösterilecek öğeler: telefon varsa <paramref name="card"/> açıkken kartı dizilir; kapalıyken (varsayılan ayar) her
+    /// mesajın çevirisi kendi balonunun üstünde, balonun rengiyle yerinde kalır (<see cref="Item.Bubble"/>). Çevirisi aslıyla
+    /// aynı öğeler (kart dışında; yerinde kişi adı) atılır, özgün yazı görünür kalır (Mac ile aynı).
+    /// </summary>
+    internal static IReadOnlyList<Item> Present(IReadOnlyList<Item> items, ScreenPhoneCard.Handset? phone, bool card = true) =>
+        WithoutDuplicates([.. (phone is not null && card ? ScreenPhoneCard.Layout(items, phone)
+            : items.Select(item => item with { Bubble = item.Phone?.Role is { } role && role != ScreenPhoneCard.Role.Home }))
+            .Where(item => !item.Unchanged)]);
 
     // --- Aynı yerde tek çizim (#827) ---
 

@@ -96,6 +96,7 @@ public partial class SettingsWindow : Window
         FastSubtitleDetection.IsChecked = settings.FastSubtitleDetection;
         WatchSubtitleBackground.IsChecked = settings.WatchSubtitleBackground;
         AutoReadGamePhone.IsChecked = settings.AutoReadGamePhone;
+        PhoneChatCard.IsChecked = settings.PhoneChatCard;
         OcrEngineChoice.SelectedItem = OcrEngineChoice.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == settings.OcrEngine.ToString());
         ShowAdvancedOcr();
         ShowCpuThreads();
@@ -1006,6 +1007,9 @@ public partial class SettingsWindow : Window
 
     private void OnAutoReadGamePhone(object sender, RoutedEventArgs e) =>
         Update(s => s with { AutoReadGamePhone = AutoReadGamePhone.IsChecked == true });
+
+    private void OnPhoneChatCard(object sender, RoutedEventArgs e) =>
+        Update(s => s with { PhoneChatCard = PhoneChatCard.IsChecked == true });
 
     private async void OnKeySave(object sender, RoutedEventArgs e)
     {

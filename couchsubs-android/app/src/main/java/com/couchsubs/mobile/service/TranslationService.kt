@@ -1097,6 +1097,7 @@ class TranslationService : Service() {
                             ScreenPhoneFollow.Step.KEEP -> keepScreen(generation)
                             ScreenPhoneFollow.Step.REFRESH -> screenRefreshRequested.set(true)
                             ScreenPhoneFollow.Step.STOP -> hideScreen()
+                            ScreenPhoneFollow.Step.HIDE -> hidePhoneBubbles(generation)
                         }
                     }
                 } catch (error: Exception) {
@@ -1108,6 +1109,24 @@ class TranslationService : Service() {
         } catch (error: java.util.concurrent.RejectedExecutionException) {
             followBusy.set(false)
         }
+    }
+
+    /**
+     * Telefonun ekranı değişti (sohbet kaydı/değişti): balonların üstündeki çeviriler hemen kalkar, telefon dışındaki
+     * çeviriler kalır; ekran durulunca yeniden çevrilir (Mac ile aynı).
+     */
+    private fun hidePhoneBubbles(generation: Int) {
+        val items = screenShown
+        val kept = items.filter { !it.bubble }
+        if (kept.size == items.size) return
+        screenShown = kept
+        if (kept.isEmpty()) {
+            server?.clearScreen()
+            return
+        }
+        val milliseconds = ScreenTranslation.displayMilliseconds(kept)
+        server?.sendScreen(kept, milliseconds)
+        scheduleScreenExpiry(kept, milliseconds, generation)
     }
 
     /** Telefon kartı izlenirken telefon aynı: sonuçlar süresi dolmak üzereyse yeniden gönderilip uzatılır. */
@@ -1127,7 +1146,8 @@ class TranslationService : Service() {
             screenFollow = null
             return
         }
-        val follow = screenFollow ?: ScreenPhoneFollow()
+        // Çeviriler balonların üstündeyken (kartsız) sohbet kayınca/değişince hemen kalkar (ScreenPhoneFollow.Step.HIDE).
+        val follow = screenFollow ?: ScreenPhoneFollow(hidesOnChange = !settings.phoneChatCard)
         follow.settled(look.first, look.second)
         screenFollow = follow
     }
@@ -1199,7 +1219,7 @@ class TranslationService : Service() {
                 val phone = com.couchsubs.mobile.core.ScreenPhoneCard.phone(
                     CopiedPhoneImage(pixels.width, pixels.height, pixels))
                 val items = ScreenTranslation.translate(reading, translator, { screenGeneration.get() != generation }, pixels.gray,
-                    pixels.color, phone, memory) { shown ->
+                    pixels.color, phone, memory, settings.phoneChatCard) { shown ->
                     if (screenGeneration.get() != generation) return@translate
                     // İzlemenin yenilemesinde aynı çeviriler yeniden gönderilmez (TV'de kart yeniden çizilmesin).
                     if (refresh && shown == screenShown) return@translate

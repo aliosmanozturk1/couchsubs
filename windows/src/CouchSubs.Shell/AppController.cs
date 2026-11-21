@@ -1782,7 +1782,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 server.SendScreen(shown, milliseconds);
                 screenItems = shown;
                 screenShownUntil = DateTime.UtcNow.AddMilliseconds(milliseconds);
-            }, work.Token, frame, memory);
+            }, work.Token, frame, memory, phoneCard: settings.PhoneChatCard);
             if (!refresh) server.Clear();
             if (items.Count == 0)
             {
@@ -1827,7 +1827,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// </summary>
     private async Task FollowPhoneAsync(Frame frame)
     {
-        var follow = screenFollow ?? new ScreenPhoneFollow();
+        // Çeviriler balonların üstündeyken (kartsız) sohbet kayınca/değişince hemen kalkar (ScreenPhoneFollow.Step.Hide).
+        var follow = screenFollow ?? new ScreenPhoneFollow { HidesOnChange = !settings.PhoneChatCard };
         var look = await Task.Run(() => ScreenPhoneFollow.Look(frame)).ConfigureAwait(true);
         if (look is not { } found)
         {
@@ -1854,6 +1855,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                     case ScreenPhoneFollow.Step.Keep:
                         KeepScreen();
                         break;
+                    case ScreenPhoneFollow.Step.Hide:
+                        HidePhoneBubbles();
+                        break;
                     case ScreenPhoneFollow.Step.Refresh:
                         _ = TranslateScreenAsync(refresh: true);
                         break;
@@ -1877,6 +1881,19 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         screenFollowWork?.Cancel();
         screenFollowWork = null;
         screenFollow = null;
+    }
+
+    /// <summary>
+    /// Telefonun ekranı değişti (sohbet kaydı/değişti): balonların üstündeki çeviriler hemen kalkar, telefon dışındaki
+    /// çeviriler kalır; ekran durulunca yeniden çevrilir (Mac ile aynı).
+    /// </summary>
+    private void HidePhoneBubbles()
+    {
+        var kept = screenItems.Where(item => !item.Bubble).ToList();
+        if (kept.Count == screenItems.Count) return;
+        screenItems = kept;
+        if (kept.Count == 0) server.ClearScreen();
+        else server.SendScreen(kept, ScreenTranslation.DisplayMilliseconds(kept));
     }
 
     /// <summary>Telefon kartı izlenirken telefon aynı: çevirilerin süresi dolmak üzereyse yeniden gönderilip uzatılır.</summary>

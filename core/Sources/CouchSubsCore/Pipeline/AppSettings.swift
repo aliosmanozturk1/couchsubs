@@ -190,6 +190,10 @@ public struct UserSettings: Codable, Equatable {
     public static let maxWaitMs = 2000
     /// Mac'te GTA 6 telefonu açıkken mesajları yerinde gösterir. Varsayılan kapalı; kullanıcı açmadıkça telefon okunmaz.
     public var autoReadGamePhone = false
+    /// "Ekranı çevir"de GTA 6 telefonunun mesajları telefonun yanındaki kartta gösterilir. Kapalıyken (varsayılan) her
+    /// mesajın çevirisi kendi balonunun üstünde, balonun renginde, yerindedir (`ScreenTranslation.present`). Eski
+    /// kayıtlarda yoktur; kapalı başlar.
+    public var phoneChatCard = false
     /// Bilinen oyunlarda hazır ek alanlar (bkz. `GameAreaPresets`); kullanıcının kendi ek alanı varsa o kullanılır.
     /// Varsayılan kapalı (beta.63–68'de açık geliyordu: otomatik ekran yazısı kapalıyken de GTA 6'nın sol üstünde menüyü,
     /// sağda bildirimleri çeviriyordu). Kullanıcı açmadıkça altyazı alanı dışında hiçbir şey çevrilmez.
@@ -275,6 +279,7 @@ public struct UserSettings: Codable, Equatable {
         misreadWaitMs = (try? values.decodeIfPresent(Int.self, forKey: .misreadWaitMs)) ?? defaults.misreadWaitMs
         partialWaitMs = (try? values.decodeIfPresent(Int.self, forKey: .partialWaitMs)) ?? defaults.partialWaitMs
         autoReadGamePhone = try values.decodeIfPresent(Bool.self, forKey: .autoReadGamePhone) ?? defaults.autoReadGamePhone
+        phoneChatCard = try values.decodeIfPresent(Bool.self, forKey: .phoneChatCard) ?? defaults.phoneChatCard
         gameAreaPresets = try values.decodeIfPresent(Bool.self, forKey: .gameAreaPresets) ?? defaults.gameAreaPresets
         setTextApart = try values.decodeIfPresent(Bool.self, forKey: .setTextApart) ?? defaults.setTextApart
         autoScreenText = try values.decodeIfPresent(Bool.self, forKey: .autoScreenText) ?? defaults.autoScreenText

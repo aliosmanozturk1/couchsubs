@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // GTA 6 telefonu (X, beta.79): telefonun çevirisi mesaj balonlarının üstünde, yerinde durur; altyazı telefonun üstüne
-// binmez (tv-webos/app.js avoidPhone), telefonun yanına kayar. Gerçek kare (testdata/frames/gta6-telefon-sohbet-1.jpg)
+// binmez (tv-webos/app.js avoidPhone), telefonun yanına kayar. "Ekranı çevir"in yerinde balonları ("bubble") balonun
+// genişliğinden taşmaz, yazı okunabilir boyda kalır (1080p'de en az 18 piksel), sığmayan Türkçe balonu biraz uzatır. Gerçek kare (testdata/frames/gta6-telefon-sohbet-1.jpg)
 // arka planda, gerçek Chromium yerleşimiyle. Ekran görüntüsü: COUCHSUBS_SHOT_DIR verilirse oraya yazılır.
 // node --test scripts/tv-phone-bubbles.test.js — tarayıcı yolu: COUCHSUBS_TEST_BROWSER.
 'use strict';
@@ -114,4 +115,42 @@ test('altyazı telefonun çevirisinin üstüne binmez, telefonun yanına kayar',
   assert.equal(r.after, false, 'altyazı telefonla çakışıyor: ' + JSON.stringify(r));
   assert.ok(r.sub.left >= 0 && r.sub.right <= 1920 && r.sub.top >= 0 && r.sub.bottom <= 1080, 'altyazı ekran dışında');
   shoot(subtitleOverPhone, 'tv-phone-subtitle.png');
+});
+
+// "Ekranı çevir", kartsız (varsayılan): her mesaj kendi balonunun kutusunda (gerçek karenin okuma kutuları), balonun renginde.
+const look = { bold: false, condensed: false, align: 'left', upper: false };
+const screenBubble = (text, box, surface) => ({ text, box: { left: box[0], top: box[1], right: box[2], bottom: box[3] }, line: 0.033,
+  surface: Object.assign({ flat: true }, surface), style: look, bubble: true });
+const bubbles = [
+  screenBubble('KARAVANIMA! Anladın mı?', [0.62339, 0.26597, 0.74873, 0.3314], incoming),
+  screenBubble('Donnie\'nin Evi', [0.64826, 0.35917, 0.77326, 0.38243], incoming),
+  screenBubble('O şeyleri senin için bıraktım', [0.63753, 0.44167, 0.78198, 0.50916], outgoing),
+  screenBubble('Yeni mesaj', [0.64768, 0.59067, 0.75773, 0.62531], incoming),
+  screenBubble('Sağ ol dostum! Başka bir şey bulursan, VE HERHANGİ BİR ŞEY DİYORUM, bana getir', [0.61984, 0.65581, 0.7722, 0.80731], incoming),
+];
+const inPlace = `
+  showScreen(${JSON.stringify(bubbles)}, 20000);
+  var list = Array.prototype.slice.call($('screen').children).map(function (el, i) {
+    var r = rect(el), b = ${JSON.stringify(bubbles)}[i].box;
+    return { text: el.textContent, font: parseFloat(getComputedStyle(el).fontSize), wide: el.scrollWidth > el.clientWidth + 1,
+      left: r.left, right: r.right, top: r.top, bottom: r.bottom, boxBottom: b.bottom * 1080, boxRight: b.right * 1920,
+      background: getComputedStyle(el).backgroundColor, bubble: el.className.indexOf('bubble') >= 0 };
+  });
+  $('result').textContent = JSON.stringify(list);`;
+
+test('"Ekranı çevir" balonları yerinde: taşmaz, okunur boyda, balon rengiyle', { skip: !browser && 'Chromium/Chrome bulunamadı' }, () => {
+  const list = measure(inPlace);
+  assert.equal(list.length, bubbles.length);
+  for (const [i, el] of list.entries()) {
+    assert.equal(el.bubble, true, el.text);
+    assert.equal(el.wide, false, 'yatayda taşıyor: ' + el.text);
+    assert.ok(el.right <= el.boxRight + 0.004 * 1920 + 1, 'balonun sağından taşıyor: ' + el.text);
+    assert.ok(el.font >= 18, 'yazı okunamayacak kadar küçük (' + el.font + ' px): ' + el.text);
+    // Sığmayan Türkçe balonu biraz uzatır, sonraki balonun üstüne binmez.
+    if (i + 1 < list.length) assert.ok(el.bottom <= list[i + 1].top + 1, 'sonraki balonun üstüne biniyor: ' + el.text);
+    assert.ok(el.bottom - el.boxBottom <= 0.06 * 1080, 'balon çok uzadı: ' + el.text);
+  }
+  assert.equal(list[2].background, 'rgb(211, 220, 244)', 'giden balon kendi renginde');
+  assert.equal(list[0].background, 'rgb(246, 239, 232)', 'gelen balon kendi renginde');
+  shoot(inPlace, 'tv-phone-bubbles.png');
 });

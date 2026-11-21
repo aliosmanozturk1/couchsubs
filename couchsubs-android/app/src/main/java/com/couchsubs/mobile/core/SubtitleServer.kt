@@ -240,6 +240,8 @@ class SubtitleServer(
                 else if (isRgb(it.background) && isRgb(it.foreground)) json["surface"] = mapOf("background" to it.background, "foreground" to it.foreground)
             }
             item.look?.let { json["style"] = mapOf("align" to it.align, "bold" to it.bold, "condensed" to it.condensed, "upper" to it.upper) }
+            // Telefon mesajı kendi balonunda: TV çeviriyi balona sığdırır (eski TV yok sayar, özgün stilde çizer).
+            if (item.bubble) json["bubble"] = true
             return json
         }
 

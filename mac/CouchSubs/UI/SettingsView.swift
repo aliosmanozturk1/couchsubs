@@ -325,6 +325,9 @@ private struct AreaCards: View {
         Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .screen, String(localized: "Translate the screen (%@)")))) {
             HintText(text: LocalizedStringKey(HotkeyText.sentence(model.settings, .screen,
                 String(localized: "Press %@ while playing: every text on the screen is translated once and shown on the TV in its own place. Press again to remove the translations."))))
+            // Dört platformda aynı ad (iPhone: Profile, Windows: SettingsWindow, Android: ProfileScreens); varsayılan kapalı.
+            SwitchRow(title: "Show GTA 6 phone translations in a card next to the phone", isOn: $model.settings.phoneChatCard)
+            HintText(text: "Off: each message is translated on top of its own bubble, in the bubble's colours.")
         }
         // Serbest alan (Windows: FreeAreaCard): görüntü donar, fareyle seçilen yer bir kez çevrilir.
         Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .freeArea, String(localized: "Free area (%@)")))) {

@@ -419,6 +419,8 @@ public final class SubtitleServer: @unchecked Sendable {
             result["style"] = ["align": look.align.rawValue, "bold": look.bold, "condensed": look.condensed, "upper": look.upper]
         }
         if let icons = item.icons, !icons.isEmpty { result["icons"] = Self.json(icons) }
+        // Telefon mesajı kendi balonunda: TV çeviriyi balona sığdırır (eski TV yok sayar, özgün stilde çizer).
+        if item.bubble { result["bubble"] = true }
         return result
     }
 

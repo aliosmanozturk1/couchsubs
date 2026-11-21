@@ -2351,6 +2351,7 @@ final class AppModel: ObservableObject {
         }
         let memory = screenMemory
         let server = self.server
+        let phoneCard = settings.phoneChatCard
         screenTask = Task { [weak self] in
             do {
                 let read = try await ReadQueue.shared.run(priority: .background, detail: ReadQueue.detail("ekranı çevir", frame)) {
@@ -2373,7 +2374,8 @@ final class AppModel: ObservableObject {
                 // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AITranslationCore.translateAll). Yazının
                 // içindeki kumanda simgeleri okunan kareden kesilip TV'de çevirinin içine konur (ButtonIcons). Çeviriler
                 // özgün yazının stilinde kendi yerlerine çizilir; GTA 6 telefonunun yazıları yanında mesaj kartında.
-                let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame, memory: memory) { shown in
+                let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame, memory: memory,
+                                                                  phoneCard: phoneCard) { shown in
                     // İzlemenin yenilemesinde aynı çeviriler yeniden gönderilmez (TV'de kart yeniden çizilmesin).
                     guard !Task.isCancelled, !(refresh && self?.screenItems == shown) else { return }
                     let milliseconds = ScreenTranslation.displayMilliseconds(shown)
@@ -2407,7 +2409,8 @@ final class AppModel: ObservableObject {
     /// telefon kapanınca kart kalkar. Önceden kart tek karenin çevirisiydi: başka sohbete geçince eskisi kalıyor, süresi
     /// dolunca kayboluyordu.
     private func followPhone(in frame: CGImage) {
-        let follow = screenFollow ?? ScreenPhoneFollow()
+        // Çeviriler balonların üstündeyken (kartsız) sohbet kayınca/değişince hemen kalkar (`ScreenPhoneFollow.hide`).
+        let follow = screenFollow ?? ScreenPhoneFollow(hidesOnChange: !settings.phoneChatCard)
         Task { [weak self] in
             guard let look = await Task.detached(priority: .utility, operation: { ScreenPhoneFollow.look(frame) }).value else {
                 if self?.screenFollow === follow { self?.stopFollowing() }
@@ -2430,6 +2433,7 @@ final class AppModel: ObservableObject {
                     switch follow.step(look?.box, signature: look?.signature) {
                     case .wait: continue
                     case .keep: self.keepScreen()
+                    case .hide: self.hidePhoneBubbles()
                     case .refresh: self.translateScreen(refresh: true)
                     case .stop:
                         self.hideScreen()
@@ -2444,6 +2448,15 @@ final class AppModel: ObservableObject {
         screenFollowTask?.cancel()
         screenFollowTask = nil
         screenFollow = nil
+    }
+
+    /// Telefonun ekranı değişti (sohbet kaydı/değişti): balonların üstündeki çeviriler hemen kalkar, telefon dışındaki
+    /// çeviriler kalır; ekran durulunca yeniden çevrilir (hafızadaki mesajlar hemen gelir).
+    private func hidePhoneBubbles() {
+        let kept = screenItems.filter { !$0.bubble }
+        guard kept.count != screenItems.count else { return }
+        screenItems = kept
+        if kept.isEmpty { server.clearScreen() } else { server.sendScreen(kept, durationMs: ScreenTranslation.displayMilliseconds(kept)) }
     }
 
     /// Telefon kartı izlenirken telefon aynı: çevirilerin süresi dolmak üzereyse yeniden gönderilip uzatılır.

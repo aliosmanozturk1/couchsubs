@@ -495,6 +495,8 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
             {
                 ["align"] = look.Align, ["bold"] = look.Bold, ["condensed"] = look.Condensed, ["upper"] = look.Upper,
             };
+        // Telefon mesajı kendi balonunda: TV çeviriyi balona sığdırır (eski TV yok sayar, özgün stilde çizer).
+        if (item.Bubble) json["bubble"] = true;
         return json;
     }
 

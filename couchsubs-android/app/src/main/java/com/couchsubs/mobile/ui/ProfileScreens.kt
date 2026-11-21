@@ -93,6 +93,7 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var setTextApart by remember { mutableStateOf(settings.setTextApart) }
     var fastReading by remember { mutableStateOf(settings.fastSubtitleDetection) }
     var gamePhone by remember { mutableStateOf(settings.autoReadGamePhone) }
+    var phoneChatCard by remember { mutableStateOf(settings.phoneChatCard) }
     var subtitleBackground by remember { mutableStateOf(settings.watchSubtitleBackground) }
     var misreadWait by remember { mutableStateOf(settings.misreadWaitMs) }
     var partialWait by remember { mutableStateOf(settings.partialWaitMs) }
@@ -173,6 +174,10 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
             } },
             { RowItem(stringResource(R.string.settings_game_phone)) {
                 Switch(gamePhone, { gamePhone = it; settings.autoReadGamePhone = it })
+            } },
+            // "Ekranı çevir"de telefon mesajları: kapalıyken her balonun üstünde, yerinde (Mac, iPhone, Windows ile aynı).
+            { RowItem(stringResource(R.string.settings_phone_chat_card), stringResource(R.string.settings_phone_chat_card_short)) {
+                Switch(phoneChatCard, { phoneChatCard = it; settings.phoneChatCard = it })
             } },
             { RowItem(stringResource(R.string.settings_subtitle_background), stringResource(R.string.settings_subtitle_background_short)) {
                 Switch(subtitleBackground, { subtitleBackground = it; settings.watchSubtitleBackground = it })

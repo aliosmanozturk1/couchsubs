@@ -575,7 +575,15 @@
                         </StackPanel>
                     </c:Card>
                     <c:Card x:Name="ScreenCard" Margin="0,12,0,0">
-                        <TextBlock x:Name="ScreenHint" Style="{StaticResource HintText}" TextWrapping="Wrap" />
+                        <StackPanel>
+                            <TextBlock x:Name="ScreenHint" Style="{StaticResource HintText}" TextWrapping="Wrap" />
+                            <!-- "Ekranı çevir"de GTA 6 telefonu: kapalıyken her mesaj kendi balonunun üstünde (Mac, iPhone, Android ile aynı) -->
+                            <CheckBox x:Name="PhoneChatCard" Content="{t:T 'Show GTA 6 phone translations in a card next to the phone'}"
+                                      Foreground="{DynamicResource textPrimaryBrush}" Margin="0,12,0,0"
+                                      Checked="OnPhoneChatCard" Unchecked="OnPhoneChatCard" />
+                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="{t:T 'Off: each message is translated on top of its own bubble, in the bubble\'s colours.'}" />
+                        </StackPanel>
                     </c:Card>
                     <c:Card x:Name="FreeAreaCard" Margin="0,12,0,0">
                         <StackPanel>
