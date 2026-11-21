@@ -179,9 +179,34 @@ public sealed class Reading
         // Görev satırı altyazıyla aynı anda belirince ayrı blok olur (aralık ya da yazı boyu farkı): konuşan adı taşıyan
         // blok altyazıdır ("Lucia: …" görevin üstünde de dursa).
         if (centered.FirstOrDefault(reading => SpeakerPrefix.Parse(reading.Lines[0].Text) is not null) is { } spoken) return spoken;
-        if (centered.Count > 0) return centered.MaxBy(reading => reading.Box!.Value.Bottom)!;
+        if (centered.Count > 0)
+        {
+            var lowest = centered.MaxBy(reading => reading.Box!.Value.Bottom)!;
+            return ObjectiveBelow(lowest, centered, area) ?? lowest;
+        }
         return candidates.Where(reading => WordCount(reading.Text) >= 3).MaxBy(reading => reading.Box!.Value.Bottom) ?? Empty;
     }
+
+    /// <summary>
+    /// En alttaki blok, hemen üstündeki konuşmanın altına onunla aynı anda gelen görev satırı mı: tek satır ve üstündeki
+    /// ortalanmış bloktan (arada en çok üç satır boyu) belirgin kısa (<see cref="StickyRows.JoinedShare"/>). Öyleyse
+    /// altyazı üstteki bloktur. Kullanıcı bildirimi (X, beta.69, GTA 6): "John'u takip et" konuşmayla birlikte belirince
+    /// en alttaki blok olarak altyazı seçiliyor, konuşma hiç çevrilmiyordu. Görev ekranda kalınca sonraki konuşmalarda
+    /// <see cref="StickyRows"/> onu ayırır.
+    /// </summary>
+    private static Reading? ObjectiveBelow(Reading lowest, List<Reading> centered, TextBox area)
+    {
+        if (lowest.Lines.Count != 1) return null;
+        var box = lowest.Box!.Value.PlacedIn(area);
+        var height = box.Bottom - box.Top;
+        var above = centered.Where(reading => !ReferenceEquals(reading, lowest))
+            .Where(reading => reading.Box!.Value.PlacedIn(area) is var other && other.Bottom <= box.Top + height * 0.25
+                              && box.Top - other.Bottom <= height * 3)
+            .MaxBy(reading => reading.Box!.Value.Bottom);
+        return above is not null && Letters(lowest.Text) <= StickyRows.JoinedShare * Letters(above.Text) ? above : null;
+    }
+
+    private static int Letters(string text) => text.Count(char.IsLetter);
 
     /// <summary>
     /// Bloğun son satırının hemen altında ve yatayda onunla üst üste binen satır o bloğa aittir. Aradaki boşluk satır

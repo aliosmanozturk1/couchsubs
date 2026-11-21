@@ -163,9 +163,33 @@ class Reading(lines: List<TextLine>) {
         // Görev satırı altyazıyla aynı anda belirince ayrı blok olur (aralık ya da yazı boyu farkı): konuşan adı taşıyan
         // blok altyazıdır ("Lucia: …" görevin üstünde de dursa).
         centered.firstOrNull { SpeakerPrefix.split(it.lines[0].text) != null }?.let { return it }
-        if (centered.isNotEmpty()) return centered.maxBy { it.box!!.bottom }
+        if (centered.isNotEmpty()) {
+            val lowest = centered.indices.maxBy { centered[it].box!!.bottom }
+            return objectiveBelow(lowest, centered, area) ?: centered[lowest]
+        }
         return candidates.filter { wordCount(it.text) >= 3 }.maxByOrNull { it.box!!.bottom } ?: Empty
     }
+
+    /**
+     * En alttaki blok, hemen üstündeki konuşmanın altına onunla aynı anda gelen görev satırı mı: tek satır ve üstündeki
+     * ortalanmış bloktan (arada en çok üç satır boyu) belirgin kısa ([StickyRows.JOINED_SHARE]). Öyleyse altyazı üstteki
+     * bloktur. Kullanıcı bildirimi (X, beta.69, GTA 6): "John'u takip et" konuşmayla birlikte belirince en alttaki blok
+     * olarak altyazı seçiliyor, konuşma hiç çevrilmiyordu. Görev ekranda kalınca sonraki konuşmalarda [StickyRows] onu
+     * ayırır (Windows ve Mac ile aynı).
+     */
+    private fun objectiveBelow(index: Int, centered: List<Reading>, area: TextBox): Reading? {
+        val lowest = centered[index]
+        if (lowest.lines.size != 1) return null
+        val box = lowest.box!!.placedIn(area)
+        val height = box.bottom - box.top
+        val above = centered.indices.filter { other ->
+            val placed = centered[other].box!!.placedIn(area)
+            other != index && placed.bottom <= box.top + height * 0.25 && box.top - placed.bottom <= height * 3
+        }.map { centered[it] }.maxByOrNull { it.box!!.bottom } ?: return null
+        return if (letters(lowest.text) <= StickyRows.JOINED_SHARE * letters(above.text)) above else null
+    }
+
+    private fun letters(text: String) = text.count { it.isLetter() }
 
     /**
      * Bloğun son satırının hemen altında ve yatayda onunla üst üste binen satır o bloğa aittir. Aradaki boşluk satır

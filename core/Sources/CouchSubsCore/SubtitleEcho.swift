@@ -11,8 +11,8 @@ import Foundation
 /// varsayılan altyazı alanıyla (0,14–0,86 x 0,62–0,97) kesişiyor, geniş altyazının sağ ucunu okuyordu. Görev satırının
 /// bölgesi de (MissionLine) altyazı alanının içindedir; görev kalkıp yerine altyazı gelince altyazı orada da okunuyordu.
 ///
-/// Kural: ekran yazısı okumasında altyazı alanındaki satır (merkezi içinde ya da en az yarısı alanda), son altyazı
-/// satırının hemen üstüne/altına taşan aynı boydaki satır ve altyazı hattının son `windowMs` içinde okuduğu metne
+/// Kural: ekran yazısı okumasında altyazı alanında altyazı satırının yerine düşen satır (bkz. `isSubtitlePlace`), son
+/// altyazı satırının hemen üstüne/altına taşan aynı boydaki satır ve altyazı hattının son `windowMs` içinde okuduğu metne
 /// benzeyen satır atılır. Menü durumunda ve görev satırının kendi alanında yalnız metin eşleşmesi uygulanır (menü
 /// satırları altyazı alanında da olabilir; görev satırı altyazı alanının içindedir). Windows (SubtitleEcho.cs) ve
 /// Android (SubtitleEcho.kt) aynı kuralları uygular. İş parçacığı güvenlidir.
@@ -98,14 +98,25 @@ public final class SubtitleEcho: @unchecked Sendable {
         }
     }
 
-    /// Karedeki (0..1) kutu altyazı alanında mı (merkezi içinde ya da alanının en az yarısı), ya da son altyazı satırının
-    /// hemen üstüne/altına taşan aynı boyda bir satır mı.
+    /// Karedeki (0..1) kutu altyazının yerinde mi: altyazı alanında (merkezi içinde ya da alanının en az yarısı) ve altyazı
+    /// hattının son `windowMs` içinde okuduğu bir satırın üstünde (`sameRow`), ya da son altyazı satırının hemen
+    /// üstüne/altına taşan aynı boyda bir satır.
+    ///
+    /// Alanın tamamı dışlanmaz. Kullanıcı bildirimi (X, beta.69, GTA 6): "Ekranı çevir" altyazıyı çeviriyor, telefon
+    /// mesajlarını çevirmiyordu. Sağ alttaki telefon kartı (0,72–0,99 x 0,45–0,80) varsayılan altyazı alanıyla
+    /// (0,14–0,86 x 0,62–0,97) kesişiyor; altyazı okunurken kartın 0,62'nin altındaki mesaj satırlarının merkezi alanın
+    /// içinde kaldığı için hepsi atılıyordu (hazır mesaj alanında da). Altyazının kendisi metinle, alan kenarına taşan
+    /// ve alana düşen parçaları altyazı satırının yerinden tanınır.
     public func isSubtitlePlace(_ box: TextBox) -> Bool {
         let time = clock()
         return lock.withLock {
             // Tam ekran (ya da ekranın çoğu) altyazı alanıyken yer kuralı uygulanmaz; metin eşleşmesi yeter.
             if let region, (region.right - region.left) * (region.bottom - region.top) < Self.wholeScreen,
-               Self.inside(box, region) { return true }
+               Self.inside(box, region),
+               lines.contains(where: { line in
+                   guard time - line.at <= Self.windowMs, let other = line.box else { return false }
+                   return Self.sameRow(box, other)
+               }) { return true }
             return lines.contains { line in
                 guard time - line.at <= Self.adjacentMs, let other = line.box else { return false }
                 return Self.adjacent(box, other)
@@ -132,6 +143,17 @@ public final class SubtitleEcho: @unchecked Sendable {
         let h = min(box.bottom, region.bottom) - max(box.top, region.top)
         let area = (box.right - box.left) * (box.bottom - box.top)
         return w > 0 && h > 0 && area > 0 && w * h >= 0.5 * area
+    }
+
+    /// Kutu altyazı satırıyla aynı sırada (dikeyde örtüşüyor ya da arada satır boyunun yarısından az boşluk) ve yatayda
+    /// dardakinin en az %80'i örtüşüyor: altyazının kendisi, parçası ya da aynı yere gelen yeni altyazı. Telefon kartının
+    /// satırı geniş altyazıyla aynı sıradaysa bile yalnız ucu örtüşür, atılmaz.
+    static func sameRow(_ box: TextBox, _ line: TextBox) -> Bool {
+        let height = max(box.bottom - box.top, line.bottom - line.top)
+        let gap = max(box.top - line.bottom, line.top - box.bottom)
+        let overlap = min(box.right, line.right) - max(box.left, line.left)
+        let narrower = min(box.right - box.left, line.right - line.left)
+        return height > 0 && narrower > 0 && gap <= height * 0.5 && overlap >= narrower * 0.8
     }
 
     /// Aynı boyda (±%30), yatayda örtüşen ve dikeyde en çok bir satır boyu aralıklı iki satır (iki satırlı altyazının alan

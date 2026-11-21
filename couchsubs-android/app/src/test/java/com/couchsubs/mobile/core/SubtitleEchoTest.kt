@@ -27,10 +27,35 @@ class SubtitleEchoTest {
 
     @Test
     fun linesInTheSubtitleAreaAreNotScreenText() {
-        echo.record(Reading.Empty, region)
-        val reading = Reading(listOf(at("Thought I was flying solo. Come on.", 0.30, 0.80, 0.70, 0.84),
+        echo.record(Reading(listOf(inRegion("Thought I was flying solo. Come on.", 0.30, 0.80, 0.70, 0.84))), region)
+        // Altyazının yerine düşen satır (aynı altyazının bozuk okunuşu ya da yeni altyazı) metin tutmasa da atılır.
+        val reading = Reading(listOf(at("Thought I was fiying soio. C0me on.", 0.31, 0.80, 0.69, 0.84),
+            at("Okay, let's go then, right now.", 0.28, 0.80, 0.72, 0.845),
             at("Press up to open the phone", 0.02, 0.05, 0.30, 0.09)))
         assertEquals(listOf("Press up to open the phone"), echo.filter(reading).lines.map { it.text })
+    }
+
+    /**
+     * Kullanıcı bildirimi (X, beta.69, GTA 6): "Ekranı çevir" altyazıyı çeviriyor, telefon mesajlarını çevirmiyordu. Sağ
+     * alttaki telefon kartı (0,72–0,99 x 0,45–0,80) varsayılan altyazı alanıyla kesişiyor; altyazı okunurken kartın
+     * 0,62'nin altındaki satırlarının merkezi alanın içinde kaldığı için hepsi atılıyordu ("Ekranı çevir" de bu süzgeci
+     * kullanır: TranslationService `echo.filter(read, geometry = echo.hasRecent)`).
+     */
+    @Test
+    fun phoneMessagesInsideTheSubtitleAreaAreScreenText() {
+        echo.record(Reading(listOf(inRegion("Yeah, I'll stop by.", 0.42, 0.86, 0.58, 0.90))), region)
+        assertTrue(echo.hasRecent)
+        val phone = listOf(at("Jason", 0.76, 0.47, 0.84, 0.50),
+            at("Where are you? We need to talk.", 0.74, 0.55, 0.95, 0.58),
+            at("Come to the marina after dark", 0.74, 0.64, 0.94, 0.67),
+            at("Bring the cash", 0.74, 0.70, 0.84, 0.73),
+            at("Don't be late this time", 0.80, 0.76, 0.97, 0.79))
+        val reading = Reading(phone + at("Yeah, I'll stop by.", 0.42, 0.86, 0.58, 0.90))
+        assertEquals(phone.map { it.text }, echo.filter(reading, geometry = echo.hasRecent).lines.map { it.text })
+        // Geniş altyazıyla aynı sıradaki mesaj satırı da kalır (yalnız ucu örtüşür); altyazının alana düşen parçası atılır.
+        echo.record(Reading(listOf(inRegion("You better get to the docks before the cops do", 0.15, 0.76, 0.85, 0.80))), region)
+        val wide = Reading(listOf(at("Don't be late this time", 0.80, 0.76, 0.97, 0.79), at("before the cops do", 0.73, 0.76, 0.85, 0.80)))
+        assertEquals(listOf("Don't be late this time"), echo.filter(wide).lines.map { it.text })
     }
 
     /**
@@ -114,18 +139,22 @@ class SubtitleEchoTest {
     /** Hazır mesaj alanı altyazı alanıyla kesişir: kesişen yerdeki altyazı parçası çizilmez, mesaj kartı çizilir. */
     @Test
     fun presetAreaDropsTheSubtitlePartButKeepsItsOwnText() {
-        echo.record(Reading.Empty, region)
+        // Altyazı alanın sağ kenarına dek geniş: sağ ucu hazır mesaj alanına düşüyor.
+        echo.record(Reading(listOf(inRegion("You better get to the docks before the cops do", 0.15, 0.76, 0.86, 0.795))), region)
         val messages = GameAreaPresets.areas("GTA 6").first { it.id == GameAreaPresets.PHONE_ID }
         val r = messages.region
         fun local(text: String, top: Double, bottom: Double) =
             TextLine(text, TextBox(0.05, (top - r.top) / (r.bottom - r.top), 0.5, (bottom - r.top) / (r.bottom - r.top)))
-        val lines = listOf(local("Meet me at the marina tonight, Jason", 0.50, 0.54), local("before the cops do", 0.76, 0.795))
+        // Kartın altyazı alanına (0,62'den aşağısı) düşen mesaj satırı da kartın yazısıdır.
+        val lines = listOf(local("Meet me at the marina tonight, Jason", 0.50, 0.54), local("Bring the boat keys", 0.66, 0.70),
+            local("before the cops do", 0.76, 0.795))
         val recorder = Recorder()
         val watcher = RegionWatcher({ Reading(lines) }, { "çeviri ${it.length}" }, recorder)
         watcher.subtitleEcho = echo
         // Kare verilmez: arayüz kutusu denetimi atlanır (yalnız satır elemesi sınanır).
         repeat(2) { watcher.pass(setOf(messages.id), listOf(messages to RegionWatcher.Crop(Unit, signature(), null))) }
-        // Yalnız mesaj kartı (36 harf) çevrilip çizilir; altyazı parçası metne katılmaz.
-        assertEquals(listOf("çeviri 36"), recorder.sent)
+        // Yalnız mesaj kartı (36 + 19 harf) çevrilip çizilir; altyazı parçası metne katılmaz.
+        assertEquals(recorder.sent.toString(), 1, recorder.sent.size)
+        assertTrue(recorder.sent.toString(), recorder.sent[0].contains("çeviri 36") && recorder.sent[0].contains("çeviri 19"))
     }
 }

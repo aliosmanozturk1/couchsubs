@@ -40,9 +40,26 @@ public sealed class StickyRows
         /// <summary>Satırın en son büyüdüğü an (yazı yazılır gibi beliren satır).</summary>
         public long Grown { get; set; } = since;
         public bool Sticky { get; set; }
+        /// <summary>
+        /// Satır, önceki okumanın satırları (en az <see cref="LingerMs"/> durgun, hiçbiri kalkmamış, konuşan adı yok)
+        /// dururken onların altına eklendi; konuşan adı taşımıyor, üstteki cümlenin devamı değil ve en uzun satırdan
+        /// belirgin kısa (<see cref="JoinedShare"/>): eski satır değil bu satır görev yazısıdır. Yanında başka satır oldukça
+        /// çıkarılır; yanındaki konuşma eski sayılmaz. Kullanıcı bildirimi (X, beta.69, GTA 6): "John'u takip et" konuşma
+        /// ekrandayken alta çıkınca konuşma çevrilmiyordu; <see cref="LingerMs"/> kuralı konuşmayı (eski satır) görev sanıp
+        /// atıyor, görevi altyazı olarak gönderiyordu.
+        /// </summary>
+        public bool Joined { get; set; }
     }
 
+    /// <summary>
+    /// Eklenen satır görev sayılmak için ekrandaki en uzun satırın en çok bu kadarı olmalı (görev kısa: "Follow John");
+    /// boyları yakınsa hangisinin görev olduğu bilinmez, eski kural uygulanır.
+    /// </summary>
+    public const double JoinedShare = 0.8;
+
     private readonly List<Row> rows = [];
+    /// <summary>Önceki <see cref="Filter"/> çağrısında okunan satırlar.</summary>
+    private List<Row> previous = [];
 
     /// <summary>Son <see cref="Filter"/> çağrısında okumadan çıkarılan satırlar (sabit ya da uçta bekleyen; görev satırı).</summary>
     public IReadOnlyList<TextLine> Removed { get; private set; } = [];
@@ -56,12 +73,13 @@ public sealed class StickyRows
         var newly = new List<string>();
         var matched = new List<Row?>();
         var used = new HashSet<Row>();
+        var created = new List<int>();
         foreach (var line in reading.Lines)
         {
             var text = TextMatch.Normalize(line.Text);
             if (text.Length < 3) { matched.Add(null); continue; }
             var row = rows.FirstOrDefault(r => !used.Contains(r) && TextMatch.IsSimilar(text, r.Text));
-            if (row is null) { row = new Row(text, time); rows.Add(row); }
+            if (row is null) { row = new Row(text, time); rows.Add(row); created.Add(matched.Count); }
             else if (text.Length >= row.Text.Length + 3)
             {
                 // Satır büyüdü (yazı yazılır gibi): yaşı yeniden başlar; okuma sapmaları (kısalıp uzama) saymaz.
@@ -73,6 +91,8 @@ public sealed class StickyRows
             matched.Add(row);
         }
         var present = matched.OfType<Row>().ToList();
+        foreach (var i in created) matched[i]!.Joined = Joins(reading, matched, i, present, time);
+        previous = present;
         for (var i = 0; i < matched.Count; i++)
         {
             if (matched[i] is not { Sticky: false } row || time - row.Since < StickyMs) continue;
@@ -91,8 +111,29 @@ public sealed class StickyRows
     }
 
     /// <summary>
-    /// <see cref="LingerMs"/>: okumanın üst ya da alt ucundaki, en yeni satırdan en az o kadar eski satırlar (görev yazısı).
-    /// Sabit satırlar hesaba katılmaz; konuşan adlı satır hiç çıkarılmaz.
+    /// Yeni satır (<paramref name="index"/>) ekrandaki konuşmanın altına eklenen görev yazısı mı (bkz.
+    /// <see cref="Row.Joined"/>). Yazı yazılır gibi beliren ikinci satır eklenmiş sayılmaz: üstteki satır az önce
+    /// büyüyordu ya da yeni satır onun devamı (<see cref="Reading.Continues"/>). Konuşma değişirken gelen satır da
+    /// sayılmaz: önceki satırlardan biri kalktı.
+    /// </summary>
+    private bool Joins(Reading reading, List<Row?> matched, int index, List<Row> present, long time)
+    {
+        if (previous.Count == 0 || previous.Any(row => !present.Contains(row) || time - row.Grown < LingerMs)) return false;
+        if (matched.Skip(index + 1).Any(row => row is not null)) return false;
+        var line = reading.Lines[index].Text;
+        if (SpeakerPrefix.Parse(line) is not null) return false;
+        // Konuşan adlı konuşmanın altına gelen satır sıradaki konuşmacının yanıtıdır ("Lucia: Wait for me." / "Okay.").
+        if (Enumerable.Range(0, index).Any(i => matched[i] is not null && SpeakerPrefix.Parse(reading.Lines[i].Text) is not null))
+            return false;
+        if (matched[index]!.Text.Length > JoinedShare * previous.Max(row => row.Text.Length)) return false;
+        var upper = index == 0 ? -1 : matched.FindLastIndex(index - 1, index, row => row is not null);
+        return upper < 0 || !Reading.Continues(reading.Lines[upper].Text, line);
+    }
+
+    /// <summary>
+    /// <see cref="LingerMs"/>: okumanın üst ya da alt ucundaki, en yeni satırdan en az o kadar eski satırlar (görev yazısı)
+    /// ve konuşmanın altına eklenen satırlar (<see cref="Row.Joined"/>). Eklenen satır "en yeni" sayılmaz: konuşmayı eski
+    /// gösterip atmasın. Sabit satırlar hesaba katılmaz; konuşan adlı satır hiç çıkarılmaz.
     /// </summary>
     private static bool[] Lingering(Reading reading, List<Row?> matched)
     {
@@ -100,8 +141,10 @@ public sealed class StickyRows
         var result = new bool[count];
         var live = Enumerable.Range(0, count).Where(i => matched[i] is { Sticky: false }).ToList();
         if (live.Count < 2) return result;
-        var youngest = live.Max(i => matched[i]!.Since);
-        bool Old(int i) => youngest - matched[i]!.Grown >= LingerMs && SpeakerPrefix.Parse(reading.Lines[i].Text) is null;
+        var settled = live.Where(i => !matched[i]!.Joined).ToList();
+        var youngest = (settled.Count > 0 ? settled : live).Max(i => matched[i]!.Since);
+        bool Old(int i) => SpeakerPrefix.Parse(reading.Lines[i].Text) is null
+            && ((matched[i]!.Joined && settled.Count > 0) || youngest - matched[i]!.Grown >= LingerMs);
         // Yalnız uçtaki eski satırlar (görev altyazının altında ya da üstünde); ortadaki satır konuşmanın parçasıdır.
         // Üstteki eski satırın altındaki satır onun devamıysa ikisi aynı cümledir: üst satır kalır.
         for (var k = 0; k < live.Count && Old(live[k]); k++)
@@ -116,6 +159,7 @@ public sealed class StickyRows
     public void Reset()
     {
         rows.Clear();
+        previous = [];
         NewlySticky = [];
         Removed = [];
     }

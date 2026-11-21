@@ -95,14 +95,59 @@ public class ObjectiveWithDialogueTests
             clock += 500;
         }
         var requested = string.Join(" | ", translator.Requested);
-        // Görev ile aynı anda beliren ilk altyazı hangisinin görev olduğu bilinemediği için şart değil.
-        var expected = objectiveFirst == 0 ? Dialogue.Skip(1) : Dialogue;
-        var missing = expected.SelectMany(lines => lines).Select(line => line.Replace("Lucia: ", ""))
+        // Görev ilk altyazıyla aynı anda belirince de ilk altyazı çevrilir (kısa görev satırı altyazının altında; beta.69).
+        var missing = Dialogue.SelectMany(lines => lines).Select(line => line.Replace("Lucia: ", ""))
             .Where(line => !translator.Requested.Any(text => text.Contains(line))).ToList();
         Assert.True(missing.Count == 0, $"çevrilmedi: {string.Join(" / ", missing)} — istekler: {requested}");
         // Görev satırı hiçbir altyazı isteğine karışmaz (yalnız görev tek başınayken kendisi çevrilebilir).
         var mixed = translator.Requested.Where(text => text.Contains(Objective.TrimEnd('.')) && text.Trim() != Objective)
             .Where(text => objectiveFirst != 0 || !text.Contains(Dialogue[0][0])).ToList();
         Assert.True(mixed.Count == 0, $"görev karıştı: {string.Join(" | ", mixed)}");
+    }
+
+    /// <summary>
+    /// Kullanıcı bildirimi (X, beta.69, GTA 6): konuşma sürerken altta "Follow John" görevi belirdi, o konuşma çevrilmedi.
+    /// Görev konuşmayla aynı anda ya da konuşma başladıktan 0,5–2 sn sonra gelir; görev altyazıdan ayrı blok ya da bitişik.
+    /// Konuşma çevrilir, TV'de konuşma ekrandayken görev altyazının yerine geçmez, görev kendi yerinde gösterilir.
+    /// </summary>
+    [Theory]
+    [InlineData(0, 1.5)]
+    [InlineData(1, 1.5)]
+    [InlineData(2, 1.5)]
+    [InlineData(4, 1.5)]
+    [InlineData(0, 0.1)]
+    [InlineData(2, 0.1)]
+    [InlineData(4, 0.1)]
+    public async Task ObjectiveArrivingDuringDialogueDoesNotReplaceIt(int objectiveAfterFrames, double gap)
+    {
+        const string objective = "Follow John";
+        string[] dialogue = ["I can't believe he's still alive after all that.", "We need to keep moving before they find us."];
+        const double objectiveTop = 0.8;
+        var dialogueTop = objectiveTop - gap * Line - Line;
+        var frames = new List<Reading>();
+        for (var i = 0; i < 8; i++)
+            frames.Add(new Reading(i < objectiveAfterFrames ? [Row(dialogue[0], dialogueTop)]
+                                                            : [Row(dialogue[0], dialogueTop), Row(objective, objectiveTop, 0.25)]));
+        for (var i = 0; i < 8; i++) frames.Add(new Reading([Row(dialogue[1], dialogueTop), Row(objective, objectiveTop, 0.25)]));
+        long clock = 0;
+        var translator = new FakeTranslator();
+        var sender = new FakeSender();
+        var pipeline = new SubtitlePipeline(new SequenceReader(frames), translator, sender, clock: () => clock)
+        { PackWait = 0, CleanWait = 0 };
+        var regions = new List<CropRegion?>();
+        pipeline.MissionChanged += regions.Add;
+        foreach (var _ in frames)
+        {
+            await pipeline.ProcessAsync(Frame.Blank(64, 64), new CropRegion(0, 1, 0, 1));
+            await pipeline.WaitForTranslationsAsync();
+            clock += 500;
+        }
+        var requested = string.Join(" | ", translator.Requested);
+        foreach (var line in dialogue)
+            Assert.True(translator.Requested.Any(text => text.Contains(line)), $"çevrilmedi: {line} — istekler: {requested}");
+        // Görev tek başına altyazı olarak çevrilmedi (konuşmanın yerine geçmedi).
+        Assert.DoesNotContain(objective, translator.Requested.Select(text => text.Trim()));
+        // Görev kendi yerinde.
+        Assert.Contains(regions, region => region is not null && region.Top <= objectiveTop && region.Bottom >= objectiveTop + Line);
     }
 }

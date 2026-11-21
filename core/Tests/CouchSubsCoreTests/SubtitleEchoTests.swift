@@ -25,10 +25,34 @@ final class SubtitleEchoTests: XCTestCase {
     }
 
     func testLinesInTheSubtitleAreaAreNotScreenText() {
-        echo.record(.empty, region: region)
-        let reading = Reading(lines: [at("Thought I was flying solo. Come on.", 0.30, 0.80, 0.70, 0.84),
+        echo.record(Reading(lines: [inRegion("Thought I was flying solo. Come on.", 0.30, 0.80, 0.70, 0.84)]), region: region)
+        // Altyazının yerine düşen satır (aynı altyazının bozuk okunuşu ya da yeni altyazı) metin tutmasa da atılır.
+        let reading = Reading(lines: [at("Thought I was fiying soio. C0me on.", 0.31, 0.80, 0.69, 0.84),
+                                      at("Okay, let's go then, right now.", 0.28, 0.80, 0.72, 0.845),
                                       at("Press up to open the phone", 0.02, 0.05, 0.30, 0.09)])
         XCTAssertEqual(echo.filter(reading).lines.map(\.text), ["Press up to open the phone"])
+    }
+
+    /// Kullanıcı bildirimi (X, beta.69, GTA 6): "Ekranı çevir" altyazıyı çeviriyor, telefon mesajlarını çevirmiyordu. Sağ
+    /// alttaki telefon kartı (0,72–0,99 x 0,45–0,80) varsayılan altyazı alanıyla kesişiyor; altyazı okunurken kartın
+    /// 0,62'nin altındaki satırlarının merkezi alanın içinde kaldığı için hepsi atılıyordu ("Ekranı çevir" de bu süzgeci
+    /// kullanır: AppModel/PhoneModel `echo.filter(read, geometry: echo.hasRecent)`).
+    func testPhoneMessagesInsideTheSubtitleAreaAreScreenText() {
+        echo.record(Reading(lines: [inRegion("Yeah, I'll stop by.", 0.42, 0.86, 0.58, 0.90)]), region: region)
+        XCTAssertTrue(echo.hasRecent)
+        let phone = [at("Jason", 0.76, 0.47, 0.84, 0.50),
+                     at("Where are you? We need to talk.", 0.74, 0.55, 0.95, 0.58),
+                     at("Come to the marina after dark", 0.74, 0.64, 0.94, 0.67),
+                     at("Bring the cash", 0.74, 0.70, 0.84, 0.73),
+                     at("Don't be late this time", 0.80, 0.76, 0.97, 0.79)]
+        let reading = Reading(lines: phone + [at("Yeah, I'll stop by.", 0.42, 0.86, 0.58, 0.90)])
+        XCTAssertEqual(echo.filter(reading, geometry: echo.hasRecent).lines.map(\.text), phone.map(\.text))
+        // Geniş altyazıyla aynı sıradaki mesaj satırı da kalır (yalnız ucu örtüşür); altyazının alana düşen parçası atılır.
+        echo.record(Reading(lines: [inRegion("You better get to the docks before the cops do", 0.15, 0.76, 0.85, 0.80)]),
+                    region: region)
+        let wide = Reading(lines: [at("Don't be late this time", 0.80, 0.76, 0.97, 0.79),
+                                   at("before the cops do", 0.73, 0.76, 0.85, 0.80)])
+        XCTAssertEqual(echo.filter(wide).lines.map(\.text), ["Don't be late this time"])
     }
 
     /// İki satırlı altyazının üst satırı alanın dışında: altyazı hattı yalnız alt satırı okur, üst satır bitişik ve aynı
@@ -121,17 +145,23 @@ final class SubtitleEchoTests: XCTestCase {
         let reader = Reader(), server = Server()
         let watcher = RegionWatcher(reader: reader, translator: Translator(), server: server)
         watcher.subtitleEcho = echo
-        echo.record(.empty, region: region)
+        // Altyazı alanın sağ kenarına dek geniş: sağ ucu hazır mesaj alanına düşüyor.
+        echo.record(Reading(lines: [inRegion("You better get to the docks before the cops do", 0.15, 0.76, 0.86, 0.795)]),
+                    region: region)
         let messages = GameAreaPresets.areas("GTA 6").first { $0.id == GameAreaPresets.phoneId }!
         let r = messages.region
         func local(_ text: String, _ top: Double, _ bottom: Double) -> TextLine {
             TextLine(text, box: TextBox(left: 0.05, top: (top - r.top) / (r.bottom - r.top), right: 0.5,
                                         bottom: (bottom - r.top) / (r.bottom - r.top)))
         }
-        reader.lines = [local("Meet me at the marina tonight, Jason", 0.50, 0.54), local("before the cops do", 0.80 - 0.04, 0.80 - 0.005)]
+        // Kartın altyazı alanına (0,62'den aşağısı) düşen mesaj satırı da kartın yazısıdır.
+        reader.lines = [local("Meet me at the marina tonight, Jason", 0.50, 0.54), local("Bring the boat keys", 0.66, 0.70),
+                        local("before the cops do", 0.80 - 0.04, 0.80 - 0.005)]
         await watcher.pass(frame(), areas: [messages])
         await watcher.pass(frame(), areas: [messages])
-        // Yalnız mesaj kartı (36 harf) çevrilip çizilir; altyazı parçası metne katılmaz.
-        XCTAssertEqual(server.sent, ["çeviri 36"])
+        // Yalnız mesaj kartı (36 + 19 harf) çevrilip çizilir; altyazı parçası metne katılmaz.
+        XCTAssertEqual(server.sent.count, 1, "\(server.sent)")
+        XCTAssertTrue(server.sent.first?.contains("çeviri 36") ?? false, "\(server.sent)")
+        XCTAssertTrue(server.sent.first?.contains("çeviri 19") ?? false, "mesaj kartının alt satırı düşmüş: \(server.sent)")
     }
 }

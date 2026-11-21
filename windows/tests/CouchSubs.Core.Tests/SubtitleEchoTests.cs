@@ -30,10 +30,38 @@ public class SubtitleEchoTests
     [Fact]
     public void LinesInTheSubtitleAreaAreNotScreenText()
     {
-        echo.Record(Reading.Empty, Region);
-        var reading = new Reading([At("Thought I was flying solo. Come on.", 0.30, 0.80, 0.70, 0.84),
+        echo.Record(new Reading([InRegion("Thought I was flying solo. Come on.", 0.30, 0.80, 0.70, 0.84)]), Region);
+        // Altyazının yerine düşen satır (aynı altyazının bozuk okunuşu ya da yeni altyazı) metin tutmasa da atılır.
+        var reading = new Reading([At("Thought I was fiying soio. C0me on.", 0.31, 0.80, 0.69, 0.84),
+                                   At("Okay, let's go then, right now.", 0.28, 0.80, 0.72, 0.845),
                                    At("Press up to open the phone", 0.02, 0.05, 0.30, 0.09)]);
         Assert.Equal(["Press up to open the phone"], echo.Filter(reading).Lines.Select(line => line.Text));
+    }
+
+    /// <summary>
+    /// Kullanıcı bildirimi (X, beta.69, GTA 6): "Ekranı çevir" altyazıyı çeviriyor, telefon mesajlarını çevirmiyordu. Sağ
+    /// alttaki telefon kartı (0,72–0,99 x 0,45–0,80) varsayılan altyazı alanıyla kesişiyor; altyazı okunurken kartın
+    /// 0,62'nin altındaki satırlarının merkezi alanın içinde kaldığı için hepsi atılıyordu.
+    /// </summary>
+    [Fact]
+    public void PhoneMessagesInsideTheSubtitleAreaAreScreenText()
+    {
+        echo.Record(new Reading([InRegion("Yeah, I'll stop by.", 0.42, 0.86, 0.58, 0.90)]), Region);
+        Assert.True(echo.HasRecent);
+        var phone = new[]
+        {
+            At("Jason", 0.76, 0.47, 0.84, 0.50),
+            At("Where are you? We need to talk.", 0.74, 0.55, 0.95, 0.58),
+            At("Come to the marina after dark", 0.74, 0.64, 0.94, 0.67),
+            At("Bring the cash", 0.74, 0.70, 0.84, 0.73),
+            At("Don't be late this time", 0.80, 0.76, 0.97, 0.79),
+        };
+        var reading = new Reading([.. phone, At("Yeah, I'll stop by.", 0.42, 0.86, 0.58, 0.90)]);
+        Assert.Equal(phone.Select(line => line.Text), echo.Filter(reading).Lines.Select(line => line.Text));
+        // Geniş altyazıyla aynı sıradaki mesaj satırı da kalır (yalnız ucu örtüşür); altyazının alana düşen parçası atılır.
+        echo.Record(new Reading([InRegion("You better get to the docks before the cops do", 0.15, 0.76, 0.85, 0.80)]), Region);
+        var wide = new Reading([At("Don't be late this time", 0.80, 0.76, 0.97, 0.79), At("before the cops do", 0.73, 0.76, 0.85, 0.80)]);
+        Assert.Equal(["Don't be late this time"], echo.Filter(wide).Lines.Select(line => line.Text));
     }
 
     /// <summary>
@@ -146,19 +174,46 @@ public class SubtitleEchoTests
         var server = new Server();
         var translator = new Translator();
         var watcher = new RegionWatcher(reader, translator, server, clock: () => time) { SubtitleEcho = echo };
-        echo.Record(Reading.Empty, Region);
+        // Altyazı alanın sağ kenarına dek geniş: sağ ucu hazır mesaj alanına düşüyor.
+        echo.Record(new Reading([InRegion("You better get to the docks before the cops do", 0.15, 0.76, 0.86, 0.795)]), Region);
         var messages = GameAreaPresets.Areas("GTA 6").First(area => area.Id == GameAreaPresets.PhoneId);
         var r = messages.Region;
         TextLine Local(string text, double top, double bottom) =>
             new(text, new TextBox(0.05, (top - r.Top) / (r.Bottom - r.Top), 0.5, (bottom - r.Top) / (r.Bottom - r.Top)));
-        reader.Lines = [Local("Meet me at the marina tonight, Jason", 0.50, 0.54), Local("before the cops do", 0.76, 0.795)];
+        // Kartın altyazı alanına (0,62'den aşağısı) düşen mesaj satırı da kartın yazısıdır.
+        reader.Lines = [Local("Meet me at the marina tonight, Jason", 0.50, 0.54), Local("Bring the boat keys", 0.66, 0.70),
+                        Local("before the cops do", 0.76, 0.795)];
         await watcher.PassAsync(Panel(), [messages]);
         await watcher.PassAsync(Panel(), [messages]);
         // Yalnız mesaj kartı çevrilip çizilir; altyazı parçası metne katılmaz.
         Assert.Single(server.Sent, text => text.Length > 0);
-        var call = Assert.Single(translator.Calls);
+        var call = string.Join(" / ", translator.Calls);
         Assert.Contains("marina", call);
+        Assert.Contains("boat keys", call);
         Assert.DoesNotContain("cops", call);
+    }
+
+    /// <summary>
+    /// "Ekranı çevir" GTA 6 telefonu açıkken (kullanıcı bildirimi, X, beta.69): altyazı çevrilmez (zaten kendi yerinde),
+    /// telefon kartının bütün mesajları çevrilir; kartın altyazı alanına düşen alt yarısı da.
+    /// </summary>
+    [Fact]
+    public async Task ScreenTranslationKeepsPhoneMessagesWhileSubtitlesRun()
+    {
+        echo.Record(new Reading([InRegion("Yeah, I'll stop by.", 0.42, 0.86, 0.58, 0.90)]), Region);
+        var reader = new Reader
+        {
+            Lines = [At("Where are you? We need to talk.", 0.74, 0.55, 0.95, 0.58),
+                     At("Come to the marina after dark", 0.74, 0.64, 0.94, 0.67),
+                     At("Bring the cash with you", 0.74, 0.70, 0.90, 0.73),
+                     At("Yeah, I'll stop by.", 0.42, 0.86, 0.58, 0.90)],
+        };
+        var items = await ScreenTranslation.TranslateAsync(Frame.Blank(1920, 1080), reader, new Translator(), echo);
+        var sources = string.Join(" / ", items.Select(item => item.Source));
+        Assert.Contains("We need to talk", sources);
+        Assert.Contains("marina", sources);
+        Assert.Contains("Bring the cash", sources);
+        Assert.DoesNotContain("stop by", sources);
     }
 
     /// <summary>"Ekranı çevir": altyazı hattının okuduğu satır ekran çevirisine girmez, diğer yazılar girer.</summary>

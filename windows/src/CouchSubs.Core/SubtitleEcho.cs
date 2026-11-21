@@ -13,10 +13,10 @@ namespace CouchSubs.Core;
 /// bölgesi de (<see cref="MissionLine"/>) altyazı alanının içindedir; görev kalkıp yerine altyazı gelince altyazı orada
 /// da okunuyordu.
 /// <para>
-/// Kural: ekran yazısı okumasında altyazı alanındaki satır (merkezi içinde ya da en az yarısı alanda), son altyazı
-/// satırının hemen üstüne/altına taşan aynı boydaki satır ve altyazı hattının son <see cref="WindowMs"/> içinde okuduğu
-/// metne benzeyen satır atılır. Menü durumunda ve görev satırının kendi alanında yalnız metin eşleşmesi uygulanır (menü
-/// satırları altyazı alanında da olabilir; görev satırı altyazı alanının içindedir). Mac/iPhone (SubtitleEcho.swift) ve
+/// Kural: ekran yazısı okumasında altyazı alanında altyazı satırının yerine düşen satır (bkz.
+/// <see cref="IsSubtitlePlace"/>), son altyazı satırının hemen üstüne/altına taşan aynı boydaki satır ve altyazı hattının
+/// son <see cref="WindowMs"/> içinde okuduğu metne benzeyen satır atılır. Menü durumunda ve görev satırının kendi alanında
+/// yalnız metin eşleşmesi uygulanır (menü satırları altyazı alanında da olabilir; görev satırı altyazı alanının içindedir). Mac/iPhone (SubtitleEcho.swift) ve
 /// Android (SubtitleEcho.kt) aynı kuralları uygular. İş parçacığı güvenlidir.
 /// </para>
 /// </summary>
@@ -111,8 +111,16 @@ public sealed class SubtitleEcho
     }
 
     /// <summary>
-    /// Karedeki (0..1) kutu altyazı alanında mı (merkezi içinde ya da alanının en az yarısı), ya da son altyazı satırının
-    /// hemen üstüne/altına taşan aynı boyda bir satır mı.
+    /// Karedeki (0..1) kutu altyazının yerinde mi: altyazı alanında (merkezi içinde ya da alanının en az yarısı) ve altyazı
+    /// hattının son <see cref="WindowMs"/> içinde okuduğu bir satırın üstünde (<see cref="SameRow"/>), ya da son altyazı
+    /// satırının hemen üstüne/altına taşan aynı boyda bir satır.
+    /// <para>
+    /// Alanın tamamı dışlanmaz. Kullanıcı bildirimi (X, beta.69, GTA 6): "Ekranı çevir" altyazıyı çeviriyor, telefon
+    /// mesajlarını çevirmiyordu. Sağ alttaki telefon kartı (0,72–0,99 x 0,45–0,80) varsayılan altyazı alanıyla
+    /// (0,14–0,86 x 0,62–0,97) kesişiyor; altyazı okunurken kartın 0,62'nin altındaki mesaj satırlarının merkezi alanın
+    /// içinde kaldığı için hepsi atılıyordu (hazır mesaj alanında da). Altyazının kendisi metinle, alan kenarına taşan
+    /// ve alana düşen parçaları altyazı satırının yerinden tanınır.
+    /// </para>
     /// </summary>
     public bool IsSubtitlePlace(TextBox box)
     {
@@ -120,10 +128,25 @@ public sealed class SubtitleEcho
         lock (gate)
         {
             // Tam ekran (ya da ekranın çoğu) altyazı alanıyken yer kuralı uygulanmaz; metin eşleşmesi yeter.
-            if (region is { } area && (area.Right - area.Left) * (area.Bottom - area.Top) < WholeScreen && Inside(box, area))
+            if (region is { } area && (area.Right - area.Left) * (area.Bottom - area.Top) < WholeScreen && Inside(box, area)
+                && lines.Any(line => time - line.At <= WindowMs && line.Box is { } other && SameRow(box, other)))
                 return true;
             return lines.Any(line => time - line.At <= AdjacentMs && line.Box is { } other && Adjacent(box, other));
         }
+    }
+
+    /// <summary>
+    /// Kutu altyazı satırıyla aynı sırada (dikeyde örtüşüyor ya da arada satır boyunun yarısından az boşluk) ve yatayda
+    /// dardakinin en az %80'i örtüşüyor: altyazının kendisi, parçası ya da aynı yere gelen yeni altyazı. Telefon kartının
+    /// satırı geniş altyazıyla aynı sıradaysa bile yalnız ucu örtüşür, atılmaz.
+    /// </summary>
+    internal static bool SameRow(TextBox box, TextBox line)
+    {
+        double height = Math.Max(box.Bottom - box.Top, line.Bottom - line.Top);
+        var gap = Math.Max(box.Top - line.Bottom, line.Top - box.Bottom);
+        var overlap = Math.Min(box.Right, line.Right) - Math.Max(box.Left, line.Left);
+        var narrower = Math.Min(box.Right - box.Left, line.Right - line.Left);
+        return height > 0 && narrower > 0 && gap <= height * 0.5 && overlap >= narrower * 0.8;
     }
 
     /// <summary>

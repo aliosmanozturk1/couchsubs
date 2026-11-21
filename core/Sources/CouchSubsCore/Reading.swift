@@ -191,10 +191,32 @@ public struct Reading: Equatable, Sendable {
         // Görev satırı altyazıyla aynı anda belirince ayrı blok olur (aralık ya da yazı boyu farkı): konuşan adı taşıyan
         // blok altyazıdır ("Lucia: …" görevin üstünde de dursa).
         if let spoken = centered.first(where: { SpeakerPrefix.split($0.lines[0].text) != nil }) { return spoken }
-        if let block = centered.max(by: { $0.box!.bottom < $1.box!.bottom }) { return block }
+        if let lowest = centered.indices.max(by: { centered[$0].box!.bottom < centered[$1].box!.bottom }) {
+            return Self.objectiveBelow(lowest, centered, in: area) ?? centered[lowest]
+        }
         return candidates.filter { $0.text.split(whereSeparator: \.isWhitespace).count >= 3 }
             .max(by: { $0.box!.bottom < $1.box!.bottom }) ?? .empty
     }
+
+    /// En alttaki blok, hemen üstündeki konuşmanın altına onunla aynı anda gelen görev satırı mı: tek satır ve üstündeki
+    /// ortalanmış bloktan (arada en çok üç satır boyu) belirgin kısa (`StickyRows.joinedShare`). Öyleyse altyazı üstteki
+    /// bloktur. Kullanıcı bildirimi (X, beta.69, GTA 6): "John'u takip et" konuşmayla birlikte belirince en alttaki blok
+    /// olarak altyazı seçiliyor, konuşma hiç çevrilmiyordu. Görev ekranda kalınca sonraki konuşmalarda `StickyRows` onu
+    /// ayırır (Windows ve Android ile aynı).
+    private static func objectiveBelow(_ index: Int, _ centered: [Reading], in area: TextBox) -> Reading? {
+        let lowest = centered[index]
+        guard lowest.lines.count == 1, let lowestBox = lowest.box else { return nil }
+        let box = lowestBox.placed(in: area)
+        let height = box.bottom - box.top
+        let above = centered.indices.filter { other in
+            guard other != index, let placed = centered[other].box?.placed(in: area) else { return false }
+            return placed.bottom <= box.top + height * 0.25 && box.top - placed.bottom <= height * 3
+        }.map { centered[$0] }.max(by: { $0.box!.bottom < $1.box!.bottom })
+        guard let above else { return nil }
+        return Double(letters(lowest.text)) <= StickyRows.joinedShare * Double(letters(above.text)) ? above : nil
+    }
+
+    private static func letters(_ text: String) -> Int { text.filter(\.isLetter).count }
 
     /// Bloğun son satırının hemen altında ve yatayda onunla üst üste binen satır o bloğa aittir. Aradaki boşluk satır
     /// yüksekliğinin 0,6'sından büyükse ya da yazı boyları 1,25 kattan çok farklıysa ayrı bloktur (altyazıya bitişik görev

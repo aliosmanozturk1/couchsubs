@@ -77,9 +77,8 @@ final class ObjectiveWithDialogueTests: XCTestCase {
             time += 500
         }
         let label = "below: \(below) gap: \(gap) first: \(objectiveFirst) — istekler: \(translator.requested)"
-        // Görev ile aynı anda beliren ilk altyazı hangisinin görev olduğu bilinemediği için şart değil.
-        let expected = objectiveFirst == 0 ? Array(Self.dialogue.dropFirst()) : Self.dialogue
-        let missing = expected.flatMap { $0 }.map { $0.replacingOccurrences(of: "Lucia: ", with: "") }
+        // Görev ilk altyazıyla aynı anda belirince de ilk altyazı çevrilir (kısa görev satırı altyazının altında; beta.69).
+        let missing = Self.dialogue.flatMap { $0 }.map { $0.replacingOccurrences(of: "Lucia: ", with: "") }
             .filter { line in !translator.requested.contains { $0.contains(line) } }
         XCTAssertEqual(missing, [], "çevrilmedi — \(label)")
         let mixed = translator.requested.filter { $0.contains("Go to the bank") && $0.trimmingCharacters(in: .whitespaces) != Self.objective }
@@ -91,6 +90,49 @@ final class ObjectiveWithDialogueTests: XCTestCase {
         for (below, gap, first) in [(true, 0.1, 4), (true, 1.5, 4), (false, 0.1, 4), (false, 1.5, 4),
                                     (true, 0.1, 20), (true, 1.5, 20), (false, 0.1, 20), (true, 0.1, 0), (true, 1.5, 0)] {
             await run(below: below, gap: gap, objectiveFirst: first)
+        }
+    }
+
+    /// Kullanıcı bildirimi (X, beta.69, GTA 6): konuşma sürerken altta "Follow John" görevi belirdi, o konuşma çevrilmedi.
+    /// Görev konuşmayla aynı anda ya da konuşma başladıktan 0,5–2 sn sonra gelir; görev altyazıdan ayrı blok ya da bitişik.
+    /// Konuşma çevrilir, görev altyazının yerine geçmez, görev kendi yerinde gösterilir.
+    func testObjectiveArrivingDuringDialogueDoesNotReplaceIt() async {
+        let objective = "Follow John"
+        let dialogue = ["I can't believe he's still alive after all that.", "We need to keep moving before they find us."]
+        let objectiveTop = 0.8
+        let image = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
+        for (after, gap) in [(0, 1.5), (1, 1.5), (2, 1.5), (4, 1.5), (0, 0.1), (2, 0.1), (4, 0.1)] {
+            let dialogueTop = objectiveTop - gap * Self.line - Self.line
+            var frames: [Reading] = (0..<8).map { i in
+                Reading(lines: i < after ? [Self.row(dialogue[0], dialogueTop)]
+                                         : [Self.row(dialogue[0], dialogueTop), Self.row(objective, objectiveTop, width: 0.25)])
+            }
+            frames += Array(repeating: Reading(lines: [Self.row(dialogue[1], dialogueTop),
+                                                       Self.row(objective, objectiveTop, width: 0.25)]), count: 8)
+            var time = 0
+            let translator = ObjectiveTranslator()
+            let pipeline = SubtitlePipeline(reader: SequenceReader(frames), translator: translator, server: ObjectiveSender(),
+                                            clock: { time })
+            pipeline.packWait = 0; pipeline.cleanWait = 0
+            var regions: [CropRegion?] = []
+            pipeline.onMissionChanged = { regions.append($0) }
+            for _ in frames.indices {
+                await pipeline.process(image, region: CropRegion(top: 0, bottom: 1, left: 0, right: 1))
+                await pipeline.waitForTranslations()
+                time += 500
+            }
+            let label = "after: \(after) gap: \(gap) — istekler: \(translator.requested)"
+            for line in dialogue {
+                XCTAssertTrue(translator.requested.contains { $0.contains(line) }, "çevrilmedi: \(line) — \(label)")
+            }
+            // Görev tek başına altyazı olarak çevrilmedi (konuşmanın yerine geçmedi).
+            XCTAssertFalse(translator.requested.contains { $0.trimmingCharacters(in: .whitespaces) == objective }, label)
+            // Görev kendi yerinde.
+            XCTAssertTrue(regions.contains { region in
+                guard let region else { return false }
+                return region.top <= objectiveTop && region.bottom >= objectiveTop + Self.line
+            }, "görev alanı yok — \(label)")
         }
     }
 }

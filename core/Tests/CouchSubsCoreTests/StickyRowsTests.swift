@@ -35,7 +35,8 @@ final class StickyRowsTests: XCTestCase {
 
     func testOlderRowAtEdgeIsKeptOutOfNewDialogue() {
         var rows = StickyRows()
-        XCTAssertEqual(rows.filter(Reading(text: objective), at: 0).text, objective)
+        XCTAssertEqual(rows.filter(Reading(text: objective + "\nI told you already."), at: 0).text,
+                       objective + "\nI told you already.")
         // Görev üstte de olsa (altyazının üstünde duran görev) yeni konuşmaya karışmaz.
         XCTAssertEqual(rows.filter(Reading(text: objective + "\nWe have to go."), at: 1500).text, "We have to go.")
         // Konuşan adlı satır eski olsa da çıkarılmaz.
@@ -46,6 +47,42 @@ final class StickyRowsTests: XCTestCase {
         var alone = StickyRows()
         _ = alone.filter(Reading(text: objective), at: 0)
         XCTAssertEqual(alone.filter(Reading(text: objective), at: 3000).text, objective)
+    }
+
+    /// Kullanıcı bildirimi (X, beta.69, GTA 6): konuşma ekrandayken altına "Follow John" görevi geldi; eski kural konuşmayı
+    /// (eski satır) görev sanıp atıyor, görevi altyazı olarak gönderiyordu.
+    func testObjectiveAddedUnderTheDialogueIsDroppedNotTheDialogue() {
+        let dialogue = "I can't believe he's still alive after all that."
+        var rows = StickyRows()
+        XCTAssertEqual(rows.filter(Reading(text: dialogue), at: 0).text, dialogue)
+        XCTAssertEqual(rows.filter(Reading(text: dialogue + "\nFollow John"), at: 1500).text, dialogue)
+        XCTAssertEqual(rows.removed.map(\.text), ["Follow John"])
+        XCTAssertEqual(rows.filter(Reading(text: dialogue + "\nFollow John"), at: 3000).text, dialogue)
+        // Konuşma değişti, görev kaldı: yeni konuşma çevrilir, görev yine dışarıda.
+        XCTAssertEqual(rows.filter(Reading(text: "We need to keep moving.\nFollow John"), at: 4000).text, "We need to keep moving.")
+        // Konuşma kalkınca görev tek başına okunur (eskisi gibi).
+        XCTAssertEqual(rows.filter(Reading(text: "Follow John"), at: 4500).text, "Follow John")
+    }
+
+    /// Eklenen satır görev sayılmaz: yazı yazılır gibi beliren ikinci satır, cümlenin devamı, konuşan adlı, boyu yakın.
+    func testDialogueAddedUnderTheDialogueStaysDialogue() {
+        var typed = StickyRows()
+        _ = typed.filter(Reading(text: "I told you this was a"), at: 0)
+        _ = typed.filter(Reading(text: "I told you this was a bad idea."), at: 1000)
+        XCTAssertEqual(typed.filter(Reading(text: "I told you this was a bad idea.\nGo."), at: 1500).text,
+                       "I told you this was a bad idea.\nGo.")
+        var wrapped = StickyRows()
+        _ = wrapped.filter(Reading(text: "I told you this was a bad idea,"), at: 0)
+        XCTAssertEqual(wrapped.filter(Reading(text: "I told you this was a bad idea,\nbut you never listen."), at: 2000).text,
+                       "I told you this was a bad idea,\nbut you never listen.")
+        var named = StickyRows()
+        _ = named.filter(Reading(text: "We need to keep moving before they find us."), at: 0)
+        XCTAssertEqual(named.filter(Reading(text: "We need to keep moving before they find us.\nLucia: Go."), at: 2000).text,
+                       "Lucia: Go.")
+        var close = StickyRows()
+        _ = close.filter(Reading(text: "We need to keep moving."), at: 0)
+        XCTAssertEqual(close.filter(Reading(text: "We need to keep moving.\nWe have to go there now."), at: 2000).text,
+                       "We have to go there now.")
     }
 
     func testRowThatLeftIsForgottenAndShownAgain() {

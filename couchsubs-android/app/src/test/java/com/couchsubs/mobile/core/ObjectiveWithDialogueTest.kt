@@ -3,6 +3,8 @@ package com.couchsubs.mobile.core
 
 import java.util.concurrent.Executors
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -73,9 +75,8 @@ class ObjectiveWithDialogueTest {
             }
             val requested = translator.requested.toList()
             val label = "below: $below gap: $gap first: $objectiveFirst — istekler: $requested"
-            // Görev ile aynı anda beliren ilk altyazı hangisinin görev olduğu bilinemediği için şart değil.
-            val expected = if (objectiveFirst == 0) dialogue.drop(1) else dialogue
-            val missing = expected.flatten().map { it.removePrefix("Lucia: ") }.filter { text -> requested.none { it.contains(text) } }
+            // Görev ilk altyazıyla aynı anda belirince de ilk altyazı çevrilir (kısa görev satırı altyazının altında; beta.69).
+            val missing = dialogue.flatten().map { it.removePrefix("Lucia: ") }.filter { text -> requested.none { it.contains(text) } }
             assertEquals("çevrilmedi — $label", emptyList<String>(), missing)
             val mixed = requested.filter { it.contains("Go to the bank") && it.trim() != objective }
                 .filter { objectiveFirst != 0 || !it.contains(dialogue[0][0]) }
@@ -90,6 +91,45 @@ class ObjectiveWithDialogueTest {
             Triple(false, 1.5, 4), Triple(true, 0.1, 20), Triple(true, 1.5, 20), Triple(false, 0.1, 20),
             Triple(true, 0.1, 0), Triple(true, 1.5, 0))) {
             run(below, gap, first)
+        }
+    }
+
+    /**
+     * Kullanıcı bildirimi (X, beta.69, GTA 6): konuşma sürerken altta "Follow John" görevi belirdi, o konuşma çevrilmedi.
+     * Görev konuşmayla aynı anda ya da konuşma başladıktan 0,5–2 sn sonra gelir; görev altyazıdan ayrı blok ya da bitişik.
+     * Konuşma çevrilir, görev altyazının yerine geçmez, görev kendi yerinde gösterilir.
+     */
+    @Test fun objectiveArrivingDuringDialogueDoesNotReplaceIt() {
+        val goal = "Follow John"
+        val spoken = listOf("I can't believe he's still alive after all that.", "We need to keep moving before they find us.")
+        val goalTop = 0.8
+        for ((after, gap) in listOf(0 to 1.5, 1 to 1.5, 2 to 1.5, 4 to 1.5, 0 to 0.1, 2 to 0.1, 4 to 0.1)) {
+            val top = goalTop - gap * line - line
+            val frames = List(8) { i ->
+                Reading(if (i < after) listOf(row(spoken[0], top)) else listOf(row(spoken[0], top), row(goal, goalTop, 0.25)))
+            } + List(8) { Reading(listOf(row(spoken[1], top), row(goal, goalTop, 0.25))) }
+            val executor = Executors.newSingleThreadExecutor { Thread(it, "test translate").apply { isDaemon = true } }
+            try {
+                var now = 0L
+                val translator = Recording()
+                val pipeline = SubtitlePipeline(translator, Silent(), { now }, executor).apply { packWait = 0; cleanWait = 0 }
+                val regions = java.util.Collections.synchronizedList(mutableListOf<CropRegion?>())
+                pipeline.onMissionChanged = { regions.add(it) }
+                for (reading in frames) {
+                    pipeline.process(reading, TextBox(0.0, 0.0, 1.0, 1.0))
+                    executor.submit {}.get()
+                    now += 500
+                }
+                val requested = translator.requested.toList()
+                val label = "after: $after gap: $gap — istekler: $requested"
+                for (text in spoken) assertTrue("çevrilmedi: $text — $label", requested.any { it.contains(text) })
+                // Görev tek başına altyazı olarak çevrilmedi (konuşmanın yerine geçmedi).
+                assertFalse(label, requested.any { it.trim() == goal })
+                // Görev kendi yerinde.
+                assertTrue("görev alanı yok — $label", regions.toList().any { it != null && it.top <= goalTop && it.bottom >= goalTop + line })
+            } finally {
+                executor.shutdownNow()
+            }
         }
     }
 }

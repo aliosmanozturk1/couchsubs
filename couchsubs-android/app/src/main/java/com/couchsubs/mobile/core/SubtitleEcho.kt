@@ -11,9 +11,9 @@ package com.couchsubs.mobile.core
  * varsayılan altyazı alanıyla (0,14–0,86 x 0,62–0,97) kesişiyor, geniş altyazının sağ ucunu okuyordu. Görev satırının
  * bölgesi de ([MissionLine]) altyazı alanının içindedir; görev kalkıp yerine altyazı gelince altyazı orada da okunuyordu.
  *
- * Kural: ekran yazısı okumasında altyazı alanındaki satır (merkezi içinde ya da en az yarısı alanda), son altyazı
- * satırının hemen üstüne/altına taşan aynı boydaki satır ve altyazı hattının son [WINDOW_MS] içinde okuduğu metne
- * benzeyen satır atılır. Menü durumunda ve görev satırının kendi alanında yalnız metin eşleşmesi uygulanır (menü
+ * Kural: ekran yazısı okumasında altyazı alanında altyazı satırının yerine düşen satır (bkz. [isSubtitlePlace]), son
+ * altyazı satırının hemen üstüne/altına taşan aynı boydaki satır ve altyazı hattının son [WINDOW_MS] içinde okuduğu
+ * metne benzeyen satır atılır. Menü durumunda ve görev satırının kendi alanında yalnız metin eşleşmesi uygulanır (menü
  * satırları altyazı alanında da olabilir; görev satırı altyazı alanının içindedir). Mac/iPhone (SubtitleEcho.swift) ve
  * Windows (SubtitleEcho.cs) aynı kuralları uygular. İş parçacığı güvenlidir.
  */
@@ -41,6 +41,19 @@ class SubtitleEcho(private val clock: () -> Long = monotonicClock) {
             val h = minOf(box.bottom, region.bottom) - maxOf(box.top, region.top)
             val area = (box.right - box.left) * (box.bottom - box.top)
             return w > 0 && h > 0 && area > 0 && w * h >= 0.5 * area
+        }
+
+        /**
+         * Kutu altyazı satırıyla aynı sırada (dikeyde örtüşüyor ya da arada satır boyunun yarısından az boşluk) ve
+         * yatayda dardakinin en az %80'i örtüşüyor: altyazının kendisi, parçası ya da aynı yere gelen yeni altyazı.
+         * Telefon kartının satırı geniş altyazıyla aynı sıradaysa bile yalnız ucu örtüşür, atılmaz.
+         */
+        internal fun sameRow(box: TextBox, line: TextBox): Boolean {
+            val height = maxOf(box.bottom - box.top, line.bottom - line.top)
+            val gap = maxOf(box.top - line.bottom, line.top - box.bottom)
+            val overlap = minOf(box.right, line.right) - maxOf(box.left, line.left)
+            val narrower = minOf(box.right - box.left, line.right - line.left)
+            return height > 0 && narrower > 0 && gap <= height * 0.5 && overlap >= narrower * 0.8
         }
 
         /**
@@ -114,8 +127,15 @@ class SubtitleEcho(private val clock: () -> Long = monotonicClock) {
     }
 
     /**
-     * Karedeki (0..1) kutu altyazı alanında mı (merkezi içinde ya da alanının en az yarısı), ya da son altyazı satırının
-     * hemen üstüne/altına taşan aynı boyda bir satır mı.
+     * Karedeki (0..1) kutu altyazının yerinde mi: altyazı alanında (merkezi içinde ya da alanının en az yarısı) ve altyazı
+     * hattının son [WINDOW_MS] içinde okuduğu bir satırın üstünde ([sameRow]), ya da son altyazı satırının hemen
+     * üstüne/altına taşan aynı boyda bir satır.
+     *
+     * Alanın tamamı dışlanmaz. Kullanıcı bildirimi (X, beta.69, GTA 6): "Ekranı çevir" altyazıyı çeviriyor, telefon
+     * mesajlarını çevirmiyordu. Sağ alttaki telefon kartı (0,72–0,99 x 0,45–0,80) varsayılan altyazı alanıyla
+     * (0,14–0,86 x 0,62–0,97) kesişiyor; altyazı okunurken kartın 0,62'nin altındaki mesaj satırlarının merkezi alanın
+     * içinde kaldığı için hepsi atılıyordu (hazır mesaj alanında da). Altyazının kendisi metinle, alan kenarına taşan ve
+     * alana düşen parçaları altyazı satırının yerinden tanınır.
      */
     fun isSubtitlePlace(box: TextBox): Boolean {
         val time = clock()
@@ -123,7 +143,9 @@ class SubtitleEcho(private val clock: () -> Long = monotonicClock) {
             // Tam ekran (ya da ekranın çoğu) altyazı alanıyken yer kuralı uygulanmaz; metin eşleşmesi yeter.
             val region = region
             if (region != null && (region.right - region.left) * (region.bottom - region.top) < WHOLE_SCREEN &&
-                inside(box, region)) return@synchronized true
+                inside(box, region) &&
+                lines.any { line -> val other = line.box; time - line.at <= WINDOW_MS && other != null && sameRow(box, other) }
+            ) return@synchronized true
             lines.any { line ->
                 val other = line.box
                 time - line.at <= ADJACENT_MS && other != null && adjacent(box, other)
