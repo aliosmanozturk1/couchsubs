@@ -62,7 +62,7 @@ public final class Translator: TextTranslator {
     private var session: Any?
     private let cache: TranslationCache
     private let freeLine: FreeLineTranslator?
-    private var speech: [String: [SpokenLine]] = [:]
+    private let speech = SpeechMemory()
     private let names = SpeakerNames()
 
     /// `cache`: kalıcı önbellek; verilmezse yalnız bellekte tutulur.
@@ -107,8 +107,7 @@ public final class Translator: TextTranslator {
             translations.append(translated)
             result += translated ?? piece.text
         }
-        if speech.count >= 512 { speech.removeAll() }
-        speech[text] = SpeechScript.lines(pieces: pieces, translations: translations)
+        speech.store(SpeechScript.lines(pieces: pieces, translations: translations), for: text)
         cache.store(result, for: text)
         return result
     }

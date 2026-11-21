@@ -1019,7 +1019,7 @@ final class PhoneModel: ObservableObject {
         pipeline.onNoticesChanged = { [weak self] areas in self?.noticeAreas = areas }
         pipeline.skipsTurkish = settings.targetLanguage == "tr"
         pipeline.watchSubtitleBackground = settings.watchSubtitleBackground
-        pipeline.onSpeech = { [weak self] lines in self?.speak(lines) }
+        wireSpeech(pipeline)
         pipeline.onPair = { [weak self, weak pipeline] source, translation in
             self?.lastSource = source
             self?.lastTranslation = translation
@@ -1964,7 +1964,14 @@ final class PhoneModel: ObservableObject {
         makeDubber().speak(lines)
     }
 
+    /// Okuma hattı seslendirme cümlelerini yalnız dublaj açıkken çıkarır: kapalıyken her satırda çevirmenin seslendirme
+    /// hafızasına gidilmez (dublaj kapalı kullanıcıda bu iş hiç yapılmasın; Android'de de dublaj kapalıyken yapılmıyor).
+    private func wireSpeech(_ pipeline: SubtitlePipeline) {
+        pipeline.onSpeech = settings.dubbing.enabled ? { [weak self] lines in self?.speak(lines) } : nil
+    }
+
     private func dubbingSettingsChanged() {
+        if let pipeline { wireSpeech(pipeline) }
         guard let dubber else { return }
         dubber.cast = settings.dubbing.cast
         if dubber.output != settings.dubbing.output {

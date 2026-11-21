@@ -50,7 +50,7 @@ public final class DeepLTranslator: TextTranslator, OnlineTranslating {
     private let fallback: TextTranslator
     private let session: URLSession
     private let cache: TranslationCache
-    private var speech: [String: [SpokenLine]] = [:]
+    private let speech = SpeechMemory()
     private let names = SpeakerNames()
     /// Çevrilmeyecek adlar ve terimler (ücretsiz çeviriyle aynı sözlük); DeepL'e etiketle korunarak gider.
     private let glossaryStore: GlossaryStore
@@ -144,8 +144,7 @@ public final class DeepLTranslator: TextTranslator, OnlineTranslating {
             cache.store(sentence, for: DeepLMarkup.cacheKey(pieces[index].text, glossary: glossary))
         }
         let result = zip(pieces, translations).map { $1 ?? $0.text }.joined()
-        if speech.count >= 512 { speech.removeAll() }
-        speech[text] = SpeechScript.lines(pieces: pieces, translations: translations)
+        speech.store(SpeechScript.lines(pieces: pieces, translations: translations), for: text)
         cache.store(result, for: DeepLMarkup.cacheKey(text, glossary: glossary))
         return result
     }
