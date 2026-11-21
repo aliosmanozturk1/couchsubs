@@ -411,6 +411,37 @@ test('getRect kabul edilen kutuyu söylemiyorsa sınama yapılmaz (boşuna yenid
   assert.equal(loaded.shown.length, before);
 });
 
+// Parlaklık sıçraması bildirimleri (Samsung, "uygulamayı açınca parlaklık bir an artıp normale dönüyor, sürekli"): her
+// show() HDMI görüntüsünü yeniden çizdirir. 4K Samsung fiziksel kutuyu kabul edip getRect'te sayfanın ölçüsünü söylerse
+// 5 sn'lik sınama kutuyu bozulmuş sanıyor, pencereyi her turda yeniden istiyordu.
+test('4K Samsung fiziksel kutuyu kabul edip getRect\'te başka ölçü söylerse sınama pencereyi yeniden istemez', () => {
+  const loaded = load(1920, 1080, { screen: [3840, 2160], physical: true, lyingRect: true });
+  assert.deepEqual(playHdmi(loaded), [FULL, ['0px', '0px', '3840px', '2160px']]);
+  const before = loaded.shown.length;
+  for (let i = 0; i < 6; i++) loaded.tick();
+  assert.equal(loaded.shown.length, before, 'pencere 5 sn\'de bir yeniden istenmemeli');
+});
+
+test('Samsung kutuyu sürekli bozuyorsa dakikada en çok üç kez yeniden istenir; sinyal değişince sınama yeniden başlar', () => {
+  const loaded = load(2580, 1080, { screen: [3440, 1440] });
+  playHdmi(loaded);
+  let rewindows = 0;
+  for (let i = 0; i < 8; i++) {
+    const before = loaded.shown.length;
+    loaded.resetWindow();
+    loaded.tick();
+    if (loaded.shown.length > before) rewindows++;
+  }
+  assert.equal(rewindows, 3);
+  assert.match(loaded.diagnostics.at(-1), /watch off$/);
+  loaded.resolution({ width: 3840, height: 2160, frequency: 60, type: 'HDMI' });
+  loaded.runTimers();
+  const before = loaded.shown.length;
+  loaded.resetWindow();
+  loaded.tick();
+  assert.ok(loaded.shown.length > before, 'sinyal değişiminden sonra sınama yeniden çalışır');
+});
+
 test('Ekranı doldur seçiliyken ve 16:9 TV\'de sınama/yeniden isteme yok', () => {
   const fill = load(2580, 1080, { screen: [3440, 1440], picture: 'fill' });
   playHdmi(fill);

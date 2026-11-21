@@ -395,6 +395,11 @@
     acceptedRect = null;
     var finish = function () {
       readRect(function (now) {
+        // Fiziksel kutu kabul edildiyse TV'nin bildirdiği ölçü onunla karşılaştırılır (16:9 kutu yolundaki gibi): TV
+        // ölçüyü başka koordinatta söylüyorsa (4K'da sayfanın 1920x1080'i) 5 sn'lik sınama pencereyi boşuna yeniden
+        // istiyordu; her istek HDMI görüntüsünü yeniden kurup parlaklığı bir an oynatıyordu.
+        var reported = parseRect(now);
+        if (acceptedRect && reported) rectTrusted = sameRect(reported, acceptedRect);
         notePicture(line + ' · ' + tried.join(' ') + (now ? ' · now ' + rectText(now) : '') +
           ' · vw ' + window.innerWidth + (zoomFactor > 1 ? ' zoom ' + zoomFactor : ''));
         done();
@@ -479,12 +484,27 @@
     }
   }
 
-  // Kabul edilen 16:9 kutu hâlâ duruyor mu? Samsung '100%'e döndürdüyse yeniden istenir.
+  // Kabul edilen 16:9 kutu hâlâ duruyor mu? Samsung '100%'e döndürdüyse yeniden istenir. Her yeniden istek HDMI
+  // görüntüsünü yeniden çizdirir (bazı TV'lerde parlaklık bir an oynar): dakikada RESET_LIMIT kezden fazla bozuluyorsa
+  // sınama bırakılır, sinyal değişince ya da giriş yeniden açılınca yeniden başlar.
+  var RESET_LIMIT = 3;
+  var resetTimes = [];
+  var watchOff = false;
+
   function checkWindow() {
-    if (shownPort === null || !acceptedRect || !rectTrusted) return;
+    if (shownPort === null || !acceptedRect || !rectTrusted || watchOff) return;
     readRect(function (now) {
       var rect = parseRect(now);
-      if (rect && acceptedRect && !sameRect(rect, acceptedRect)) rewindow('reset ' + rectText(now));
+      if (!rect || !acceptedRect || sameRect(rect, acceptedRect)) return;
+      var time = new Date().getTime();
+      while (resetTimes.length && time - resetTimes[0] >= 60000) resetTimes.shift();
+      if (resetTimes.length >= RESET_LIMIT) {
+        watchOff = true;
+        notePicture(pictureLog + ' · watch off');
+        return;
+      }
+      resetTimes.push(time);
+      rewindow('reset ' + rectText(now));
     });
   }
 
@@ -505,6 +525,8 @@
     var key = resolutionKey(info);
     if (key === lastResolution) return;
     lastResolution = key;
+    resetTimes = [];
+    watchOff = false;
     scheduleRewindow('signal ' + key);
   }
 
@@ -747,6 +769,8 @@
           try {
             tizen.tvwindow.setSource(source, function () {
               shownPort = port;
+              resetTimes = [];
+              watchOff = false;
               showWindow(function () { onStatus('playing'); }, failed);
               listenResolution();
               watchWindow();
