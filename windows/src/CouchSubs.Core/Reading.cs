@@ -156,8 +156,8 @@ public sealed class Reading
     /// gösteriliyordu. Satırlar yerlerine göre bloklara ayrılır; ortalanmış ve menü olmayan en alttaki blok altyazıdır.
     /// Ortalanmış blok yoksa en az üç sözcüklü, menü olmayan en alttaki blok alınır. Satırların yeri bilinmiyorsa
     /// okuma olduğu gibi kalır. <paramref name="area"/>, okunan alanın karedeki yeridir (Mac: Reading.subtitleBlock).
-    /// Tek satırlık etkileşim/HUD etiketi ("TAKE AMMO PACK (0/3)", <see cref="ButtonPrompts.IsActionLabel"/>) altyazı
-    /// bloğu sayılmaz.
+    /// Tek satırlık etkileşim/HUD etiketi ("TAKE AMMO PACK (0/3)", <see cref="ButtonPrompts.IsActionLabel"/>) ve sahne
+    /// yazısı (tabela, tişört; <see cref="SceneText"/>) altyazı bloğu sayılmaz.
     /// </summary>
     public Reading SubtitleBlock(TextBox area)
     {
@@ -170,7 +170,9 @@ public sealed class Reading
             if (index >= 0) blocks[index].Add(line);
             else blocks.Add([line]);
         }
-        var candidates = blocks.Select(block => new Reading(block)).Where(reading => !reading.IsMenu && !reading.IsActionLabel).ToList();
+        // Tabela, tişört, plaka gibi sahne yazısı (SceneText) altyazı alanına düşse de altyazı değildir.
+        var candidates = blocks.Select(block => new Reading(block))
+            .Where(reading => !reading.IsMenu && !reading.IsActionLabel && !SceneText.IsSceneText(reading, area)).ToList();
         var centered = candidates.Where(reading =>
         {
             var box = reading.Box!.Value.PlacedIn(area);

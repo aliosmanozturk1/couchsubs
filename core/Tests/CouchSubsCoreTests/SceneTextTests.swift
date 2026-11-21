@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import CoreGraphics
+import XCTest
+@testable import CouchSubsCore
+
+/// Altyazı alanına düşen tabela ve tişört yazısı çevrilmez (X bildirimleri, beta.73, GTA 6, iPhone/iPad). Örnekler ortak
+/// deneme dosyasından (Fixtures/scene-text.json; Windows SceneTextTests.cs ve Android SceneTextTest.kt aynı dosyayı okur).
+final class SceneTextTests: XCTestCase {
+    private struct Vectors: Decodable {
+        struct Word: Decodable { let text: String; let box: [Double] }
+        struct Line: Decodable { let text: String; let box: [Double]; let confidence: Double?; let words: [Word]? }
+        struct Case: Decodable { let name: String; let lines: [Line]; let subtitle: String }
+        let area: [Double]
+        let cases: [Case]
+    }
+
+    private static func box(_ values: [Double]) -> TextBox {
+        TextBox(left: values[0], top: values[1], right: values[2], bottom: values[3])
+    }
+
+    private func vectors() throws -> Vectors {
+        let url = Bundle.module.url(forResource: "Fixtures", withExtension: nil)!.appendingPathComponent("scene-text.json")
+        return try JSONDecoder().decode(Vectors.self, from: Data(contentsOf: url))
+    }
+
+    private func reading(_ vector: Vectors.Case) -> Reading {
+        Reading(lines: vector.lines.map { line in
+            TextLine(line.text, box: Self.box(line.box), confidence: line.confidence,
+                     words: line.words?.map { TextWord($0.text, box: Self.box($0.box)) })
+        })
+    }
+
+    func testSharedVectors() throws {
+        let vectors = try vectors()
+        let area = Self.box(vectors.area)
+        for vector in vectors.cases {
+            XCTAssertEqual(reading(vector).subtitleBlock(in: area).text, vector.subtitle, vector.name)
+        }
+    }
+
+    /// Uçtan uca: ekranda altyazı yokken alandaki tabela ve tişört okunur, hiçbir şey TV'ye gitmez; altyazı gelince
+    /// yalnız altyazı çevrilir.
+    @MainActor
+    func testPipelineTranslatesOnlyTheSubtitle() async throws {
+        let vectors = try vectors()
+        let region = CropRegion(top: vectors.area[1], bottom: vectors.area[3], left: vectors.area[0], right: vectors.area[2])
+        let reader = FixedReader()
+        let server = Sent()
+        var now = 1_000_000
+        let pipeline = SubtitlePipeline(reader: reader, translator: Fixed(), server: server, clock: { now })
+        pipeline.holdReadings = false
+        let frame = try XCTUnwrap(Self.frame())
+        reader.reading = reading(vectors.cases[1])
+        for _ in 0..<12 {
+            await pipeline.process(frame, region: region)
+            now += 100
+        }
+        await pipeline.waitForTranslations()
+        XCTAssertEqual(server.texts, [])
+        reader.reading = reading(vectors.cases[0])
+        for _ in 0..<12 {
+            await pipeline.process(frame, region: region)
+            now += 100
+        }
+        await pipeline.waitForTranslations()
+        XCTAssertEqual(server.texts, ["Buradan hemen çıkmalıyız."])
+    }
+
+    private static func frame() -> CGImage? {
+        let context = CGContext(data: nil, width: 64, height: 36, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        return context?.makeImage()
+    }
+
+    private final class FixedReader: TextReader, @unchecked Sendable {
+        var reading = Reading.empty
+        func read(_ image: CGImage) throws -> String { reading.text }
+        func readLines(_ image: CGImage, deep: Bool) throws -> Reading { reading }
+    }
+
+    private final class Fixed: TextTranslator, @unchecked Sendable {
+        func translate(_ text: String) async throws -> String { "Buradan hemen çıkmalıyız." }
+    }
+
+    private final class Sent: SubtitleSending {
+        var texts: [String] = []
+        func sendSubtitle(_ text: String, durationMs: Int, box: TextBox?, replaces: Bool) { texts.append(text) }
+        func clear() {}
+    }
+}

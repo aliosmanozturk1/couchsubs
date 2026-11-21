@@ -171,7 +171,8 @@ public struct Reading: Equatable, Sendable {
     /// gösteriliyordu. Satırlar yerlerine göre bloklara ayrılır; ortalanmış ve menü olmayan en alttaki blok altyazıdır.
     /// Ortalanmış blok yoksa en az üç sözcüklü, menü olmayan en alttaki blok alınır. Satırların yeri bilinmiyorsa
     /// okuma olduğu gibi kalır. `area`, okunan alanın karedeki yeridir (ortalanmışlık karenin ortasına göre ölçülür).
-    /// Tek satırlık etkileşim/HUD etiketi ("TAKE AMMO PACK (0/3)", `ButtonPrompts.isActionLabel`) altyazı bloğu sayılmaz.
+    /// Tek satırlık etkileşim/HUD etiketi ("TAKE AMMO PACK (0/3)", `ButtonPrompts.isActionLabel`) ve sahne yazısı
+    /// (tabela, tişört; `SceneText`) altyazı bloğu sayılmaz.
     public func subtitleBlock(in area: TextBox) -> Reading {
         guard !lines.isEmpty, lines.allSatisfy({ $0.box != nil }) else { return isActionLabel ? .empty : self }
         var blocks: [[TextLine]] = []
@@ -183,7 +184,9 @@ public struct Reading: Equatable, Sendable {
                 blocks.append([line])
             }
         }
-        let candidates = blocks.map { Reading(lines: $0) }.filter { !$0.isMenu && !$0.isActionLabel }
+        // Tabela, tişört, plaka gibi sahne yazısı (`SceneText`) altyazı alanına düşse de altyazı değildir.
+        let candidates = blocks.map { Reading(lines: $0) }
+            .filter { !$0.isMenu && !$0.isActionLabel && !SceneText.isSceneText($0, in: area) }
         let centered = candidates.filter { reading in
             guard let box = reading.box?.placed(in: area) else { return false }
             return abs((box.left + box.right) / 2 - 0.5) <= 0.12
