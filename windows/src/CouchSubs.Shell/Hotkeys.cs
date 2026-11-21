@@ -160,6 +160,31 @@ public static class HotkeyTable
             .Select(entry => new HotkeyChoice(entry.Key.Item1, entry.Key.Item2, entry.Value))];
     }
 
+    /// <summary>"N. alanı çevir" işleri, sırayla (1. alan, 2. alan, 3. alan).</summary>
+    public static IReadOnlyList<HotkeyAction> AreaActions { get; } = [HotkeyAction.ExtraRegion1, HotkeyAction.ExtraRegion2, HotkeyAction.ExtraRegion3];
+
+    /// <summary>
+    /// Ek alanlar yer değiştirince tuşları da onlarla taşınır. <paramref name="order"/>: yeni sıradaki her alanın eski
+    /// sıra numarası (1-3). Kalan sıralar, kullanılmayan eski sıraların tuşlarını sırayla alır; böylece hiçbir tuş
+    /// kaybolmaz ya da iki işe gitmez (bkz. <see cref="ExtraAreaMigration"/>).
+    /// </summary>
+    public static IReadOnlyList<HotkeyChoice> MoveAreaKeys(IReadOnlyList<HotkeyChoice>? choices, IReadOnlyList<int> order)
+    {
+        var sources = order.Concat(Enumerable.Range(1, AreaActions.Count).Except(order)).ToList();
+        var result = (choices ?? []).Where(choice => !AreaActions.Contains(choice.Action)).ToList();
+        for (var index = 0; index < AreaActions.Count; index++)
+        {
+            var action = AreaActions[index];
+            var source = AreaActions[sources[index] - 1];
+            for (var slot = 0; slot < SlotCount; slot++)
+            {
+                var key = KeyFor(choices, source, slot);
+                if (key != DefaultKey(action, slot)) result.Add(new HotkeyChoice(action, slot, key));
+            }
+        }
+        return result;
+    }
+
     /// <summary>Tuş kısayol olabilir mi; olamıyorsa nedeni.</summary>
     public static HotkeyProblem Validate(HotkeyKey key)
     {

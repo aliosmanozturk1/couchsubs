@@ -1505,15 +1505,15 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public event Action<string, int>? PcResultReady;
 
     /// <summary>
-    /// 1, 2 ya da 3 numaralı ek bölgeyi şimdi bir kez okuyup çevirir; sonuç ayardaki yere (TV, bilgisayar ya da ikisi) gider
-    /// (görev paneli gibi yazılar için). Çeviri sürmüyorsa, bölge kapalıysa ya da önceki istek bitmediyse hiçbir şey yapılmaz.
+    /// 1, 2 ya da 3. sıradaki ek alanı şimdi bir kez okuyup çevirir; sonuç alanın seçimindeki yere (TV, bilgisayar ya da
+    /// ikisi) gider (görev paneli gibi yazılar için). Çeviri sürmüyorsa, o sırada alan yoksa ya da önceki istek bitmediyse
+    /// hiçbir şey yapılmaz.
     /// </summary>
-    public async Task<ExtraRegionOutcome> TranslateExtraRegionAsync(int slot)
+    public async Task<ExtraRegionOutcome> TranslateExtraRegionAsync(int number)
     {
-        if (settings.ExtraRegion(slot) is not { } region) return ExtraRegionOutcome.NotConfigured;
+        if (settings.ExtraAreaAt(number) is not { } area) return ExtraRegionOutcome.NotConfigured;
         if (lastFrame is not { } frame) return ExtraRegionOutcome.NotRunning;
-        var target = settings.ExtraTarget(slot);
-        return (await RunRegionAsync(frame, region, target != ResultTarget.Pc, target != ResultTarget.Tv)).Outcome;
+        return (await RunRegionAsync(frame, area.Region, area.Target != ResultTarget.Pc, area.Target != ResultTarget.Tv)).Outcome;
     }
 
     /// <summary>

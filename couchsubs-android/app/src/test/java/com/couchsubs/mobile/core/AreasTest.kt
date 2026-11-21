@@ -45,6 +45,20 @@ class AreasTest {
         assertEquals(emptyList<ExtraArea>(), ExtraArea.listFromJson("bozuk"))
     }
 
+    /** Hedef seçimi kaydedilir; eski kayıtta (ve bilinmeyen değerde) TV sayılır, diğer alanlar kaybolmaz (Mac/Windows ile aynı). */
+    @Test
+    fun extraAreaTargetRoundTripsAndOldRecordsShowOnTheTv() {
+        val areas = listOf(ExtraArea(id = "q", name = "Görev", region = ExtraAreaPreset.QUEST.region, enabled = false, target = ResultTarget.BOTH))
+        assertEquals(areas, ExtraArea.listFromJson(ExtraArea.listToJson(areas)))
+        val old = ExtraArea.listFromJson("""[{"id":"q","name":"Görev","region":{"top":0.03,"bottom":0.3,"left":0.66,"right":0.98},"enabled":false}]""")
+        assertEquals(ResultTarget.TV, old.single().target)
+        assertEquals("Görev", old.single().name)
+        assertFalse(old.single().enabled)
+        val unknown = ExtraArea.listFromJson("""[{"id":"q","name":"","region":{"top":0.03,"bottom":0.3,"left":0.66,"right":0.98},"target":"watch"}]""")
+        assertEquals(ResultTarget.TV, unknown.single().target)
+        assertEquals(ResultTarget.TV, ExtraArea(name = "Yeni", region = ExtraAreaPreset.QUEST.region).target)
+    }
+
     /** Altyazı alanı Tam ekranken ek alan okunmaz; ayarlar değişmez, başka alana dönünce eskisi gibi okunur (Mac/iPhone ile aynı). */
     @Test
     fun fullScreenAreaPausesExtraAreasWithoutChangingThem() {

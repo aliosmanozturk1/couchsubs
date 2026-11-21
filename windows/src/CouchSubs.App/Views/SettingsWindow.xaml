@@ -486,14 +486,21 @@
                     </c:Card>
                     <c:Card>
                         <StackPanel>
-                            <Border Style="{StaticResource SegmentGroup}" Margin="0,0,0,12" HorizontalAlignment="Left">
-                                <StackPanel Orientation="Horizontal">
-                                    <RadioButton Content="{t:T 'Subtitles'}" GroupName="area" Style="{StaticResource SegmentButton}" Checked="OnArea" Tag="0" IsChecked="True" />
-                                    <RadioButton Content="{t:T 'Area 1'}" GroupName="area" Style="{StaticResource SegmentButton}" Checked="OnArea" Tag="1" />
-                                    <RadioButton Content="{t:T 'Area 2'}" GroupName="area" Style="{StaticResource SegmentButton}" Checked="OnArea" Tag="2" />
-                                    <RadioButton Content="{t:T 'Area 3'}" GroupName="area" Style="{StaticResource SegmentButton}" Checked="OnArea" Tag="3" />
-                                </StackPanel>
-                            </Border>
+                            <!-- Altyazı alanı ve adlı ek alanlar (en çok üç; Mac'teki ek alan listesiyle aynı). Sekmeler koddan kurulur. -->
+                            <WrapPanel Margin="0,0,0,12">
+                                <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left" Margin="0,0,8,0">
+                                    <StackPanel x:Name="AreaTabs" Orientation="Horizontal" />
+                                </Border>
+                                <Button x:Name="AddAreaButton" Content="{t:T 'Add extra area'}" Padding="16,0" Click="OnAddArea">
+                                    <Button.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="{t:T 'Quest (top right)'}" Tag="Quest" Click="OnAddAreaPreset" />
+                                            <MenuItem Header="{t:T 'Notification (bottom left)'}" Tag="Notification" Click="OnAddAreaPreset" />
+                                            <MenuItem Header="{t:T 'Phone (bottom right)'}" Tag="Phone" Click="OnAddAreaPreset" />
+                                        </ContextMenu>
+                                    </Button.ContextMenu>
+                                </Button>
+                            </WrapPanel>
                             <!-- Altyazı bölgesinin hazır seçimleri; Özel'de dikey konum ve yükseklik kaydırıcıları -->
                             <StackPanel x:Name="PresetPanel" Margin="0,0,0,12">
                                 <TextBlock Text="{t:T 'Area preset'}" Margin="0,0,0,8" />
@@ -531,8 +538,12 @@
                                 <CheckBox x:Name="KeepCentered" Content="{t:T 'Keep centered'}" Foreground="{DynamicResource textPrimaryBrush}" Margin="0,12,0,0"
                                           Checked="OnKeepCentered" Unchecked="OnKeepCentered" />
                             </StackPanel>
-                            <CheckBox x:Name="UseArea" Content="{t:T 'Use this area'}" Foreground="{DynamicResource textPrimaryBrush}" Margin="0,0,0,12"
-                                      Visibility="Collapsed" Checked="OnUseArea" Unchecked="OnUseArea" />
+                            <!-- Ek alanın adı ve kaldırma düğmesi -->
+                            <DockPanel x:Name="ExtraNamePanel" Visibility="Collapsed" Margin="0,0,0,12">
+                                <Button DockPanel.Dock="Right" Content="{t:T 'Remove'}" Padding="16,0" Margin="8,0,0,0" Click="OnRemoveArea" />
+                                <TextBlock DockPanel.Dock="Left" Text="{t:T 'Area name'}" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                <TextBox x:Name="ExtraName" VerticalContentAlignment="Center" TextChanged="OnAreaName" />
+                            </DockPanel>
                             <!-- Ek bölge tuşa basmadan da sürekli okunur (görev, telefon, bildirim); hazır köşe seçimleri -->
                             <StackPanel x:Name="ExtraLivePanel" Visibility="Collapsed" Margin="0,0,0,12">
                                 <CheckBox x:Name="ExtraLive" Content="{t:T 'Keep reading this area'}" Foreground="{DynamicResource textPrimaryBrush}"

@@ -41,7 +41,7 @@ def body(text, start):
 
 def windows_fields():
     record = body(WIN_SETTINGS.read_text(), "public sealed record UserSettings")
-    return set(re.findall(r"^\s*public\s+[\w<>\[\]?, .]+?\s+(\w+)\s*\{\s*get;\s*init;", record, re.M))
+    return set(re.findall(r"^\s*public\s+[\w<>\[\]?, .]+?\s+(\w+)\s*\{\s*get;\s*init\b", record, re.M))
 
 
 def core_fields():

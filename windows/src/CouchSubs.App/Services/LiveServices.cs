@@ -606,7 +606,7 @@ public sealed class FileSettingsStore : ISettingsStore
 
     public UserSettings Load()
     {
-        try { return JsonSerializer.Deserialize<UserSettings>(File.ReadAllText(FilePath)) ?? new UserSettings(); }
+        try { return ExtraAreaMigration.Load(File.ReadAllText(FilePath)); }
         catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) { return new UserSettings(); }
     }
 

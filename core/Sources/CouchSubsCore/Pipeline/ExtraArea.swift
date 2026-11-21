@@ -2,11 +2,27 @@
 
 import Foundation
 
-/// Altyazı alanının yanında sürekli okunan ek alan (görev yazısı, telefon mesajı, bildirim). Ek alanlar ana altyazıdan
-/// ayrı ve daha seyrek okunur (bkz. `RegionWatcher`); çevirileri TV'de kendi yerlerinde küçük kutuda görünür.
-/// Windows'ta aynı işi ek bölgelerin "Sürekli oku" seçeneği yapar (CouchSubs.Core/RegionWatcher.cs).
+/// Kısayolla bir kez okunan alanın sonucunun gösterildiği yer (Windows: ResultTarget).
+public enum ResultTarget: String, Codable, CaseIterable, Sendable {
+    /// TV'de (ya da altyazının gösterildiği yerde).
+    case tv
+    /// Yalnız bu bilgisayarda, küçük sonuç penceresinde.
+    case pc
+    /// İkisinde de.
+    case both
+
+    /// Sonuç TV'ye gider mi.
+    public var toTV: Bool { self != .pc }
+    /// Sonuç bilgisayardaki sonuç penceresinde gösterilir mi.
+    public var toComputer: Bool { self != .tv }
+}
+
+/// Altyazı alanının yanındaki ek alan (görev yazısı, telefon mesajı, bildirim). Dört platformda aynı model: adlı liste,
+/// en çok `maxCount` (Windows: Contracts.cs ExtraArea, Android: Areas.kt ExtraArea). Sürekli okunan alanlar ana
+/// altyazıdan ayrı ve daha seyrek okunur (bkz. `RegionWatcher`); çevirileri TV'de kendi yerlerinde küçük kutuda görünür.
+/// Masaüstünde sıradaki alan kısayolla da bir kez okunur (1. alan "1. alanı çevir" …).
 public struct ExtraArea: Codable, Equatable, Identifiable, Sendable {
-    /// En çok bu kadar ek alan tanımlanır (her biri saniyede bir okunur).
+    /// En çok bu kadar ek alan tanımlanır (her biri saniyede bir okunur; masaüstünde kısayolları Num 1-3).
     public static let maxCount = 3
 
     /// TV'deki kutunun kimliği; değişmez.
@@ -14,8 +30,12 @@ public struct ExtraArea: Codable, Equatable, Identifiable, Sendable {
     /// Kullanıcının verdiği ad ("Görev", "Telefon").
     public var name: String
     public var region: CropRegion
-    /// Kapalı alan okunmaz, ayarı kalır.
+    /// "Bu alanı sürekli oku": çeviri sürerken saniyede bir okunur. Kapalıysa sürekli okunmaz, ayarı kalır; masaüstünde
+    /// kısayolla yine bir kez okunur.
     public var enabled: Bool
+    /// Kısayolla bir kez okununca sonucun gösterildiği yer (masaüstü). Telefonlarda sonuç her zaman TV'dedir; alan
+    /// aynı modelle saklanır.
+    public var target: ResultTarget = .tv
     /// Ekran yazısı olarak kendiliğinden bulunmuş geçici alan (`ScreenTextDetector`): gürültü yazısı (sayaç, etiket)
     /// çevrilmez, yazısız ya da gürültülü okuma `RegionWatcher.onAutoRejected` ile bildirilir; okuma aralığı en çok
     /// 500 ms. Ayarlara yazılmaz.
@@ -23,15 +43,17 @@ public struct ExtraArea: Codable, Equatable, Identifiable, Sendable {
     /// Otomatik alan ekrandaki bir menüde (`ScreenTextDetector.inMenu`): kısa etiketler de çevrilir.
     public var menu = false
 
-    public init(id: String = UUID().uuidString, name: String, region: CropRegion, enabled: Bool = true, auto: Bool = false) {
+    public init(id: String = UUID().uuidString, name: String, region: CropRegion, enabled: Bool = true, target: ResultTarget = .tv,
+                auto: Bool = false) {
         self.id = id
         self.name = name
         self.region = region
         self.enabled = enabled
+        self.target = target
         self.auto = auto
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, region, enabled }
+    private enum CodingKeys: String, CodingKey { case id, name, region, enabled, target }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -39,6 +61,19 @@ public struct ExtraArea: Codable, Equatable, Identifiable, Sendable {
         name = try values.decodeIfPresent(String.self, forKey: .name) ?? ""
         region = try values.decodeIfPresent(CropRegion.self, forKey: .region) ?? ExtraAreaPreset.quest.region
         enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        // Eski kayıtta yoktur; bilinmeyen değer de TV sayılır.
+        target = (try? values.decodeIfPresent(ResultTarget.self, forKey: .target)) ?? .tv
+    }
+
+    /// Ekranda görünen ad: verilen ad, yoksa "Bölge 1" gibi sırasıyla (Windows: ExtraArea.DisplayName).
+    public func displayName(_ number: Int) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty else { return name }
+        switch number {
+        case 1: return String(localized: "Area 1")
+        case 2: return String(localized: "Area 2")
+        default: return String(localized: "Area 3")
+        }
     }
 }
 
@@ -89,6 +124,12 @@ extension UserSettings {
         return area.id
     }
 
+    /// Kısayolun okuduğu ek alan: 1, 2 ya da 3. sıradaki; yoksa nil (Windows: ExtraAreaAt).
+    public func extraArea(at number: Int) -> ExtraArea? {
+        number >= 1 && number <= extraAreas.count ? extraAreas[number - 1] : nil
+    }
+
+    /// Ek alan silinir; arkasındakiler (ve kısayolları) bir sıra öne gelir.
     public mutating func removeExtraArea(id: String) {
         extraAreas.removeAll { $0.id == id }
     }

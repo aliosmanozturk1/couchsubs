@@ -25,12 +25,9 @@ public partial class SettingsWindow : Window
     private static readonly (string Code, string Name)[] Languages =
         [("en", "English"), ("ja", "Japanese"), ("de", "German"), ("fr", "French"), ("es", "Spanish")];
 
-    /// <summary>Ek bölgeler ilk açıldığında (sağ üst köşe, sağ alt köşe, ekranın ortası) bu alanlarla başlar.</summary>
-    private static readonly CropRegion[] ExtraDefaults = [new(0.05, 0.28, 0.60, 0.97), new(0.72, 0.95, 0.60, 0.97), new(0.35, 0.65, 0.30, 0.70)];
-
     private readonly AppController controller;
     private bool loading = true;
-    /// <summary>Çerçevesi düzenlenen bölge: 0 altyazı, 1, 2 ve 3 ek bölgeler.</summary>
+    /// <summary>Çerçevesi düzenlenen alan: 0 altyazı, 1, 2 ve 3 sıradaki ek alanlar.</summary>
     private int area;
     /// <summary>Önizlemenin oyun görüntüsüyle son yenilendiği an (ms).</summary>
     private long lastPreview;
@@ -1215,19 +1212,19 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void OnRegion(object? sender, CropRegion region)
     {
-        var slot = area;
-        Update(s => slot == 0 ? s with { Region = region, AreaPreset = AreaPresets.Matching(region) } : s.WithExtraRegion(slot, region));
-        if (slot == 0) ShowPreset();
-        // Kapalı ek bölgeyi çizmek onu açar: eskiden çerçeve "Bu alanı kullan" işaretlenene dek kilitliydi, ipucu "alanı çiz"
-        // derken sürükleme hiçbir şey yapmıyordu ve bölgenin yeri değiştirilemiyor sanılıyordu.
-        else if (UseArea.IsChecked != true)
+        if (area == 0)
         {
-            var wasLoading = loading;
-            loading = true;
-            UseArea.IsChecked = true;
-            loading = wasLoading;
+            Update(s => s with { Region = region, AreaPreset = AreaPresets.Matching(region) });
+            ShowPreset();
+        }
+        else if (SelectedExtraArea() is { } extra)
+        {
+            Update(s => s.WithExtraArea(extra.Id, a => a with { Region = region }));
         }
     }
+
+    /// <summary>Düzenlenen ek alan; altyazı alanı seçiliyse null.</summary>
+    private ExtraArea? SelectedExtraArea() => area == 0 ? null : controller.Settings.ExtraAreaAt(area);
 
     /// <summary>Altyazı bölgesinin hazır seçimi işaretlenir; Özel'de kaydırıcılar bölgeyi gösterir.</summary>
     private void ShowPreset()
@@ -1279,19 +1276,83 @@ public partial class SettingsWindow : Window
 
     private void OnArea(object sender, RoutedEventArgs e)
     {
-        if (!loading && sender is RadioButton { Tag: string tag }) ShowArea(int.Parse(tag));
+        if (!loading && sender is RadioButton { Tag: int tag }) ShowArea(tag);
     }
 
-    /// <summary>Seçilen bölgenin çerçevesini gösterir; ek bölge kapalıysa çerçeve düzenlenemez.</summary>
+    /// <summary>
+    /// Alan sekmeleri: "Altyazı" ve her ek alan adıyla (adsızsa "Bölge 1"). Sınır dolmadıysa "Ek alan ekle" görünür.
+    /// </summary>
+    private void BuildAreaTabs()
+    {
+        var settings = controller.Settings;
+        AreaTabs.Children.Clear();
+        AreaTabs.Children.Add(AreaTabButton(Localizer.Current["Subtitles"], 0));
+        for (var number = 1; number <= settings.ExtraAreas.Count; number++)
+            AreaTabs.Children.Add(AreaTabButton(settings.ExtraAreas[number - 1].DisplayName(number), number));
+        AddAreaButton.Visibility = settings.CanAddExtraArea ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private RadioButton AreaTabButton(string title, int number)
+    {
+        var button = new RadioButton
+        {
+            Content = title,
+            GroupName = "area",
+            Style = (Style)FindResource("SegmentButton"),
+            Tag = number,
+            IsChecked = number == area,
+        };
+        button.Checked += OnArea;
+        return button;
+    }
+
+    /// <summary>"Ek alan ekle": hazır köşe seçimleri açılır.</summary>
+    private void OnAddArea(object sender, RoutedEventArgs e)
+    {
+        if (AddAreaButton.ContextMenu is not { } menu) return;
+        menu.PlacementTarget = AddAreaButton;
+        menu.IsOpen = true;
+    }
+
+    /// <summary>Hazır köşe seçimiyle yeni ek alan eklenir (adı seçimin adı) ve onun sekmesi açılır.</summary>
+    private void OnAddAreaPreset(object sender, RoutedEventArgs e)
+    {
+        if (loading || sender is not MenuItem { Tag: string tag } || !controller.Settings.CanAddExtraArea) return;
+        var preset = Enum.Parse<ExtraAreaPreset>(tag);
+        var name = Localizer.Current[preset switch { ExtraAreaPreset.Quest => "Quest", ExtraAreaPreset.Notification => "Notification", _ => "Phone" }];
+        Update(s => s.WithAddedExtraArea(ExtraArea.Create(name, preset.Region())));
+        ShowArea(controller.Settings.ExtraAreas.Count);
+    }
+
+    /// <summary>Ek alan kaldırılır; arkasındakiler (ve kısayolları) bir sıra öne gelir.</summary>
+    private void OnRemoveArea(object sender, RoutedEventArgs e)
+    {
+        if (loading || SelectedExtraArea() is not { } extra) return;
+        Update(s => s.WithoutExtraArea(extra.Id));
+        ShowArea(Math.Min(area, controller.Settings.ExtraAreas.Count));
+    }
+
+    private void OnAreaName(object sender, TextChangedEventArgs e)
+    {
+        if (loading || SelectedExtraArea() is not { } extra) return;
+        var name = ExtraName.Text;
+        Update(s => s.WithExtraArea(extra.Id, a => a with { Name = name }));
+        if (AreaTabs.Children.OfType<RadioButton>().FirstOrDefault(tab => tab.Tag is int number && number == area) is { } current)
+            current.Content = controller.Settings.ExtraAreaAt(area)?.DisplayName(area) ?? current.Content;
+    }
+
+    /// <summary>Seçilen alanın çerçevesini gösterir.</summary>
     private void ShowArea(int slot)
     {
-        area = slot;
         var wasLoading = loading;
         loading = true;
         var settings = controller.Settings;
+        if (slot > settings.ExtraAreas.Count) slot = 0;
+        area = slot;
+        BuildAreaTabs();
         if (slot == 0)
         {
-            UseArea.Visibility = Visibility.Collapsed;
+            ExtraNamePanel.Visibility = Visibility.Collapsed;
             ExtraTargetPanel.Visibility = Visibility.Collapsed;
             ExtraLivePanel.Visibility = Visibility.Collapsed;
             PresetPanel.Visibility = Visibility.Visible;
@@ -1305,20 +1366,19 @@ public partial class SettingsWindow : Window
         }
         else
         {
-            var extra = settings.ExtraRegion(slot);
-            UseArea.Visibility = Visibility.Visible;
-            UseArea.IsChecked = extra is not null;
+            var extra = settings.ExtraAreas[slot - 1];
+            ExtraNamePanel.Visibility = Visibility.Visible;
+            ExtraName.Text = extra.Name;
             PresetPanel.Visibility = Visibility.Collapsed;
             ExtraTargetPanel.Visibility = Visibility.Visible;
             ExtraLivePanel.Visibility = Visibility.Visible;
-            ExtraLive.IsChecked = settings.ExtraLive(slot);
+            ExtraLive.IsChecked = extra.Enabled;
             ShowExtraFullScreenHint(settings);
-            (settings.ExtraTarget(slot) switch { ResultTarget.Pc => ExtraPc, ResultTarget.Both => ExtraBoth, _ => ExtraTv }).IsChecked = true;
-            // Kapalı ek bölge de çizilebilir; çizince açılır (bkz. OnRegion).
+            (extra.Target switch { ResultTarget.Pc => ExtraPc, ResultTarget.Both => ExtraBoth, _ => ExtraTv }).IsChecked = true;
             Region.IsEnabled = true;
-            Region.DefaultRegion = ExtraDefaults[slot - 1];
+            Region.DefaultRegion = ExtraAreaPreset.Quest.Region();
             Region.Centered = false;
-            Region.ShowRegion(extra ?? ExtraDefaults[slot - 1]);
+            Region.ShowRegion(extra.Region);
             ShowAreaHint();
         }
         loading = wasLoading;
@@ -1342,19 +1402,9 @@ public partial class SettingsWindow : Window
 
     private void OnExtraTarget(object sender, RoutedEventArgs e)
     {
-        if (loading || area == 0 || sender is not RadioButton { Tag: string tag }) return;
-        var slot = area;
+        if (loading || sender is not RadioButton { Tag: string tag } || SelectedExtraArea() is not { } extra) return;
         var target = Enum.Parse<ResultTarget>(tag);
-        Update(s => s.WithExtraTarget(slot, target));
-    }
-
-    private void OnUseArea(object sender, RoutedEventArgs e)
-    {
-        if (loading || area == 0) return;
-        var on = UseArea.IsChecked == true;
-        var slot = area;
-        var region = Region.Region;
-        Update(s => s.WithExtraRegion(slot, on ? region : null));
+        Update(s => s.WithExtraArea(extra.Id, a => a with { Target = target }));
     }
 
     /// <summary>
@@ -1373,23 +1423,18 @@ public partial class SettingsWindow : Window
     /// <summary>Ek bölge tuşa basmadan da sürekli okunsun (görev, telefon mesajı, bildirim).</summary>
     private void OnExtraLive(object sender, RoutedEventArgs e)
     {
-        if (loading || area == 0) return;
-        var slot = area;
+        if (loading || SelectedExtraArea() is not { } extra) return;
         var live = ExtraLive.IsChecked == true;
-        Update(s => s.WithExtraLive(slot, live));
+        Update(s => s.WithExtraArea(extra.Id, a => a with { Enabled = live }));
     }
 
-    /// <summary>Hazır köşe seçimi: bölge açılır ve çerçeve o köşeye gelir.</summary>
+    /// <summary>Hazır köşe seçimi: çerçeve o köşeye gelir.</summary>
     private void OnExtraPreset(object sender, RoutedEventArgs e)
     {
-        if (loading || area == 0 || sender is not Button { Tag: string tag }) return;
-        var slot = area;
+        if (loading || sender is not Button { Tag: string tag } || SelectedExtraArea() is not { } extra) return;
         var region = Enum.Parse<ExtraAreaPreset>(tag).Region();
-        loading = true;
-        UseArea.IsChecked = true;
-        loading = false;
         Region.ShowRegion(region);
-        Update(s => s.WithExtraRegion(slot, region));
+        Update(s => s.WithExtraArea(extra.Id, a => a with { Region = region }));
     }
 
     private void OnTest(object sender, RoutedEventArgs e) => controller.SendTestSubtitle();
@@ -1449,7 +1494,7 @@ public partial class SettingsWindow : Window
     private void ShowAreaHint()
     {
         if (area == 0) return;
-        var action = area switch { 1 => HotkeyAction.ExtraRegion1, 2 => HotkeyAction.ExtraRegion2, _ => HotkeyAction.ExtraRegion3 };
+        var action = HotkeyTable.AreaActions[Math.Clamp(area, 1, HotkeyTable.AreaActions.Count) - 1];
         AreaHint.Text = HotkeyText.Sentence(controller.Settings, action,
             "Draw the area to translate, for example a quest panel. While you play, press its shortcut (%@) to read and translate it once. Choose where the result shows. It works even when CouchSubs is in the background.");
     }

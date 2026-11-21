@@ -33,7 +33,7 @@ public class AreaProfileTests
         var (controller, settings) = Ready();
         await controller.StartAsync();
         controller.ChooseGame("Far Cry 3");
-        controller.Settings = controller.Settings.WithCustomRegion(FarCryArea).WithExtraRegion(1, Quest).WithExtraLive(1, true);
+        controller.Settings = controller.Settings.WithCustomRegion(FarCryArea).WithArea(Quest, live: true);
         controller.SaveAreaProfile();
         controller.Stop();
         return (controller, settings);
@@ -67,7 +67,7 @@ public class AreaProfileTests
         Assert.Null(controller.Settings.GeneralAreas);
         Assert.Equal(FarCryArea, controller.Settings.Region);
 
-        controller.Settings = controller.Settings.WithCustomRegion(General).WithExtraRegion(1, null);
+        controller.Settings = controller.Settings.WithCustomRegion(General) with { ExtraAreas = [] };
         // Elle seçilen oyun uygulama açık kaldıkça hatırlanır; ama başka oyuna geçilmiş olabilir: alanları sorulur,
         // kendiliğinden uygulanmaz. Oyun yeniden seçilince gelir.
         await controller.StartAsync();
@@ -77,15 +77,16 @@ public class AreaProfileTests
         controller.ChooseGame("Far Cry III");
         Assert.Equal("Far Cry 3", controller.AreaProfileGame);
         Assert.Equal(FarCryArea, controller.Settings.Region);
-        Assert.Equal(Quest, controller.Settings.ExtraRegion1);
-        Assert.True(controller.Settings.ExtraLive1);
+        var quest = Assert.Single(controller.Settings.ExtraAreas);
+        Assert.Equal(Quest, quest.Region);
+        Assert.True(quest.Enabled);
         Assert.Single(controller.Settings.WatchedAreas());
         Assert.Equal(General, settings.Saved?.GeneralAreas?.Region);
 
         controller.Stop();
         Assert.Null(controller.AreaProfileGame);
         Assert.Equal(General, controller.Settings.Region);
-        Assert.Null(controller.Settings.ExtraRegion1);
+        Assert.Empty(controller.Settings.ExtraAreas);
         Assert.Null(settings.Saved?.ActiveAreaProfile);
     }
 

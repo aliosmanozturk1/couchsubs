@@ -11,20 +11,10 @@
       "OcrEngine": "Bilinçli: Windows OCR'ı aydınlık sahnelerde zayıf olduğu için Gelişmiş (PP-OCR) seçeneği var. Mac Apple Vision kullanır.",
       "XboxLegacyFrameRate": "Bilinçli: Windows Xbox görüntüsünü aralıkla yoklar (66/200 ms). Mac yerel XboxStreamSession'la her kareyi alır; yoklama aralığı yoktur.",
       "Hotkeys": "AÇIK: Windows'ta 8 eylemli, ikişer yuvalı, değiştirilebilir kısayollar. Mac'te yalnız sabit ⌥⌘T ve ⌥⌘L var. Yeni alt sistem; ayrı PR.",
-      "FreeAreaTarget": "AÇIK: Serbest alan (görüntüyü dondur, sürükle, bir kez çevir) yalnız Windows'ta. Kısayollara bağlı; ayrı PR.",
-      "ExtraRegion1": "Bilinçli (model farkı): Windows ek alanları üç sabit yuvada tutar; Mac aynı bilgiyi extraAreas dizisinde (adlı, en çok 3) tutar.",
-      "ExtraRegion2": "Bilinçli (model farkı): bkz. ExtraRegion1.",
-      "ExtraRegion3": "Bilinçli (model farkı): bkz. ExtraRegion1.",
-      "ExtraLive1": "AÇIK: Ek alanın 'Bu alanı sürekli oku' (canlı/tek seferlik) seçimi yalnız Windows'ta; tek seferlik okuma kısayola bağlı. Kısayollarla birlikte ayrı PR.",
-      "ExtraLive2": "AÇIK: bkz. ExtraLive1.",
-      "ExtraLive3": "AÇIK: bkz. ExtraLive1.",
-      "ExtraTarget1": "AÇIK: Ek alan sonucunun TV / PC / ikisi seçimi ve PC sonuç penceresi yalnız Windows'ta. Ayrı PR.",
-      "ExtraTarget2": "AÇIK: bkz. ExtraTarget1.",
-      "ExtraTarget3": "AÇIK: bkz. ExtraTarget1."
+      "FreeAreaTarget": "AÇIK: Serbest alan (görüntüyü dondur, sürükle, bir kez çevir) yalnız Windows'ta. Kısayollara bağlı; ayrı PR."
     },
     "mac_only": {
       "areaPreset": "Bilinçli (model farkı): Windows hazır alanı bölge değerinden çıkarır (AreaPresets), ayrı alanda saklamaz.",
-      "extraAreas": "Bilinçli (model farkı): Windows'ta ExtraRegion1-3 yuvaları; bkz. windows_only.ExtraRegion1.",
       "localAIServer": "Hesaplanan alan (localAIBaseURL'den çıkar), saklanmaz. Windows'ta karşılığı LocalAIServers.Detect.",
       "translationEngine": "Hesaplanan alan (onlineTranslation + onlineEngine), saklanmaz. Windows'ta aynı iki alan var."
     }

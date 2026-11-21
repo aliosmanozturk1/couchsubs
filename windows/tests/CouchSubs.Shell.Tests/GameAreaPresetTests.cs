@@ -22,14 +22,14 @@ public class GameAreaPresetTests
     [Fact]
     public void UserAreaOffSettingFullScreenAndProfileTurnThemOff()
     {
-        var own = On.WithExtraRegion(1, ExtraAreaPreset.Quest.Region()).WithExtraLive(1, true);
+        var own = On.WithArea(ExtraAreaPreset.Quest.Region(), live: true);
         Assert.Empty(own.PresetAreas("GTA 6", false));
         Assert.Empty((On with { GameAreaPresets = false }).PresetAreas("GTA 6", false));
         Assert.Empty(On.WithAreaPreset(AreaPreset.Full).PresetAreas("GTA 6", false));
         Assert.Empty((On with { ActiveAreaProfile = "gta 6|window" }).PresetAreas("GTA 6", false));
         Assert.Empty(On.PresetAreas("Red Dead Redemption 2", false));
         // Kapalı (sürekli okunmayan) kullanıcı alanı hazır alanları engellemez.
-        Assert.Equal(2, On.WithExtraRegion(1, ExtraAreaPreset.Quest.Region()).PresetAreas("GTA 6", false).Count);
+        Assert.Equal(2, On.WithArea(ExtraAreaPreset.Quest.Region()).PresetAreas("GTA 6", false).Count);
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public class GameAreaPresetTests
         // Hazır alanlar kullanıcının altyazı alanını, ek alanlarını ve altyazı penceresinin yerini değiştirmez.
         Assert.Equal(userRegion, controller.Settings.Region);
         Assert.Equal(AreaPreset.Custom, controller.Settings.AreaPreset);
-        Assert.Null(controller.Settings.ExtraRegion1);
+        Assert.Empty(controller.Settings.ExtraAreas);
         Assert.Equal(overlay, controller.Settings.Overlay);
         Assert.Equal(userRegion, settings.Load().Region);
         events.Clear();

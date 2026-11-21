@@ -74,13 +74,26 @@ fun cropRegionFrom(json: JSONObject?): CropRegion? = json?.let {
     }
 }
 
+/** Kısayolla bir kez okunan alanın sonucunun gösterildiği yer (Mac/iPhone ResultTarget, Windows ResultTarget). */
+enum class ResultTarget(val json: String) {
+    TV("tv"), PC("pc"), BOTH("both");
+
+    companion object {
+        /** Eski kayıtta yoktur; bilinmeyen değer de TV sayılır. */
+        fun fromJson(value: String?): ResultTarget = entries.firstOrNull { it.json == value } ?: TV
+    }
+}
+
 /**
- * Altyazı alanının yanında sürekli okunan ek alan (görev yazısı, telefon mesajı, bildirim; Mac/iPhone ExtraArea.swift).
- * Ek alanlar ana altyazıdan ayrı ve daha seyrek okunur ([RegionWatcher]); çevirileri TV'de kendi yerlerinde küçük kutuda
- * görünür.
+ * Altyazı alanının yanındaki ek alan (görev yazısı, telefon mesajı, bildirim). Dört platformda aynı model: adlı liste, en
+ * çok [ExtraArea.MAX_COUNT] (Mac/iPhone ExtraArea.swift, Windows Contracts.cs ExtraArea). Sürekli okunan alanlar ana
+ * altyazıdan ayrı ve daha seyrek okunur ([RegionWatcher]); çevirileri TV'de kendi yerlerinde küçük kutuda görünür.
+ * [enabled]: "Bu alanı sürekli oku". [target]: masaüstünde kısayolla okununca sonucun yeri; telefonda sonuç her zaman
+ * TV'dedir, alan aynı modelle saklanır.
  */
 data class ExtraArea(
     val id: String = UUID.randomUUID().toString(), val name: String, val region: CropRegion, val enabled: Boolean = true,
+    val target: ResultTarget = ResultTarget.TV,
     /** Ekran yazısı bulucusunun ([ScreenTextDetector]) geçici alanı; kaydedilmez, gürültüsü elenir, sık okunur. */
     val auto: Boolean = false,
     /** Otomatik alan menü durumunda bulundu: kısa etiketler de çevrilir ([ScreenTextNoise]). */
@@ -91,14 +104,18 @@ data class ExtraArea(
         const val MAX_COUNT = 3
 
         fun listToJson(areas: List<ExtraArea>): String = JSONArray().also { array ->
-            areas.forEach { array.put(JSONObject().put("id", it.id).put("name", it.name).put("region", it.region.toJson()).put("enabled", it.enabled)) }
+            areas.forEach {
+                array.put(JSONObject().put("id", it.id).put("name", it.name).put("region", it.region.toJson()).put("enabled", it.enabled)
+                    .put("target", it.target.json))
+            }
         }.toString()
 
         fun listFromJson(text: String?): List<ExtraArea> = try {
             val array = JSONArray(text ?: "[]")
             (0 until array.length()).map { array.getJSONObject(it) }.map { item ->
                 ExtraArea(item.optString("id").ifEmpty { UUID.randomUUID().toString() }, item.optString("name"),
-                    cropRegionFrom(item.optJSONObject("region")) ?: ExtraAreaPreset.QUEST.region, item.optBoolean("enabled", true))
+                    cropRegionFrom(item.optJSONObject("region")) ?: ExtraAreaPreset.QUEST.region, item.optBoolean("enabled", true),
+                    ResultTarget.fromJson(item.optString("target").ifEmpty { null }))
             }.take(MAX_COUNT)
         } catch (error: Exception) {
             emptyList()

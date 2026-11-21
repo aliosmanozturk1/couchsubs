@@ -258,23 +258,13 @@ public sealed record UserSettings
     /// Eski ayar dosyalarında yoktur; açık başlar. Mac/iPhone: keepAreaCentered, Android: keepAreaCentered.
     /// </summary>
     public bool KeepAreaCentered { get; init; } = true;
-    /// <summary>Ek bölge 1 (ör. sağ üstteki görev paneli); null ise kapalı. Num 1 tuşuyla bir kez okunup çevrilir.</summary>
-    public CropRegion? ExtraRegion1 { get; init; }
-    /// <summary>Ek bölge 2 (ör. sağ alttaki bilgi kutusu); null ise kapalı. Num 2 tuşuyla bir kez okunup çevrilir.</summary>
-    public CropRegion? ExtraRegion2 { get; init; }
-    /// <summary>Ek bölge 3 (ör. ekranın ortası); null ise kapalı. Num 3 tuşuyla bir kez okunup çevrilir.</summary>
-    public CropRegion? ExtraRegion3 { get; init; }
-    /// <summary>Ek bölgelerin çevirisi nerede gösterilir (TV'de, bilgisayarda ya da ikisinde de).</summary>
-    public ResultTarget ExtraTarget1 { get; init; } = ResultTarget.Tv;
-    public ResultTarget ExtraTarget2 { get; init; } = ResultTarget.Tv;
-    public ResultTarget ExtraTarget3 { get; init; } = ResultTarget.Tv;
     /// <summary>
-    /// Ek bölge tuşa basmadan da sürekli okunur (saniyede bir; görev, telefon mesajı, bildirim). Çevirisi altyazının
-    /// gösterildiği yerde, asıl yazının yanında küçük bir kutuda durur (Mac: ek alanlar). Varsayılan kapalı.
+    /// Ek alanlar (en çok <see cref="ExtraArea.MaxCount"/>; görev paneli, telefon mesajı, bildirim). Sıra kısayolu
+    /// belirler: 1. alan "1. alanı çevir" (Num 1), 2. alan Num 2 … Mac, iPhone ve Android'deki extraAreas ile aynı model.
+    /// Eski ayar dosyalarındaki üç sabit yuva (ExtraRegion1-3, ExtraLive1-3, ExtraTarget1-3) açılışta bu listeye
+    /// dönüştürülür (bkz. <see cref="ExtraAreaMigration"/>).
     /// </summary>
-    public bool ExtraLive1 { get; init; }
-    public bool ExtraLive2 { get; init; }
-    public bool ExtraLive3 { get; init; }
+    public IReadOnlyList<ExtraArea> ExtraAreas { get; init => field = ExtraArea.Sanitize(value); } = [];
     /// <summary>Serbest alan çevirisinin (Num 5) sonucu nerede gösterilir.</summary>
     public ResultTarget FreeAreaTarget { get; init; } = ResultTarget.Tv;
     public SubtitleStyle Style { get; init; } = new();
@@ -463,41 +453,25 @@ public sealed record UserSettings
     /// <summary>Bölge elle değişti (kaydırıcı ya da çerçeve): seçim Özel olur.</summary>
     public UserSettings WithCustomRegion(CropRegion region) => this with { AreaPreset = AreaPreset.Custom, Region = region };
 
-    /// <summary>Ek bölgenin sayısı; <see cref="ExtraRegion"/> 1..ExtraRegionCount arasında çalışır.</summary>
-    public const int ExtraRegionCount = 3;
+    /// <summary>Kısayolun okuduğu ek alan: 1, 2 ya da 3. sıradaki; yoksa null.</summary>
+    public ExtraArea? ExtraAreaAt(int number) => number >= 1 && number <= ExtraAreas.Count ? ExtraAreas[number - 1] : null;
 
-    /// <summary>1, 2 ya da 3 numaralı ek bölge; kapalıysa null.</summary>
-    public CropRegion? ExtraRegion(int slot) => slot switch { 1 => ExtraRegion1, 2 => ExtraRegion2, 3 => ExtraRegion3, _ => null };
+    /// <summary>Ek alan eklenebilir mi (Mac: canAddExtraArea).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool CanAddExtraArea => ExtraAreas.Count < ExtraArea.MaxCount;
 
-    public UserSettings WithExtraRegion(int slot, CropRegion? region) => slot switch
-    {
-        1 => this with { ExtraRegion1 = region },
-        2 => this with { ExtraRegion2 = region },
-        3 => this with { ExtraRegion3 = region },
-        _ => this,
-    };
+    /// <summary>Yeni ek alan sona eklenir; sınır dolduysa ayar değişmez (Mac: addExtraArea).</summary>
+    public UserSettings WithAddedExtraArea(ExtraArea area) =>
+        CanAddExtraArea ? this with { ExtraAreas = [.. ExtraAreas, area] } : this;
 
-    /// <summary>Ek bölgenin çevirisinin gösterileceği yer.</summary>
-    public ResultTarget ExtraTarget(int slot) => slot switch { 1 => ExtraTarget1, 2 => ExtraTarget2, 3 => ExtraTarget3, _ => ResultTarget.Tv };
+    /// <summary>Kimliği verilen ek alan değişir; yoksa ayar değişmez (Mac: updateExtraArea).</summary>
+    public UserSettings WithExtraArea(string id, Func<ExtraArea, ExtraArea> change) =>
+        ExtraAreas.Any(area => area.Id == id)
+            ? this with { ExtraAreas = [.. ExtraAreas.Select(area => area.Id == id ? change(area) with { Id = id } : area)] }
+            : this;
 
-    public UserSettings WithExtraTarget(int slot, ResultTarget target) => slot switch
-    {
-        1 => this with { ExtraTarget1 = target },
-        2 => this with { ExtraTarget2 = target },
-        3 => this with { ExtraTarget3 = target },
-        _ => this,
-    };
-
-    /// <summary>Ek bölge sürekli okunuyor mu.</summary>
-    public bool ExtraLive(int slot) => slot switch { 1 => ExtraLive1, 2 => ExtraLive2, 3 => ExtraLive3, _ => false };
-
-    public UserSettings WithExtraLive(int slot, bool live) => slot switch
-    {
-        1 => this with { ExtraLive1 = live },
-        2 => this with { ExtraLive2 = live },
-        3 => this with { ExtraLive3 = live },
-        _ => this,
-    };
+    /// <summary>Ek alan silinir; arkasındakiler bir sıra öne gelir (Mac: removeExtraArea).</summary>
+    public UserSettings WithoutExtraArea(string id) => this with { ExtraAreas = [.. ExtraAreas.Where(area => area.Id != id)] };
 
     /// <summary>
     /// Altyazı alanı Tam ekran: sürekli okunan ek bölgeler okunmaz (ekranın tamamı zaten okunuyor, aynı yazı ikinci kez
@@ -508,10 +482,9 @@ public sealed record UserSettings
 
     /// <summary>Sürekli okunan ek bölgeler (açık ve "Sürekli oku" seçili olanlar); Tam ekranda hiçbiri (Mac: activeExtraAreas).</summary>
     public IReadOnlyList<WatchedArea> WatchedAreas() => ExtraAreasPausedByFullScreen ? [] :
-        [.. Enumerable.Range(1, ExtraRegionCount)
-            .Where(ExtraLive)
-            .Select(slot => ExtraRegion(slot) is { } region ? new WatchedArea("area" + slot, "Area " + slot, region) : null)
-            .OfType<WatchedArea>()];
+        [.. ExtraAreas.Select((area, index) => (area, index))
+            .Where(item => item.area.Enabled)
+            .Select(item => new WatchedArea(item.area.Id, item.area.DisplayName(item.index + 1), item.area.Region))];
 
     /// <summary>
     /// Oynanan oyunun hazır ek alanları (çalışma anında; ayarlara yazılmaz): ayar açık, altyazı alanı Tam ekran değil,
@@ -538,18 +511,14 @@ public sealed record UserSettings
     [System.Text.Json.Serialization.JsonIgnore]
     public AreaSource AreaSource => FrameSource == FrameSource.Ps5 ? AreaSource.Stream : AreaSource.Window;
 
-    /// <summary>Şu an okunan alanlar (altyazı alanı ve üç ek bölge).</summary>
+    /// <summary>Şu an okunan alanlar (altyazı alanı ve ek alanlar).</summary>
     [System.Text.Json.Serialization.JsonIgnore]
-    public AreaSet Areas => new(Region, AreaPreset, ExtraRegion1, ExtraRegion2, ExtraRegion3, ExtraTarget1, ExtraTarget2, ExtraTarget3,
-                                ExtraLive1, ExtraLive2, ExtraLive3);
+    public AreaSet Areas => new(Region, AreaPreset, ExtraAreas);
 
     /// <summary>Okunan alanlar <paramref name="areas"/> olur; diğer ayarlara dokunulmaz.</summary>
     public UserSettings WithAreas(AreaSet areas) => this with
     {
-        Region = areas.Region, AreaPreset = areas.AreaPreset,
-        ExtraRegion1 = areas.ExtraRegion1, ExtraRegion2 = areas.ExtraRegion2, ExtraRegion3 = areas.ExtraRegion3,
-        ExtraTarget1 = areas.ExtraTarget1, ExtraTarget2 = areas.ExtraTarget2, ExtraTarget3 = areas.ExtraTarget3,
-        ExtraLive1 = areas.ExtraLive1, ExtraLive2 = areas.ExtraLive2, ExtraLive3 = areas.ExtraLive3,
+        Region = areas.Region, AreaPreset = areas.AreaPreset, ExtraAreas = areas.ExtraAreas,
     };
 
     public AreaProfile? FindAreaProfile(string? key) => key is null ? null : AreaProfiles.FirstOrDefault(profile => profile.Key == key);
@@ -640,12 +609,62 @@ public sealed record UserSettings
     public bool AreasDifferFromProfile => FindAreaProfile(ActiveAreaProfile) is { } profile && profile.Areas != Areas;
 }
 
-/// <summary>Bir oyunun alanları: altyazı alanı ve üç ek bölge (yeri, sonucun gösterildiği yer ve sürekli okuma).</summary>
-public sealed record AreaSet(
-    CropRegion Region, AreaPreset AreaPreset,
-    CropRegion? ExtraRegion1, CropRegion? ExtraRegion2, CropRegion? ExtraRegion3,
-    ResultTarget ExtraTarget1, ResultTarget ExtraTarget2, ResultTarget ExtraTarget3,
-    bool ExtraLive1, bool ExtraLive2, bool ExtraLive3);
+/// <summary>Bir oyunun alanları: altyazı alanı ve ek alanlar (Mac/iPhone/Android AreaSet ile aynı).</summary>
+public sealed record AreaSet(CropRegion Region, AreaPreset AreaPreset, IReadOnlyList<ExtraArea> ExtraAreas)
+{
+    public IReadOnlyList<ExtraArea> ExtraAreas { get; init => field = ExtraArea.Sanitize(value); } = ExtraArea.Sanitize(ExtraAreas);
+
+    /// <summary>Ek alanlar sırayla karşılaştırılır (liste başvurusu değil): "Profile kaydet" yalnız gerçek değişiklikte çıkar.</summary>
+    public bool Equals(AreaSet? other) =>
+        other is not null && Region == other.Region && AreaPreset == other.AreaPreset && ExtraAreas.SequenceEqual(other.ExtraAreas);
+
+    public override int GetHashCode() => HashCode.Combine(Region, AreaPreset, ExtraAreas.Count);
+}
+
+/// <summary>
+/// Altyazı alanının yanındaki ek alan (görev yazısı, telefon mesajı, bildirim). Mac/iPhone ExtraArea.swift ve Android
+/// Areas.kt ile aynı model: adlı liste, en çok <see cref="MaxCount"/>.
+/// </summary>
+/// <param name="Id">TV'deki kutunun kimliği; değişmez.</param>
+/// <param name="Name">Kullanıcının verdiği ad ("Görev"); boşsa "Alan 1" gibi sırasıyla gösterilir.</param>
+/// <param name="Enabled">"Bu alanı sürekli oku": çeviri sürerken saniyede bir okunur. Kapalıysa yalnız kısayolla bir kez okunur.</param>
+/// <param name="Target">Kısayolla bir kez okununca sonucun gösterildiği yer.</param>
+public sealed record ExtraArea(string Id, string Name, CropRegion Region, bool Enabled = true, ResultTarget Target = ResultTarget.Tv)
+{
+    /// <summary>En çok bu kadar ek alan tanımlanır (her biri saniyede bir okunur; kısayolları Num 1-3).</summary>
+    public const int MaxCount = 3;
+
+    /// <summary>Hazır seçimle yeni alan (yeni kimlik).</summary>
+    public static ExtraArea Create(string name, CropRegion region) => new(Guid.NewGuid().ToString(), name, region);
+
+    /// <summary>Ekranda ve günlükte görünen ad: verilen ad, yoksa "Alan 1".</summary>
+    public string DisplayName(int number) => string.IsNullOrWhiteSpace(Name) ? Localizer.Current[$"Area {number}"] : Name;
+
+    /// <summary>Elle değiştirilmiş ya da bozuk kayıt: eksik kimlik/ad/bölge tamamlanır, yinelenen kimlik ve fazlası atılır.</summary>
+    internal static IReadOnlyList<ExtraArea> Sanitize(IReadOnlyList<ExtraArea>? areas)
+    {
+        if (areas is null) return [];
+        var seen = new HashSet<string>();
+        var result = new List<ExtraArea>();
+        foreach (var area in areas)
+        {
+            if (area is null || result.Count == MaxCount) continue;
+            var fixedArea = area with
+            {
+                Id = string.IsNullOrEmpty(area.Id) ? Guid.NewGuid().ToString() : area.Id,
+                Name = area.Name ?? "",
+                Region = area.Region ?? ExtraAreaPreset.Quest.Region(),
+            };
+            if (seen.Add(fixedArea.Id)) result.Add(fixedArea);
+        }
+        return result.Count == areas.Count && result.SequenceEqual(areas) ? areas : result;
+    }
+
+    public bool Equals(ExtraArea? other) =>
+        other is not null && Id == other.Id && Name == other.Name && Region == other.Region && Enabled == other.Enabled && Target == other.Target;
+
+    public override int GetHashCode() => HashCode.Combine(Id, Name, Region, Enabled, Target);
+}
 
 /// <summary>Oyuna göre kaydedilmiş alanlar. <see cref="Key"/>: <see cref="Core.AreaProfiles.Key"/>; <see cref="Game"/>: gösterilen ad.</summary>
 public sealed record AreaProfile(string Key, string Game, AreaSet Areas);
