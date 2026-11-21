@@ -45,6 +45,9 @@ private final class FakeServices: PhoneServices {
     func testAIKey(provider: AIProvider, key: String, model: String?) async -> Result<String, AIFailure> {
         key == "good" ? .success("Merhaba") : .failure(.invalidKey)
     }
+    func testLocalAI(server: LocalAIServer, key: String) async -> Result<String, AIFailure> {
+        server.address == "http://192.168.1.20:11434" ? .success("Merhaba") : .failure(.unreachable)
+    }
 }
 
 @MainActor
@@ -320,6 +323,24 @@ final class PhoneModelTests: XCTestCase {
         XCTAssertEqual(model.settings.translationEngine, .gemini)
         model.removeKey(.gemini)
         XCTAssertEqual(model.settings.translationEngine, .free)
+    }
+
+    /// Yerel model (aynı ağdaki Ollama/LM Studio): anahtarsız çalışır; "Bağlantıyı dene" başarılıysa motor seçilir,
+    /// isteğe bağlı anahtar kaydedilir; ulaşılamayan sunucuda motor değişmez (Mac ile aynı kural).
+    func testLocalModelNeedsNoKeyAndIsSelectedAfterASuccessfulTest() async {
+        let model = makeModel()
+        model.settings.localAIBaseURL = "http://10.0.0.9:11434/v1"
+        let unreachable = await model.testLocalAI()
+        XCTAssertEqual(unreachable, .failure(.unreachable))
+        XCTAssertEqual(model.settings.translationEngine, .free)
+        model.settings.localAIBaseURL = "192.168.1.20:11434"
+        XCTAssertTrue(model.isReady(.local))
+        let works = await model.testLocalAI(key: "secret")
+        XCTAssertEqual(works, .success("Merhaba"))
+        XCTAssertEqual(model.settings.translationEngine, .local)
+        XCTAssertTrue(model.hasKey(.local))
+        model.removeKey(.local)
+        XCTAssertEqual(model.settings.translationEngine, .local, "anahtarsız çeviri sürer")
     }
 
     /// Hizmet anahtarı kabul etse de Anahtarlık'a yazılamazsa anahtar kayıtlı sayılmaz, motor değişmez (Mac ile aynı).

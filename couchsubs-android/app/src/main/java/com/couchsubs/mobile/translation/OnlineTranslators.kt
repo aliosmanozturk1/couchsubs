@@ -54,7 +54,9 @@ class AiRateLimitedException(val limit: AiRateLimit) : IOException("rate limited
 
 /** Yapay zekâ hizmetleri (Windows: AiProvider, Mac: AIProvider). */
 enum class AiProvider(val id: String, val displayName: String) {
-    GEMINI("gemini", "Gemini"), OPENAI("openai", "OpenAI"), CLAUDE("claude", "Claude");
+    GEMINI("gemini", "Gemini"), OPENAI("openai", "OpenAI"), CLAUDE("claude", "Claude"),
+    /** Aynı ağdaki bilgisayarda Ollama, LM Studio ya da başka OpenAI uyumlu sunucu (bkz. [LocalAiServer]). */
+    LOCAL("local", "Local model");
 }
 
 /** Çevrimiçi motorun yapay zekâ hizmeti (DeepL ve ücretsiz motorda null). */
@@ -63,6 +65,7 @@ val com.couchsubs.mobile.settings.EngineChoice.aiProvider: AiProvider?
         com.couchsubs.mobile.settings.EngineChoice.GEMINI -> AiProvider.GEMINI
         com.couchsubs.mobile.settings.EngineChoice.OPENAI -> AiProvider.OPENAI
         com.couchsubs.mobile.settings.EngineChoice.CLAUDE -> AiProvider.CLAUDE
+        com.couchsubs.mobile.settings.EngineChoice.LOCAL -> AiProvider.LOCAL
         else -> null
     }
 
@@ -146,19 +149,34 @@ object KeyCheck {
     }
 
     /** Yapay zekâ hizmeti: örnek satır seçilen modelle çevrilir. Bloklar. */
-    fun ai(provider: AiProvider, key: String, model: AiModel, http: Http = Http.Default): OnlineKeyState {
-        if (key.isBlank()) return OnlineKeyState.INVALID
+    fun ai(provider: AiProvider, key: String, model: AiModel, http: Http = Http.Default, server: LocalAiServer? = null): OnlineKeyState =
+        aiSample(provider, key, model, http, server).first
+
+    /**
+     * Örnek satırın çevirisi ve durum ("Bağlantıyı dene" çeviriyi de gösterir). Yerel modelde anahtar isteğe bağlıdır;
+     * sunucu adresi [server]'dan gelir.
+     */
+    fun aiSample(provider: AiProvider, key: String, model: AiModel, http: Http = Http.Default, server: LocalAiServer? = null): Pair<OnlineKeyState, String?> {
+        if (provider != AiProvider.LOCAL && key.isBlank()) return OnlineKeyState.INVALID to null
+        if (provider == AiProvider.LOCAL && server == null) return OnlineKeyState.UNREACHABLE to null
         return try {
-            val request = AiRequest.build(provider, key, model, listOf(SAMPLE), emptyList())
-            val (status, body) = http.send("POST", request.url, request.headers, request.body, 15000)
+            var request = AiRequest.build(provider, key, model, listOf(SAMPLE), emptyList(), server = server)
+            val timeout = if (provider == AiProvider.LOCAL) LocalAiServer.TIMEOUT_MS else 15000
+            var (status, body) = http.send("POST", request.url, request.headers, request.body, timeout)
+            // Düşünmeyi kapatan alanları tanımayan eski Ollama 400 verir; alanlarsız yeniden denenir.
+            if (status == 400 && server?.disablesThinking == true) {
+                request = AiRequest.build(provider, key, model, listOf(SAMPLE), emptyList(), server = server, thinkingOff = false)
+                val retry = http.send("POST", request.url, request.headers, request.body, timeout)
+                status = retry.first
+                body = retry.second
+            }
             // Dakikalık sınıra takıldıysa anahtar geçerlidir, hizmet şu an yoğundur (bakiye bitmedi).
-            if (status !in 200..299) return if (AiRequest.rateLimit(status, body) != null) OnlineKeyState.BUSY else AiRequest.failure(status, body)
-            AiRequest.translations(AiRequest.text(provider, body), 1)
-            OnlineKeyState.VALID
+            if (status !in 200..299) return (if (AiRequest.rateLimit(status, body) != null) OnlineKeyState.BUSY else AiRequest.failure(status, body)) to null
+            OnlineKeyState.VALID to AiRequest.translations(AiRequest.text(provider, body), 1).first()
         } catch (error: IOException) {
-            OnlineKeyState.of(error)
+            OnlineKeyState.of(error) to null
         } catch (error: JSONException) {
-            OnlineKeyState.UNREACHABLE
+            OnlineKeyState.UNREACHABLE to null
         }
     }
 }
@@ -663,6 +681,9 @@ object AiRequest {
         maxOutputTokens: Int = MAX_OUTPUT_TOKENS, game: String? = null, names: List<String> = emptyList(),
         // Ayarlardaki "Ek talimat"; sistem talimatının sonuna eklenir, boşsa hiçbir şey değişmez.
         instruction: String? = null,
+        // Yerel model sunucusu (yalnız LOCAL); [thinkingOff]: Ollama'da düşünmeyi kapatan alanlar gitsin mi.
+        server: LocalAiServer? = null,
+        thinkingOff: Boolean = true,
     ): AiHttpRequest {
         val trimmed = key.trim()
         val user = userMessage(sentences, context, game, names)
@@ -702,6 +723,24 @@ object AiRequest {
                 AiHttpRequest("https://api.anthropic.com/v1/messages",
                     mapOf("x-api-key" to trimmed, "anthropic-version" to "2023-06-01", "Content-Type" to "application/json"), body.toString())
             }
+            AiProvider.LOCAL -> {
+                // Ollama ve LM Studio'nun OpenAI uyumlu Chat Completions'ı (Mac/iPhone AIRequest ile aynı alanlar): yalnız
+                // iki sunucunun da tanıdığı alanlar gider; anahtar boşsa Authorization başlığı hiç eklenmez.
+                val local = server ?: LocalAiServer(LocalAiServer.OLLAMA_URL, model.id)
+                val body = JSONObject()
+                    .put("model", model.id)
+                    .put("messages", JSONArray()
+                        .put(JSONObject().put("role", "system").put("content", system))
+                        .put(JSONObject().put("role", "user").put("content", user)))
+                    .put("temperature", 0.0)
+                    .put("max_tokens", maxOutputTokens)
+                    .put("stream", false)
+                if (thinkingOff && local.disablesThinking) body.put("think", false).put("reasoning_effort", "none")
+                if (local.kind == LocalAiServer.Kind.OLLAMA) body.put("keep_alive", LocalAiServer.OLLAMA_KEEP_ALIVE)
+                val headers = mutableMapOf("Content-Type" to "application/json")
+                if (trimmed.isNotEmpty()) headers["Authorization"] = "Bearer $trimmed"
+                AiHttpRequest(local.chatUrl, headers, body.toString())
+            }
         }
     }
 
@@ -716,7 +755,7 @@ object AiRequest {
             AiProvider.GEMINI -> root.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
                 ?.let { parts -> (0 until parts.length()).mapNotNull { parts.optJSONObject(it) }.filter { !it.optBoolean("thought", false) }
                     .joinToString("") { it.optString("text") } }
-            AiProvider.OPENAI -> root.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content")
+            AiProvider.OPENAI, AiProvider.LOCAL -> root.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content")
             AiProvider.CLAUDE -> root.optJSONArray("content")?.let { blocks ->
                 (0 until blocks.length()).mapNotNull { blocks.optJSONObject(it) }.filter { it.optString("type") == "text" }
                     .joinToString("") { it.optString("text") }
@@ -874,6 +913,8 @@ class AiTranslator(
     // Ayarlardaki "Ek talimat" (#306): sistem talimatının sonuna eklenir; boşsa hiçbir şey değişmez. Her istekte
     // sorulur: Ayarlar'da değişince çalışan çeviri hattı yeni talimatı hemen kullanır (iPhone ile aynı).
     private val instruction: (() -> String?)? = null,
+    // Yerel model sunucusu (yalnız LOCAL).
+    private val server: LocalAiServer? = null,
 ) : SentenceTranslator<List<AiRequest.ContextLine>>(fallback, cache, clock, budget ?: RequestBudget.shared(provider, model)) {
     companion object {
         /** Kalıcı önbellek dosyasındaki motor adı (iPhone ile aynı: "gemini:<model>"). */
@@ -908,7 +949,7 @@ class AiTranslator(
             countRequest()
             try {
                 val request = AiRequest.build(provider, key, model, sentences, emptyList(), AiRequest.SCREEN_OUTPUT_TOKENS, game,
-                    instruction = scope.instruction)
+                    instruction = scope.instruction, server = server, thinkingOff = thinkingOff)
                 val (status, body) = http.send("POST", request.url, request.headers, request.body, SCREEN_TIMEOUT_MS)
                 if (status !in 200..299) throw AiRequest.error(status, body)
                 val translated = AiRequest.translations(AiRequest.text(provider, body), sentences.size)
@@ -976,9 +1017,20 @@ class AiTranslator(
         return scope.tag?.let { "i:$it\u001f$key" } ?: key
     }
 
+    /** Ollama düşünmeyi kapatan alanları reddettiyse (eski sürüm) oturum boyunca bu alanlar gönderilmez. */
+    @Volatile private var thinkingOff = true
+
     override fun request(sentences: List<String>, context: List<AiRequest.ContextLine>, game: String?, names: List<String>): List<String> {
-        val request = AiRequest.build(provider, key, model, sentences, context, game = game, names = names, instruction = scope.instruction)
-        val (status, body) = http.send("POST", request.url, request.headers, request.body, 5000)
+        val timeout = if (provider == AiProvider.LOCAL) LocalAiServer.TIMEOUT_MS else 5000
+        fun send() = AiRequest.build(provider, key, model, sentences, context, game = game, names = names, instruction = scope.instruction,
+            server = server, thinkingOff = thinkingOff).let { http.send("POST", it.url, it.headers, it.body, timeout) }
+        var (status, body) = send()
+        if (status == 400 && thinkingOff && server?.disablesThinking == true) {
+            thinkingOff = false
+            val retry = send()
+            status = retry.first
+            body = retry.second
+        }
         if (status !in 200..299) throw AiRequest.error(status, body)
         return AiRequest.translations(AiRequest.text(provider, body), sentences.size)
     }

@@ -281,14 +281,17 @@ struct SettingsScreen: View {
                 SegmentedTabs(options: Self.choices,
                               selection: Binding(get: { choice }, set: { setChoice($0) }))
                 if choice == .other {
-                    SegmentedTabs(options: [TranslationEngine.openAI: "OpenAI", .claude: "Claude"],
-                                  selection: Binding(get: { model.settings.translationEngine == .claude ? .claude : .openAI },
-                                                     set: { model.settings.translationEngine = $0 }))
+                    // Yerel model: aynı ağdaki bilgisayarda çalışan Ollama, LM Studio ya da başka OpenAI uyumlu sunucu
+                    // (Mac ve Windows'taki "Yerel model (Ollama, LM Studio)" motoru; Android ile aynı).
+                    SegmentedTabs(options: [TranslationEngine.openAI: "OpenAI", .claude: "Claude", .local: "Local model"],
+                                  selection: Binding(get: { [.claude, .local].contains(model.settings.translationEngine) ? model.settings.translationEngine : .openAI },
+                                                     set: { keyResult = nil; key = ""; model.settings.translationEngine = $0 }))
                 }
                 let engine = model.settings.translationEngine
                 // Model seçimi üç hizmette de var (Mac ve Windows ile aynı liste ve varsayılanlar).
                 if let provider = engine.aiProvider, provider != .local { AIModelChoice(provider: provider) }
-                if engine != .free {
+                if engine == .local { PhoneLocalAISection() }
+                if engine != .free, engine != .local {
                     HStack(spacing: Mobile.Space.inline) {
                         if model.hasKey(engine) {
                             Text(String(format: String(localized: "%@ key"), engine.displayName)).font(Mobile.TypeScale.headline.weight(.regular))
@@ -481,7 +484,6 @@ struct SettingsScreen: View {
         case .free: .free
         case .deepL: .deepL
         case .gemini: .gemini
-        // Yerel model (Ollama, LM Studio) yalnız Mac ve Windows'ta seçilir; telefonda başka hizmet sayılır.
         case .openAI, .claude, .local: .other
         }
     }
@@ -493,7 +495,9 @@ struct SettingsScreen: View {
         case .free: model.settings.translationEngine = .free
         case .deepL: model.settings.translationEngine = .deepL
         case .gemini: model.settings.translationEngine = .gemini
-        case .other: model.settings.translationEngine = model.settings.translationEngine == .claude ? .claude : .openAI
+        case .other:
+            let current = model.settings.translationEngine
+            model.settings.translationEngine = current == .claude || current == .local ? current : .openAI
         }
     }
 

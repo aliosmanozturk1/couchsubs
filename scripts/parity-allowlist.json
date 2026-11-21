@@ -48,6 +48,7 @@
       "No Turkish voice is installed on this phone. Add one in Settings › Accessibility › Spoken Content › Voices › Turkish.": "No Turkish voice is installed on this phone. Add Turkish in the phone's text-to-speech settings (Settings › Accessibility › Text-to-speech output)."
     },
     "iphone_only": {
+      "It works.": "Ortak LocalAIText'in (Mac ile ortak) geçerli durum iletisi; telefonda 'Bağlantıyı dene' başarıda örnek çeviriyi gösteren metni kullanır, Android de öyle.",
       "%@ PS5 · %@ TV": "Yerleşim farkı: iPhone Profil'in 'Cihazlar' kutusu; Android aynı bilgiyi PS5 ve TV kutularında ayrı gösterir.",
       "Devices": "Yerleşim farkı: bkz. '%@ PS5 · %@ TV'.",
       "Notifications": "Yerleşim farkı: iPhone bildirim anahtarlarını başlıklı satırda gösterir; Android'de başlık yok, anahtarlar aynı.",

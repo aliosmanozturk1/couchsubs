@@ -41,7 +41,8 @@ enum class SubtitleTarget {
 }
 
 /** Çeviri motoru: ücretsiz cihaz üstü (ML Kit) ya da kullanıcının anahtarıyla çevrimiçi hizmet. */
-enum class EngineChoice { FREE, DEEPL, GEMINI, OPENAI, CLAUDE }
+/** LOCAL: aynı ağdaki bilgisayarda Ollama / LM Studio (Mac ve Windows'taki "Yerel model"). */
+enum class EngineChoice { FREE, DEEPL, GEMINI, OPENAI, CLAUDE, LOCAL }
 
 /**
  * "Ekran yazılarını otomatik çevir" bir kerelik göçü (Windows AutoScreenTextMigration, Mac/iPhone
@@ -176,7 +177,25 @@ class AppSettings(context: Context) : AreaStore {
         AiProvider.GEMINI -> "geminiModel"
         AiProvider.OPENAI -> "openAIModel"
         AiProvider.CLAUDE -> "claudeModel"
+        AiProvider.LOCAL -> "localAIModel"
     }
+
+    /**
+     * Yerel model sunucusunun adresi ("http://192.168.1.20:11434/v1"; Mac/iPhone localAIBaseURL). Telefonda varsayılan
+     * yoktur: 127.0.0.1 telefonun kendisidir, sunucu aynı ağdaki bir bilgisayardadır.
+     */
+    var localAiBaseUrl: String
+        get() = prefs.getString("localAIBaseURL", null).orEmpty()
+        set(value) = prefs.edit().putString("localAIBaseURL", value.trim()).apply()
+
+    /** Yerel modelin adı (Mac/iPhone localAIModel); varsayılan qwen2.5:7b. */
+    var localAiModel: String
+        get() = prefs.getString("localAIModel", null)?.takeIf { it.isNotBlank() } ?: com.couchsubs.mobile.translation.LocalAiServer.DEFAULT_MODEL
+        set(value) = prefs.edit().putString("localAIModel", value.trim()).apply()
+
+    /** Geçerli adres ve model varsa sunucu; yoksa null (yerel model seçilemez). */
+    val localAiServer: com.couchsubs.mobile.translation.LocalAiServer?
+        get() = com.couchsubs.mobile.translation.LocalAiServer.of(localAiBaseUrl, localAiModel)
 
     var packsEnabled: Boolean
         get() = prefs.getBoolean("packsEnabled", true)

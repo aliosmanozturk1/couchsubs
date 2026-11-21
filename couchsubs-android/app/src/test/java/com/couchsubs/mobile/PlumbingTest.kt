@@ -211,7 +211,7 @@ class OnlineTranslationTest {
             return when (provider) {
                 AiProvider.GEMINI -> json.getJSONObject("systemInstruction").getJSONArray("parts").getJSONObject(0).getString("text")
                 AiProvider.CLAUDE -> json.getString("system")
-                AiProvider.OPENAI -> json.getJSONArray("messages").getJSONObject(0).getString("content")
+                AiProvider.OPENAI, AiProvider.LOCAL -> json.getJSONArray("messages").getJSONObject(0).getString("content")
             }
         }
         for (provider in AiProvider.entries) {
@@ -370,7 +370,8 @@ class OnlineTranslationTest {
     fun openAiAndClaudeModelsAreSelectableLikeOnTheDesktop() {
         val file = File(System.getProperty("couchsubs.packs") ?: return, "../ai-models.json")
         val all = AiModel.parse(file.readText())
-        for (provider in AiProvider.entries) {
+        // Yerel modelin listesi yok: model adı yazılır.
+        for (provider in AiProvider.entries.filter { it != AiProvider.LOCAL }) {
             val models = all.getValue(provider.id)
             assertTrue(provider.id, models.size >= 2)
             assertEquals(models.first().id, AiModel.selected(models, null)?.id)

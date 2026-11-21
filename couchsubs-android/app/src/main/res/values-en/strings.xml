@@ -685,4 +685,24 @@
     <string name="tv_open_debug_not_approved">Couldn\'t open it automatically: the TV hasn\'t allowed debugging from this device. Reinstall the TV app and allow it on the TV.</string>
     <string name="tv_open_try">Try opening automatically</string>
     <string name="tv_open_wizard_note">Every time you start translating, CouchSubs tries to open the TV app by itself. If it doesn\'t open, open CouchSubs on the TV.</string>
+    <string name="engine_local">Local model</string>
+    <string name="local_ai_address">Server address</string>
+    <string name="local_ai_model">Model name</string>
+    <string name="local_ai_key">API key (optional)</string>
+    <string name="local_ai_key_saved">Key saved</string>
+    <string name="local_ai_key_remove">Remove key</string>
+    <string name="local_ai_test">Test connection</string>
+    <string name="local_ai_testing">Testing…</string>
+    <string name="local_ai_download">Download Ollama</string>
+    <string name="local_ai_works">It works. Sample translation: %1$s</string>
+    <string name="local_ai_invalid_address">This address is not valid. Example: %1$s</string>
+    <string name="local_ai_network_note">The model runs on a computer on the same Wi-Fi, not on this phone. Type that computer\'s network address. Ollama accepts other devices only when it is started with OLLAMA_HOST=0.0.0.0; in LM Studio, turn on Serve on Local Network.</string>
+    <string name="local_ai_model_note">Type the model name as the server shows it. In Ollama, download it first: ollama pull qwen2.5:7b (downloaded models: ollama list). In LM Studio, load the model and start the local server.</string>
+    <string name="local_ai_rejected_key">The local model server did not accept the API key. Check the key, or remove it if the server does not need one.</string>
+    <string name="local_ai_busy">The local model server is busy. Try again in a moment.</string>
+    <string name="local_ai_lmstudio_model">LM Studio does not have the model %1$s. Download and load it in LM Studio, or check the model name.</string>
+    <string name="local_ai_ollama_model">The model %1$s is not on the local server. Download it: ollama pull %1$s</string>
+    <string name="local_ai_ollama_down">Ollama is not running: %1$s could not be reached, or the model did not answer in time. Open Ollama and download the model: ollama pull %2$s</string>
+    <string name="local_ai_lmstudio_down">LM Studio is not running: %1$s could not be reached, or the model did not answer in time. Open LM Studio, load the model and start the local server.</string>
+    <string name="local_ai_other_down">The local model server at %1$s could not be reached, or the model did not answer in time. Check the address and that the server is running.</string>
 </resources>

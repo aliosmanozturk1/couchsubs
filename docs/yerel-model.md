@@ -11,6 +11,11 @@ CouchSubs'ın **Yerel model** çeviri motoruyla altyazıları kendi bilgisayarı
 kota yoktur, altyazı metni bilgisayardan çıkmaz. Doğru **Ek talimat**la küfür ve argo da sansürsüz çevrilir. Genel kurulum
 için README'deki [Yerel yapay zekâ ile çeviri](../README.md#yerel-yapay-zekâ-ile-çeviri-ollama-lm-studio) bölümüne bakın.
 
+**iPhone ve Android'de:** model telefonda çalışmaz, aynı Wi-Fi'daki bilgisayarda çalışır. Ayarlar › Çeviri motoru ›
+Diğer › Yerel model'i seçin; **Sunucu adresi**ne bilgisayarın ağ adresini yazın (ör. `http://192.168.1.20:11434/v1`),
+**Model adı**nı girip **Bağlantıyı dene**'ye basın. Ollama başka cihazları yalnız `OLLAMA_HOST=0.0.0.0` ile
+başlatılınca kabul eder; LM Studio'da **Serve on Local Network**'ü açın. iPhone ilk bağlantıda yerel ağ izni sorar.
+
 ## Neden Gemma 4?
 
 RTX 5090'da MiLMMT-46 (12B ve 4B), TranslateGemma 12B ve Gemma 4 26B 110 cümlelik bir testle karşılaştırıldı. Kazanan

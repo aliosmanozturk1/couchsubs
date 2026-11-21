@@ -80,6 +80,8 @@ protocol PhoneServices: AnyObject {
                     onOpenResult: @escaping @Sendable (TVOpenProblem?) -> Void) -> KeeperControlling
     func checkDeepLKey(_ key: String) async -> OnlineKeyCheck
     func testAIKey(provider: AIProvider, key: String, model: String?) async -> Result<String, AIFailure>
+    /// Yerel model sunucusunu (aynı ağdaki Ollama, LM Studio) örnek satırla dener; anahtar boş olabilir.
+    func testLocalAI(server: LocalAIServer, key: String) async -> Result<String, AIFailure>
 }
 
 extension PhoneServices {
@@ -184,5 +186,9 @@ final class LivePhoneServices: PhoneServices {
 
     func testAIKey(provider: AIProvider, key: String, model: String?) async -> Result<String, AIFailure> {
         await AITranslationCore.test(provider: provider, key: key, model: model)
+    }
+
+    func testLocalAI(server: LocalAIServer, key: String) async -> Result<String, AIFailure> {
+        await AITranslationCore.test(provider: .local, key: key, model: server.model, server: server)
     }
 }

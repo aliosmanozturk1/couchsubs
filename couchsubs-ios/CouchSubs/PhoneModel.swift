@@ -62,6 +62,7 @@ final class PhoneModel: ObservableObject {
             let translationChanged = settings.onlineTranslation != oldValue.onlineTranslation
                 || settings.onlineEngine != oldValue.onlineEngine || settings.geminiModel != oldValue.geminiModel
                 || settings.openAIModel != oldValue.openAIModel || settings.claudeModel != oldValue.claudeModel
+                || settings.localAIBaseURL != oldValue.localAIBaseURL || settings.localAIModel != oldValue.localAIModel
                 || settings.aiInstruction != oldValue.aiInstruction
             if translationChanged { Task { await refreshTranslatorStatus() } }
             if settings.readsGamePhone != oldValue.readsGamePhone { configureGamePhone() }
@@ -1260,9 +1261,17 @@ final class PhoneModel: ObservableObject {
         let local = Translator(source: source, target: target,
                                cache: Self.translationCache(engine: Translator.engineID, source: source, target: target))
         let engine = settings.onlineEngine
-        guard onlineTranslationActive, let storeKey = engine.storeKey, let key = store.load(String.self, for: storeKey) else { return local }
+        guard onlineTranslationActive, let storeKey = engine.storeKey else { return local }
         let online: TextTranslator & OnlineTranslating
-        if let provider = engine.aiProvider {
+        if engine == .local, let server = settings.localAIServer {
+            // Yerel model (aynı ağdaki bilgisayarda Ollama, LM Studio): anahtar isteğe bağlıdır; önbellekte sunucu ve
+            // model ayrı tutulur (Mac ile aynı).
+            let sense = gameChoice.sense
+            online = AITranslator(provider: .local, key: store.load(String.self, for: storeKey) ?? "", model: server.model,
+                                  server: server, fallback: local,
+                                  cache: Self.translationCache(engine: server.engineID, source: source, target: target),
+                                  game: { sense.current?.name }, instruction: settings.aiInstruction)
+        } else if let key = store.load(String.self, for: storeKey), let provider = engine.aiProvider {
             let model = provider.model(settings.model(for: provider)).id
             // Oynanan oyunun adı modele bağlam olarak gider; önbellek de oyuna göre ayrılır (Mac ile aynı). Ad kararlı
             // oyundur (`GameSense.current`), son eşleşen paket değil: tek bir ortak satır adı başka oyuna geçirmez (#27).
@@ -1270,9 +1279,11 @@ final class PhoneModel: ObservableObject {
             online = AITranslator(provider: provider, key: key, model: model, fallback: local,
                                   cache: Self.translationCache(engine: provider.engineID(model: model), source: source, target: target),
                                   game: { sense.current?.name }, instruction: settings.aiInstruction)
-        } else {
+        } else if let key = store.load(String.self, for: storeKey) {
             online = DeepLTranslator(key: key, fallback: local,
                                      cache: Self.translationCache(engine: DeepLTranslator.engineID, source: source, target: target))
+        } else {
+            return local
         }
         online.onFailureChanged = { [weak self] state in Task { @MainActor in self?.onlineIssue = state } }
         return online
@@ -1287,7 +1298,39 @@ final class PhoneModel: ObservableObject {
     // MARK: - Çevrimiçi çeviri anahtarları (Anahtarlık)
 
     var onlineTranslationActive: Bool {
-        settings.onlineTranslation && settings.sourceLanguage == "en" && settings.targetLanguage == "tr" && hasKey(settings.onlineEngine)
+        settings.onlineTranslation && settings.sourceLanguage == "en" && settings.targetLanguage == "tr" && isReady(settings.onlineEngine)
+    }
+
+    /// Motor kullanılabilir mi: bulut motorlarında anahtar kayıtlıdır; yerel modelde anahtar gerekmez, adres ve model adı
+    /// geçerli olmalıdır (Mac ile aynı). Sunucuya ulaşılamazsa satırlar ücretsiz çeviriyle gelir, ana ekranda uyarı çıkar.
+    func isReady(_ engine: TranslationEngine) -> Bool {
+        engine == .local ? settings.localAIServer != nil : hasKey(engine)
+    }
+
+    /// Ayarlardaki "Bağlantıyı dene": yerel model sunucusuna örnek satırı gönderir. `key` yazıldıysa o, yoksa kayıtlı
+    /// anahtar kullanılır; yazılan anahtar sunucu kabul ettiyse Anahtarlık'a yazılır (Mac `testLocalAI` ile aynı).
+    func testLocalAI(key typed: String = "") async -> Result<String, AIFailure> {
+        guard let server = settings.localAIServer else { return .failure(.unreachable) }
+        let typed = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = typed.isEmpty ? store.load(String.self, for: StoreKey.localAIKey) ?? "" : typed
+        SubtitleLog.write("Yerel model testi başladı: \(server.address) \(server.model)")
+        let result = await services.testLocalAI(server: server, key: key)
+        if case .failure(let error) = result { SubtitleLog.write("Yerel model testi sonucu: \(error)") }
+        if !typed.isEmpty {
+            switch result {
+            case .success, .failure(.quotaExceeded), .failure(.modelRejected), .failure(.busy):
+                store.save(typed, for: StoreKey.localAIKey)
+                guard store.load(String.self, for: StoreKey.localAIKey) == typed else { return .failure(.keychainWriteFailed) }
+                savedKeys.insert(.local)
+            case .failure: break
+            }
+        }
+        if case .success = result {
+            settings.translationEngine = .local
+            if isRunning { makePipeline() }
+            await refreshTranslatorStatus()
+        }
+        return result
     }
 
     func hasKey(_ engine: TranslationEngine) -> Bool { savedKeys.contains(engine) }
@@ -1355,6 +1398,11 @@ final class PhoneModel: ObservableObject {
         guard let storeKey = engine.storeKey else { return }
         store.remove(storeKey)
         savedKeys.remove(engine)
+        // Yerel modelin anahtarı isteğe bağlıdır: anahtarsız çeviri sürer, hat anahtarsız yeniden kurulur.
+        if engine == .local {
+            if settings.translationEngine == .local, isRunning { makePipeline() }
+            return
+        }
         if settings.translationEngine == engine { settings.onlineTranslation = false }
     }
 

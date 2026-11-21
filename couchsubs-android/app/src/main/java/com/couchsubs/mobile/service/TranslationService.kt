@@ -1013,6 +1013,13 @@ class TranslationService : Service() {
 
     private fun onlineTranslator(free: TextTranslator): TextTranslator? {
         val engine = settings.engine
+        if (engine == EngineChoice.LOCAL) {
+            // Yerel model: anahtar isteğe bağlıdır; adres ya da model geçersizse ücretsiz çeviri kullanılır.
+            val server = settings.localAiServer ?: return null
+            val model = AiModel(server.model, server.model)
+            return AiTranslator(AiProvider.LOCAL, settings.apiKey(engine).orEmpty(), model, free, cache = cache(server.engineId),
+                playedGame = { PlayedGame.sense.current?.name }, instruction = { settings.aiInstruction }, server = server)
+        }
         val key = settings.apiKey(engine)?.takeIf { it.isNotBlank() } ?: return null
         return when (engine) {
             EngineChoice.FREE -> null
@@ -1109,6 +1116,7 @@ class TranslationService : Service() {
         EngineChoice.GEMINI -> "Gemini"
         EngineChoice.OPENAI -> "OpenAI"
         EngineChoice.CLAUDE -> "Claude"
+        EngineChoice.LOCAL -> getString(R.string.engine_local)
     }
 
     /** Kurulan parçaları kapatır; onDestroy'dan ve hizmet kurulum bitmeden durdurulduysa kurulum iş parçacığından çağrılır. */

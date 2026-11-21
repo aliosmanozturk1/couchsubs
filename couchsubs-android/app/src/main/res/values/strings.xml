@@ -694,4 +694,24 @@
     <string name="tv_open_debug_not_approved">Otomatik açılamadı: TV bu cihazın hata ayıklama iznini onaylamadı. TV uygulamasını yeniden kurun ve TV\'de izin verin.</string>
     <string name="tv_open_try">Otomatik açmayı dene</string>
     <string name="tv_open_wizard_note">Her oyunda çeviriyi başlattığınızda CouchSubs TV uygulamasını kendisi açmaya çalışır; açılmazsa TV\'den CouchSubs\'ı açın.</string>
+    <string name="engine_local">Yerel model</string>
+    <string name="local_ai_address">Sunucu adresi</string>
+    <string name="local_ai_model">Model adı</string>
+    <string name="local_ai_key">API anahtarı (isteğe bağlı)</string>
+    <string name="local_ai_key_saved">Anahtar kayıtlı</string>
+    <string name="local_ai_key_remove">Anahtarı sil</string>
+    <string name="local_ai_test">Bağlantıyı dene</string>
+    <string name="local_ai_testing">Deneniyor…</string>
+    <string name="local_ai_download">Ollama\'yı indir</string>
+    <string name="local_ai_works">Çalışıyor. Örnek çeviri: %1$s</string>
+    <string name="local_ai_invalid_address">Bu adres geçerli değil. Örnek: %1$s</string>
+    <string name="local_ai_network_note">Model bu telefonda değil, aynı Wi-Fi\'daki bir bilgisayarda çalışır. O bilgisayarın ağ adresini yaz. Ollama başka cihazları yalnız OLLAMA_HOST=0.0.0.0 ile başlatılınca kabul eder; LM Studio\'da Serve on Local Network\'ü aç.</string>
+    <string name="local_ai_model_note">Model adını sunucunun gösterdiği gibi yaz. Ollama\'da önce indir: ollama pull qwen2.5:7b (indirilen modeller: ollama list). LM Studio\'da modeli yükleyip yerel sunucuyu başlat.</string>
+    <string name="local_ai_rejected_key">Yerel model sunucusu API anahtarını kabul etmedi. Anahtarı denetle; sunucu anahtar istemiyorsa kaldır.</string>
+    <string name="local_ai_busy">Yerel model sunucusu meşgul. Biraz sonra yeniden dene.</string>
+    <string name="local_ai_lmstudio_model">LM Studio\'da %1$s modeli yok. Modeli LM Studio\'da indirip yükle ya da model adını denetle.</string>
+    <string name="local_ai_ollama_model">%1$s modeli yerel sunucuda yok. Modeli indir: ollama pull %1$s</string>
+    <string name="local_ai_ollama_down">Ollama çalışmıyor: %1$s adresine ulaşılamadı ya da model zamanında yanıt vermedi. Ollama\'yı açıp modeli indir: ollama pull %2$s</string>
+    <string name="local_ai_lmstudio_down">LM Studio çalışmıyor: %1$s adresine ulaşılamadı ya da model zamanında yanıt vermedi. LM Studio\'yu aç, modeli yükleyip yerel sunucuyu başlat.</string>
+    <string name="local_ai_other_down">%1$s adresindeki yerel model sunucusuna ulaşılamadı ya da model zamanında yanıt vermedi. Adresi ve sunucunun açık olduğunu denetle.</string>
 </resources>

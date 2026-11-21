@@ -17,10 +17,10 @@ ALLOWLIST = ROOT / "scripts" / "parity-allowlist.json"
 CATALOG = ROOT / "mac" / "CouchSubs" / "Resources" / "Localizable.xcstrings"
 WIN_SETTINGS = ROOT / "windows" / "src" / "CouchSubs.Shell" / "Contracts.cs"
 CORE_SETTINGS = ROOT / "core" / "Sources" / "CouchSubsCore" / "Pipeline" / "AppSettings.swift"
-IOS_SCREENS = [ROOT / "couchsubs-ios" / "CouchSubs" / "UI" / name for name in ("Profile.swift", "DubbingTile.swift")] + [
-    ROOT / "mac" / "CouchSubs" / "UI" / "DubbingVoiceText.swift"]
+IOS_SCREENS = [ROOT / "couchsubs-ios" / "CouchSubs" / "UI" / name for name in ("Profile.swift", "DubbingTile.swift", "LocalAISection.swift")] + [
+    ROOT / "mac" / "CouchSubs" / "UI" / name for name in ("DubbingVoiceText.swift", "LocalAIText.swift")]
 ANDROID_SCREENS = [ROOT / "couchsubs-android" / "app" / "src" / "main" / "java" / "com" / "couchsubs" / "mobile" / "ui" / name
-                   for name in ("ProfileScreens.kt", "DubbingTile.kt")]
+                   for name in ("ProfileScreens.kt", "DubbingTile.kt", "LocalAiSection.kt")]
 ANDROID_EN = ROOT / "couchsubs-android" / "app" / "src" / "main" / "res" / "values-en" / "strings.xml"
 
 
