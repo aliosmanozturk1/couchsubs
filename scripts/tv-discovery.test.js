@@ -246,7 +246,7 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
     // Sorulan /hello adresleri (tarama ve kimlik sorusu).
     probed: () => probes.slice(),
     exits: () => exits,
-    pickServer: (found, savedId) => window.__pickServer(found, savedId),
+    pickServer: (found, savedId, current) => window.__pickServer(found, savedId, current),
     // Bilgisayar açık uygulamayı yeniden açar (Samsung DEEP_LINK, parametreler PAYLOAD'da).
     relaunch(params) { relaunchCallback(params); },
     // Açık (kapatılmamış) bağlantılar.
@@ -445,6 +445,41 @@ test('kendi CouchSubs\'ı kapalıyken boştaki tek CouchSubs kullanılır, kendi
   tv.clock.advance(120000);
   assert.strictEqual(tv.lastOpened(), back + '/events');
   assert.strictEqual(tv.saved(), back);
+});
+
+// X (beta.79): TV "bağlı" ama altyazı gelmiyor. Kayıtlı CouchSubs (bilgisayar) açık ama boşta, çeviri telefondan:
+// TV eskiden kayıtlı kimliğe bağlı kalıyordu. /hello "live" ile çeviren CouchSubs'a geçilir, kendisi çevirince dönülür.
+test('kayıtlı CouchSubs boştayken çeviren CouchSubs\'a geçilir, kayıtlı çevirmeye başlayınca ona dönülür', () => {
+  const hello = { [A]: { id: 'id-a', tvs: 0, live: 1 }, [B]: { id: 'id-b', tvs: 0, live: 0 } };
+  const tv = startTv({
+    saved: B, savedId: 'id-b', alive: new Set([A, B]), hello,
+    hasLocalAddress: true, localIp: '192.168.1.30'
+  });
+  tv.clock.advance(1000);
+  assert.strictEqual(tv.lastOpened(), B + '/events');
+  tv.clock.advance(60000);
+  assert.strictEqual(tv.lastOpened(), A + '/events');
+  // Kayıtlı kimlik değişmez: kendi CouchSubs'ı çevirmeye başlayınca ona dönülür.
+  assert.strictEqual(tv.stored('serverId'), 'id-b');
+  hello[A] = { id: 'id-a', tvs: 1, live: 1 };
+  tv.clock.advance(120000);
+  assert.strictEqual(tv.lastOpened(), A + '/events');
+  hello[B] = { id: 'id-b', tvs: 0, live: 1 };
+  tv.clock.advance(120000);
+  assert.strictEqual(tv.lastOpened(), B + '/events');
+});
+
+test('çeviren ama başka TV\'ye hizmet eden CouchSubs\'a geçilmez; kayıtlı ve çeviren CouchSubs\'ta kalınır', () => {
+  const pick = startTv({ alive: new Set(), hasLocalAddress: false }).pickServer;
+  const idleSaved = { address: B, id: 'id-b', tvs: 1, live: 0 };
+  assert.strictEqual(pick([{ address: A, id: 'id-a', tvs: 1, live: 1 }, idleSaved], 'id-b', B), idleSaved);
+  assert.strictEqual(pick([{ address: A, id: 'id-a', tvs: 0, live: 1 }, idleSaved], 'id-b', B).address, A);
+  // Şu an bağlı olunan çeviren CouchSubs (tvs bizi de sayar) seçili kalır.
+  assert.strictEqual(pick([{ address: A, id: 'id-a', tvs: 1, live: 1 }, idleSaved], 'id-b', A).address, A);
+  // İki yabancı çeviren CouchSubs arasından tahminle seçilmez: kayıtlı olanda kalınır.
+  assert.strictEqual(pick([{ address: A, id: 'id-a', tvs: 0, live: 1 }, { address: 'http://192.168.1.70:8787', id: 'id-c', tvs: 0, live: 1 }, idleSaved], 'id-b', B), idleSaved);
+  // Kayıtlı CouchSubs çeviriyorsa başkasına bakılmaz.
+  assert.strictEqual(pick([{ address: A, id: 'id-a', tvs: 0, live: 1 }, { address: B, id: 'id-b', tvs: 1, live: 1 }], 'id-b', B).address, B);
 });
 
 test('kimlik vermeyen eski CouchSubs sürümleri eskisi gibi bulunur', () => {

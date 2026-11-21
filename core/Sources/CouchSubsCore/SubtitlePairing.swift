@@ -20,6 +20,8 @@ public final class SubtitlePairing: @unchecked Sendable {
     /// kendisi yeniden ister, reddedileni istemez (Tamam bekler); yoksa reddedilen TV için pencere art arda açılırdı.
     private var rejected: String?
     public init(clock: @escaping () -> Int64 = { Int64(DispatchTime.now().uptimeNanoseconds / 1_000_000) }) { now = clock }
+    /// Çeviri sürüyor mu (`setSession`); `/hello`'daki `live` alanı.
+    public var inSession: Bool { lock.lock(); defer { lock.unlock() }; return session }
     public func setSession(_ active: Bool) { lock.lock(); defer { lock.unlock() }; session = active; if !active { clear() } }
     public func open() { lock.lock(); defer { lock.unlock() }; manualUntil = now() + 120000 }
     public func reset() { lock.lock(); defer { lock.unlock() }; clear() }

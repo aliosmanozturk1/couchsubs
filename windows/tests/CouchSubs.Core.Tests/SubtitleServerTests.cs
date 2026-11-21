@@ -460,8 +460,13 @@ public class SubtitleServerTests
         var port = await server.StartAsync();
         using var http = new HttpClient();
         var body = await http.GetStringAsync($"http://127.0.0.1:{port}/hello");
-        Assert.Equal("{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"3f2a-b9\",\"tvs\":0}", body);
+        Assert.Equal("{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"3f2a-b9\",\"tvs\":0,\"live\":0}", body);
         Assert.DoesNotContain(server.AccessKey, body);
+        // Çeviri sürüyor ve altyazı TV'ye gidiyor: live 1; altyazı yalnız bilgisayar ekranındaysa 0.
+        server.Pairing.SetSession(true);
+        Assert.EndsWith(",\"live\":1}", await http.GetStringAsync($"http://127.0.0.1:{port}/hello"));
+        server.SendsToTv = false;
+        Assert.EndsWith(",\"live\":0}", await http.GetStringAsync($"http://127.0.0.1:{port}/hello"));
     }
 
     /// <summary>Kurulum kimliği kalıcıdır: aynı ağdaki iki CouchSubs'ı TV bununla ayırır (GitHub #425).</summary>
@@ -472,7 +477,8 @@ public class SubtitleServerTests
         using var second = new SubtitleServer(0);
         Assert.False(string.IsNullOrEmpty(first.InstanceId));
         Assert.Equal(first.InstanceId, second.InstanceId);
-        Assert.Equal("{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"ab\",\"tvs\":2}", SubtitleServer.HelloBody("a\"b", 2));
+        Assert.Equal("{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"ab\",\"tvs\":2,\"live\":0}", SubtitleServer.HelloBody("a\"b", 2));
+        Assert.Equal("{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"x\",\"tvs\":0,\"live\":1}", SubtitleServer.HelloBody("x", 0, true));
     }
 
     // Yeni tarayıcılı TV'ler (Tizen 9.0) yerel ağdaki sunucuya ön istekte izin başlığı ister.

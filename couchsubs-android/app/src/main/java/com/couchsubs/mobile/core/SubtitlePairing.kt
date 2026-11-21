@@ -21,6 +21,8 @@ class SubtitlePairing(private val now: () -> Long = { System.nanoTime() / 1_000_
      * ister, reddedileni istemez (Tamam bekler); yoksa reddedilen TV için pencere art arda açılırdı (GitHub #737).
      */
     private var rejected: String? = null
+    /** Çeviri sürüyor mu ([setSession]); `/hello`'daki `live` alanı. */
+    val inSession: Boolean @Synchronized get() = session
     @Synchronized fun setSession(active: Boolean) { session = active; if (!active) clear() }
     @Synchronized fun open() { manualUntil = now() + 120000 }
     @Synchronized fun reset() { clear() }

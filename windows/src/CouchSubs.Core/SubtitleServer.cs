@@ -176,7 +176,11 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
     /// <summary><c>/hello</c> yanıtı: uygulama, eşleştirme gerektiği (<c>auth</c>), kurulum kimliği ve bağlı TV sayısı (Mac ve
     /// Android ile aynı biçim). Erişim anahtarını içermez. TV ağda birden çok CouchSubs bulursa kayıtlı kimliği, yoksa TV'si
     /// bağlı olmayanı seçer; onayladığı anahtarı da bu kimlikle eşler (adres değişse de yeniden eşleşme gerekmez).</summary>
-    internal static string HelloBody(string id, int tvs) => $"{{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"{HelloId(id)}\",\"tvs\":{Math.Max(0, tvs)}}}";
+    /// <param name="live">Bu CouchSubs çeviriyor ve altyazıyı TV'ye gönderiyor (1) ya da boşta (0). Aynı ağda iki CouchSubs
+    /// varken (bilgisayar açık bırakılmış, çeviri telefondan) TV kayıtlı ama boştaki CouchSubs'a bağlı kalıyor, "bağlı"
+    /// görünüp altyazı hiç gelmiyordu; TV çeviren CouchSubs'ı bununla seçer (Mac: helloBody). Eski TV alanı yok sayar.</param>
+    internal static string HelloBody(string id, int tvs, bool live = false) =>
+        $"{{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"{HelloId(id)}\",\"tvs\":{Math.Max(0, tvs)},\"live\":{(live ? 1 : 0)}}}";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -592,7 +596,7 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
             // Anahtar Authorize'da denetlendi (anahtarsız istek 401 aldı).
             else if (method == "GET" && path == SecondScreen.Path) await RespondAndClose(tcp, SecondScreen.Page, "text/html; charset=utf-8", cors);
             // TV uygulaması ağdaki bilgisayarı bu yanıtla tanır.
-            else if (method == "GET" && path == "/hello") await RespondAndClose(tcp, "200 OK", HelloBody(InstanceId, ConnectedClients), cors);
+            else if (method == "GET" && path == "/hello") await RespondAndClose(tcp, "200 OK", HelloBody(InstanceId, ConnectedClients, SendsToTv && Pairing.InSession), cors);
             else if (method == "GET" && FindFile(path) is { } file) await RespondAndClose(tcp, file.Data, file.Type, cors);
             else await RespondAndClose(tcp, "404 Not Found", cors: cors);
         }

@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.64';
+  var APP_VERSION = '0.9.65';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -2175,6 +2175,8 @@
   var adoptAddress = null;
   // Bağlı olunan CouchSubs kayıtlı kimlik değil (kendisi kapalıyken bulunan): kendi CouchSubs'ı dönünce ona geçilir.
   var fallback = false;
+  // Bağlı olunan CouchSubs /hello'da "live":0 dedi (çeviri yok ya da altyazı TV'ye gitmiyor).
+  var idleServer = false;
   var FALLBACK_SCAN_MS = 60000;
 
   function helloInfo(text) {
@@ -2189,8 +2191,17 @@
   // Taramada bulunanlar ({ address, id, tvs }) arasından bağlanılacak CouchSubs; emin olunamıyorsa null.
   // 1) Kayıtlı kimlik. 2) TV'si bağlı olmayan tek CouchSubs (başka TV'ye hizmet eden, başka evin/odanın kurulumudur).
   // 3) Kayıtlı kimlik varsa başkası seçilmez. 4) İlk kez açılan TV: TV'si bağlı olmayan ilk, o da yoksa ilk bulunan.
-  function pickServer(found, savedId) {
-    var i, idle = [];
+  // Önce çeviren (/hello "live":1) CouchSubs: kayıtlı kimlik çeviriyorsa o; değilse çeviren ve başka TV'ye hizmet etmeyen
+  // (current: şu an bağlı olunan adres, kendi bağlantımız sayılmaz) tek CouchSubs. Kayıtlı CouchSubs boştayken (ör.
+  // bilgisayar açık bırakılmış, çeviri telefondan) TV ona bağlı kalıyor, "bağlı" görünüp altyazı hiç gelmiyordu. live
+  // bildirmeyen eski CouchSubs'ta kural eskisi gibidir.
+  function pickServer(found, savedId, current) {
+    var i, idle = [], live = [];
+    for (i = 0; i < found.length; i++) if (savedId && found[i].id === savedId && found[i].live === 1) return found[i];
+    for (i = 0; i < found.length; i++) {
+      if (found[i].live === 1 && (!(found[i].tvs > 0) || found[i].address === current)) live.push(found[i]);
+    }
+    if (live.length === 1) return live[0];
     for (i = 0; i < found.length; i++) if (savedId && found[i].id === savedId) return found[i];
     for (i = 0; i < found.length; i++) if (!(found[i].tvs > 0)) idle.push(found[i]);
     if (idle.length === 1) return idle[0];
@@ -2209,6 +2220,7 @@
       var id = ok && info.id ? String(info.id) : null;
       if (!id) {
         fallback = false;
+        idleServer = false;
         return;
       }
       if (adopt || !serverId) {
@@ -2217,7 +2229,11 @@
       }
       var wasFallback = fallback;
       fallback = id !== serverId;
+      // Bağlanılan CouchSubs çevirmiyor: ağda çeviren başka bir CouchSubs var mı diye arada bir bakılır (pickServer).
+      var wasIdle = idleServer;
+      idleServer = info.live === 0;
       if (fallback) scheduleScan(wasFallback ? FALLBACK_SCAN_MS : SCAN_SOON_MS);
+      else if (idleServer) scheduleScan(wasIdle ? FALLBACK_SCAN_MS : SCAN_SOON_MS);
     });
   }
 
@@ -2258,7 +2274,7 @@
       var stop = guessed ? Math.min(254, addresses.length) : addresses.length;
       function pump() {
         // Tahminli tarama uzun sürer; bu arada CouchSubs adresini kendisi verip bağlantı açıldıysa tarama bırakılır.
-        if (guessed && !done && !fallback && eventSource && eventSource.readyState === 1) {
+        if (guessed && !done && !fallback && !idleServer && eventSource && eventSource.readyState === 1) {
           done = true;
           scanning = false;
           return;
@@ -2268,19 +2284,21 @@
           tryAddress(addresses[next++]);
         }
         if (done || active || next < stop) return;
-        if (found.length || stop >= addresses.length) return finish(pickServer(found, serverId));
+        if (found.length || stop >= addresses.length) return finish(pickServer(found, serverId, server));
         stop = Math.min(stop + 254, addresses.length);
         pump();
       }
-      // Kayıtlı kimlik bulununca tarama hemen biter; yoksa bütün ağ taranıp aralarından seçilir (eskiden ilk bulunan).
+      // Kayıtlı kimlik bulununca tarama hemen biter (boştaysa bitmez: çeviren başka CouchSubs aranır); yoksa bütün ağ
+      // taranıp aralarından seçilir (eskiden ilk bulunan).
       function tryAddress(address) {
         probe(address, function (ok, info) {
           active--;
           if (done) return;
           if (ok) {
-            var entry = { address: address, id: info.id ? String(info.id) : null, tvs: typeof info.tvs === 'number' ? info.tvs : null };
+            var entry = { address: address, id: info.id ? String(info.id) : null, tvs: typeof info.tvs === 'number' ? info.tvs : null,
+              live: typeof info.live === 'number' ? info.live : null };
             found.push(entry);
-            if (serverId && entry.id === serverId) return finish(entry);
+            if (serverId && entry.id === serverId && entry.live !== 0) return finish(entry);
           }
           pump();
         });
@@ -2289,16 +2307,17 @@
         done = true;
         scanning = false;
         if (!choice) {
-          scheduleScan(fallback ? FALLBACK_SCAN_MS : SCAN_PAUSE_MS);
+          scheduleScan(fallback || idleServer ? FALLBACK_SCAN_MS : SCAN_PAUSE_MS);
           return;
         }
+        if (choice.address === server) idleServer = choice.live === 0;
         // Bulunan adres kaydedilir: TV bir sonraki açılışta eski adrese takılmasın.
         save('server', choice.address);
         // Aynı bilgisayarsa EventSource kendisi yeniden bağlanır; kapanıp vazgeçtiyse (CLOSED) yeniden kurulur.
         // Eşleştirme beklemiyor (ya da Tamam'ı beklemiyor) ve bağlantı da yoksa (bilgisayar kapalıyken /hello yanıtsız
         // kalmıştı) yeniden kurulur.
         if (choice.address !== server || (eventSource ? eventSource.readyState === 2 : !pairingActive && !pairingFailed)) connect(choice.address);
-        else if (fallback) scheduleScan(FALLBACK_SCAN_MS);
+        else if (fallback || idleServer) scheduleScan(FALLBACK_SCAN_MS);
       }
       pump();
     });

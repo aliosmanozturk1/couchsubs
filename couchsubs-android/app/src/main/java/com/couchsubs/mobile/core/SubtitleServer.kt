@@ -119,9 +119,13 @@ class SubtitleServer(
         /** `hdmi` parametresi: 1-4 arası tek rakam, değilse null. */
         fun hdmiPort(value: String?): Int? = value?.singleOrNull()?.takeIf { it in '1'..'4' }?.let { it - '0' }
 
-        /** `/hello` yanıtı: uygulama, kurulum kimliği ve bağlı TV sayısı (Mac ve Windows ile aynı biçim). */
-        fun helloBody(id: String, tvs: Int): String =
-            "{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"${id.filter { it.isLetterOrDigit() && it.code < 128 || it == '-' }}\",\"tvs\":${maxOf(0, tvs)}}"
+        /**
+         * `/hello` yanıtı: uygulama, kurulum kimliği, bağlı TV sayısı ve `live` (Mac ve Windows ile aynı biçim). `live`: bu
+         * telefon çeviriyor ve altyazıyı TV'ye gönderiyor (1) ya da boşta (0). Aynı ağda iki CouchSubs varken TV kayıtlı ama
+         * boştaki CouchSubs'a bağlı kalıyor, "bağlı" görünüp altyazı hiç gelmiyordu; TV çevireni bununla seçer.
+         */
+        fun helloBody(id: String, tvs: Int, live: Boolean = false): String =
+            "{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"${id.filter { it.isLetterOrDigit() && it.code < 128 || it == '-' }}\",\"tvs\":${maxOf(0, tvs)},\"live\":${if (live) 1 else 0}}"
 
         /** Bağlantı canlı tutma: yorum satırını EventSource görmez; adlı "ping" olayını TV görür. */
         const val PING_FRAME = ": ping\n\nevent: ping\ndata: {}\n\n"
@@ -457,7 +461,7 @@ class SubtitleServer(
                     respondAndClose(socket, "200 OK", secondScreenPage, cors, "text/html; charset=utf-8")
                 method == "GET" && path.startsWith("/speech/") && synchronized(lock) { speechFiles.containsKey(path) } ->
                     respondAndClose(socket, "200 OK", synchronized(lock) { speechFiles[path] } ?: ByteArray(0), cors, "audio/wav")
-                method == "GET" && path == "/hello" -> respondAndClose(socket, "200 OK", helloBody(instanceId, connectedClients), cors)
+                method == "GET" && path == "/hello" -> respondAndClose(socket, "200 OK", helloBody(instanceId, connectedClients, sendsToTv && pairing.inSession), cors)
                 else -> respondAndClose(socket, "404 Not Found", cors = cors)
             }
         } catch (error: IOException) {

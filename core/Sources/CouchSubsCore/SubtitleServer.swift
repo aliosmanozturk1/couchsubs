@@ -217,9 +217,12 @@ public final class SubtitleServer: @unchecked Sendable {
     /// `/hello` yanıtı: uygulama, eşleştirme gerektiği (`auth`), kurulum kimliği ve bağlı TV sayısı (Windows ve Android ile
     /// aynı biçim). Erişim anahtarını içermez. TV, ağda birden çok CouchSubs bulursa kayıtlı kimliği, yoksa TV'si bağlı
     /// olmayanı seçer; onayladığı anahtarı da bu kimlikle eşler.
-    static func helloBody(id: String, tvs: Int) -> String {
+    /// `live`: bu CouchSubs şu an çeviriyor ve altyazıyı TV'ye gönderiyor (1) ya da boşta (0). Aynı ağda iki CouchSubs
+    /// (ör. bilgisayar açık bırakılmış, çeviri telefondan) varken TV kayıtlı ama boştaki CouchSubs'a bağlı kalıyor, TV'de
+    /// "bağlı" görünüp altyazı hiç gelmiyordu; TV çeviren CouchSubs'ı bununla seçer. Alanı tanımayan eski TV yok sayar.
+    static func helloBody(id: String, tvs: Int, live: Bool = false) -> String {
         let escaped = id.filter { $0.isLetter || $0.isNumber || $0 == "-" }
-        return #"{"app":"couchsubs","auth":1,"id":""# + escaped + #"","tvs":"# + String(max(0, tvs)) + "}"
+        return #"{"app":"couchsubs","auth":1,"id":""# + escaped + #"","tvs":"# + String(max(0, tvs)) + #","live":"# + (live ? "1" : "0") + "}"
     }
 
     public var connectedClients: Int {
@@ -620,7 +623,8 @@ public final class SubtitleServer: @unchecked Sendable {
             respondAndClose(connection, status: "200 OK", data: SecondScreen.page, type: "text/html; charset=utf-8", cors: cors)
         } else if method == "GET" && path == "/hello" {
             // TV uygulaması ağdaki bilgisayarı bu yanıtla tanır (bağlantı kuyruğunda: sayaçlar doğrudan okunur).
-            respondAndClose(connection, status: "200 OK", body: Self.helloBody(id: instanceId, tvs: clients.count - viewers.count), cors: cors)
+            respondAndClose(connection, status: "200 OK", body: Self.helloBody(id: instanceId, tvs: clients.count - viewers.count,
+                                                                                   live: tvEnabled && pairing.inSession), cors: cors)
         } else if method == "GET", let file = files[path] {
             respondAndClose(connection, status: "200 OK", data: file.data, type: file.type, cors: cors)
         } else {

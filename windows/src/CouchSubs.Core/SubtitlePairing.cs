@@ -22,6 +22,8 @@ public sealed class SubtitlePairing(Func<long>? clock = null)
     /// yeniden ister, reddedileni istemez (Tamam bekler); yoksa reddedilen TV için pencere art arda açılırdı (GitHub #737).
     /// </summary>
     private string? rejected;
+    /// <summary>Çeviri sürüyor mu (<see cref="SetSession"/>); <c>/hello</c>'daki <c>live</c> alanı.</summary>
+    public bool InSession { get { lock (gate) return session; } }
     public void SetSession(bool active) { lock (gate) { session = active; if (!active) Clear(); } }
     public void Open() { lock (gate) manualUntil = now() + 120000; }
     public void Reset() { lock (gate) Clear(); }

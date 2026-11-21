@@ -429,8 +429,25 @@ final class SubtitleServerTests: XCTestCase {
         let (data, response) = try await URLSession.shared.data(from: URL(string: "http://127.0.0.1:\(port)/hello")!)
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
         XCTAssertNil((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Access-Control-Allow-Origin"))
-        XCTAssertEqual(String(decoding: data, as: UTF8.self), #"{"app":"couchsubs","auth":1,"id":"3f2a-b9","tvs":0}"#)
+        XCTAssertEqual(String(decoding: data, as: UTF8.self), #"{"app":"couchsubs","auth":1,"id":"3f2a-b9","tvs":0,"live":0}"#)
         XCTAssertFalse(String(decoding: data, as: UTF8.self).contains(server.accessKey))
+    }
+
+    /// `/hello`'daki `live`: çeviri sürüyor ve altyazı TV'ye gidiyorsa 1. TV boştaki kayıtlı CouchSubs yerine çevireni seçer.
+    func testHelloSaysWhetherSubtitlesGoToTheTV() async throws {
+        let server = SubtitleServer(port: 0, instanceId: "3f2a-b9")
+        let port = try await server.start()
+        defer { server.stop() }
+        func hello() async throws -> String {
+            let (data, _) = try await URLSession.shared.data(from: URL(string: "http://127.0.0.1:\(port)/hello")!)
+            return String(decoding: data, as: UTF8.self)
+        }
+        server.pairing.setSession(true)
+        let live = try await hello()
+        XCTAssertTrue(live.hasSuffix(#","live":1}"#), live)
+        server.sendsToTV = false
+        let screenOnly = try await hello()
+        XCTAssertTrue(screenOnly.hasSuffix(#","live":0}"#), screenOnly)
     }
 
     /// Kurulum kimliği kalıcıdır: aynı ağdaki iki CouchSubs'ı TV bununla ayırır (GitHub #425).
@@ -438,7 +455,8 @@ final class SubtitleServerTests: XCTestCase {
         let first = SubtitleServer.installationId
         XCTAssertFalse(first.isEmpty)
         XCTAssertEqual(SubtitleServer.installationId, first)
-        XCTAssertEqual(SubtitleServer.helloBody(id: "a\"b", tvs: 2), #"{"app":"couchsubs","auth":1,"id":"ab","tvs":2}"#)
+        XCTAssertEqual(SubtitleServer.helloBody(id: "a\"b", tvs: 2), #"{"app":"couchsubs","auth":1,"id":"ab","tvs":2,"live":0}"#)
+        XCTAssertEqual(SubtitleServer.helloBody(id: "x", tvs: 0, live: true), #"{"app":"couchsubs","auth":1,"id":"x","tvs":0,"live":1}"#)
     }
 
     func testUnknownPathIs404() async throws {

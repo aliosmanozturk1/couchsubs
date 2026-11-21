@@ -62,8 +62,9 @@ class SubtitleServerTest {
                 assertTrue(response, response.startsWith("HTTP/1.1 200 OK"))
                 assertTrue(!response.contains("Access-Control-Allow-Origin:"))
                 // Kurulum kimliği ve bağlı TV sayısı: aynı ağdaki iki CouchSubs'ı TV bununla ayırır (GitHub #425).
-                assertTrue(response, response.endsWith("{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"3f2a-b9\",\"tvs\":0}"))
-                assertEquals("{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"ab\",\"tvs\":2}", SubtitleServer.helloBody("a\"b", 2))
+                assertTrue(response, response.endsWith("{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"3f2a-b9\",\"tvs\":0,\"live\":0}"))
+                assertEquals("{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"ab\",\"tvs\":2,\"live\":0}", SubtitleServer.helloBody("a\"b", 2))
+                assertEquals("{\"app\":\"couchsubs\",\"auth\":1,\"id\":\"x\",\"tvs\":0,\"live\":1}", SubtitleServer.helloBody("x", 0, true))
                 assertFalse(response.contains(server.accessKey))
             }
         } finally {
