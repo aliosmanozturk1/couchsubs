@@ -40,7 +40,14 @@ public partial class SubtitleOutputCard : UserControl
     internal void Attach(AppController attached)
     {
         controller = attached;
+        SecondScreenView.Attach(attached);
         Subscribe();
+    }
+
+    private void OnSecondScreen(object sender, RoutedEventArgs e)
+    {
+        SecondScreenView.Refresh();
+        SecondScreenPopup.IsOpen = true;
     }
 
     private void OnChanged(object? sender, PropertyChangedEventArgs e)
@@ -56,6 +63,7 @@ public partial class SubtitleOutputCard : UserControl
         (settings.Output switch { SubtitleOutput.Computer => OutputComputer, SubtitleOutput.Both => OutputBoth, _ => OutputTv }).IsChecked = true;
         ComputerPanel.Visibility = controller.ShowsOnComputer ? Visibility.Visible : Visibility.Collapsed;
         WindowHint.Visibility = Detailed ? Visibility.Visible : Visibility.Collapsed;
+        SecondScreenEntry.Visibility = Detailed ? Visibility.Collapsed : Visibility.Visible;
         ClickThrough.IsChecked = settings.OverlayClickThrough;
         ClickThroughHint.Visibility = Detailed || settings.OverlayClickThrough ? Visibility.Visible : Visibility.Collapsed;
         ClickThroughHint.Text = HotkeyText.Sentence(settings, HotkeyAction.ClickThrough,

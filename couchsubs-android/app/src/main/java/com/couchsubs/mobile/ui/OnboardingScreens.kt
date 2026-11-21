@@ -299,6 +299,8 @@ fun TargetScreen(onBack: (() -> Unit)? = null, onTvInstall: (() -> Unit)? = null
             { StatusTile(Icons.Filled.Info, stringResource(R.string.target_unlisted_note), stringResource(R.string.target_unlisted), it,
                 onClick = { open(context, context.getString(R.string.url_tvs)) }) },
         )
+        // TV'si olmayan ya da monitörde oynayan için: hangi hedef seçilirse seçilsin altyazı ayrıca bir tarayıcıda da görünür.
+        SecondScreenTile()
     }
 }
 

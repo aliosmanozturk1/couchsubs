@@ -33,8 +33,21 @@ struct SubtitleOutputCard: View {
                     HintText(text: "When on, clicks go through to the window below. Press ⌥⌘L or use the menu bar to turn it off.")
                 }
             }
+            // Ana ekranda: altyazıyı ayrıca bir telefon ya da tablet tarayıcısında göstermek (Ayarlar'da ayrı karo).
+            if !detailed {
+                Button("Show on another device") { showingSecondScreen = true }
+                    .buttonStyle(.secondary)
+                    .popover(isPresented: $showingSecondScreen, arrowEdge: .bottom) {
+                        SecondScreenPanel()
+                            .padding(Theme.space("l"))
+                            .frame(width: 380)
+                            .environmentObject(model)
+                    }
+            }
         }
     }
+
+    @State private var showingSecondScreen = false
 
     private var outputPicker: some View {
         Picker("Show subtitles on", selection: $model.settings.output) {

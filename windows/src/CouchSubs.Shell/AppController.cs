@@ -260,7 +260,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         keeper = null;
         server.RotateKey(key);
         StartKeeper();
-        Changed(nameof(ObsAddress), nameof(NetworkObsAddress));
+        Changed(nameof(ObsAddress), nameof(NetworkObsAddress), nameof(SecondScreenAddress));
     }
 
     // --- Durum ---
@@ -1837,6 +1837,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     /// <summary>Bilgisayarın ağ adresiyle OBS sayfası; localhost'u kabul etmeyen yayın programları (TikTok LIVE Studio) için.</summary>
     public string? NetworkObsAddress => LocalAddress(null) is { } address ? $"http://{address}:{ServerPort}/obs?k={server.AccessKey}" : null;
+
+    /// <summary>"Başka bir cihazda göster" adresi (QR kodu da bundan); bilgisayar ev ağına bağlı değilse null.</summary>
+    public string? SecondScreenAddress => LocalAddress(null) is { } address ? SecondScreen.Address(address, ServerPort, server.AccessKey) : null;
 
     /// <summary>
     /// Deneme modunu açar: konsol, hesap ve TV olmadan örnek karelerle çeviri başlar (altyazı ana pencerede ve seçiliyse

@@ -83,6 +83,8 @@ class SubtitleServer(
     key: String = SubtitleAccess.createKey(),
     private val allowLegacy: Boolean = SubtitleAccess.ALLOW_LEGACY_CLIENTS,
     private val obsOverlay: String = "",
+    /** İkinci ekran sayfası (`/view`, assets/second-screen.html; Mac ve Windows ile aynı dosya). */
+    private val secondScreenPage: String = "",
     /**
      * Eşleştirme durumu. Sunucu yeni örnekle yeniden kurulunca (port değişti) eskisininki verilir: onay bekleyen istek,
      * "TV eşleştir" süresi ve onaylanmış istek taşınır (Mac/iPhone ve Windows ile aynı).
@@ -412,7 +414,8 @@ class SubtitleServer(
             when {
                 method == "OPTIONS" -> respondAndClose(socket, "204 No Content", cors = cors)
                 method == "GET" && path == "/events" -> {
-                    val obs = request.parameter("viewer") == "obs"
+                    // OBS katmanı ve ikinci ekran sayfası izleyicidir: TV sayılmaz, altyazı hedefi TV değilken de olayları alır.
+                    val obs = request.parameter("viewer").let { it == "obs" || it == SecondScreen.VIEWER }
                     // Anahtarsız OBS sayfası eski bir OBS adresidir; TV uygulamasının eski olduğu anlamına gelmez.
                     val notify = synchronized(lock) { (access.legacy && !obs && !hasLegacyClient).also { if (it) hasLegacyClient = true } }
                     if (notify) onLegacyClient?.invoke()
@@ -421,6 +424,9 @@ class SubtitleServer(
                 }
                 // TV uygulaması ağdaki CouchSubs'ı bu yanıtla tanır.
                 method == "GET" && path == "/obs" && obsOverlay.isNotEmpty() -> respondAndClose(socket, "200 OK", obsOverlay, cors, "text/html; charset=utf-8")
+                // Anahtar authorize'da denetlendi (anahtarsız istek 401 aldı).
+                method == "GET" && path == SecondScreen.PATH && secondScreenPage.isNotEmpty() ->
+                    respondAndClose(socket, "200 OK", secondScreenPage, cors, "text/html; charset=utf-8")
                 method == "GET" && path == "/hello" -> respondAndClose(socket, "200 OK", helloBody(instanceId, connectedClients), cors)
                 else -> respondAndClose(socket, "404 Not Found", cors = cors)
             }

@@ -520,6 +520,8 @@ struct TargetScreen: View {
                          emphasis: model.tvAppMissing ? .selected : .none)
             }
             .buttonStyle(.plain)
+            // TV'si olmayan ya da monitörde oynayan için: hangi hedef seçilirse seçilsin altyazı ayrıca bir tarayıcıda da görünür.
+            SecondScreenTile()
             if let error { MobileNote(text: error) }
         } bottom: {
             Button(setup ? "Continue" : "Done", action: onDone)

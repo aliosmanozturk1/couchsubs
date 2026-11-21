@@ -54,6 +54,58 @@ class SubtitleAccessTest {
             }
         } finally { server.stop() }
     }
+    /** İkinci ekran eski TV'lere tanınan anahtarsız geçişten yararlanmaz (Mac ve Windows'ta aynı durumlar). */
+    @Test fun secondScreenAlwaysNeedsTheKey() {
+        val cases = listOf("/view" to 401, "/view?k=yanlis" to 401, "/view?k=anahtar" to 200, "/events?viewer=second" to 401,
+            "/events?viewer=second&k=anahtar" to 200, "/events" to 200, "/events?viewer=obs" to 200)
+        for ((target, status) in cases) {
+            val request = SubtitleAccess.parse("GET $target HTTP/1.1\r\nHost: 192.168.1.20:8787\r\n")!!
+            assertEquals(target, status, SubtitleAccess.authorize(request, "anahtar", true).status)
+        }
+        val same = SubtitleAccess.parse("GET /events?viewer=second&k=anahtar HTTP/1.1\r\nHost: 192.168.1.20:8787\r\nOrigin: http://192.168.1.20:8787\r\n")!!
+        assertEquals(200, SubtitleAccess.authorize(same, "anahtar", true).status)
+    }
+    /** Doğru anahtarla sayfa gelir; akış TV sayılmaz ve altyazı yalnız telefondayken de altyazıyı alır. */
+    @Test fun secondScreenPageAndStream() {
+        val server = SubtitleServer(port = 0, key = "dogru-anahtar", allowLegacy = true, secondScreenPage = "<html>ikinci</html>")
+        server.sendsToTv = false
+        val port = server.start()
+        try {
+            for (target in listOf("/view", "/view?k=yanlis", "/events?viewer=second")) Socket("127.0.0.1", port).use { socket ->
+                socket.soTimeout = 3000
+                socket.getOutputStream().write("GET $target HTTP/1.1\r\nHost: localhost\r\n\r\n".toByteArray())
+                assertTrue(target, socket.getInputStream().bufferedReader().readLine().contains("401"))
+            }
+            Socket("127.0.0.1", port).use { socket ->
+                socket.soTimeout = 3000
+                socket.getOutputStream().write("GET /view?k=dogru-anahtar HTTP/1.1\r\nHost: localhost\r\n\r\n".toByteArray())
+                val response = socket.getInputStream().bufferedReader().readText()
+                assertTrue(response.startsWith("HTTP/1.1 200"))
+                assertTrue(response.contains("text/html"))
+                assertTrue(response.endsWith("<html>ikinci</html>"))
+            }
+            Socket("127.0.0.1", port).use { socket ->
+                socket.soTimeout = 3000
+                socket.getOutputStream().write("GET /events?viewer=second&k=dogru-anahtar HTTP/1.1\r\nHost: localhost\r\n\r\n".toByteArray())
+                val reader = socket.getInputStream().bufferedReader()
+                assertTrue(reader.readLine().contains("200"))
+                Thread.sleep(200)
+                assertEquals(0, server.connectedClients)
+                assertFalse(server.hasLegacyClient)
+                server.sendSubtitle("Merhaba", 4000)
+                var line = reader.readLine()
+                while (line != null && !line.contains("Merhaba")) line = reader.readLine()
+                assertTrue(line!!.startsWith("data:") && line.contains("\"text\":\"Merhaba\""))
+            }
+        } finally { server.stop() }
+    }
+    @Test fun secondScreenAddressCarriesTheKey() {
+        assertEquals("http://192.168.1.20:8787/view?k=a-b_C9", SecondScreen.address("192.168.1.20", 8787, "a-b_C9"))
+        assertEquals("http://[fe80::1]:8787/view?k=k", SecondScreen.address("fe80::1", 8787, "k"))
+        val modules = SecondScreen.qrModules("http://192.168.1.20:8787/view?k=a-b_C9")
+        assertTrue(modules.size >= 21)
+        assertTrue(modules.all { it.size == modules.size })
+    }
     @Test fun rotationRejectsPreviousKey() {
         val server = SubtitleServer(port = 0, allowLegacy = false)
         val port = server.start()

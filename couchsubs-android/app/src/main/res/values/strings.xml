@@ -635,5 +635,8 @@
     <string name="tv_legacy_warning">TV uygulaması eski. Güncelleyin.</string>
     <string name="obs_overlay">OBS katmanı</string>
     <string name="share">Paylaş</string>
+    <string name="second_screen_title">Başka bir cihazda göster</string>
+    <string name="second_screen_caption">Aynı Wi-Fi\'deki telefon ya da tabletin kamerasıyla kodu okutun. Çeviri sürerken altyazılar o cihazın tarayıcısında büyük görünür; uygulama ya da internet gerekmez.</string>
+    <string name="second_screen_offline">Başka bir cihazda göstermek için Wi-Fi\'ye bağlanın.</string>
     <string name="tv_pair_expired">Eşleştirme isteğinin süresi doldu. TV’den yeniden deneyin.</string>
 </resources>

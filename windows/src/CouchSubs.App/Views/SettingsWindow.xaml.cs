@@ -82,6 +82,7 @@ public partial class SettingsWindow : Window
         Dubbing.Attach(controller);
         FirewallSettings.Attach(controller);
         OutputCard.Attach(controller);
+        SecondScreenCard.Attach(controller);
         ShowStyleTitle();
         controller.PropertyChanged += OnControllerChanged;
         Closed += (_, _) => controller.PropertyChanged -= OnControllerChanged;

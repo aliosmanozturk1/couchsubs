@@ -25,6 +25,20 @@ final class SubtitleAccessTests: XCTestCase {
         }
         for (address, allowed) in vectors.peers { XCTAssertEqual(SubtitleAccess.isLocalPeer(address), allowed, address) }
     }
+    /// İkinci ekran eski TV'lere tanınan anahtarsız geçişten yararlanmaz (Windows ve Android'de aynı durumlar).
+    func testSecondScreenAlwaysNeedsTheKey() throws {
+        let cases: [(String, Int)] = [("/view", 401), ("/view?k=yanlis", 401), ("/view?k=anahtar", 200),
+                                      ("/events?viewer=second", 401), ("/events?viewer=second&k=anahtar", 200),
+                                      ("/events", 200), ("/events?viewer=obs", 200)]
+        for (target, status) in cases {
+            let request = try XCTUnwrap(SubtitleAccess.parse("GET \(target) HTTP/1.1\r\nHost: 192.168.1.20:8787\r\n"))
+            XCTAssertEqual(SubtitleAccess.authorize(request, key: "anahtar", allowLegacy: true).status, status, target)
+        }
+        // Tarayıcı aynı adresten açtığı sayfanın akışına Origin ile bağlanır.
+        let same = try XCTUnwrap(SubtitleAccess.parse("GET /events?viewer=second&k=anahtar HTTP/1.1\r\nHost: 192.168.1.20:8787\r\nOrigin: http://192.168.1.20:8787\r\n"))
+        XCTAssertEqual(SubtitleAccess.authorize(same, key: "anahtar", allowLegacy: true).status, 200)
+    }
+
     func testKeysAndAmbiguousRequests() throws {
         let key = SubtitleAccess.createKey()
         XCTAssertEqual(key.count, 22)

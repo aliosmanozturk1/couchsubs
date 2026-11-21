@@ -392,6 +392,10 @@ final class PhoneModel: ObservableObject {
         }
     }
     var subtitleViewerAddress: String { "http://\(NetworkAddress.near(nil) ?? "127.0.0.1"):\(serverPort)/obs?k=\(subtitleAccessKey)" }
+    /// "Başka bir cihazda göster" adresi (QR kodu da bundan); telefon ağa bağlı değilse nil.
+    var secondScreenAddress: String? {
+        NetworkAddress.near(nil).map { SecondScreen.address(host: $0, port: Int(serverPort), key: subtitleAccessKey) }
+    }
     /// Ayarlar'daki "TV eşleştir": çeviri sürse de sürmese de eşleştirmeyi iki dakika açar, yanıt vermeyen sunucuyu
     /// yeniden açar ve bekleyen istek varsa onay penceresini yeniden gösterir (kurtarma yolu).
     func openTVPairing() async {

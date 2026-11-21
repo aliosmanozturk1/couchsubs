@@ -80,7 +80,12 @@ object SubtitleAccess {
         if (!originAllowed(request)) return Decision(403)
         if (request.path == "/hello" || request.path == "/obs" || request.path == "/pair") return Decision(200)
         val supplied = request.parameter("k")
-        if (supplied == null && allowLegacy && (request.origin == null || packagedOrigin(request.origin))) return Decision(200, true)
+        // İkinci ekran (sayfası ve akışı) eski TV'lere tanınan anahtarsız geçişten yararlanmaz: aynı ağdaki herkes açamaz.
+        if (supplied == null && allowLegacy && !isSecondScreen(request) && (request.origin == null || packagedOrigin(request.origin))) return Decision(200, true)
         return Decision(if (supplied != null && MessageDigest.isEqual(key.toByteArray(Charsets.UTF_8), supplied.toByteArray(Charsets.UTF_8))) 200 else 401)
     }
+
+    /** Başka bir cihazın tarayıcısında açılan altyazı sayfası (`/view`) ya da onun akışı (`/events?viewer=second`). */
+    fun isSecondScreen(request: Request): Boolean =
+        request.path == SecondScreen.PATH || request.path == "/events" && request.parameter("viewer") == SecondScreen.VIEWER
 }

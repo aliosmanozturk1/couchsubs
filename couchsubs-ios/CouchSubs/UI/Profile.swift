@@ -205,6 +205,7 @@ struct SettingsScreen: View {
         MobileScreen {
             BackHeader(title: "Settings")
         } content: {
+            SecondScreenTile()
             Tile {
                 Button("Pair TV") { Task { await model.openTVPairing() } }
                 if model.tvPairingOpened, model.tvPairingRequest == nil, model.tvClients == 0 {

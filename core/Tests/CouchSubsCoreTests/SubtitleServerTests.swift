@@ -286,6 +286,41 @@ final class SubtitleServerTests: XCTestCase {
         XCTAssertTrue(lines.contains("event: subtitle"))
     }
 
+    /// İkinci ekran: sayfa ve akışı anahtarsız (eski TV geçişi açıkken de) ya da yanlış anahtarla açılmaz; doğru
+    /// anahtarla sayfa gelir, akış TV sayılmaz ve altyazı hedefi TV değilken de altyazıyı alır.
+    func testSecondScreenNeedsTheKeyAndAlwaysGetsSubtitles() async throws {
+        let server = SubtitleServer(port: 0, key: "dogru-anahtar", allowLegacy: true)
+        let port = try await server.start()
+        defer { server.stop() }
+        let base = "http://127.0.0.1:\(port)"
+        for target in ["/view", "/view?k=yanlis", "/events?viewer=second", "/events?viewer=second&k=yanlis"] {
+            let (_, response) = try await URLSession.shared.data(from: URL(string: base + target)!)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 401, target)
+        }
+        let (page, response) = try await URLSession.shared.data(from: URL(string: base + "/view?k=dogru-anahtar")!)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        XCTAssertTrue((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("text/html") == true)
+        let html = String(decoding: page, as: UTF8.self)
+        XCTAssertTrue(html.contains("/events?viewer=second&k="))
+        XCTAssertTrue(html.contains("wakeLock"))
+
+        server.sendsToTV = false
+        let (bytes, _) = try await URLSession.shared.bytes(from: URL(string: base + "/events?viewer=second&k=dogru-anahtar")!)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(server.connectedClients, 0)
+        XCTAssertFalse(server.hasLegacyClient)
+        server.sendSubtitle("Merhaba", durationMs: 4000)
+        server.clear()
+        let lines = try await readLines(bytes, until: "event: clear")
+        XCTAssertTrue(lines.contains { $0.hasPrefix("data:") && $0.contains("\"text\":\"Merhaba\"") })
+    }
+
+    func testSecondScreenAddressCarriesTheKey() {
+        XCTAssertEqual(SecondScreen.address(host: "192.168.1.20", port: 8787, key: "a-b_C9"), "http://192.168.1.20:8787/view?k=a-b_C9")
+        XCTAssertEqual(SecondScreen.address(host: "fe80::1", port: 8787, key: "k"), "http://[fe80::1]:8787/view?k=k")
+        XCTAssertNotNil(SecondScreen.qrImage(for: "http://192.168.1.20:8787/view?k=a-b_C9"))
+    }
+
     /// Şeffaflık tanımayan yayın programları için düz zemin (?bg=green) ve OBS'te kapalı ipucu; adresteki
     /// parametreler sayfayı değiştirmez, aynı dosya gelir.
     func testObsOverlayOffersSolidBackgroundAndHint() async throws {

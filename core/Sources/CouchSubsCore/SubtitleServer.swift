@@ -594,7 +594,8 @@ public final class SubtitleServer: @unchecked Sendable {
             // tarayıcılı TV'ler (Tizen 9.0 ve sonrası) başlık olmadan bilgisayara bağlanmayabilir. Eski TV'ler yok sayar.
             respondAndClose(connection, status: "204 No Content", data: Data(), type: nil, cors: cors + Self.preflightHeaders)
         } else if method == "GET" && path == "/events" {
-            let obs = request.parameter("viewer") == "obs"
+            // OBS katmanı ve ikinci ekran sayfası izleyicidir: TV sayılmaz, altyazı hedefi TV değilken de olayları alır.
+            let obs = request.parameter("viewer") == "obs" || request.parameter("viewer") == SecondScreen.viewer
             // Anahtarsız OBS sayfası eski bir OBS adresidir; TV uygulamasının eski olduğu anlamına gelmez.
             if access.legacy && !obs && !legacySeen {
                 legacySeen = true
@@ -604,6 +605,9 @@ public final class SubtitleServer: @unchecked Sendable {
             openStream(connection, viewer: obs, cors: cors)
         } else if method == "GET" && path == "/obs" {
             respondAndClose(connection, status: "200 OK", data: Self.obsOverlay, type: "text/html; charset=utf-8", cors: cors)
+        } else if method == "GET" && path == SecondScreen.path {
+            // Anahtar `authorize`'da denetlendi (anahtarsız istek 401 aldı).
+            respondAndClose(connection, status: "200 OK", data: SecondScreen.page, type: "text/html; charset=utf-8", cors: cors)
         } else if method == "GET" && path == "/hello" {
             // TV uygulaması ağdaki bilgisayarı bu yanıtla tanır (bağlantı kuyruğunda: sayaçlar doğrudan okunur).
             respondAndClose(connection, status: "200 OK", body: Self.helloBody(id: instanceId, tvs: clients.count - viewers.count), cors: cors)

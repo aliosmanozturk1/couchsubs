@@ -136,6 +136,7 @@ private struct SettingsPage: View {
             switch section {
             case .appearance:
                 SubtitleOutputCard(detailed: true)
+                SecondScreenCard()
                 AppearanceCard()
                 TVAppCard()
             case .dubbing: DubbingCard()

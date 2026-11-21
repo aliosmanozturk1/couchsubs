@@ -109,6 +109,7 @@ CouchSubs, Copyright (C) 2026 Sinan Yorulmaz. These adaptations are licensed und
 | SSH.NET (LG TV connection) | MIT | https://github.com/sshnet/SSH.NET |
 | BouncyCastle.Cryptography (used by SSH.NET) | MIT | https://github.com/bcgit/bc-csharp |
 | Microsoft.Extensions.Logging.Abstractions (used by SSH.NET) | MIT | https://github.com/dotnet/runtime |
+| QRCoder 1.6.0 (QR code of the "Show on another device" address) | MIT | https://github.com/codebude/QRCoder |
 | ONNX Runtime 1.24.4 (`onnxruntime.dll`, `Microsoft.ML.OnnxRuntime.DirectML`; advanced text recognition) | MIT | https://github.com/microsoft/onnxruntime |
 | DirectML 1.15.4 (`DirectML.dll`, from the `Microsoft.AI.DirectML` package; GPU for advanced text recognition) | Microsoft Software License Terms (Microsoft DirectX Machine Learning) | https://www.nuget.org/packages/Microsoft.AI.DirectML/1.15.4 |
 | Microsoft Visual C++ 2015–2022 runtime (`vcruntime140*.dll`, `msvcp140*.dll`, `concrt140.dll`; needed by CTranslate2) | Microsoft Visual Studio license terms, "Distributable Code" (redist.txt) | https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files |
@@ -153,6 +154,14 @@ synthetic and are not recordings of real people.
 ## Mac app
 
 Text recognition (Vision) and translation (Translation framework) are provided by macOS.
+
+## Android app
+
+| Component | License | Source |
+|---|---|---|
+| ZXing core 3.5.3 (`com.google.zxing:core`; QR code of the "Show on another device" address) | Apache-2.0 | https://github.com/zxing/zxing |
+
+The Mac and iPhone apps draw the same QR code with the system's Core Image (`CIQRCodeGenerator`).
 
 ## Phone apps: Xbox home streaming (Beta)
 

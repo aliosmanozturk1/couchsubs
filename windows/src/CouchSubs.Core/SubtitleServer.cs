@@ -578,12 +578,15 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
             if (method == "OPTIONS") await RespondAndClose(tcp, "204 No Content", cors: cors + PreflightHeaders);
             else if (method == "GET" && path == "/events")
             {
-                var obs = request.Parameter("viewer") == "obs";
+                // OBS katmanı ve ikinci ekran sayfası izleyicidir: TV sayılmaz, altyazı hedefi TV değilken de olayları alır.
+                var obs = request.Parameter("viewer") is "obs" or SecondScreen.Viewer;
                 // Anahtarsız OBS sayfası eski bir OBS adresidir; TV uygulamasının eski olduğu anlamına gelmez.
                 if (legacy && !obs && Interlocked.Exchange(ref legacySeen, 1) == 0) LegacyClientConnected?.Invoke();
                 await OpenStream(tcp, obs, cors, checkedKey, obs ? null : ParseHdmiPort(request.Parameter("hdmi")));
             }
             else if (method == "GET" && path == "/obs") await RespondAndClose(tcp, ObsOverlay, "text/html; charset=utf-8", cors);
+            // Anahtar Authorize'da denetlendi (anahtarsız istek 401 aldı).
+            else if (method == "GET" && path == SecondScreen.Path) await RespondAndClose(tcp, SecondScreen.Page, "text/html; charset=utf-8", cors);
             // TV uygulaması ağdaki bilgisayarı bu yanıtla tanır.
             else if (method == "GET" && path == "/hello") await RespondAndClose(tcp, "200 OK", HelloBody(InstanceId, ConnectedClients), cors);
             else if (method == "GET" && FindFile(path) is { } file) await RespondAndClose(tcp, file.Data, file.Type, cors);

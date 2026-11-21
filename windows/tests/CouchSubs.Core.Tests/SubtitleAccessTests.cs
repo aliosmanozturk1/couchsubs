@@ -33,6 +33,23 @@ public class SubtitleAccessTests
     public void RejectsAmbiguousHeaders(string headers) =>
         Assert.Null(SubtitleAccess.Parse("GET /events HTTP/1.1\r\n" + headers));
 
+    /// İkinci ekran eski TV'lere tanınan anahtarsız geçişten yararlanmaz (Mac ve Android'de aynı durumlar).
+    [Theory]
+    [InlineData("/view", 401)]
+    [InlineData("/view?k=yanlis", 401)]
+    [InlineData("/view?k=anahtar", 200)]
+    [InlineData("/events?viewer=second", 401)]
+    [InlineData("/events?viewer=second&k=anahtar", 200)]
+    [InlineData("/events", 200)]
+    [InlineData("/events?viewer=obs", 200)]
+    public void SecondScreenAlwaysNeedsTheKey(string target, int status)
+    {
+        var request = SubtitleAccess.Parse($"GET {target} HTTP/1.1\r\nHost: 192.168.1.20:8787")!;
+        Assert.Equal(status, SubtitleAccess.Authorize(request, "anahtar", true, out _));
+        var same = SubtitleAccess.Parse("GET /events?viewer=second&k=anahtar HTTP/1.1\r\nHost: 192.168.1.20:8787\r\nOrigin: http://192.168.1.20:8787")!;
+        Assert.Equal(200, SubtitleAccess.Authorize(same, "anahtar", true, out _));
+    }
+
     [Fact]
     public void RandomKeysAndDuplicateQuery()
     {

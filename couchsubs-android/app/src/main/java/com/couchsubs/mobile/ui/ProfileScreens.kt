@@ -217,6 +217,9 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
         settings.engine = choice
     }
     ScreenScaffold(top = { TopBar(stringResource(R.string.settings), onBack = onBack) }) {
+        // Erişim anahtarı yenilenince ikinci ekran adresi ve QR kodu da yenilenir.
+        var keyVersion by remember { mutableStateOf(0) }
+        SecondScreenTile(version = keyVersion)
         Tile(Modifier.fillMaxWidth()) {
             // OBS katmanı adresi (Mac ve Windows'taki gibi adres görünür ve kopyalanır; telefonda ayrıca paylaşılır).
             var address by remember { mutableStateOf(TranslationService.viewerAddress()) }
@@ -247,7 +250,8 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             androidx.compose.material3.TextButton(onClick = {
                 TranslationService.renewAccessKey()
                 address = TranslationService.viewerAddress()
-            }) { Text(stringResource(R.string.tv_key_renew)) }
+                keyVersion++
+            }){ Text(stringResource(R.string.tv_key_renew)) }
             if (com.couchsubs.mobile.service.LiveState.status.collectAsState().value.legacyTv) Text(stringResource(R.string.tv_legacy_warning))
             TileLabel(stringResource(R.string.settings_engine))
             Segmented(listOf(stringResource(R.string.engine_free_short), "DeepL", "Gemini", stringResource(R.string.engine_other)), segment) { index ->

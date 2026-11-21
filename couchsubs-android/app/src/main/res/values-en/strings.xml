@@ -626,5 +626,8 @@
     <string name="tv_legacy_warning">The TV app is old. Update it.</string>
     <string name="obs_overlay">OBS overlay</string>
     <string name="share">Share</string>
+    <string name="second_screen_title">Show on another device</string>
+    <string name="second_screen_caption">Scan the code with the camera of a phone or tablet on the same Wi-Fi. While translating, the subtitles appear large in its browser; no app or internet needed.</string>
+    <string name="second_screen_offline">Connect to Wi-Fi to show subtitles on another device.</string>
     <string name="tv_pair_expired">The pairing request expired. Try again on the TV.</string>
 </resources>

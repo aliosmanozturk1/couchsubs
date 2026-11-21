@@ -96,11 +96,17 @@ public enum SubtitleAccess {
         guard originAllowed(request) else { return (403, false) }
         if request.path == "/hello" || request.path == "/obs" || request.path == "/pair" { return (200, false) }
         let supplied = request.parameter("k")
-        if supplied == nil && allowLegacy && (request.origin == nil || packagedOrigin(request.origin!)) { return (200, true) }
+        // İkinci ekran (sayfası ve akışı) eski TV'lere tanınan anahtarsız geçişten yararlanmaz: aynı ağdaki herkes açamaz.
+        if supplied == nil && allowLegacy && !isSecondScreen(request) && (request.origin == nil || packagedOrigin(request.origin!)) { return (200, true) }
         guard let supplied else { return (401, false) }
         // CryptoKit doğrulaması sabit zamanlı karşılaştırır; sıradan String == kullanılmaz.
         let secret = SymmetricKey(data: Data(key.utf8))
         let code = HMAC<SHA256>.authenticationCode(for: Data(key.utf8), using: secret)
         return (HMAC<SHA256>.isValidAuthenticationCode(code, authenticating: Data(supplied.utf8), using: secret) ? 200 : 401, false)
+    }
+
+    /// Başka bir cihazın tarayıcısında açılan altyazı sayfası (`/view`) ya da onun akışı (`/events?viewer=second`).
+    public static func isSecondScreen(_ request: Request) -> Bool {
+        request.path == SecondScreen.path || request.path == "/events" && request.parameter("viewer") == SecondScreen.viewer
     }
 }

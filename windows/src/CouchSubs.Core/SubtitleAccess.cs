@@ -93,11 +93,16 @@ public static class SubtitleAccess
         if (!OriginAllowed(request)) return 403;
         if (request.Path is "/hello" or "/obs" or "/pair") return 200;
         var supplied = request.Parameter("k");
-        if (supplied is null && allowLegacy && (request.Origin is null || PackagedOrigin(request.Origin)))
+        // İkinci ekran (sayfası ve akışı) eski TV'lere tanınan anahtarsız geçişten yararlanmaz: aynı ağdaki herkes açamaz.
+        if (supplied is null && allowLegacy && !IsSecondScreen(request) && (request.Origin is null || PackagedOrigin(request.Origin)))
         {
             legacy = true;
             return 200;
         }
         return supplied is not null && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes(supplied)) ? 200 : 401;
     }
+
+    /// <summary>Başka bir cihazın tarayıcısında açılan altyazı sayfası (<c>/view</c>) ya da onun akışı (<c>/events?viewer=second</c>).</summary>
+    public static bool IsSecondScreen(Request request) =>
+        request.Path == SecondScreen.Path || request.Path == "/events" && request.Parameter("viewer") == SecondScreen.Viewer;
 }

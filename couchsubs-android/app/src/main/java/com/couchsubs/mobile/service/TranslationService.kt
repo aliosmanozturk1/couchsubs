@@ -150,12 +150,20 @@ class TranslationService : Service() {
             }
         }
         fun viewerAddress(): String? {
-            val host = java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
-                .filter { it.isUp && !it.isLoopback }.sortedBy { if (it.name.startsWith("wlan")) 0 else 1 }
-                .flatMap { java.util.Collections.list(it.inetAddresses) }
-                .firstOrNull { it is java.net.Inet4Address && com.couchsubs.mobile.core.SubtitleAccess.isLocalPeer(it) }?.hostAddress ?: return null
+            val host = localHost() ?: return null
             return "http://$host:${current?.subtitlePort ?: 8787}/obs?k=${Services.settings.subtitleAccessKey}"
         }
+        /** "Başka bir cihazda göster" adresi (QR kodu da bundan): telefonun ev ağındaki adresi ve erişim anahtarı. */
+        fun secondScreenAddress(): String? {
+            val host = localHost() ?: return null
+            return com.couchsubs.mobile.core.SecondScreen.address(host, current?.subtitlePort ?: 8787, Services.settings.subtitleAccessKey)
+        }
+        private fun localHost(): String? = runCatching {
+            java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())
+                .filter { it.isUp && !it.isLoopback }.sortedBy { if (it.name.startsWith("wlan")) 0 else 1 }
+                .flatMap { java.util.Collections.list(it.inetAddresses) }
+                .firstOrNull { it is java.net.Inet4Address && com.couchsubs.mobile.core.SubtitleAccess.isLocalPeer(it) }?.hostAddress
+        }.getOrNull()
         fun renewAccessKey() {
             val key = Services.settings.renewSubtitleAccessKey()
             liveServer?.rotateKey(key)
@@ -464,7 +472,8 @@ class TranslationService : Service() {
         glossaryInUse = glossary
         val free = MlKitTranslator(cache(MlKitTranslator.ENGINE_ID), glossary).also { freeTranslator = it }
         val translator = engineTranslator(free)
-        val subtitleServer = SubtitleServer(instanceId = installationId(this), key = settings.subtitleAccessKey, obsOverlay = assets.open("obs-overlay.html").bufferedReader().use { it.readText() }).also { server = it }
+        val subtitleServer = SubtitleServer(instanceId = installationId(this), key = settings.subtitleAccessKey, obsOverlay = assets.open("obs-overlay.html").bufferedReader().use { it.readText() },
+            secondScreenPage = assets.open("second-screen.html").bufferedReader().use { it.readText() }).also { server = it }
         subtitleServer.pairing.setSession(true)
         subtitleServer.onPairingRequest = { _ ->
             Log.i(TAG, "TV eşleştirme istedi; onay bekleniyor")

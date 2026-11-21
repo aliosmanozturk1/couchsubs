@@ -19,6 +19,9 @@
                 <StackPanel>
                     <TextBlock Text="{t:T 'Subtitle appearance'}" Style="{StaticResource DisplayText}" Margin="0,0,0,12" />
                     <local:SubtitleOutputCard x:Name="OutputCard" Detailed="True" Margin="0,0,0,12" />
+                    <c:Card Margin="0,0,0,12">
+                        <local:SecondScreenPanel x:Name="SecondScreenCard" />
+                    </c:Card>
                     <!-- Görünüm ayarları bilgisayar ekranındaki pencereye de uygulanır. -->
                     <c:Card x:Name="StyleCard" Title="{t:T 'On the TV'}">
                         <StackPanel>

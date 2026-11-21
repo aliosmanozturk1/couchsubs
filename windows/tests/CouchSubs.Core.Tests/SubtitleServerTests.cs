@@ -279,6 +279,44 @@ public class SubtitleServerTests
         Assert.Contains("event: subtitle", await ReadLines(reader, "event: clear"));
     }
 
+    /// İkinci ekran: sayfa ve akışı anahtarsız (eski TV geçişi açıkken de) ya da yanlış anahtarla açılmaz; doğru
+    /// anahtarla sayfa gelir, akış TV sayılmaz ve altyazı hedefi TV değilken de altyazıyı alır (Mac ve Android ile aynı).
+    [Fact]
+    public async Task SecondScreenNeedsTheKeyAndAlwaysGetsSubtitles()
+    {
+        using var server = new SubtitleServer(0, key: "dogru-anahtar", allowLegacy: true) { SendsToTv = false };
+        var port = await server.StartAsync();
+        var root = $"http://127.0.0.1:{port}";
+        foreach (var target in new[] { "/view", "/view?k=yanlis", "/events?viewer=second", "/events?viewer=second&k=yanlis" })
+        {
+            using var denied = await Http.GetAsync(root + target, HttpCompletionOption.ResponseHeadersRead);
+            Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
+        }
+        using var page = await Http.GetAsync(root + "/view?k=dogru-anahtar");
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        Assert.StartsWith("text/html", page.Content.Headers.ContentType?.ToString());
+        Assert.Contains("/events?viewer=second&k=", await page.Content.ReadAsStringAsync());
+
+        using var response = await Http.GetAsync(root + "/events?viewer=second&k=dogru-anahtar", HttpCompletionOption.ResponseHeadersRead);
+        await Task.Delay(200);
+        Assert.Equal(0, server.ConnectedClients);
+        Assert.False(server.HasLegacyClient);
+        server.SendSubtitle("Merhaba", 4000);
+        server.Clear();
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+        Assert.Contains(await ReadLines(reader, "event: clear"), line => line.StartsWith("data:") && line.Contains("\"text\":\"Merhaba\""));
+    }
+
+    [Fact]
+    public void SecondScreenAddressCarriesTheKey()
+    {
+        Assert.Equal("http://192.168.1.20:8787/view?k=a-b_C9", SecondScreen.Address("192.168.1.20", 8787, "a-b_C9"));
+        Assert.Equal("http://[fe80::1]:8787/view?k=k", SecondScreen.Address("fe80::1", 8787, "k"));
+        var modules = SecondScreen.QrModules("http://192.168.1.20:8787/view?k=a-b_C9");
+        Assert.True(modules.Length >= 21);
+        Assert.All(modules, row => Assert.Equal(modules.Length, row.Length));
+    }
+
     /// Altyazı yalnız bilgisayar ekranındayken TV'ye altyazı gitmez; OBS katmanı ve dublaj sesi gitmeye devam eder.
     [Fact]
     public async Task SubtitlesSkipTvsWhenTvOutputIsOff()
