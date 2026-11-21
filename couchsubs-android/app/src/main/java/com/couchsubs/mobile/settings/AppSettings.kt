@@ -305,6 +305,21 @@ class AppSettings(context: Context) : AreaStore {
         get() = prefs.getBoolean("fastSubtitleDetection", false)
         set(value) = prefs.edit().putBoolean("fastSubtitleDetection", value).apply()
 
+    /** "Çeviriyi Türkçe seslendir" (Türkçe dublaj; Mac/iPhone settings.dubbing.enabled); varsayılan kapalı. */
+    var dubbingEnabled: Boolean
+        get() = prefs.getBoolean("dubbing.enabled", false)
+        set(value) = prefs.edit().putBoolean("dubbing.enabled", value).apply()
+
+    /** "Sesi çal": TV ya da bu telefon; varsayılan TV (masaüstüyle aynı). */
+    var dubbingOutput: com.couchsubs.mobile.core.DubbingOutput
+        get() = com.couchsubs.mobile.core.DubbingOutput.of(prefs.getString("dubbing.output", null))
+        set(value) = prefs.edit().putString("dubbing.output", value.id).apply()
+
+    /** Karakter sesleri (JSON, bkz. VoiceCast.toJson). */
+    var dubbingCast: String?
+        get() = prefs.getString("dubbing.cast", null)
+        set(value) = prefs.edit().putString("dubbing.cast", value).apply()
+
     /**
      * "Bozuk okunan satır için bekleme" (ms): sözlükte olmayan sözcüklerle okunan satırın daha iyi okuması için en çok bu
      * kadar beklenir (Windows MisreadWaitMs, Mac/iPhone misreadWaitMs); önerilen 800.

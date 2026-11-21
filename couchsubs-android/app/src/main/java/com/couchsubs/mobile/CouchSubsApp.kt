@@ -90,7 +90,15 @@ object Services {
         historyWriter.execute { runCatching { history.save(file) } }
     }
 
+    /** Türkçe dublaj (telefonun kendi sesi; iPhone PhoneDubber ile aynı). Ayarlardaki "Dinle" çeviri dışında da çalar. */
+    private val dubberHolder = lazy { com.couchsubs.mobile.service.PhoneDubber(application) }
+    val dubber: com.couchsubs.mobile.service.PhoneDubber by dubberHolder
+    /** Dublaj hiç kullanılmadıysa ses motoru kurulmaz (oturum sonunda durdurmak için kurulmasın). */
+    val dubberIfCreated: com.couchsubs.mobile.service.PhoneDubber? get() = if (dubberHolder.isInitialized()) dubber else null
+    private lateinit var application: Application
+
     fun init(app: Application) {
+        application = app
         historyFile = File(app.filesDir, "history.json").also { file ->
             historyWriter.execute {
                 history = com.couchsubs.mobile.core.SubtitleHistory.load(file)

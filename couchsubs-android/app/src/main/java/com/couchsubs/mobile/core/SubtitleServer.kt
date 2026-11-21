@@ -358,6 +358,27 @@ class SubtitleServer(
         onEvent?.invoke(SubtitleEvent.ScreenCleared)
     }
 
+    /** Dublaj sesleri: `/speech/<n>.wav` → WAV; son 16 ses tutulur (Swift SubtitleServer.sendSpeech ile aynı). */
+    private val speechFiles = LinkedHashMap<String, ByteArray>()
+    private var speechNumber = 0
+
+    /** Dublaj sesini TV'ye gönderir: ses `/speech/<n>.wav` adresinden verilir, `speech` olayı adresi bildirir. */
+    fun sendSpeech(wav: ByteArray, durationMs: Int) {
+        val path = synchronized(lock) {
+            speechNumber += 1
+            val path = "/speech/$speechNumber.wav"
+            speechFiles[path] = wav
+            while (speechFiles.size > 16) speechFiles.remove(speechFiles.keys.first())
+            path
+        }
+        broadcast(frame("speech", mapOf("duration" to durationMs, "url" to path)))
+    }
+
+    /** TV'de çalan dublajı durdurur (yeni altyazı, oturum sonu). */
+    fun stopSpeech() {
+        broadcast(frame("speech-stop", emptyMap()))
+    }
+
     fun sendStyle(style: SubtitleStyle) {
         synchronized(lock) { lastStyle = style }
         broadcast(styleFrame(style, setApart), subtitle = true)
@@ -427,6 +448,8 @@ class SubtitleServer(
                 // Anahtar authorize'da denetlendi (anahtarsız istek 401 aldı).
                 method == "GET" && path == SecondScreen.PATH && secondScreenPage.isNotEmpty() ->
                     respondAndClose(socket, "200 OK", secondScreenPage, cors, "text/html; charset=utf-8")
+                method == "GET" && path.startsWith("/speech/") && synchronized(lock) { speechFiles.containsKey(path) } ->
+                    respondAndClose(socket, "200 OK", synchronized(lock) { speechFiles[path] } ?: ByteArray(0), cors, "audio/wav")
                 method == "GET" && path == "/hello" -> respondAndClose(socket, "200 OK", helloBody(instanceId, connectedClients), cors)
                 else -> respondAndClose(socket, "404 Not Found", cors = cors)
             }
@@ -449,8 +472,10 @@ class SubtitleServer(
         return null
     }
 
-    private fun respondAndClose(socket: Socket, status: String, body: String = "", cors: String = "", type: String = "application/json") {
-        val data = body.toByteArray(Charsets.UTF_8)
+    private fun respondAndClose(socket: Socket, status: String, body: String = "", cors: String = "", type: String = "application/json") =
+        respondAndClose(socket, status, body.toByteArray(Charsets.UTF_8), cors, type)
+
+    private fun respondAndClose(socket: Socket, status: String, data: ByteArray, cors: String, type: String) {
         val head = "HTTP/1.1 $status\r\n${cors}Content-Type: $type\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nContent-Length: ${data.size}\r\nConnection: close\r\n\r\n"
         socket.getOutputStream().apply { write(head.toByteArray(Charsets.US_ASCII)); write(data); flush() }
         closeQuietly(socket)

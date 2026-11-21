@@ -416,6 +416,7 @@ struct SettingsScreen: View {
                         .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
                 }
             }
+            DubbingTile()
             AreaProfileTile(areas: model.gameAreas)
             GameProfilesTile(areas: model.gameAreas)
             AreaTile()

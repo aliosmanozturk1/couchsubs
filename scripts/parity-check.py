@@ -3,8 +3,8 @@
 # Platform eşitliği denetimi (KALICI KURAL: Windows = Mac, Android = iPhone). İki karşılaştırma yapar:
 #  1. Masaüstü ayarları: Windows UserSettings kaydının (windows/src/CouchSubs.Shell/Contracts.cs) alanları ile Mac'in
 #     kullandığı ortak UserSettings'in (core/.../AppSettings.swift) alanları. Ad büyük/küçük harf gözetmeden eşlenir.
-#  2. Telefon ayar ekranları: iPhone Profil/Ayarlar ekranının (couchsubs-ios/CouchSubs/UI/Profile.swift) kullandığı
-#     Localizable.xcstrings anahtarları ile Android Profil/Ayarlar ekranının (ui/ProfileScreens.kt) kullandığı
+#  2. Telefon ayar ekranları: iPhone Profil/Ayarlar ekranlarının (couchsubs-ios/CouchSubs/UI/Profile.swift, DubbingTile.swift) kullandığı
+#     Localizable.xcstrings anahtarları ile Android Profil/Ayarlar ekranlarının (ui/ProfileScreens.kt, DubbingTile.kt) kullandığı
 #     strings.xml metinleri. Eşleme İngilizce metinle yapılır (Android values-en metni = xcstrings anahtarı).
 # Bir tarafta olup öbüründe olmayan her şey ya eşlenmeli ya da scripts/parity-allowlist.json'da gerekçesiyle yazılmalı.
 # İzin listesindeki bir kayıt artık fark değilse o da hatadır (liste eskimesin).
@@ -17,8 +17,10 @@ ALLOWLIST = ROOT / "scripts" / "parity-allowlist.json"
 CATALOG = ROOT / "mac" / "CouchSubs" / "Resources" / "Localizable.xcstrings"
 WIN_SETTINGS = ROOT / "windows" / "src" / "CouchSubs.Shell" / "Contracts.cs"
 CORE_SETTINGS = ROOT / "core" / "Sources" / "CouchSubsCore" / "Pipeline" / "AppSettings.swift"
-IOS_SCREENS = [ROOT / "couchsubs-ios" / "CouchSubs" / "UI" / "Profile.swift"]
-ANDROID_SCREENS = [ROOT / "couchsubs-android" / "app" / "src" / "main" / "java" / "com" / "couchsubs" / "mobile" / "ui" / "ProfileScreens.kt"]
+IOS_SCREENS = [ROOT / "couchsubs-ios" / "CouchSubs" / "UI" / name for name in ("Profile.swift", "DubbingTile.swift")] + [
+    ROOT / "mac" / "CouchSubs" / "UI" / "DubbingVoiceText.swift"]
+ANDROID_SCREENS = [ROOT / "couchsubs-android" / "app" / "src" / "main" / "java" / "com" / "couchsubs" / "mobile" / "ui" / name
+                   for name in ("ProfileScreens.kt", "DubbingTile.kt")]
 ANDROID_EN = ROOT / "couchsubs-android" / "app" / "src" / "main" / "res" / "values-en" / "strings.xml"
 
 

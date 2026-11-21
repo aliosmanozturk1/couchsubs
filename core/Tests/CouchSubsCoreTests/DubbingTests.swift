@@ -140,3 +140,16 @@ final class DubbingModelTests: XCTestCase {
         XCTAssertTrue(local.hasSuffix("capitalize_first_letter: false\n"))
     }
 }
+
+/// Telefonlarda (ve Windows'ta "Hızlı" dublajda) cihazın kendi sesiyle karakterler ton ve hızla ayrılır; değerler
+/// Windows WindowsVoiceModel.Tone ve Android DubbingVoice ile aynı.
+final class SystemVoiceToneTests: XCTestCase {
+    func testTonesMatchWindowsAndAndroid() {
+        let tones = DubbingVoice.allCases.map { [$0.systemTone.pitch, $0.systemTone.rate] }
+        XCTAssertEqual(tones, [[1.55, 1.1], [1.4, 1.0], [1.48, 1.05], [0.85, 0.95], [1.05, 1.15], [0.95, 1.05]])
+    }
+
+    func testPreparedTextForTheSystemVoiceHasNoEmotionTag() {
+        XCTAssertEqual(SpeechText.prepare("Geri çekil!"), "geri çekil!")
+    }
+}

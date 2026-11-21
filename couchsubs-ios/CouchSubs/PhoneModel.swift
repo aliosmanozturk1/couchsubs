@@ -65,6 +65,7 @@ final class PhoneModel: ObservableObject {
                 || settings.aiInstruction != oldValue.aiInstruction
             if translationChanged { Task { await refreshTranslatorStatus() } }
             if settings.readsGamePhone != oldValue.readsGamePhone { configureGamePhone() }
+            if settings.dubbing != oldValue.dubbing { dubbingSettingsChanged() }
             if settings.misreadWaitMs != oldValue.misreadWaitMs || settings.partialWaitMs != oldValue.partialWaitMs {
                 pipeline?.applyWaits(from: settings)
             }
@@ -755,6 +756,7 @@ final class PhoneModel: ObservableObject {
         }
         healthTask?.cancel()
         healthTask = nil
+        dubber?.stop()
         tvWaitTask?.cancel()
         tvWaitTask = nil
         tvWaitingLong = false
@@ -999,6 +1001,7 @@ final class PhoneModel: ObservableObject {
         pipeline.onMissionChanged = { [weak self] region in self?.missionRegion = region }
         pipeline.skipsTurkish = settings.targetLanguage == "tr"
         pipeline.watchSubtitleBackground = settings.watchSubtitleBackground
+        pipeline.onSpeech = { [weak self] lines in self?.speak(lines) }
         pipeline.onPair = { [weak self, weak pipeline] source, translation in
             self?.lastSource = source
             self?.lastTranslation = translation
@@ -1806,6 +1809,38 @@ final class PhoneModel: ObservableObject {
     func serverAddress(for tv: LGTV) -> String {
         "http://\(NetworkAddress.near(tv.host.isEmpty ? "192.168.1.1" : tv.host) ?? "127.0.0.1"):\(serverPort)"
     }
+
+    // MARK: - Türkçe dublaj (telefonun kendi sesi; masaüstündeki "Hızlı" dublajla aynı)
+
+    private var dubber: PhoneDubber?
+
+    private func makeDubber() -> PhoneDubber {
+        if let dubber { return dubber }
+        let dubber = PhoneDubber(server: { [unowned self] in self.server }, settings: settings.dubbing)
+        dubber.onCastChanged = { [weak self] cast in self?.settings.dubbing.cast = cast }
+        self.dubber = dubber
+        return dubber
+    }
+
+    private func speak(_ lines: [SpokenLine]) {
+        guard settings.dubbing.enabled else { return }
+        makeDubber().speak(lines)
+    }
+
+    private func dubbingSettingsChanged() {
+        guard let dubber else { return }
+        dubber.cast = settings.dubbing.cast
+        if dubber.output != settings.dubbing.output {
+            dubber.stop()
+            dubber.output = settings.dubbing.output
+        }
+        if !settings.dubbing.enabled { dubber.stop() }
+    }
+
+    /// Ayarlardaki "Dinle".
+    func previewVoice(_ voice: DubbingVoice) { makeDubber().preview(voice) }
+
+    func assignVoice(_ voice: DubbingVoice, to name: String) { settings.dubbing.cast.assign(voice, to: name) }
 }
 
 /// Son PS5 karesi; yalnız bölge önizlemesi izler (her karede bütün ekranlar yeniden çizilmesin).

@@ -594,6 +594,11 @@ class TranslationService : Service() {
             onPackMissed = { text -> linePool.offer(text) }
             onPairShown = { pair ->
                 LiveState.shown(pair, pair.packId?.let { packTitles?.get(it) ?: it })
+                // Türkçe dublaj (iPhone ve masaüstüyle aynı): yeni altyazının cümleleri telefonun Türkçe sesiyle okunur.
+                if (settings.dubbingEnabled) Services.dubber.apply {
+                    server = this@TranslationService.server
+                    onCastChanged = { json -> settings.dubbingCast = json }
+                }.speak(com.couchsubs.mobile.core.SpokenLine.of(pair.source, pair.translation), settings.dubbingCast, settings.dubbingOutput)
                 if (replacement == null) PlayedGame.noteLine(pair.origin == "paket", library)
                 Services.addToHistory(pair.source, pair.translation,
                     if (pair.origin == "paket") com.couchsubs.mobile.core.SubtitleHistory.PACK else com.couchsubs.mobile.core.SubtitleHistory.ENGINE)
@@ -1167,6 +1172,8 @@ class TranslationService : Service() {
     override fun onDestroy() {
         synchronized(lifecycle) { destroyed = true }
         Services.onLocalPacksChanged = null
+        Services.dubberIfCreated?.stop()
+        Services.dubberIfCreated?.server = null
         settings.translating = false
         if (startedAt > 0) settings.lastSessionMs = System.currentTimeMillis() - startedAt
         if (startedAt > 0) Telemetry.event(Telemetry.SESSION_STOP, "seconds" to (System.currentTimeMillis() - startedAt) / 1000,

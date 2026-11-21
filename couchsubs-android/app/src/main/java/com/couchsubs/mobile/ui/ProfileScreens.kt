@@ -425,6 +425,7 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
         Text(stringResource(R.string.settings_screen_on_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
         BackgroundLimitNote()
         // Altyazı alanı ve ek alanlar (iPhone ile aynı sırada: görünümden sonra).
+        DubbingTile()
         AreaProfileTile()
         GameProfilesTile()
         AreaTile()

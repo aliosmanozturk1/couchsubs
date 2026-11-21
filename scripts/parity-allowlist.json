@@ -44,7 +44,8 @@
       "Signed in": "Connected",
       "Xbox and connection": "Xbox",
       "Save": "Save and test",
-      "CouchSubs is free and open source (AGPL-3.0). Remote Play uses chiaki-ng (AGPL-3.0).": "CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera"
+      "CouchSubs is free and open source (AGPL-3.0). Remote Play uses chiaki-ng (AGPL-3.0).": "CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera",
+      "No Turkish voice is installed on this phone. Add one in Settings › Accessibility › Spoken Content › Voices › Turkish.": "No Turkish voice is installed on this phone. Add Turkish in the phone's text-to-speech settings (Settings › Accessibility › Text-to-speech output)."
     },
     "iphone_only": {
       "%@ PS5 · %@ TV": "Yerleşim farkı: iPhone Profil'in 'Cihazlar' kutusu; Android aynı bilgiyi PS5 ve TV kutularında ayrı gösterir.",

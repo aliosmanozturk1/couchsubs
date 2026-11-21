@@ -28,6 +28,15 @@ public class SpeechTextTests
         Assert.Equal("ne? kapı açıldı!", SpeechText.Prepare("Ne?! Kapı açıldı!!"));
     }
 
+    /// <summary>Hızlı dublajda (Windows'un kendi sesi) duygu etiketi okunmaz.</summary>
+    [Fact]
+    public void SystemVoiceDoesNotReadTheEmotionTag()
+    {
+        Assert.Equal("geri çekil!", SpeechText.WithoutEmotion(SpeechText.Prepare("Geri çekil!", SpeechEmotion.Angry)));
+        Assert.Equal("[not] bir etiket", SpeechText.WithoutEmotion("[not] bir etiket"));
+        Assert.Equal("düz cümle.", SpeechText.WithoutEmotion("düz cümle."));
+    }
+
     [Fact]
     public void NumbersAreSpelledOut()
     {

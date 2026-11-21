@@ -74,16 +74,3 @@ private struct VoiceRow: View {
         }
     }
 }
-
-extension DubbingVoice {
-    var label: LocalizedStringKey {
-        switch self {
-        case .female1: "Woman 1 (bright)"
-        case .female2: "Woman 2 (warm)"
-        case .female3: "Woman 3 (confident)"
-        case .male1: "Man 1 (calm, deep)"
-        case .male2: "Man 2 (energetic)"
-        case .male3: "Man 3 (crisp)"
-        }
-    }
-}
