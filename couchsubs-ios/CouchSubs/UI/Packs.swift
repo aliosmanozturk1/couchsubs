@@ -44,7 +44,7 @@ struct PacksScreen: View {
                     .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
             }
             BentoGrid {
-                ForEach(model.installedPacks) { pack in
+                ForEach(GameCatalog.packShelf(model.installedPacks)) { pack in
                     packTile(pack)
                 }
             }
@@ -110,11 +110,11 @@ struct PacksScreen: View {
     }
 
     /// Paket karosu: dokununca paket açılır ya da kapanır (Android ile aynı). Kapalıysa soluk ve "Kapalı"; son satırı
-    /// veren paketse çerçeveli ve "Oynanıyor".
-    private func packTile(_ pack: GamePackLibrary.Info) -> some View {
-        let on = !model.disabledPacks.contains(pack.id)
-        let playing = model.isRunning && model.packInUse == pack.title
-        return Button { model.togglePack(pack.id) } label: {
+    /// veren paketse çerçeveli ve "Oynanıyor". Oyunun "(ek satırlar)" paketi asıl paketin karosundadır, birlikte değişir.
+    private func packTile(_ pack: PackShelfItem) -> some View {
+        let on = pack.packIds.allSatisfy { !model.disabledPacks.contains($0) }
+        let playing = model.isRunning && model.packInUse.map { pack.titles.contains($0) } == true
+        return Button { model.setPacks(pack.packIds, on: !on) } label: {
             Tile(emphasis: playing ? .selected : .none) {
                 HStack(alignment: .top) {
                     GameMonogram(code: Self.code(pack.title))
@@ -149,8 +149,9 @@ struct PacksScreen: View {
             : String(format: String(localized: "%lld lines"), entries)
     }
 
-    /// "6 oyun · 517 bin satır"
+    /// "6 oyun · 517 bin satır" (oyunun ek satırlar paketi ayrı oyun sayılmaz)
     static func summary(_ packs: [GamePackLibrary.Info]) -> String {
-        String(format: String(localized: "%lld games"), packs.count) + " · " + linesText(packs.reduce(0) { $0 + $1.entries })
+        String(format: String(localized: "%lld games"), GameCatalog.packShelf(packs).count) + " · "
+            + linesText(packs.reduce(0) { $0 + $1.entries })
     }
 }

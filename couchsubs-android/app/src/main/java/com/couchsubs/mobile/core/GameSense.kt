@@ -192,4 +192,38 @@ object GameCatalog {
     /** Paket listesinden oyun adları (ortak havuz paketi ve asıl paketi olan oyunun "(ek satırlar)" paketi oyun değildir). */
     fun packGames(packs: List<GamePackLibrary.Info>): List<String> =
         packs.filter { it.id != GameSense.GENERAL_PACK && !it.title.endsWith("(ek satırlar)") }.map { it.title }
+
+    /** Havuzdan her gece üretilen ek paketin adındaki ek (server/pool/src/games.js EXTRA_SUFFIX). */
+    const val EXTRA_SUFFIX = " (ek satırlar)"
+
+    /**
+     * Paketler ekranındaki karolar: oyunun asıl paketi ve havuzdan gelen "(ek satırlar)" paketi tek karoda birleşir
+     * (#353: RDR2 ve Spider-Man 2 iki kez görünüyordu). Asıl paketi olmayan ek paket kendi karosunda kalır. Sıra korunur.
+     * Mac/iPhone ve Windows'taki GameCatalog.packShelf ile aynı.
+     */
+    fun <T> packShelf(packs: List<T>, id: (T) -> String, title: (T) -> String, entries: (T) -> Int): List<PackShelfItem> {
+        val items = mutableListOf<PackShelfItem>()
+        val index = HashMap<String, Int>()
+        for (pack in packs.filter { !title(it).endsWith(EXTRA_SUFFIX) }) {
+            index.putIfAbsent(GameName.key(title(pack)), items.size)
+            items += PackShelfItem(id(pack), title(pack), entries(pack), listOf(id(pack)), listOf(title(pack)))
+        }
+        for (pack in packs.filter { title(it).endsWith(EXTRA_SUFFIX) }) {
+            val at = index[GameName.key(title(pack).removeSuffix(EXTRA_SUFFIX))]
+            if (at != null) {
+                val main = items[at]
+                items[at] = main.copy(entries = main.entries + entries(pack), packIds = main.packIds + id(pack), titles = main.titles + title(pack))
+            } else {
+                items += PackShelfItem(id(pack), title(pack), entries(pack), listOf(id(pack)), listOf(title(pack)))
+            }
+        }
+        val order = HashMap<String, Int>()
+        packs.forEachIndexed { i, pack -> order.putIfAbsent(id(pack), i) }
+        return items.sortedBy { order[it.id] ?: 0 }
+    }
+
+    fun packShelf(packs: List<GamePackLibrary.Info>): List<PackShelfItem> = packShelf(packs, { it.id }, { it.title }, { it.entries })
 }
+
+/** Paketler ekranında bir oyun: kimliği ve adı asıl paketin; satır sayısı ve kimlikler ek paketle birlikte. */
+data class PackShelfItem(val id: String, val title: String, val entries: Int, val packIds: List<String>, val titles: List<String>)

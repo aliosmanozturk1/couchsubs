@@ -721,7 +721,7 @@ private struct GamePacksPage: View {
             Text("Game packs").font(.csDisplay)
             Spacer()
             if !model.installedPacks.isEmpty {
-                Pill(text: String(format: String(localized: "Free · %lld games"), model.installedPacks.count))
+                Pill(text: String(format: String(localized: "Free · %lld games"), GameCatalog.packShelf(model.installedPacks).count))
             }
         }
         Text("Ready-made Turkish translations for some games. A line found in a pack appears at once, without the translation engine.")
@@ -751,7 +751,8 @@ private struct GamePacksPage: View {
             Card { HintText(text: "No game pack is installed.") }
         } else {
             LazyVGrid(columns: columns, spacing: Theme.space("gap")) {
-                ForEach(model.installedPacks) { pack in PackTile(pack: pack) }
+                // Oyunun "(ek satırlar)" paketi asıl paketin karosunda (#353).
+                ForEach(GameCatalog.packShelf(model.installedPacks)) { pack in PackTile(pack: pack) }
             }
         }
         VStack(alignment: .leading, spacing: Theme.space("m")) {
@@ -911,7 +912,7 @@ private struct GamePackImportSheet: View {
 
 /// Paket karosu: oyunun kısaltması, adı ve satır sayısı.
 private struct PackTile: View {
-    let pack: GamePackLibrary.Info
+    let pack: PackShelfItem
 
     /// Adın kelimelerinin baş harfleri (en çok üç): "Red Dead Redemption 2" → "RDR".
     private var initials: String {

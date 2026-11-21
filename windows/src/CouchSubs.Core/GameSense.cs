@@ -228,4 +228,44 @@ public static class GameCatalog
     public static IEnumerable<string> PackGames(IEnumerable<GamePackLibrary.Info> packs) =>
         packs.Where(p => p.Id != GameSense.GeneralPack && !p.Title.EndsWith("(ek satırlar)", StringComparison.Ordinal))
             .Select(p => p.Title);
+
+    /// <summary>Havuzdan her gece üretilen ek paketin adındaki ek (server/pool/src/games.js EXTRA_SUFFIX).</summary>
+    public const string ExtraSuffix = " (ek satırlar)";
+
+    /// <summary>
+    /// Paketler ekranındaki karolar: oyunun asıl paketi ve havuzdan gelen "(ek satırlar)" paketi tek karoda birleşir
+    /// (#353: RDR2 ve Spider-Man 2 iki kez görünüyordu). Asıl paketi olmayan ek paket kendi karosunda kalır. Sıra korunur.
+    /// Mac ve iPhone'da GameCatalog.packShelf, Android'de GameCatalog.packShelf ile aynı.
+    /// </summary>
+    public static IReadOnlyList<PackShelfItem> PackShelf(IEnumerable<GamePackLibrary.Info> packs)
+    {
+        var list = packs.ToList();
+        var items = new List<PackShelfItem>();
+        var index = new Dictionary<string, int>();
+        foreach (var pack in list.Where(p => !p.Title.EndsWith(ExtraSuffix, StringComparison.Ordinal)))
+        {
+            index.TryAdd(GameName.Key(pack.Title), items.Count);
+            items.Add(new PackShelfItem(pack.Id, pack.Title, pack.Entries, [pack.Id], [pack.Title]));
+        }
+        foreach (var pack in list.Where(p => p.Title.EndsWith(ExtraSuffix, StringComparison.Ordinal)))
+        {
+            var key = GameName.Key(pack.Title[..^ExtraSuffix.Length]);
+            if (index.TryGetValue(key, out var at))
+            {
+                var main = items[at];
+                items[at] = main with
+                {
+                    Entries = main.Entries + pack.Entries,
+                    PackIds = [.. main.PackIds, pack.Id], Titles = [.. main.Titles, pack.Title],
+                };
+            }
+            else items.Add(new PackShelfItem(pack.Id, pack.Title, pack.Entries, [pack.Id], [pack.Title]));
+        }
+        var order = new Dictionary<string, int>();
+        for (var i = 0; i < list.Count; i++) order.TryAdd(list[i].Id, i);
+        return [.. items.OrderBy(item => order.GetValueOrDefault(item.Id))];
+    }
 }
+
+/// <summary>Paketler ekranında bir oyun: kimliği ve adı asıl paketin; satır sayısı ve kimlikler ek paketle birlikte.</summary>
+public sealed record PackShelfItem(string Id, string Title, int Entries, IReadOnlyList<string> PackIds, IReadOnlyList<string> Titles);

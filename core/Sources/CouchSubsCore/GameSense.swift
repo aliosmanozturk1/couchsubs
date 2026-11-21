@@ -201,4 +201,55 @@ public enum GameCatalog {
     public static func packGames(_ packs: [GamePackLibrary.Info]) -> [String] {
         packs.filter { $0.id != GameSense.generalPack && !$0.title.hasSuffix("(ek satırlar)") }.map(\.title)
     }
+
+    /// Havuzdan her gece üretilen ek paketin adındaki ek (server/pool/src/games.js EXTRA_SUFFIX).
+    public static let extraSuffix = " (ek satırlar)"
+
+    /// Paketler ekranındaki karolar: oyunun asıl paketi ve havuzdan gelen "(ek satırlar)" paketi tek karoda birleşir
+    /// (#353: RDR2 ve Spider-Man 2 iki kez görünüyordu). Asıl paketi olmayan ek paket kendi karosunda kalır. Sıra korunur.
+    public static func packShelf(_ packs: [GamePackLibrary.Info]) -> [PackShelfItem] {
+        packShelf(packs, id: \.id, title: \.title, entries: \.entries)
+    }
+
+    public static func packShelf<T>(_ packs: [T], id: (T) -> String, title: (T) -> String, entries: (T) -> Int) -> [PackShelfItem] {
+        var items: [PackShelfItem] = []
+        var index: [String: Int] = [:]
+        for pack in packs where !title(pack).hasSuffix(extraSuffix) {
+            let key = GameName.key(title(pack))
+            if index[key] == nil { index[key] = items.count }
+            items.append(PackShelfItem(id: id(pack), title: title(pack), entries: entries(pack), packIds: [id(pack)], titles: [title(pack)]))
+        }
+        for pack in packs where title(pack).hasSuffix(extraSuffix) {
+            let base = String(title(pack).dropLast(extraSuffix.count))
+            if let at = index[GameName.key(base)] {
+                let main = items[at]
+                items[at] = PackShelfItem(id: main.id, title: main.title, entries: main.entries + entries(pack),
+                                          packIds: main.packIds + [id(pack)], titles: main.titles + [title(pack)])
+            } else {
+                items.append(PackShelfItem(id: id(pack), title: title(pack), entries: entries(pack), packIds: [id(pack)], titles: [title(pack)]))
+            }
+        }
+        // Asıl paketler önce, eşi olmayan ek paketler sonda; listedeki ilk sıraya geri dönülür.
+        let order = Dictionary(packs.enumerated().map { (id($0.element), $0.offset) }, uniquingKeysWith: { first, _ in first })
+        return items.sorted { (order[$0.id] ?? 0) < (order[$1.id] ?? 0) }
+    }
+}
+
+/// Paketler ekranında bir oyun: kimliği ve adı asıl paketin; satır sayısı ve kimlikler ek paketle birlikte.
+public struct PackShelfItem: Equatable, Sendable, Identifiable {
+    public let id: String
+    public let title: String
+    public let entries: Int
+    /// Karo açılıp kapanınca hepsi birlikte değişir.
+    public let packIds: [String]
+    /// Okuma hattının kullandığı paket adı bunlardan biriyse karo "Oynanıyor" olur.
+    public let titles: [String]
+
+    public init(id: String, title: String, entries: Int, packIds: [String], titles: [String]) {
+        self.id = id
+        self.title = title
+        self.entries = entries
+        self.packIds = packIds
+        self.titles = titles
+    }
 }

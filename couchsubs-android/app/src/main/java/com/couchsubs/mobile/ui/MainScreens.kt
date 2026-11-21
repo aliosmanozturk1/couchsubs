@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.couchsubs.mobile.R
 import com.couchsubs.mobile.Services
+import com.couchsubs.mobile.core.GameCatalog
 import com.couchsubs.mobile.packs.PackUpdateOutcome
 import com.couchsubs.mobile.packs.PackUpdateSummary
 import com.couchsubs.mobile.service.FramePreview
@@ -414,7 +415,8 @@ fun PacksScreen(onBack: () -> Unit, packInUse: String?) {
     var packsOn by remember { mutableStateOf(settings.packsEnabled) }
     LaunchedEffect(version) { catalog = withContext(Dispatchers.IO) { Services.catalog(context) } }
     val unlocked = packsOn
-    val list = catalog.orEmpty()
+    // Oyunun "(ek satırlar)" paketi asıl paketin karosunda; ikisi birlikte açılıp kapanır (#353).
+    val list = GameCatalog.packShelf(catalog.orEmpty(), { it.id }, { it.title }, { it.entries })
     // "Paketleri güncelle"ye basıldı, sonuç bekleniyor: sayfa bulanıklaşır (Android 12+; öncesinde koyu perde), ortada
     // gösterge döner; bitince ne geldiği uyarıda yazar (iPhone ile aynı).
     var updating by remember { mutableStateOf(false) }
@@ -467,15 +469,15 @@ fun PacksScreen(onBack: () -> Unit, packInUse: String?) {
                     Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Tokens.Space.gap)) {
                         row.forEach { entry ->
                             val (code, short) = packShort(entry.id, entry.title)
-                            val on = entry.id !in disabled
-                            val playing = packInUse != null && packInUse == entry.title
+                            val on = entry.packIds.none { it in disabled }
+                            val playing = packInUse != null && packInUse in entry.titles
                             PackTile(code, short, linesText(context, entry.entries), Modifier.weight(1f).fillMaxHeight(),
                                 style = if (playing) TileStyle.ACTIVE else TileStyle.NORMAL, dim = !unlocked || !on,
                                 corner = { if (playing) StatusLabel(stringResource(R.string.packs_now)) else if (unlocked && !on) Pill(stringResource(R.string.packs_off)) },
                                 // Karo paketin anahtarıdır: ekran okuyucu "açık/kapalı" diye okur.
                                 toggled = on,
                                 onClick = {
-                                    disabled = if (on) disabled + entry.id else disabled - entry.id
+                                    disabled = if (on) disabled + entry.packIds else disabled - entry.packIds.toSet()
                                     settings.disabledPacks = disabled
                                 })
                         }

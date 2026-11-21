@@ -134,4 +134,30 @@ public class GameSenseTests
         Assert.Equal("Grand Theft Auto VI", GameCatalog.Suggestions("gta 6", [], null)[0]);
         Assert.Empty(GameCatalog.Suggestions("zzzz", [], null));
     }
+
+    /// <summary>
+    /// #353: canlı listedeki RDR2 ve Spider-Man 2 asıl paketle "(ek satırlar)" paketi olarak iki kez görünüyordu; tek karo
+    /// olur, satırlar toplanır, iki kimlik birlikte açılıp kapanır. Asıl paketi olmayan ek paket kendi karosunda kalır.
+    /// </summary>
+    [Fact]
+    public void PackShelfFoldsExtraLinesIntoMainPack()
+    {
+        GamePackLibrary.Info[] packs =
+        [
+            new("marvels-spider-man-2", "Marvel's Spider-Man 2", 2349, false),
+            new("pool-marvels-spider-man-2", "Marvel's Spider-Man 2 (ek satırlar)", 425, false),
+            new("pool-rdr-2", "Red Dead Redemption 2 (ek satırlar)", 481, false),
+            new("red-dead-redemption-2", "Red Dead Redemption 2", 195_430, true),
+            new("pool-ppsa09999", "Ghost of Yōtei (ek satırlar)", 40, false),
+        ];
+        var shelf = GameCatalog.PackShelf(packs);
+        Assert.Equal(["marvels-spider-man-2", "red-dead-redemption-2", "pool-ppsa09999"], shelf.Select(p => p.Id));
+        Assert.Equal(2774, shelf[0].Entries);
+        Assert.Equal(["marvels-spider-man-2", "pool-marvels-spider-man-2"], shelf[0].PackIds);
+        Assert.Equal("Red Dead Redemption 2", shelf[1].Title);
+        Assert.Equal(195_911, shelf[1].Entries);
+        Assert.Contains("Red Dead Redemption 2 (ek satırlar)", shelf[1].Titles);
+        Assert.Equal(["pool-ppsa09999"], shelf[2].PackIds);
+    }
 }
+

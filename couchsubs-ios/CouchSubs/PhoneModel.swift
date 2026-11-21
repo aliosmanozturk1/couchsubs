@@ -1048,9 +1048,10 @@ final class PhoneModel: ObservableObject {
         settings.gamePacks && settings.sourceLanguage == "en" && settings.targetLanguage == "tr"
     }
 
-    /// Paketler ekranında karoya dokunma: paket açılır ya da kapanır (okuma hattı hemen yeni listeyle eşleşir).
-    func togglePack(_ id: String) {
-        if disabledPacks.contains(id) { disabledPacks.remove(id) } else { disabledPacks.insert(id) }
+    /// Paketler ekranında karoya dokunma: oyunun asıl paketi ve "(ek satırlar)" paketi birlikte açılır ya da kapanır
+    /// (okuma hattı hemen yeni listeyle eşleşir).
+    func setPacks(_ ids: [String], on: Bool) {
+        if on { disabledPacks.subtract(ids) } else { disabledPacks.formUnion(ids) }
         defaults.set(disabledPacks.sorted(), forKey: Self.disabledPacksKey)
         if let pipeline { connectPacks(to: pipeline) }
     }

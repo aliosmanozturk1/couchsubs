@@ -127,4 +127,28 @@ class GameSenseTest {
         assertEquals("Grand Theft Auto VI", GameCatalog.suggestions("gta 6", emptyList(), null).first())
         assertTrue(GameCatalog.suggestions("zzzz", emptyList(), null).isEmpty())
     }
+
+    /**
+     * #353: canlı listedeki RDR2 ve Spider-Man 2 asıl paketle "(ek satırlar)" paketi olarak iki kez görünüyordu; tek karo
+     * olur, satırlar toplanır, iki kimlik birlikte açılıp kapanır. Asıl paketi olmayan ek paket kendi karosunda kalır.
+     */
+    @Test
+    fun packShelfFoldsExtraLinesIntoMainPack() {
+        val packs = listOf(
+            GamePackLibrary.Info("marvels-spider-man-2", "Marvel's Spider-Man 2", 2349, false),
+            GamePackLibrary.Info("pool-marvels-spider-man-2", "Marvel's Spider-Man 2 (ek satırlar)", 425, false),
+            GamePackLibrary.Info("pool-rdr-2", "Red Dead Redemption 2 (ek satırlar)", 481, false),
+            GamePackLibrary.Info("red-dead-redemption-2", "Red Dead Redemption 2", 195_430, true),
+            GamePackLibrary.Info("pool-ppsa09999", "Ghost of Yōtei (ek satırlar)", 40, false),
+        )
+        val shelf = GameCatalog.packShelf(packs)
+        assertEquals(listOf("marvels-spider-man-2", "red-dead-redemption-2", "pool-ppsa09999"), shelf.map { it.id })
+        assertEquals(2774, shelf[0].entries)
+        assertEquals(listOf("marvels-spider-man-2", "pool-marvels-spider-man-2"), shelf[0].packIds)
+        assertEquals("Red Dead Redemption 2", shelf[1].title)
+        assertEquals(195_911, shelf[1].entries)
+        assertTrue("Red Dead Redemption 2 (ek satırlar)" in shelf[1].titles)
+        assertEquals(listOf("pool-ppsa09999"), shelf[2].packIds)
+    }
 }
+

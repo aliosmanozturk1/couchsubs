@@ -156,7 +156,7 @@ public partial class MainView : UserControl
         EngineText.Text = settings.Engine == TranslationEngine.Free ? text["Free"] : settings.Engine.DisplayName();
         PictureSourceText.Text = controller.PictureSourceTitle ?? "";
         PictureSourceRow.Visibility = controller.PictureSourceTitle is null ? Visibility.Collapsed : Visibility.Visible;
-        var packs = controller.InstalledPacks.Count;
+        var packs = GameCatalog.PackShelf(controller.InstalledPacks).Count;
         var active = settings.GamePacks && settings.SourceLanguage == "en" && settings.TargetLanguage == "tr" && packs > 0;
         PackTile.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
         PackText.Text = text.Format("Game packs are on · %lld games translated in advance", packs);

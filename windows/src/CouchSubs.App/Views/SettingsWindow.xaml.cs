@@ -349,7 +349,8 @@ public partial class SettingsWindow : Window
     {
         var text = Localizer.Current;
         PackList.Items.Clear();
-        var packs = controller.InstalledPacks;
+        // Oyunun "(ek satırlar)" paketi asıl paketin karosunda (#353).
+        var packs = GameCatalog.PackShelf(controller.InstalledPacks);
         PacksPill.Visibility = packs.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         PacksPillText.Text = text.Format("Free · %lld games", packs.Count);
         if (UpdatePacksProgress.Visibility != Visibility.Visible) UpdatePacks.IsEnabled = controller.CanUpdatePacks;
@@ -366,7 +367,7 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>Square, user-selected cover art when available; otherwise the existing three-letter badge.</summary>
-    private FrameworkElement PackTile(GamePackLibrary.Info pack, string lines)
+    private FrameworkElement PackTile(PackShelfItem pack, string lines)
     {
         var text = Localizer.Current;
         var badge = new Border { Style = (Style)FindResource("GameMonogram") };

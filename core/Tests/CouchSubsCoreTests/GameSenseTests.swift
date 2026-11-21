@@ -61,4 +61,24 @@ final class GameSenseTests: XCTestCase {
         XCTAssertEqual(sense.current?.name, "GTA 5")
         XCTAssertEqual(sense.packLimit, "GTA 5")
     }
+
+    /// #353: canlı listedeki RDR2 ve Spider-Man 2 asıl paketle "(ek satırlar)" paketi olarak iki kez görünüyordu; tek karo
+    /// olur, satırlar toplanır, iki kimlik birlikte açılıp kapanır. Asıl paketi olmayan ek paket kendi karosunda kalır.
+    func testPackShelfFoldsExtraLinesIntoMainPack() {
+        let packs = [
+            GamePackLibrary.Info(id: "marvels-spider-man-2", title: "Marvel's Spider-Man 2", entries: 2349, builtIn: false),
+            GamePackLibrary.Info(id: "pool-marvels-spider-man-2", title: "Marvel's Spider-Man 2 (ek satırlar)", entries: 425, builtIn: false),
+            GamePackLibrary.Info(id: "pool-rdr-2", title: "Red Dead Redemption 2 (ek satırlar)", entries: 481, builtIn: false),
+            GamePackLibrary.Info(id: "red-dead-redemption-2", title: "Red Dead Redemption 2", entries: 195_430, builtIn: true),
+            GamePackLibrary.Info(id: "pool-ppsa09999", title: "Ghost of Yōtei (ek satırlar)", entries: 40, builtIn: false),
+        ]
+        let shelf = GameCatalog.packShelf(packs)
+        XCTAssertEqual(shelf.map(\.id), ["marvels-spider-man-2", "red-dead-redemption-2", "pool-ppsa09999"])
+        XCTAssertEqual(shelf[0].entries, 2774)
+        XCTAssertEqual(shelf[0].packIds, ["marvels-spider-man-2", "pool-marvels-spider-man-2"])
+        XCTAssertEqual(shelf[1].title, "Red Dead Redemption 2")
+        XCTAssertEqual(shelf[1].entries, 195_911)
+        XCTAssertTrue(shelf[1].titles.contains("Red Dead Redemption 2 (ek satırlar)"))
+        XCTAssertEqual(shelf[2].packIds, ["pool-ppsa09999"])
+    }
 }

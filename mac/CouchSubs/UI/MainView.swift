@@ -355,7 +355,8 @@ private struct PackInUseTile: View {
         if active {
             HStack(spacing: Theme.space("m")) {
                 TileIcon(symbol: "shippingbox", tint: .csPro)
-                Text(verbatim: String(format: String(localized: "Game packs are on · %lld games translated in advance"), model.installedPacks.count))
+                Text(verbatim: String(format: String(localized: "Game packs are on · %lld games translated in advance"),
+                                            GameCatalog.packShelf(model.installedPacks).count))
                     .font(.csBody)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
