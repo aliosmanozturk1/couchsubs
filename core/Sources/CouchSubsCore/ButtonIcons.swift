@@ -175,6 +175,9 @@ public enum ButtonIcons {
     /// Sözcük bir kumanda tuşunun adı ya da simgesi mi ("R3", "(L1)", "△").
     static func isButtonName(_ text: String) -> Bool { names.contains(trimming(text, brackets).uppercased()) }
 
+    /// Renkli zeminde (kutu kenarının ortancası) her kanalda zemine bu kadar yakın nokta zemindir, simge sayılmaz.
+    static let baseTolerance = 40
+
     /// Kutudaki parlak piksellerin çoğu renksiz mi (kumanda simgesi beyaz/gri; portre, harita renkli).
     static func isColourless(_ frame: CGImage, _ box: TextBox) -> Bool {
         let rect = GamePhonePixels.rect(box, in: frame)
@@ -191,10 +194,14 @@ public enum ButtonIcons {
         func median(_ values: [Int]) -> Int { values.sorted()[values.count / 2] }
         let base = (median(edge.map(\.0)), median(edge.map(\.1)), median(edge.map(\.2)))
         let baseLuma = (299 * base.0 + 587 * base.1 + 114 * base.2) / 1000
+        let colourfulBase = max(base.0, base.1, base.2) - min(base.0, base.1, base.2) > 60
         var bright = 0, coloured = 0
         for i in stride(from: 0, to: pixels.bytes.count, by: 4) {
             let r = Int(pixels.bytes[i]), g = Int(pixels.bytes[i + 1]), b = Int(pixels.bytes[i + 2])
             let luma = (299 * r + 587 * g + 114 * b) / 1000
+            // Zeminin kendisi simgenin parçası değildir: parlak renkli zeminde (GTA 6 haritasının açık mavi denizi) zemin
+            // noktaları renkli sayılıyor, haritadaki ✕/○ simgesi tanınmayıp çeviri kutusuna giriyordu.
+            if colourfulBase, max(abs(r - base.0), abs(g - base.1), abs(b - base.2)) <= baseTolerance { continue }
             if luma < 110 { continue }
             bright += 1
             guard max(r, g, b) - min(r, g, b) > 60 else { continue }

@@ -54,8 +54,10 @@ public static class TextStyleSampler
         // kalın dar yazıda (GTA 6 sekmeleri, tuş ipuçları) harf noktaları zeminden çok olabiliyor, kutu beyaz çiziliyordu
         // (#860). Kutunun kendi kenarı da çok olan kümedeyse (seçili menü satırının ters renkli zemini kutunun kendisidir,
         // şeridi değil) çok olan küme zemin kalır.
-        if (Surrounding(frame, boxes) is { } around)
+        var ring = Surrounding(frame, boxes);
+        if (ring is not null)
         {
+            var around = (double)ring.Select(p => p.Luma).OrderBy(v => v).ElementAt(ring.Count / 2);
             var lowFirst = Math.Abs(low.Average(p => p.Luma) - around) <= Math.Abs(high.Average(p => p.Luma) - around);
             var groundIsLow = low.Count >= high.Count;
             var edges = pixels.Count(p => p.Edge);
@@ -66,8 +68,17 @@ public static class TextStyleSampler
         var background = Mean(ground);
         var foreground = Mean(ink);
         var flat = Deviation(ground) < flatLimit;
+        var shade = ground.Average(pixel => pixel.Luma);
+        // Düz olmayan zeminde kenarlıklı yazı (GTA 6 haritasındaki tuş ipuçları: beyaz harf, koyu kenarlık, açık mavi deniz):
+        // kutunun içinde üç ton var, zemin kümesi harfle denizin karışımı çıkıyor, kutu denizin üstünde açık gri
+        // çiziliyordu. Yazının hemen çevresindeki şerit düzse zemin odur.
+        if (!flat && ring is not null && Deviation(ring) < flatLimit)
+        {
+            background = Mean(ring);
+            shade = ring.Average(pixel => pixel.Luma);
+        }
         if (DesignTokens.Contrast(background, foreground) < 3)
-            foreground = ground.Average(pixel => pixel.Luma) < 128 ? "#FFFFFF" : "#000000";
+            foreground = shade < 128 ? "#FFFFFF" : "#000000";
         return (new PhoneTextStyle(background, foreground), new TextLook(bold, condensed, align, upper, flat));
     }
 
@@ -105,13 +116,13 @@ public static class TextStyleSampler
 
     /// <summary>
     /// Satır kutularının hemen dışındaki şeridin (üstte ve altta satır yüksekliğinin dörtte biri, yanlarda aynı genişlikte)
-    /// ortanca parlaklığı; şerit kareden taşıyorsa ya da başka satırın kutusuna giriyorsa o parça atlanır.
+    /// noktaları; şerit kareden taşıyorsa ya da başka satırın kutusuna giriyorsa o parça atlanır.
     /// </summary>
     public const double RingShare = 0.25;
     /// <summary>Kutunun kenar noktalarının en az bu kadarı çok olan kümedeyse kutu dolu bir zemindir (seçili satır); şeride bakılmaz.</summary>
     public const double FilledEdge = 0.7;
 
-    private static double? Surrounding(Frame frame, IReadOnlyList<TextBox> boxes)
+    private static List<(int Luma, byte R, byte G, byte B, bool Edge)>? Surrounding(Frame frame, IReadOnlyList<TextBox> boxes)
     {
         var pixels = new List<(int Luma, byte R, byte G, byte B, bool Edge)>();
         var aspect = (double)frame.Width / Math.Max(1, frame.Height);
@@ -131,8 +142,7 @@ public static class TextStyleSampler
                     && !boxes.Any(other => ScreenTranslation.Overlap(other, strip) > 0.2))
                     Collect(frame, strip, pixels);
         }
-        if (pixels.Count < 16) return null;
-        return pixels.Select(p => p.Luma).OrderBy(v => v).ElementAt(pixels.Count / 2);
+        return pixels.Count < 16 ? null : pixels;
     }
 
     private static int Otsu(List<(int Luma, byte R, byte G, byte B, bool Edge)> pixels)

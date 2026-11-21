@@ -330,6 +330,9 @@ object ButtonIcons {
         return Located(left, cropTop, right - left, cropBottom - cropTop, end - start, bottom - top)
     }
 
+    /** Renkli zeminde (kutu kenarının ortancası) her kanalda zemine bu kadar yakın nokta zemindir, simge sayılmaz. */
+    const val BASE_TOLERANCE = 40
+
     /**
      * Kutudaki parlak piksellerin çoğu renksiz mi (kumanda simgesi beyaz/gri; portre, harita renkli). [color]: karenin
      * (x, y) noktasının rengi (0xRRGGBB); renk yoksa karar verilemez, simge sayılmaz (Mac isColourless, Windows
@@ -359,6 +362,7 @@ object ButtonIcons {
         val bg = median(greens)
         val bb = median(blues)
         val baseLuma = (299 * br + 587 * bg + 114 * bb) / 1000
+        val colourfulBase = maxOf(br, bg, bb) - minOf(br, bg, bb) > 60
         var bright = 0
         var coloured = 0
         for (y in y0 until y1) for (x in x0 until x1) {
@@ -367,6 +371,9 @@ object ButtonIcons {
             val g = (rgb shr 8) and 0xff
             val b = rgb and 0xff
             val luma = (299 * r + 587 * g + 114 * b) / 1000
+            // Zeminin kendisi simgenin parçası değildir: parlak renkli zeminde (GTA 6 haritasının açık mavi denizi) zemin
+            // noktaları renkli sayılıyor, haritadaki ✕/○ simgesi tanınmayıp çeviri kutusuna giriyordu.
+            if (colourfulBase && maxOf(abs(r - br), abs(g - bg), abs(b - bb)) <= BASE_TOLERANCE) continue
             if (luma < 110) continue
             bright++
             if (maxOf(r, g, b) - minOf(r, g, b) <= 60) continue

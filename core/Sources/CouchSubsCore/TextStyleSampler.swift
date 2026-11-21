@@ -68,7 +68,8 @@ public enum TextStyleSampler {
         // (#860). Kutunun kendi kenarı da çok olan kümedeyse (seçili menü satırının ters renkli zemini kutunun kendisidir,
         // şeridi değil) çok olan küme zemin kalır.
         var (ink, ground) = low.count < high.count ? (low, high) : (high, low)
-        if let around = surrounding(frame, boxes) {
+        let ring = surrounding(frame, boxes)
+        if let around = ring.map({ Double($0.map(\.luma).sorted()[$0.count / 2]) }) {
             func meanLuma(_ list: [Pixel]) -> Double { Double(list.map(\.luma).reduce(0, +)) / Double(list.count) }
             let lowFirst = abs(meanLuma(low) - around) <= abs(meanLuma(high) - around)
             let groundIsLow = low.count >= high.count
@@ -77,11 +78,18 @@ public enum TextStyleSampler {
             if lowFirst != groundIsLow, edgeShare < filledEdge { (ink, ground) = (ground, ink) }
         }
         let bold = Double(ink.count) / Double(pixels.count) >= boldInk
-        let background = mean(ground)
+        var background = mean(ground)
         var foreground = mean(ink)
         let flat = deviation(ground) < flatLimit
+        var shade = Double(ground.map(\.luma).reduce(0, +)) / Double(ground.count)
+        // Düz olmayan zeminde kenarlıklı yazı (GTA 6 haritasındaki tuş ipuçları: beyaz harf, koyu kenarlık, açık mavi deniz):
+        // kutunun içinde üç ton var, zemin kümesi harfle denizin karışımı çıkıyor, kutu denizin üstünde açık gri
+        // çiziliyordu. Yazının hemen çevresindeki şerit düzse zemin odur.
+        if !flat, let ring, deviation(ring) < flatLimit {
+            background = mean(ring)
+            shade = Double(ring.map(\.luma).reduce(0, +)) / Double(ring.count)
+        }
         if contrast(background, foreground) < 3 {
-            let shade = Double(ground.map(\.luma).reduce(0, +)) / Double(ground.count)
             foreground = shade < 128 ? "#FFFFFF" : "#000000"
         }
         return (PhoneTextStyle(background: background, foreground: foreground),
@@ -116,12 +124,12 @@ public enum TextStyleSampler {
     }
 
     /// Satır kutularının hemen dışındaki şeridin (üstte ve altta satır yüksekliğinin dörtte biri, yanlarda aynı genişlikte)
-    /// ortanca parlaklığı; şerit kareden taşıyorsa ya da başka satırın kutusuna giriyorsa o parça atlanır.
+    /// noktaları; şerit kareden taşıyorsa ya da başka satırın kutusuna giriyorsa o parça atlanır.
     static let ringShare = 0.25
     /// Kutunun kenar noktalarının en az bu kadarı çok olan kümedeyse kutu dolu bir zemindir (seçili satır); şeride bakılmaz.
     static let filledEdge = 0.7
 
-    private static func surrounding(_ frame: CGImage, _ boxes: [TextBox]) -> Double? {
+    private static func surrounding(_ frame: CGImage, _ boxes: [TextBox]) -> [Pixel]? {
         var pixels: [Pixel] = []
         let aspect = Double(frame.width) / Double(max(1, frame.height))
         for box in boxes {
@@ -139,7 +147,7 @@ public enum TextStyleSampler {
             }
         }
         guard pixels.count >= 16 else { return nil }
-        return Double(pixels.map(\.luma).sorted()[pixels.count / 2])
+        return pixels
     }
 
     private static func otsu(_ pixels: [Pixel]) -> Int {

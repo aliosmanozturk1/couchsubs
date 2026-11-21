@@ -296,6 +296,9 @@ public static class ButtonIcons
         return (left, cropTop, right - left, cropBottom - cropTop, end - start, bottom - top);
     }
 
+    /// <summary>Renkli zeminde (kutu kenarının ortancası) her kanalda zemine bu kadar yakın nokta zemindir, simge sayılmaz.</summary>
+    internal const int BaseTolerance = 40;
+
     /// <summary>
     /// Kutuda simge biçiminde bir şekil var mı: zeminden ayrışan, satır yüksekliğinin en az yarısı kadar ve kabaca kare
     /// (düğme dairesi, omuz tuşu kutusu). Boşluk ya da harf kırıntısı simge sayılmaz.
@@ -320,6 +323,7 @@ public static class ButtonIcons
         static int Median(IEnumerable<int> values) { var list = values.OrderBy(v => v).ToList(); return list[list.Count / 2]; }
         int br = Median(edge.Select(e => e.R)), bg = Median(edge.Select(e => e.G)), bb = Median(edge.Select(e => e.B));
         var baseLuma = (299 * br + 587 * bg + 114 * bb) / 1000;
+        var colourfulBase = Math.Max(br, Math.Max(bg, bb)) - Math.Min(br, Math.Min(bg, bb)) > 60;
         int bright = 0, coloured = 0;
         for (var y = y0; y < y1; y++)
             for (var x = x0; x < x1; x++)
@@ -327,6 +331,9 @@ public static class ButtonIcons
                 var p = y * frame.Stride + x * 4;
                 int b = frame.Pixels[p], g = frame.Pixels[p + 1], r = frame.Pixels[p + 2];
                 var luma = (299 * r + 587 * g + 114 * b) / 1000;
+                // Zeminin kendisi simgenin parçası değildir: parlak renkli zeminde (GTA 6 haritasının açık mavi denizi) zemin
+                // noktaları renkli sayılıyor, haritadaki ✕/○ simgesi tanınmayıp çeviri kutusuna giriyordu.
+                if (colourfulBase && Math.Max(Math.Abs(r - br), Math.Max(Math.Abs(g - bg), Math.Abs(b - bb))) <= BaseTolerance) continue;
                 if (luma < 110) continue;
                 bright++;
                 if (Math.Max(r, Math.Max(g, b)) - Math.Min(r, Math.Min(g, b)) <= 60) continue;
