@@ -276,6 +276,7 @@ private struct AreaCards: View {
 
     var body: some View {
         AreaProfileCard(areas: model.gameAreas)
+        GameProfilesCard(areas: model.gameAreas)
         Card {
             Picker("Area preset", selection: Binding(get: { model.settings.areaPreset }, set: { model.settings.selectAreaPreset($0) })) {
                 ForEach(AreaPreset.allCases, id: \.self) { preset in Text(preset.title).tag(preset) }
@@ -343,7 +344,13 @@ private struct AreaProfileCard: View {
             }
             if target != nil || active != nil {
                 HStack(spacing: Theme.space("s")) {
-                    if let target, active == nil || unsaved {
+                    if let target, areas.targetHasOtherProfile {
+                        // Oynanan oyunun kayıtlı alanları uygulanmadı: üzerine yazılmaz, istenirse kullanılır.
+                        Button(String(format: String(localized: "Use the saved areas for %@"), target)) {
+                            if let key = AreaProfiles.key(target, source: model.settings.areaSource) { areas.use(key) }
+                        }
+                        .buttonStyle(.secondary)
+                    } else if let target, active == nil || unsaved {
                         Button(active == nil ? String(format: String(localized: "Save for %@"), target) : String(localized: "Save to profile")) {
                             areas.save()
                         }
@@ -359,6 +366,117 @@ private struct AreaProfileCard: View {
             Button("Delete profile", role: .destructive) { areas.delete() }
         }
     }
+}
+
+/// "Oyun profilleri": her oyunun kendi alanları. Listede olmayan oyun adı yazılarak eklenir; profil seçilir, yeniden
+/// adlandırılır, çoğaltılır, silinir. Profil seçmek oynanan oyunu da o yapar (Windows, iPhone ve Android ile aynı).
+private struct GameProfilesCard: View {
+    @ObservedObject var areas: GameAreas
+    @EnvironmentObject private var model: AppModel
+    @State private var editing: GameProfileEditing?
+    @State private var name = ""
+    @State private var problem: String?
+    @State private var deleting: AreaProfile?
+
+    var body: some View {
+        let profiles = model.settings.gameProfiles
+        Card(title: "Game profiles") {
+            HintText(text: "Each game keeps its own subtitle area and extra areas. A game that isn't in the list can be added by typing its name; one profile never overwrites another.")
+            ForEach(profiles, id: \.key) { profile in
+                if editing == .rename(profile.key) || editing == .duplicate(profile.key) {
+                    editor
+                } else {
+                    row(profile)
+                }
+                Divider().overlay(Color.csBorder)
+            }
+            if editing == .new {
+                editor
+            } else {
+                Button("New game profile") { begin(.new, name: model.gameChoice.game?.name ?? "") }.buttonStyle(.secondary)
+            }
+        }
+        .confirmationDialog(String(format: String(localized: "Delete the saved areas for %@?"), deleting?.game ?? ""),
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Delete profile", role: .destructive) { if let deleting { areas.delete(deleting.key) } }
+        }
+    }
+
+    private func row(_ profile: AreaProfile) -> some View {
+        HStack(spacing: Theme.space("s")) {
+            Text(verbatim: profile.game).font(.csBody).lineLimit(1)
+            if model.settings.activeAreaProfile == profile.key {
+                Text("In use").font(.csCaption).foregroundStyle(Color.csSecondary)
+            }
+            Spacer(minLength: Theme.space("m"))
+            if model.settings.activeAreaProfile != profile.key {
+                Button("Use") { areas.use(profile.key) }.buttonStyle(.secondary)
+            }
+            Menu {
+                Button("Rename") { begin(.rename(profile.key), name: profile.game) }
+                Button("Duplicate") { begin(.duplicate(profile.key), name: "") }
+                Button("Delete profile", role: .destructive) { deleting = profile }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel(Text("More"))
+        }
+    }
+
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: Theme.space("s")) {
+            TextField("Game name", text: $name)
+                .textFieldStyle(CSTextFieldStyle())
+                .onSubmit(commit)
+            if let problem {
+                Text(verbatim: problem).font(.csCallout).foregroundStyle(Color.csSecondary).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: Theme.space("s")) {
+                Button(commitTitle) { commit() }
+                .buttonStyle(.secondary)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Cancel") { editing = nil }
+                    .buttonStyle(.plain)
+                    .font(.csCaption.weight(.semibold))
+                    .foregroundStyle(Color.csSecondary)
+            }
+        }
+    }
+
+    private var commitTitle: LocalizedStringKey {
+        switch editing {
+        case .rename?: "Rename"
+        case .duplicate?: "Duplicate"
+        case .new?, nil: "Save current areas"
+        }
+    }
+
+    private func begin(_ mode: GameProfileEditing, name: String) {
+        editing = mode
+        self.name = name
+        problem = nil
+    }
+
+    private func commit() {
+        guard let editing else { return }
+        let edit: AreaProfiles.Edit = switch editing {
+        case .new: areas.saveAs(name)
+        case .rename(let key): areas.rename(key, to: name)
+        case .duplicate(let key): areas.duplicate(key, as: name)
+        }
+        switch edit {
+        case .done: self.editing = nil
+        case .exists: problem = String(format: String(localized: "There is already a profile for %@."), name.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .empty, .missing: problem = String(localized: "Type the game's name.")
+        }
+    }
+}
+
+/// Oyun profilleri kartında hangi işlem için ad yazılıyor.
+private enum GameProfileEditing: Equatable {
+    case new, rename(String), duplicate(String)
 }
 
 /// Altyazının yanında sürekli okunan ek alanlar (en çok üç): görev yazısı, bildirim, telefon mesajı. Her biri

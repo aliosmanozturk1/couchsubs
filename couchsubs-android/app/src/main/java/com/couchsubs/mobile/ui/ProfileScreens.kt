@@ -408,6 +408,7 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
         BackgroundLimitNote()
         // Altyazı alanı ve ek alanlar (iPhone ile aynı sırada: görünümden sonra).
         AreaProfileTile()
+        GameProfilesTile()
         AreaTile()
         ExtraAreasTile()
         // İkinci hesabın PS5 giriş şifresi: yalnız 4 hane gizli depoya (Keystore) yazılır; silinince kaldırılır.

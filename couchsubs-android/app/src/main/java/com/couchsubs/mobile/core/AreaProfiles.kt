@@ -52,12 +52,26 @@ data class AreaProfile(val key: String, val game: String, val areas: AreaSet) {
  */
 object AreaProfiles {
     /** En çok bu kadar profil saklanır; fazlasında en uzun süredir kullanılmayan silinir. */
-    const val MAX_COUNT = 20
+    const val MAX_COUNT = 50
 
     /** Profilin anahtarı ("far cry 3|stream"); oyun adı boşsa null. */
     fun key(game: String?, source: AreaSource): String? {
         val name = GameName.key(game ?: "")
         return if (name.isEmpty()) null else name + "|" + if (source == AreaSource.WINDOW) "window" else "stream"
+    }
+
+    /** Anahtarın görüntü kaynağı ("…|window" → pencere, gerisi akış). */
+    fun sourceOfKey(key: String): AreaSource = if (key.endsWith("|window")) AreaSource.WINDOW else AreaSource.STREAM
+
+    /** Profil listesinde yeni profil, ad değişikliği ya da çoğaltmanın sonucu. */
+    enum class Edit {
+        DONE,
+        /** Ad boş (ya da yalnız noktalama). */
+        EMPTY,
+        /** Bu adla başka bir oyunun profili var; üzerine yazılmaz. */
+        EXISTS,
+        /** Profil bulunamadı. */
+        MISSING,
     }
 
     sealed interface Step {
@@ -80,7 +94,10 @@ object AreaProfiles {
         if (source == null) return Step.None
         val key = key(game, areaSource) ?: return Step.None
         if (key == active) return Step.None
-        if (exists(key) && !declined(key)) return if (source == GameSense.Source.PACK) Step.Offer(key) else Step.Apply(key)
+        if (exists(key) && !declined(key)) {
+            val guess = source == GameSense.Source.PACK || source == GameSense.Source.REMEMBERED
+            return if (guess) Step.Offer(key) else Step.Apply(key)
+        }
         return if (active == null) Step.None else Step.UseGeneral
     }
 
@@ -132,6 +149,45 @@ fun AreaStore.saveAreaProfile(game: String, source: AreaSource) {
     if (generalAreas == null) generalAreas = current
 }
 
+/**
+ * Okunan alanlar adı yazılan oyunun yeni profili olur ve etkinleşir (listede olmayan oyun da). O adın profili varsa
+ * değişmez ([AreaProfiles.Edit.EXISTS]): başka oyunun alanlarının üzerine yazılmaz.
+ */
+fun AreaStore.createAreaProfile(game: String, source: AreaSource): AreaProfiles.Edit {
+    val name = game.trim()
+    val key = AreaProfiles.key(name, source) ?: return AreaProfiles.Edit.EMPTY
+    if (findAreaProfile(key) != null) return AreaProfiles.Edit.EXISTS
+    saveAreaProfile(name, source)
+    return AreaProfiles.Edit.DONE
+}
+
+/** Profilin adı değişir (aynı kaynakta); etkinse etkin kalır. Yeni ad başka bir profilinse değişmez. */
+fun AreaStore.renameAreaProfile(key: String, game: String): AreaProfiles.Edit {
+    val name = game.trim()
+    val profiles = areaProfiles
+    val index = profiles.indexOfFirst { it.key == key }
+    if (index < 0) return AreaProfiles.Edit.MISSING
+    val next = AreaProfiles.key(name, AreaProfiles.sourceOfKey(key)) ?: return AreaProfiles.Edit.EMPTY
+    if (next != key && profiles.any { it.key == next }) return AreaProfiles.Edit.EXISTS
+    areaProfiles = profiles.toMutableList().also { it[index] = it[index].copy(key = next, game = name) }
+    if (activeAreaProfile == key) activeAreaProfile = next
+    return AreaProfiles.Edit.DONE
+}
+
+/** Profilin alanları başka bir oyun adıyla kopyalanır (aynı kaynakta); etkin profil değişmez. */
+fun AreaStore.duplicateAreaProfile(key: String, game: String): AreaProfiles.Edit {
+    val name = game.trim()
+    val profile = findAreaProfile(key) ?: return AreaProfiles.Edit.MISSING
+    val next = AreaProfiles.key(name, AreaProfiles.sourceOfKey(key)) ?: return AreaProfiles.Edit.EMPTY
+    if (findAreaProfile(next) != null) return AreaProfiles.Edit.EXISTS
+    areaProfiles = AreaProfiles.saved(areaProfiles, AreaProfile(next, name, profile.areas)) { it.key }
+    return AreaProfiles.Edit.DONE
+}
+
+/** [source] kaynağının profilleri, ada göre sıralı (Ayarlar'daki oyun profilleri listesi). */
+fun AreaStore.gameProfiles(source: AreaSource): List<AreaProfile> =
+    areaProfiles.filter { AreaProfiles.sourceOfKey(it.key) == source }.sortedBy { it.game.lowercase() }
+
 /** Profil silinir; etkinse genel alanlara dönülür. */
 fun AreaStore.deleteAreaProfile(key: String) {
     if (activeAreaProfile == key) useGeneralAreas()
@@ -166,8 +222,27 @@ class GameAreas(private val source: AreaSource = AreaSource.STREAM, private val 
     val activeGame: String? get() = store?.let { it.findAreaProfile(it.activeAreaProfile)?.game }
     /** Önerilen profilin oyunu. */
     val offeredGame: String? get() = store?.findAreaProfile(offered)?.game
-    /** Alanların kaydedilebileceği oyun: etkin profilin ya da oynanan oyun (çeviri sürerken). */
-    val target: String? get() = if (running) activeGame ?: game else null
+    /**
+     * Alanların kaydedilebileceği oyun (çeviri sürerken): oynanan oyun, bilinmiyorsa etkin profilin oyunu. Kaydetme
+     * düğmesi bu adı taşır; başka bir oyunun profiline sessizce yazılmaz.
+     */
+    val target: String? get() = if (running) game ?: activeGame else null
+    /**
+     * Hedef oyunun kayıtlı profili var ama uygulanmadı (öneri bekliyor ya da "Hayır" dendi): "X için kaydet" yerine
+     * "Kayıtlı alanları kullan" gösterilir; kayıtlı alanların üzerine yazılmaz.
+     */
+    val targetHasOtherProfile: Boolean
+        get() {
+            val store = store ?: return false
+            val key = AreaProfiles.key(target, source) ?: return false
+            return key != store.activeAreaProfile && store.findAreaProfile(key) != null
+        }
+    /** Hedef oyunun profil anahtarı ("Kayıtlı alanları kullan" için). */
+    val targetKey: String? get() = AreaProfiles.key(target, source)
+    /** Profil seçilince ya da yeni profil açılınca oynanan oyun o olur (uygulama [PlayedGame.choose]'a bağlar). */
+    @Volatile var onChoose: (String) -> Unit = {}
+    /** Görüntü kaynağı (Ayarlar'daki listede bu kaynağın profilleri gösterilir). */
+    val areaSource: AreaSource get() = source
 
     /** Çeviri başladı. */
     @Synchronized fun start(store: AreaStore) {
@@ -220,9 +295,69 @@ class GameAreas(private val source: AreaSource = AreaSource.STREAM, private val 
         changed()
     }
 
-    /** Okunan alanlar etkin profile, profil yoksa oynanan oyuna kaydedilir. */
+    /**
+     * Okunan alanlar adı yazılan oyunun yeni profili olur ve oynanan oyun o olur (listede olmayan oyun da). Çeviri
+     * dururken [idle] (kalıcı ayarlar) kullanılır. O adın profili varsa [AreaProfiles.Edit.EXISTS].
+     */
+    fun saveAs(game: String, idle: AreaStore): AreaProfiles.Edit {
+        val edit = synchronized(this) {
+            val store = store ?: idle
+            val edit = store.createAreaProfile(game, source)
+            if (edit == AreaProfiles.Edit.DONE) {
+                store.activeAreaProfile?.let { declined -= it }
+                offered = null
+            }
+            edit
+        }
+        if (edit == AreaProfiles.Edit.DONE) onChoose(game.trim())
+        changed()
+        return edit
+    }
+
+    /** Listeden profil seçildi: alanları uygulanır, oynanan oyun o olur. */
+    fun use(key: String, idle: AreaStore) {
+        val profile = synchronized(this) {
+            val store = store ?: idle
+            val profile = store.findAreaProfile(key) ?: return
+            declined -= key
+            offered = null
+            store.useAreaProfile(profile)
+            profile
+        }
+        onChoose(profile.game)
+        changed()
+    }
+
+    /** Profil yeniden adlandırılır; etkin profilse oynanan oyun da yeni ad olur. */
+    fun rename(key: String, game: String, idle: AreaStore): AreaProfiles.Edit {
+        val (edit, wasActive) = synchronized(this) {
+            val store = store ?: idle
+            val wasActive = store.activeAreaProfile == key
+            store.renameAreaProfile(key, game) to wasActive
+        }
+        if (edit == AreaProfiles.Edit.DONE && wasActive) onChoose(game.trim())
+        changed()
+        return edit
+    }
+
+    /** Profilin alanları başka bir oyun adıyla kopyalanır. */
+    @Synchronized fun duplicate(key: String, game: String, idle: AreaStore): AreaProfiles.Edit {
+        val edit = (store ?: idle).duplicateAreaProfile(key, game)
+        changed()
+        return edit
+    }
+
+    /** Listeden profil silinir; etkinse genel alanlara dönülür. */
+    @Synchronized fun delete(key: String, idle: AreaStore) {
+        if (offered == key) offered = null
+        (store ?: idle).deleteAreaProfile(key)
+        changed()
+    }
+
+    /** Okunan alanlar oynanan oyunun profiline (yoksa yeni), oyun bilinmiyorsa etkin profile kaydedilir. */
     @Synchronized fun save() {
         val store = store ?: return
+        if (targetHasOtherProfile) return
         val target = target ?: return
         AreaProfiles.key(target, source)?.let { declined -= it }
         store.saveAreaProfile(target, source)

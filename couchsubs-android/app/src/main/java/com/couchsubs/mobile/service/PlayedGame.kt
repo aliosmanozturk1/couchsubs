@@ -27,14 +27,20 @@ object PlayedGame {
      * Oyuna göre alanlar: oyun değişince kayıtlı alanlar uygulanır ya da önerilir (bkz. [GameAreas]). Ekranlar
      * [LiveStatus.areaProfileGame], [LiveStatus.offeredAreaProfileGame] ve [LiveStatus.areaProfileTarget]'ı okur.
      */
-    val areas: GameAreas = GameAreas(changed = { publishAreas() })
+    val areas: GameAreas = GameAreas(changed = { publishAreas() }).also {
+        // Ayarlar'da oyun profili seçilince ya da yeni profil açılınca oynanan oyun o olur.
+        it.onChoose = { name -> choose(name) }
+    }
 
     private fun publishAreas() {
         val state = areas
         LiveState.update {
             val game = state.activeGame
             it.copy(areaProfileGame = game, offeredAreaProfileGame = state.offeredGame, areaProfileTarget = state.target,
-                areasVersion = if (game != it.areaProfileGame) it.areasVersion + 1 else it.areasVersion)
+                areaProfileTargetSaved = state.targetHasOtherProfile,
+                // Çeviri dururken Ayarlar'da profil seçilince de alanlar değişir.
+                areasVersion = if (game != it.areaProfileGame || !state.running) it.areasVersion + 1 else it.areasVersion,
+                profilesVersion = it.profilesVersion + 1)
         }
     }
 
@@ -63,6 +69,7 @@ object PlayedGame {
 
     /** Çeviri durdu: kart kapanır, oyun havuza artık gitmez. */
     fun stop() {
+        sense.endSession()
         onChange = null
         areas.stop()
         LiveState.update { it.copy(askingGame = false) }

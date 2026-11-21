@@ -167,4 +167,168 @@ final class AreaProfilesTests: XCTestCase {
         let copy = try JSONDecoder().decode(UserSettings.self, from: JSONEncoder().encode(restored))
         XCTAssertEqual(copy.areaProfiles, restored.areaProfiles)
     }
+
+    // MARK: - Oyun profilleri (her oyun bağımsız)
+
+    private let gta = "gta 6|stream"
+    private let gtaArea = CropRegion(top: 0.74, bottom: 0.93, left: 0.18, right: 0.82)
+    private let acArea = CropRegion(top: 0.80, bottom: 0.98, left: 0.10, right: 0.90)
+
+    func testARememberedChoiceIsOfferedNotApplied() {
+        XCTAssertEqual(run(nil, "Far Cry 3", .remembered), .offer(farCry))
+        XCTAssertEqual(run(farCry, "Hades", .remembered), .useGeneral)
+    }
+
+    func testAChoiceFromAnEarlierSessionIsRemembered() {
+        let sense = GameSense()
+        sense.choose("Grand Theft Auto VI")
+        sense.startSession()
+        // Çeviri dururken (Ayarlar'da) seçilen oyun bu oturum içindir.
+        XCTAssertEqual(sense.source, .user)
+        sense.endSession()
+        sense.startSession()
+        XCTAssertEqual(sense.source, .user)
+        sense.choose("GTA 6")
+        XCTAssertEqual(sense.source, .user)
+        sense.endSession()
+        // Oturumda seçilen oyun sonraki oturumda yalnız hatırlanır.
+        sense.startSession()
+        XCTAssertEqual(sense.source, .remembered)
+        XCTAssertEqual(sense.current?.name, "GTA 6")
+        sense.choose("Assassin's Creed Valhalla")
+        XCTAssertEqual(sense.source, .user)
+    }
+
+    /// Kullanıcının bildirdiği durum: GTA 6 için alanlar kaydedildi, sonraki oturumda Assassin's Creed oynandı, oyun
+    /// seçimi GTA 6'da kaldı. Eskiden GTA 6 profili kendiliğinden uygulanıyor, AC için yapılan değişiklik "Profile
+    /// kaydet" ile GTA 6'nın üzerine yazılıyordu.
+    @MainActor
+    func testAnotherGamesAreasNeverOverwriteAProfile() {
+        var store = UserSettings()
+        store.setCustomRegion(general)
+        let sense = GameSense()
+        let areas = GameAreas(read: { store }, write: { store = $0 })
+        areas.onChoose = { sense.choose($0) }
+
+        sense.startSession()
+        areas.start()
+        sense.choose("GTA 6")
+        areas.follow(game: sense.current, source: sense.source)
+        store.setCustomRegion(gtaArea)
+        areas.save()
+        XCTAssertEqual(store.areaProfiles.map(\.key), [gta])
+        areas.stop()
+        sense.endSession()
+        store.setCustomRegion(general)
+
+        // Sonraki oturum: seçim GTA 6'da kaldı ama oyun AC. Profil sorulur, uygulanmaz; kaydet GTA 6'ya yazmaz.
+        sense.startSession()
+        areas.start()
+        areas.follow(game: sense.current, source: sense.source)
+        XCTAssertEqual(areas.offeredGame, "GTA 6")
+        XCTAssertEqual(store.region, general)
+        areas.declineOffered()
+        store.setCustomRegion(acArea)
+        XCTAssertTrue(areas.targetHasOtherProfile)
+        areas.save()
+        XCTAssertEqual(store.areaProfile(gta)?.areas.region, gtaArea)
+
+        // Listede olmayan oyun adıyla yeni profil: oynanan oyun da o olur.
+        XCTAssertEqual(areas.saveAs("Assassin's Creed Valhalla"), .done)
+        areas.follow(game: sense.current, source: sense.source)
+        XCTAssertEqual(sense.current?.name, "Assassin's Creed Valhalla")
+        XCTAssertEqual(store.activeAreaProfile, "assassins creed valhalla|stream")
+        XCTAssertEqual(store.areaProfile(gta)?.areas.region, gtaArea)
+        XCTAssertEqual(store.areaProfile("assassins creed valhalla|stream")?.areas.region, acArea)
+        // Var olan oyunun adıyla yeni profil açılmaz.
+        XCTAssertEqual(areas.saveAs("Grand Theft Auto VI"), .exists)
+        XCTAssertEqual(store.areaProfile(gta)?.areas.region, gtaArea)
+
+        // AC'de alan değişikliği yalnız AC profiline yazılır.
+        store.setCustomRegion(general)
+        areas.save()
+        XCTAssertEqual(store.areaProfile("assassins creed valhalla|stream")?.areas.region, general)
+        XCTAssertEqual(store.areaProfile(gta)?.areas.region, gtaArea)
+
+        // Listeden GTA 6 seçilir: onun alanları gelir, oyun GTA 6 olur.
+        areas.use(gta)
+        areas.follow(game: sense.current, source: sense.source)
+        XCTAssertEqual(store.region, gtaArea)
+        XCTAssertEqual(sense.current?.name, "GTA 6")
+        XCTAssertEqual(sense.source, .user)
+        // Oturum bitince profilsizken kullanılan (AC'den önceki) alanlar geri gelir; profiller kendi alanlarında kalır.
+        areas.stop()
+        sense.endSession()
+        XCTAssertEqual(store.region, acArea)
+        XCTAssertNil(store.activeAreaProfile)
+        XCTAssertEqual(store.areaProfile(gta)?.areas.region, gtaArea)
+        XCTAssertEqual(store.areaProfile("assassins creed valhalla|stream")?.areas.region, general)
+    }
+
+    @MainActor
+    func testProfilesCanBeRenamedDuplicatedAndDeleted() {
+        var store = UserSettings()
+        store.setCustomRegion(general)
+        var chosen: [String] = []
+        let areas = GameAreas(read: { store }, write: { store = $0 })
+        areas.onChoose = { chosen.append($0) }
+
+        // Çeviri dururken de profil açılır.
+        XCTAssertEqual(areas.saveAs("GTA 6"), .done)
+        XCTAssertEqual(areas.saveAs("  "), .empty)
+        XCTAssertEqual(chosen, ["GTA 6"])
+        store.setCustomRegion(gtaArea)
+        areas.save()
+        XCTAssertEqual(store.areaProfile(gta)?.areas.region, general, "çeviri dururken Kaydet bir şey yapmaz")
+
+        XCTAssertEqual(areas.duplicate(gta, as: "Mafia: The Old Country"), .done)
+        XCTAssertEqual(areas.duplicate(gta, as: "Grand Theft Auto VI"), .exists)
+        XCTAssertEqual(store.areaProfile("mafia the old country|stream")?.areas.region, general)
+        XCTAssertEqual(store.activeAreaProfile, gta)
+
+        // Başka profilin adına çevrilemez; etkin profilin adı değişince etkin kalır, oyun da yeni ad olur.
+        XCTAssertEqual(areas.rename(gta, to: "Mafia The Old Country"), .exists)
+        XCTAssertEqual(areas.rename(gta, to: "Grand Theft Auto VI"), .done)
+        XCTAssertEqual(store.activeAreaProfile, gta)
+        XCTAssertEqual(store.areaProfile(gta)?.game, "Grand Theft Auto VI")
+        XCTAssertEqual(areas.rename(gta, to: "Red Dead Redemption 2"), .done)
+        XCTAssertEqual(store.activeAreaProfile, "rdr 2|stream")
+        XCTAssertEqual(chosen.last, "Red Dead Redemption 2")
+        XCTAssertEqual(areas.rename("yok|stream", to: "X"), .missing)
+
+        XCTAssertEqual(store.gameProfiles.map(\.game), ["Mafia: The Old Country", "Red Dead Redemption 2"])
+        areas.delete("rdr 2|stream")
+        XCTAssertNil(store.activeAreaProfile)
+        XCTAssertEqual(store.region, general)
+        XCTAssertEqual(store.areaProfiles.map(\.key), ["mafia the old country|stream"])
+    }
+
+    /// Eski sürümün kaydı (en çok 20 profil, biri etkin kalmış): ilk açılışta hiçbiri kaybolmaz, her oyun kendi profilinde
+    /// kalır, açık kalan profil kapanıp genel alanlar geri gelir.
+    @MainActor
+    func testOldSettingsKeepEveryGamesProfile() throws {
+        var old = UserSettings()
+        old.setCustomRegion(general)
+        old.areaProfiles = (0..<20).map { AreaProfile(key: "game \($0)|stream", game: "Game \($0)",
+                                                      areas: AreaSet(region: farCryArea, areaPreset: .custom, extraAreas: [])) }
+        old.areaProfiles.append(AreaProfile(key: gta, game: "GTA 6", areas: AreaSet(region: gtaArea, areaPreset: .custom, extraAreas: [])))
+        old.areaProfiles.removeFirst()
+        old.useAreaProfile(old.areaProfile(gta)!)
+        let data = try JSONEncoder().encode(old)
+        let loaded = GameAreas.restored(try JSONDecoder().decode(UserSettings.self, from: data))
+        XCTAssertEqual(loaded.areaProfiles.count, 20)
+        XCTAssertEqual(loaded.areaProfile(gta)?.areas.region, gtaArea)
+        XCTAssertEqual(loaded.areaProfile("game 5|stream")?.areas.region, farCryArea)
+        XCTAssertEqual(loaded.region, general)
+        XCTAssertNil(loaded.activeAreaProfile)
+    }
+
+    func testPopularGamesAreSuggested() {
+        let found = GameCatalog.suggestions(query: "assassin", packs: [], last: nil, limit: 10)
+        XCTAssertTrue(found.contains("Assassin's Creed Valhalla"))
+        XCTAssertTrue(found.contains("Assassin's Creed Shadows"))
+        XCTAssertTrue(GameCatalog.suggestions(query: "resident evil 4", packs: [], last: nil).contains("Resident Evil 4"))
+        XCTAssertTrue(GameCatalog.suggestions(query: "wolverine", packs: [], last: nil).contains("Marvel's Wolverine"))
+        XCTAssertEqual(Set(GameCatalog.popular.map(GameName.key)).count, GameCatalog.popular.count)
+    }
 }

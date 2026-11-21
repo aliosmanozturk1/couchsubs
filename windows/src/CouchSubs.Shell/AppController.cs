@@ -583,7 +583,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             UpdateRegionWatcher();
             if (old.ActiveAreaProfile != value.ActiveAreaProfile || old.AreaProfiles != value.AreaProfiles || old.Areas != value.Areas
                 || old.FrameSource != value.FrameSource)
-                Changed(nameof(AreaProfileGame), nameof(AreaProfileUnsaved), nameof(AreaProfileTarget));
+                Changed(nameof(AreaProfileGame), nameof(AreaProfileUnsaved), nameof(AreaProfileTarget), nameof(GameProfiles));
             if (old.FrameSource != value.FrameSource || old.CaptureWindow != value.CaptureWindow)
                 Changed(nameof(CanStart), nameof(Ps5StatusText), nameof(ConsoleTitle));
             var windowAppChanged = value.FrameSource == FrameSource.RemotePlayWindow && old.RemotePlayApp != value.RemotePlayApp;
@@ -2175,10 +2175,85 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public bool AreaProfileUnsaved => settings.AreasDifferFromProfile;
 
     /// <summary>
-    /// Alanların kaydedilebileceği oyun: çeviri sürüyor ve oyun biliniyor. Profil etkinse o profilin oyunu; değilse
-    /// oynanan oyun ("Bu alanları X için kaydet").
+    /// Alanların kaydedilebileceği oyun (çeviri sürerken): oynanan oyun, bilinmiyorsa etkin profilin oyunu. Kaydetme
+    /// düğmesi bu adı taşır; başka bir oyunun profiline sessizce yazılmaz.
     /// </summary>
-    public string? AreaProfileTarget => session is null ? null : AreaProfileGame ?? PlayedGame;
+    public string? AreaProfileTarget => session is null ? null : PlayedGame ?? AreaProfileGame;
+
+    /// <summary>
+    /// Hedef oyunun kayıtlı profili var ama uygulanmadı (öneri bekliyor ya da "Hayır" dendi): "X için kaydet" yerine
+    /// "Kayıtlı alanları kullan" gösterilir; kayıtlı alanların üzerine yazılmaz.
+    /// </summary>
+    public bool AreaProfileTargetHasOther =>
+        AreaProfiles.Key(AreaProfileTarget, settings.AreaSource) is { } key && key != settings.ActiveAreaProfile
+        && settings.FindAreaProfile(key) is not null;
+
+    /// <summary>Ayarlar'daki oyun profilleri (şu anki görüntü kaynağının), ada göre.</summary>
+    public IReadOnlyList<AreaProfile> GameProfiles => settings.GameProfiles;
+
+    /// <summary>Okunan alanlar adı yazılan oyunun yeni profili olur ve oynanan oyun o olur (çeviri dururken de).</summary>
+    public AreaProfiles.Edit SaveAreaProfileAs(string game)
+    {
+        var (next, edit) = settings.WithNewAreaProfile(game);
+        if (edit != AreaProfiles.Edit.Done) return edit;
+        if (next.ActiveAreaProfile is { } key) declinedAreaProfiles.Remove(key);
+        SetOfferedAreaProfile(null);
+        Settings = next;
+        SubtitleLog.Write("yeni alan profili: " + next.ActiveAreaProfile);
+        ChooseProfileGame(game);
+        return edit;
+    }
+
+    /// <summary>Listeden profil seçildi: alanları uygulanır, oynanan oyun o olur.</summary>
+    public void UseAreaProfile(string key)
+    {
+        if (settings.FindAreaProfile(key) is not { } profile) return;
+        declinedAreaProfiles.Remove(key);
+        SetOfferedAreaProfile(null);
+        ApplyAreaProfile(profile);
+        ChooseProfileGame(profile.Game);
+    }
+
+    /// <summary>Profil yeniden adlandırılır; etkin profilse oynanan oyun da yeni ad olur.</summary>
+    public AreaProfiles.Edit RenameAreaProfile(string key, string game)
+    {
+        var wasActive = settings.ActiveAreaProfile == key;
+        var (next, edit) = settings.WithRenamedAreaProfile(key, game);
+        if (edit != AreaProfiles.Edit.Done) return edit;
+        Settings = next;
+        if (wasActive) ChooseProfileGame(game);
+        return edit;
+    }
+
+    /// <summary>Profilin alanları başka bir oyun adıyla kopyalanır.</summary>
+    public AreaProfiles.Edit DuplicateAreaProfile(string key, string game)
+    {
+        var (next, edit) = settings.WithDuplicatedAreaProfile(key, game);
+        if (edit == AreaProfiles.Edit.Done) Settings = next;
+        return edit;
+    }
+
+    /// <summary>Listeden profil silinir; etkinse genel alanlara dönülür.</summary>
+    public void DeleteAreaProfile(string key)
+    {
+        if (offeredAreaProfile == key) SetOfferedAreaProfile(null);
+        Settings = settings.WithoutAreaProfile(key);
+        SubtitleLog.Write("alan profili silindi: " + key);
+    }
+
+    /// <summary>Profil seçilince oynanan oyun o olur; çeviri dururken yalnız seçim saklanır (oturum başlayınca uygulanır).</summary>
+    private void ChooseProfileGame(string game)
+    {
+        if (session is not null)
+        {
+            ChooseGame(game);
+            return;
+        }
+        if (RunningGame.Named(game)?.Name is not { } clean) return;
+        gameSense.Choose(clean);
+        services.GamePacks?.LimitToGame(gameSense.PackLimit);
+        PlayedGame = clean;
+    }
 
     /// <summary>Paketten tanınan oyunun kayıtlı alanları var; kullanıcıya sorulur. Kartta gösterilen oyun adı.</summary>
     public string? OfferedAreaProfileGame => settings.FindAreaProfile(offeredAreaProfile)?.Game;
@@ -2209,7 +2284,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Okunan alanlar etkin profile, profil yoksa oynanan oyuna kaydedilir.</summary>
     public void SaveAreaProfile()
     {
-        if (AreaProfileTarget is not { } game) return;
+        if (AreaProfileTarget is not { } game || AreaProfileTargetHasOther) return;
         declinedAreaProfiles.RemoveWhere(key => key == AreaProfiles.Key(game, settings.AreaSource));
         Settings = settings.WithSavedAreaProfile(game);
         SubtitleLog.Write("alan profili kaydedildi: " + settings.ActiveAreaProfile);
@@ -2218,9 +2293,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Etkin profil silinir ve genel alanlara dönülür.</summary>
     public void DeleteAreaProfile()
     {
-        if (settings.ActiveAreaProfile is not { } key) return;
-        Settings = settings.WithoutAreaProfile(key);
-        SubtitleLog.Write("alan profili silindi: " + key);
+        if (settings.ActiveAreaProfile is { } key) DeleteAreaProfile(key);
     }
 
     private void ApplyAreaProfile(AreaProfile profile)
@@ -2311,6 +2384,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     private void StopGameSense()
     {
+        gameSense.EndSession();
         gameAsk?.Cancel();
         gameAsk?.Dispose();
         gameAsk = null;

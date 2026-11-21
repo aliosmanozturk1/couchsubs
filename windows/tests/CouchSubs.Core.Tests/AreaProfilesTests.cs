@@ -36,6 +36,44 @@ public class AreaProfilesTests
         Assert.Equal(new Decision(Step.Offer, FarCry), Run(null, "Far Cry 3", Source.Pack));
 
     [Fact]
+    public void AChoiceRememberedFromAnEarlierSessionIsOfferedNotApplied()
+    {
+        Assert.Equal(new Decision(Step.Offer, FarCry), Run(null, "Far Cry 3", Source.Remembered));
+        Assert.Equal(Step.UseGeneral, Run(FarCry, "Hades", Source.Remembered).Step);
+    }
+
+    [Fact]
+    public void AChoiceMadeDuringASessionIsRememberedInTheNext()
+    {
+        var sense = new GameSense();
+        sense.Choose("Grand Theft Auto VI");
+        sense.StartSession();
+        // Çeviri dururken (Ayarlar'da) seçilen oyun bu oturum içindir.
+        Assert.Equal(Source.User, sense.Source);
+        sense.EndSession();
+        sense.StartSession();
+        Assert.Equal(Source.User, sense.Source);
+        sense.Choose("GTA 6");
+        sense.EndSession();
+        sense.StartSession();
+        Assert.Equal(Source.Remembered, sense.Source);
+        Assert.Equal("GTA 6", sense.Current?.Name);
+        sense.Choose("Assassin's Creed Valhalla");
+        Assert.Equal(Source.User, sense.Source);
+    }
+
+    [Fact]
+    public void PopularGamesAreSuggested()
+    {
+        var found = GameCatalog.Suggestions("assassin", [], null, 10);
+        Assert.Contains("Assassin's Creed Valhalla", found);
+        Assert.Contains("Assassin's Creed Shadows", found);
+        Assert.Contains("Resident Evil 4", GameCatalog.Suggestions("resident evil 4", [], null));
+        Assert.Contains("Marvel's Wolverine", GameCatalog.Suggestions("wolverine", [], null));
+        Assert.Equal(GameCatalog.Popular.Count, GameCatalog.Popular.Select(GameName.Key).Distinct().Count());
+    }
+
+    [Fact]
     public void TheAppliedProfileIsNotAppliedAgain() =>
         Assert.Equal(Step.None, Run(FarCry, "Far Cry III", Source.Console).Step);
 

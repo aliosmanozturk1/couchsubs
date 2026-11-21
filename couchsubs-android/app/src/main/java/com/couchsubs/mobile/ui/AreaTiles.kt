@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,7 +54,10 @@ import androidx.compose.ui.unit.dp
 import com.couchsubs.mobile.R
 import com.couchsubs.mobile.Services
 import com.couchsubs.mobile.core.AreaPreset
+import com.couchsubs.mobile.core.AreaProfile
+import com.couchsubs.mobile.core.AreaProfiles
 import com.couchsubs.mobile.core.areasDifferFromProfile
+import com.couchsubs.mobile.core.gameProfiles
 import com.couchsubs.mobile.core.CropRegion
 import com.couchsubs.mobile.core.ExtraArea
 import com.couchsubs.mobile.core.ExtraAreaPreset
@@ -92,7 +96,12 @@ fun AreaProfileTile() {
         }
         Text(headline, style = Tokens.Type.body, color = Tokens.Color.text)
         Text(note, style = Tokens.Type.caption, color = Tokens.Color.secondary)
-        if (target != null && (active == null || unsaved)) {
+        if (target != null && status.areaProfileTargetSaved) {
+            // Oynanan oyunun kayıtlı alanları uygulanmadı: üzerine yazılmaz, istenirse kullanılır.
+            SecondaryButton(stringResource(R.string.area_profile_use_saved, target)) {
+                PlayedGame.areas.targetKey?.let { PlayedGame.areas.use(it, settings) }
+            }
+        } else if (target != null && (active == null || unsaved)) {
             SecondaryButton(if (active == null) stringResource(R.string.area_profile_save_for, target) else stringResource(R.string.area_profile_save)) {
                 PlayedGame.areas.save()
             }
@@ -112,6 +121,133 @@ fun AreaProfileTile() {
         dismissButton = { TextButton({ confirmDelete = false }) { Text(stringResource(R.string.cancel)) } },
         containerColor = Tokens.Color.surface2,
     )
+}
+
+/** Oyun profilleri kartında ad yazılan işlem: yeni profil (null anahtar), yeniden adlandırma ya da çoğaltma. */
+private data class ProfileEditing(val key: String?, val duplicate: Boolean)
+
+/**
+ * Ayarlar › Oyun profilleri: her oyunun kendi alanları. Listede olmayan oyun adı yazılarak eklenir; profil seçilir,
+ * yeniden adlandırılır, çoğaltılır, silinir. Profil seçmek oynanan oyunu da o yapar (Mac, Windows ve iPhone ile aynı).
+ */
+@Composable
+fun GameProfilesTile() {
+    val status by LiveState.status.collectAsState()
+    val settings = Services.settings
+    val areas = PlayedGame.areas
+    var edits by remember { mutableIntStateOf(0) }
+    DisposableEffect(settings) {
+        val listener = settings.onAreasChanged { edits++ }
+        onDispose { settings.removeListener(listener) }
+    }
+    val profiles = remember(edits, status.profilesVersion) { settings.gameProfiles(areas.areaSource) }
+    val active = remember(edits, status.profilesVersion) { settings.activeAreaProfile }
+    var editing by remember { mutableStateOf<ProfileEditing?>(null) }
+    var name by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var deleting by remember { mutableStateOf<AreaProfile?>(null) }
+    val existsText = stringResource(R.string.game_profiles_exists, name.trim())
+    val emptyText = stringResource(R.string.game_profiles_empty)
+    fun begin(mode: ProfileEditing, initial: String) {
+        editing = mode
+        name = initial
+        problem = null
+    }
+    fun commit() {
+        val mode = editing ?: return
+        val key = mode.key
+        val edit = when {
+            key == null -> areas.saveAs(name, settings)
+            mode.duplicate -> areas.duplicate(key, name, settings)
+            else -> areas.rename(key, name, settings)
+        }
+        edits++
+        when (edit) {
+            AreaProfiles.Edit.DONE -> editing = null
+            AreaProfiles.Edit.EXISTS -> problem = existsText
+            else -> problem = emptyText
+        }
+    }
+    @Composable
+    fun Editor() {
+        Column(verticalArrangement = Arrangement.spacedBy(Tokens.Space.inline)) {
+            Field(name, { name = it }, stringResource(R.string.game_profiles_name))
+            problem?.let { Text(it, style = Tokens.Type.caption, color = Tokens.Color.secondary) }
+            Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.inline)) {
+                val mode = editing
+                val title = when {
+                    mode?.key == null -> R.string.game_profiles_save_current
+                    mode.duplicate -> R.string.game_profiles_duplicate
+                    else -> R.string.game_profiles_rename
+                }
+                SecondaryButton(stringResource(title), enabled = name.isNotBlank()) { commit() }
+                GhostButton(stringResource(R.string.cancel), color = Tokens.Color.secondary) { editing = null }
+            }
+        }
+    }
+    Tile(Modifier.fillMaxWidth()) {
+        TileLabel(stringResource(R.string.game_profiles_title))
+        Text(stringResource(R.string.game_profiles_body), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+        for (profile in profiles) key(profile.key) {
+            if (editing?.key == profile.key) {
+                Editor()
+                return@key
+            }
+            var menu by remember { mutableStateOf(false) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(profile.game, style = Tokens.Type.body, color = Tokens.Color.text, maxLines = 1)
+                    if (profile.key == active) {
+                        Text(stringResource(R.string.game_profiles_in_use), style = Tokens.Type.caption, color = Tokens.Color.secondary)
+                    }
+                }
+                if (profile.key != active) {
+                    GhostButton(stringResource(R.string.area_profile_use)) {
+                        areas.use(profile.key, settings)
+                        edits++
+                    }
+                }
+                Box {
+                    GhostButton(stringResource(R.string.game_profiles_more), color = Tokens.Color.secondary) { menu = true }
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem({ Text(stringResource(R.string.game_profiles_rename)) }, {
+                            menu = false
+                            begin(ProfileEditing(profile.key, false), profile.game)
+                        })
+                        DropdownMenuItem({ Text(stringResource(R.string.game_profiles_duplicate)) }, {
+                            menu = false
+                            begin(ProfileEditing(profile.key, true), "")
+                        })
+                        DropdownMenuItem({ Text(stringResource(R.string.area_profile_delete), color = Tokens.Color.danger) }, {
+                            menu = false
+                            deleting = profile
+                        })
+                    }
+                }
+            }
+        }
+        if (editing?.key == null && editing != null) {
+            Editor()
+        } else if (editing == null) {
+            SecondaryButton(stringResource(R.string.game_profiles_new)) { begin(ProfileEditing(null, false), status.game ?: "") }
+        }
+    }
+    deleting?.let { profile ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text(stringResource(R.string.area_profile_delete)) },
+            text = { Text(stringResource(R.string.area_profile_delete_body, profile.game)) },
+            confirmButton = {
+                TextButton({
+                    deleting = null
+                    areas.delete(profile.key, settings)
+                    edits++
+                }) { Text(stringResource(R.string.area_profile_delete), color = Tokens.Color.danger) }
+            },
+            dismissButton = { TextButton({ deleting = null }) { Text(stringResource(R.string.cancel)) } },
+            containerColor = Tokens.Color.surface2,
+        )
+    }
 }
 
 /** Ayarlar › Altyazı alanı: Alt alan, Üst alan, Tam ekran, Özel; önizlemede çerçeve sürüklenir. */

@@ -324,6 +324,8 @@ final class PhoneModel: ObservableObject {
             if game != nil { self?.onGameStarted() }
         }
         gameChoice.onPublish = { [weak self] game, source in self?.gameAreas.follow(game: game, source: source) }
+        // Ayarlar'da oyun profili seçilince ya da yeni profil açılınca oynanan oyun o olur.
+        gameAreas.onChoose = { [weak self] name in self?.gameChoice.choose(name) }
         gameChoice.packTitles = { [weak self] in GameCatalog.packGames(self?.installedPacks ?? []) }
         // Elle seçilen oyunda satırlar yalnız o oyunun paketinde aranır, paketi yoksa hiç aranmaz (#218).
         gameChoice.packs = packs

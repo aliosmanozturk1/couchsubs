@@ -15,13 +15,29 @@ public enum AreaSource { Stream, Window }
 public static class AreaProfiles
 {
     /// <summary>En çok bu kadar profil saklanır; fazlasında en uzun süredir kullanılmayan silinir.</summary>
-    public const int MaxCount = 20;
+    public const int MaxCount = 50;
 
     /// <summary>Profilin anahtarı ("far cry 3|stream"); oyun adı boşsa null.</summary>
     public static string? Key(string? game, AreaSource source)
     {
         var name = GameName.Key(game);
         return name.Length == 0 ? null : name + "|" + (source == AreaSource.Window ? "window" : "stream");
+    }
+
+    /// <summary>Anahtarın görüntü kaynağı ("…|window" → pencere, gerisi akış).</summary>
+    public static AreaSource SourceOfKey(string key) =>
+        key.EndsWith("|window", StringComparison.Ordinal) ? AreaSource.Window : AreaSource.Stream;
+
+    /// <summary>Profil listesinde yeni profil, ad değişikliği ya da çoğaltmanın sonucu.</summary>
+    public enum Edit
+    {
+        Done,
+        /// <summary>Ad boş (ya da yalnız noktalama).</summary>
+        Empty,
+        /// <summary>Bu adla başka bir oyunun profili var; üzerine yazılmaz.</summary>
+        Exists,
+        /// <summary>Profil bulunamadı.</summary>
+        Missing,
     }
 
     public enum Step
@@ -49,7 +65,7 @@ public static class AreaProfiles
         if (Key(game, areaSource) is not { } key || source is null) return new Decision(Step.None);
         if (key == active) return new Decision(Step.None);
         if (exists(key) && !declined(key))
-            return new Decision(source == GameSense.GameSource.Pack ? Step.Offer : Step.Apply, key);
+            return new Decision(source is GameSense.GameSource.Pack or GameSense.GameSource.Remembered ? Step.Offer : Step.Apply, key);
         return active is null ? new Decision(Step.None) : new Decision(Step.UseGeneral);
     }
 

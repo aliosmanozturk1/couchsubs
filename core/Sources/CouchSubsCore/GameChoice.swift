@@ -61,6 +61,7 @@ public final class GameChoice: ObservableObject {
 
     /// Çeviri durdu: kart kapanır.
     public func stop() {
+        sense.endSession()
         timer?.cancel()
         timer = nil
         asking = false

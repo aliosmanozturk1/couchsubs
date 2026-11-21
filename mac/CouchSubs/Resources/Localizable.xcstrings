@@ -1,6 +1,18 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Game profiles": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Game profiles"}},"tr":{"stringUnit":{"state":"translated","value":"Oyun profilleri"}}}},
+    "Each game keeps its own subtitle area and extra areas. A game that isn't in the list can be added by typing its name; one profile never overwrites another.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Each game keeps its own subtitle area and extra areas. A game that isn't in the list can be added by typing its name; one profile never overwrites another."}},"tr":{"stringUnit":{"state":"translated","value":"Her oyunun altyazı alanı ve ek alanları ayrı saklanır. Listede olmayan oyunu adını yazarak ekleyebilirsiniz; bir profil başka bir profilin üzerine yazılmaz."}}}},
+    "New game profile": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"New game profile"}},"tr":{"stringUnit":{"state":"translated","value":"Yeni oyun profili"}}}},
+    "In use": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"In use"}},"tr":{"stringUnit":{"state":"translated","value":"Kullanılıyor"}}}},
+    "Rename": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Rename"}},"tr":{"stringUnit":{"state":"translated","value":"Yeniden adlandır"}}}},
+    "Duplicate": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Duplicate"}},"tr":{"stringUnit":{"state":"translated","value":"Çoğalt"}}}},
+    "More": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"More"}},"tr":{"stringUnit":{"state":"translated","value":"Diğer"}}}},
+    "Game name": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Game name"}},"tr":{"stringUnit":{"state":"translated","value":"Oyunun adı"}}}},
+    "Save current areas": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Save current areas"}},"tr":{"stringUnit":{"state":"translated","value":"Şu anki alanları kaydet"}}}},
+    "There is already a profile for %@.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"There is already a profile for %@."}},"tr":{"stringUnit":{"state":"translated","value":"%@ için zaten bir profil var."}}}},
+    "Type the game's name.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Type the game's name."}},"tr":{"stringUnit":{"state":"translated","value":"Oyunun adını yazın."}}}},
+    "Use the saved areas for %@": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Use the saved areas for %@"}},"tr":{"stringUnit":{"state":"translated","value":"%@ için kayıtlı alanları kullan"}}}},
     "Reconnect": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Reconnect"}},"tr":{"stringUnit":{"state":"translated","value":"Yeniden bağlan"}}}},
     "If CouchSubs didn't open on the TV by itself, open it on the TV: on Android TV it's under Apps.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"If CouchSubs didn't open on the TV by itself, open it on the TV: on Android TV it's under Apps."}},"tr":{"stringUnit":{"state":"translated","value":"CouchSubs TV'de kendiliğinden açılmadıysa TV'den açın: Android TV'de Uygulamalar bölümündedir."}}}},
     "If CouchSubs didn't open on the TV by itself, open it on the TV: it's in the TV's app list.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"If CouchSubs didn't open on the TV by itself, open it on the TV: it's in the TV's app list."}},"tr":{"stringUnit":{"state":"translated","value":"CouchSubs TV'de kendiliğinden açılmadıysa TV'den açın: TV'nin uygulamalar listesindedir."}}}},

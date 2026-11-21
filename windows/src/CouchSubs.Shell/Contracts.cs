@@ -585,6 +585,49 @@ public sealed record UserSettings
         };
     }
 
+    /// <summary>
+    /// Okunan alanlar adı yazılan oyunun yeni profili olur ve etkinleşir (listede olmayan oyun da). O adın profili varsa
+    /// değişmez (<see cref="Core.AreaProfiles.Edit.Exists"/>): başka oyunun alanlarının üzerine yazılmaz.
+    /// </summary>
+    public (UserSettings Settings, Core.AreaProfiles.Edit Edit) WithNewAreaProfile(string game)
+    {
+        var name = game.Trim();
+        if (Core.AreaProfiles.Key(name, AreaSource) is not { } key) return (this, Core.AreaProfiles.Edit.Empty);
+        if (FindAreaProfile(key) is not null) return (this, Core.AreaProfiles.Edit.Exists);
+        return (WithSavedAreaProfile(name), Core.AreaProfiles.Edit.Done);
+    }
+
+    /// <summary>Profilin adı değişir (aynı kaynakta); etkinse etkin kalır. Yeni ad başka bir profilinse değişmez.</summary>
+    public (UserSettings Settings, Core.AreaProfiles.Edit Edit) WithRenamedAreaProfile(string key, string game)
+    {
+        var name = game.Trim();
+        var index = AreaProfiles.ToList().FindIndex(profile => profile.Key == key);
+        if (index < 0) return (this, Core.AreaProfiles.Edit.Missing);
+        if (Core.AreaProfiles.Key(name, Core.AreaProfiles.SourceOfKey(key)) is not { } next) return (this, Core.AreaProfiles.Edit.Empty);
+        if (next != key && FindAreaProfile(next) is not null) return (this, Core.AreaProfiles.Edit.Exists);
+        var list = AreaProfiles.ToList();
+        list[index] = list[index] with { Key = next, Game = name };
+        return (this with { AreaProfiles = list, ActiveAreaProfile = ActiveAreaProfile == key ? next : ActiveAreaProfile },
+                Core.AreaProfiles.Edit.Done);
+    }
+
+    /// <summary>Profilin alanları başka bir oyun adıyla kopyalanır (aynı kaynakta); etkin profil değişmez.</summary>
+    public (UserSettings Settings, Core.AreaProfiles.Edit Edit) WithDuplicatedAreaProfile(string key, string game)
+    {
+        var name = game.Trim();
+        if (FindAreaProfile(key) is not { } profile) return (this, Core.AreaProfiles.Edit.Missing);
+        if (Core.AreaProfiles.Key(name, Core.AreaProfiles.SourceOfKey(key)) is not { } next) return (this, Core.AreaProfiles.Edit.Empty);
+        if (FindAreaProfile(next) is not null) return (this, Core.AreaProfiles.Edit.Exists);
+        var copy = new AreaProfile(next, name, profile.Areas);
+        return (this with { AreaProfiles = Core.AreaProfiles.Saved(AreaProfiles, copy, item => item.Key) }, Core.AreaProfiles.Edit.Done);
+    }
+
+    /// <summary>Şu anki görüntü kaynağının profilleri, ada göre sıralı (Ayarlar'daki oyun profilleri listesi).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<AreaProfile> GameProfiles =>
+        [.. AreaProfiles.Where(profile => Core.AreaProfiles.SourceOfKey(profile.Key) == AreaSource)
+                        .OrderBy(profile => profile.Game, StringComparer.CurrentCultureIgnoreCase)];
+
     /// <summary>Profil silinir; etkinse genel alanlara dönülür.</summary>
     public UserSettings WithoutAreaProfile(string key)
     {

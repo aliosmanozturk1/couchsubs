@@ -61,8 +61,12 @@ data class LiveStatus(
     val offeredAreaProfileGame: String? = null,
     /** Alanların kaydedilebileceği oyun (çeviri sürüyor ve oyun biliniyor). */
     val areaProfileTarget: String? = null,
+    /** Hedef oyunun kayıtlı alanları var ama uygulanmadı: "X için kaydet" yerine "Kayıtlı alanları kullan". */
+    val areaProfileTargetSaved: Boolean = false,
     /** Alanlar profilden geldi ya da geri döndü: açık Ayarlar ekranı alanları yeniden okur. */
     val areasVersion: Int = 0,
+    /** Oyun profilleri listesi değişti (eklendi, adı değişti, silindi, seçildi). */
+    val profilesVersion: Int = 0,
 ) {
     /**
      * Sunucunun olayı telefon ekranına: yeni satır öncekini üste iter; aynı cümlenin uzamış ya da düzelmiş okuması

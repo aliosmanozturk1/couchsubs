@@ -892,6 +892,8 @@ final class AppModel: ObservableObject {
             if game != nil { self?.packsForGame() }
         }
         gameChoice.onPublish = { [weak self] game, source in self?.gameAreas.follow(game: game, source: source) }
+        // Ayarlar'da oyun profili seçilince ya da yeni profil açılınca oynanan oyun o olur.
+        gameAreas.onChoose = { [weak self] name in self?.gameChoice.choose(name) }
         // Jeton yenilenince (ya da çıkış yapılınca) Anahtarlık güncellenir.
         xboxTokenSink.handler = { [weak self] token in
             Task { @MainActor in

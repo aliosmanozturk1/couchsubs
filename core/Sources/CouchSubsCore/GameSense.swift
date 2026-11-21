@@ -11,7 +11,10 @@ import Foundation
 /// Hiçbiri yoksa çeviri başladıktan iki dakika sonra bir kez "Hangi oyunu oynuyorsunuz?" sorulur (`shouldAsk`).
 /// Android'deki GameSense.kt ve Windows'taki CouchSubs.Core/GameSense.cs ile aynı kurallar.
 public final class GameSense: @unchecked Sendable {
-    public enum Source: String, Sendable { case console, pack, user }
+    /// `remembered`: kullanıcının önceki bir çeviri oturumunda seçtiği oyun (uygulama açık kaldıkça kalır). Kayıtlı
+    /// alanlar bu oyunda sessizce uygulanmaz, sorulur: kullanıcı başka oyuna geçip seçimi değiştirmediyse eski oyunun
+    /// profili uygulanıyor, yeni oyunda yapılan alan değişiklikleri de eski oyunun profiline kaydediliyordu.
+    public enum Source: String, Sendable { case console, pack, user, remembered }
 
     /// Bakılan son satır sayısı ve tanımak için aynı paketten gelmesi gereken satır sayısı.
     public static let window = 20
@@ -28,6 +31,11 @@ public final class GameSense: @unchecked Sendable {
     private var pack: RunningGame?
     private var packId: String?
     private var chosen: RunningGame?
+    /// Seçim bir çeviri oturumu sürerken yapıldı; sonraki oturumda `remembered` sayılır.
+    private var chosenWhileRunning = false
+    /// Seçim önceki bir oturumdan kaldı (`remembered`).
+    private var carried = false
+    private var running = false
     private var asked = false
 
     public init() {}
@@ -36,7 +44,7 @@ public final class GameSense: @unchecked Sendable {
     public var current: RunningGame? { lock.withLock { console ?? chosen ?? pack } }
 
     public var source: Source? {
-        lock.withLock { console != nil ? .console : chosen != nil ? .user : pack != nil ? .pack : nil }
+        lock.withLock { console != nil ? .console : chosen != nil ? (carried ? .remembered : .user) : pack != nil ? .pack : nil }
     }
 
     /// Paket aramasının sınırlanacağı oyun (`GamePackLibrary.limit(toGame:)`): kullanıcı elle seçtiyse ve PS5 bir oyun
@@ -82,11 +90,15 @@ public final class GameSense: @unchecked Sendable {
     public func choose(_ name: String?) {
         lock.withLock {
             chosen = RunningGame(name: name)
+            chosenWhileRunning = running
+            carried = false
             asked = true
         }
     }
 
-    /// Yeni çeviri oturumu: paket penceresi ve soru sıfırlanır; kullanıcının seçimi uygulama açık kaldıkça kalır.
+    /// Yeni çeviri oturumu: paket penceresi ve soru sıfırlanır; kullanıcının seçimi uygulama açık kaldıkça kalır. Önceki
+    /// oturumda yapılan seçim bu oturumda `remembered` olur; çeviri dururken yapılan seçim (Ayarlar'da oyun profili
+    /// seçildi) bu oturum içindir, `user` kalır.
     public func startSession() {
         lock.withLock {
             recent.removeAll()
@@ -94,7 +106,14 @@ public final class GameSense: @unchecked Sendable {
             packId = nil
             console = nil
             asked = false
+            carried = chosen != nil && chosenWhileRunning
+            running = true
         }
+    }
+
+    /// Çeviri oturumu bitti.
+    public func endSession() {
+        lock.withLock { running = false }
     }
 
     /// Kart gösterilmeli mi: ayar açık, bu oturumda sorulmadı, oyun hiçbir yoldan bilinmiyor ve çeviri iki dakikadır sürüyor.
@@ -177,6 +196,10 @@ public enum GameCatalog {
         "Black Myth: Wukong", "Baldur's Gate 3", "Horizon Forbidden West", "Alan Wake 2",
         "Indiana Jones and the Great Circle", "Dying Light: The Beast", "Ghost of Tsushima", "Star Wars Outlaws",
         "The Witcher 3: Wild Hunt", "Monster Hunter Wilds", "Split Fiction", "Hollow Knight: Silksong",
+        "Marvel's Wolverine", "Assassin's Creed Mirage", "Assassin's Creed Valhalla", "Assassin's Creed Odyssey",
+        "Assassin's Creed Origins", "Call of Duty: Modern Warfare III", "Call of Duty: Modern Warfare II",
+        "Call of Duty: Warzone", "Resident Evil 4", "Resident Evil Village", "Resident Evil 2", "Resident Evil 3",
+        "Resident Evil 7: Biohazard", "Silent Hill 2", "The Last of Us Part I", "God of War",
     ]
 
     /// Öneriler (en çok `limit`): önce son oynanan, sonra paketlerin oyunları, sonra popüler oyunlar; aynı oyun bir kez.

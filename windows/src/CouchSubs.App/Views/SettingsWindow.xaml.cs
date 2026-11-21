@@ -77,6 +77,8 @@ public partial class SettingsWindow : Window
         StreamBackgroundChoice.SelectedItem = StreamBackgroundChoice.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == streamBackground);
         ShowArea(0);
         ShowAreaProfile();
+        GameProfilesHint.Text = Localizer.Current["Each game keeps its own subtitle area and extra areas. A game that isn't in the list can be added by typing its name; one profile never overwrites another."];
+        ShowGameProfiles();
         // Num 8: oyunun o anki görüntüsü önizlemeye alınır.
         controller.SnapshotRequested += OnSnapshot;
         Closed += (_, _) => controller.SnapshotRequested -= OnSnapshot;
@@ -270,8 +272,9 @@ public partial class SettingsWindow : Window
             ShowAdvancedOcr();
         if (e.PropertyName == nameof(AppController.Settings)) ShowShortcutTexts();
         if (e.PropertyName is nameof(AppController.AreaProfileGame) or nameof(AppController.AreaProfileUnsaved)
-            or nameof(AppController.AreaProfileTarget))
+            or nameof(AppController.AreaProfileTarget) or nameof(AppController.OfferedAreaProfileGame))
             ShowAreaProfile();
+        if (e.PropertyName is nameof(AppController.GameProfiles) or nameof(AppController.AreaProfileGame)) ShowGameProfiles();
         // Oyun değişince alanlar profilden gelir ya da genel alanlara dönülür: açık sekme yeni alanı gösterir.
         if (e.PropertyName == nameof(AppController.AreaProfileGame) && !Region.IsDragging) ShowArea(area);
     }
@@ -293,13 +296,121 @@ public partial class SettingsWindow : Window
             ? text[unsaved ? "Your changes are not saved yet; they are dropped when translating stops." : "They come back by themselves whenever you play this game."]
             : target is not null ? text.Format("Save them for %@ and they come back by themselves the next time you play it.", target)
             : text["The played game is shown on the home screen; you can choose it there."];
-        AreaProfileSave.Content = active is not null ? text["Save to profile"] : target is not null ? text.Format("Save for %@", target) : "";
-        AreaProfileSave.Visibility = target is not null && (active is null || unsaved) ? Visibility.Visible : Visibility.Collapsed;
+        // Oynanan oyunun kayıtlı alanları uygulanmadıysa üzerine yazılmaz: düğme o alanları kullanır.
+        var other = controller.AreaProfileTargetHasOther;
+        AreaProfileSave.Content = other && target is not null ? text.Format("Use the saved areas for %@", target)
+            : active is not null ? text["Save to profile"] : target is not null ? text.Format("Save for %@", target) : "";
+        AreaProfileSave.Visibility = target is not null && (other || active is null || unsaved) ? Visibility.Visible : Visibility.Collapsed;
         AreaProfileDelete.Visibility = active is not null ? Visibility.Visible : Visibility.Collapsed;
         AreaProfileButtons.Visibility = AreaProfileSave.Visibility == Visibility.Visible || active is not null ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void OnSaveAreaProfile(object sender, RoutedEventArgs e) => controller.SaveAreaProfile();
+    private void OnSaveAreaProfile(object sender, RoutedEventArgs e)
+    {
+        if (controller.AreaProfileTargetHasOther
+            && AreaProfiles.Key(controller.AreaProfileTarget, controller.Settings.AreaSource) is { } key)
+            controller.UseAreaProfile(key);
+        else
+            controller.SaveAreaProfile();
+    }
+
+    // --- Oyun profilleri: listede olmayan oyun adı yazılarak eklenir; seç, yeniden adlandır, çoğalt, sil ---
+
+    /// <summary>Ad yazılan işlem: yeni profil (null anahtar), yeniden adlandırma ya da çoğaltma.</summary>
+    private (string? Key, bool Duplicate)? profileEditing;
+
+    private void ShowGameProfiles()
+    {
+        var text = Localizer.Current;
+        GameProfileList.Children.Clear();
+        var active = controller.Settings.ActiveAreaProfile;
+        foreach (var profile in controller.GameProfiles)
+        {
+            var row = new DockPanel { Margin = new Thickness(0, 4, 0, 4), LastChildFill = true };
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+            DockPanel.SetDock(buttons, Dock.Right);
+            void AddButton(string title, Action run, double left = 8)
+            {
+                var button = new Button { Content = text[title], Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(left, 0, 0, 0) };
+                button.Click += (_, _) => run();
+                buttons.Children.Add(button);
+            }
+            var key = profile.Key;
+            var game = profile.Game;
+            if (key != active) AddButton("Use", () => controller.UseAreaProfile(key), 0);
+            AddButton("Rename", () => BeginProfileEdit((key, false), game));
+            AddButton("Duplicate", () => BeginProfileEdit((key, true), ""));
+            AddButton("Delete profile", () =>
+            {
+                if (MessageBox.Show(this, text.Format("Delete the saved areas for %@?", game), text["Delete profile"], MessageBoxButton.YesNo,
+                                    MessageBoxImage.Question) == MessageBoxResult.Yes)
+                    controller.DeleteAreaProfile(key);
+            });
+            row.Children.Add(buttons);
+            row.Children.Add(new TextBlock
+            {
+                Text = key == active ? game + " · " + text["In use"] : game,
+                VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            GameProfileList.Children.Add(row);
+        }
+        GameProfileList.Visibility = GameProfileList.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void BeginProfileEdit((string? Key, bool Duplicate) editing, string name)
+    {
+        var text = Localizer.Current;
+        profileEditing = editing;
+        GameProfileName.Text = name;
+        GameProfileProblem.Visibility = Visibility.Collapsed;
+        GameProfileCommit.Content = text[editing.Key is null ? "Save current areas" : editing.Duplicate ? "Duplicate" : "Rename"];
+        GameProfileEditor.Visibility = Visibility.Visible;
+        GameProfileNew.Visibility = Visibility.Collapsed;
+        GameProfileName.Focus();
+        GameProfileName.SelectAll();
+    }
+
+    private void EndProfileEdit()
+    {
+        profileEditing = null;
+        GameProfileEditor.Visibility = Visibility.Collapsed;
+        GameProfileNew.Visibility = Visibility.Visible;
+    }
+
+    private void OnNewGameProfile(object sender, RoutedEventArgs e) => BeginProfileEdit((null, false), controller.PlayedGame ?? "");
+
+    private void OnCancelGameProfile(object sender, RoutedEventArgs e) => EndProfileEdit();
+
+    private void OnGameProfileNameKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) OnCommitGameProfile(sender, e);
+        else if (e.Key == Key.Escape) EndProfileEdit();
+    }
+
+    private void OnCommitGameProfile(object sender, RoutedEventArgs e)
+    {
+        if (profileEditing is not { } editing) return;
+        var text = Localizer.Current;
+        var name = GameProfileName.Text.Trim();
+        var edit = editing.Key is not { } key ? controller.SaveAreaProfileAs(name)
+            : editing.Duplicate ? controller.DuplicateAreaProfile(key, name)
+            : controller.RenameAreaProfile(key, name);
+        switch (edit)
+        {
+            case AreaProfiles.Edit.Done:
+                EndProfileEdit();
+                ShowGameProfiles();
+                break;
+            case AreaProfiles.Edit.Exists:
+                GameProfileProblem.Text = text.Format("There is already a profile for %@.", name);
+                GameProfileProblem.Visibility = Visibility.Visible;
+                break;
+            default:
+                GameProfileProblem.Text = text["Type the game's name."];
+                GameProfileProblem.Visibility = Visibility.Visible;
+                break;
+        }
+    }
 
     private void OnDeleteAreaProfile(object sender, RoutedEventArgs e)
     {

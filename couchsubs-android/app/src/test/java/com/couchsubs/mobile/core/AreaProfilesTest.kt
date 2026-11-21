@@ -176,4 +176,134 @@ class AreaProfilesTest {
         assertTrue(AreaProfile.listFromJson(null).isEmpty())
         assertTrue(AreaProfile.listFromJson("bozuk").isEmpty())
     }
+
+    // --- Oyun profilleri (her oyun bağımsız) ---
+
+    private val gta = "gta 6|stream"
+    private val gtaArea = CropRegion(0.74, 0.93, 0.18, 0.82)
+    private val acArea = CropRegion(0.80, 0.98, 0.10, 0.90)
+
+    private fun MemoryStore.region(region: CropRegion) {
+        areas = AreaSet(region, AreaPreset.CUSTOM, emptyList())
+    }
+
+    @Test
+    fun aRememberedChoiceIsOfferedNotApplied() {
+        assertEquals(AreaProfiles.Step.Offer(farCry), run(null, "Far Cry 3", GameSense.Source.REMEMBERED))
+        assertEquals(AreaProfiles.Step.UseGeneral, run(farCry, "Hades", GameSense.Source.REMEMBERED))
+    }
+
+    @Test
+    fun aChoiceFromAnEarlierSessionIsRemembered() {
+        val sense = GameSense()
+        sense.choose("Grand Theft Auto VI")
+        sense.startSession()
+        // Çeviri dururken (Ayarlar'da) seçilen oyun bu oturum içindir.
+        assertEquals(GameSense.Source.USER, sense.source)
+        sense.endSession()
+        sense.startSession()
+        assertEquals(GameSense.Source.USER, sense.source)
+        sense.choose("GTA 6")
+        sense.endSession()
+        sense.startSession()
+        assertEquals(GameSense.Source.REMEMBERED, sense.source)
+        assertEquals("GTA 6", sense.current?.name)
+        sense.choose("Assassin's Creed Valhalla")
+        assertEquals(GameSense.Source.USER, sense.source)
+    }
+
+    /**
+     * Kullanıcının bildirdiği durum: GTA 6 için alanlar kaydedildi, sonraki oturumda Assassin's Creed oynandı, seçim GTA 6'da
+     * kaldı. Eskiden GTA 6 profili kendiliğinden uygulanıyor, AC için yapılan değişiklik GTA 6'nın üzerine yazılıyordu.
+     */
+    @Test
+    fun anotherGamesAreasNeverOverwriteAProfile() {
+        val store = store()
+        val sense = GameSense()
+        val areas = GameAreas()
+        areas.onChoose = { name ->
+            sense.choose(name)
+            areas.follow(sense.current, sense.source)
+        }
+
+        sense.startSession()
+        areas.start(store)
+        sense.choose("GTA 6")
+        areas.follow(sense.current, sense.source)
+        store.region(gtaArea)
+        areas.save()
+        assertEquals(listOf(gta), store.areaProfiles.map { it.key })
+        areas.stop()
+        sense.endSession()
+        store.region(general)
+
+        sense.startSession()
+        areas.start(store)
+        areas.follow(sense.current, sense.source)
+        assertEquals("GTA 6", areas.offeredGame)
+        assertEquals(general, store.areas.region)
+        areas.declineOffered()
+        store.region(acArea)
+        assertTrue(areas.targetHasOtherProfile)
+        areas.save()
+        assertEquals(gtaArea, store.findAreaProfile(gta)?.areas?.region)
+
+        assertEquals(AreaProfiles.Edit.DONE, areas.saveAs("Assassin's Creed Valhalla", store))
+        assertEquals("Assassin's Creed Valhalla", sense.current?.name)
+        assertEquals("assassins creed valhalla|stream", store.activeAreaProfile)
+        assertEquals(AreaProfiles.Edit.EXISTS, areas.saveAs("Grand Theft Auto VI", store))
+        store.region(general)
+        areas.save()
+        assertEquals(general, store.findAreaProfile("assassins creed valhalla|stream")?.areas?.region)
+        assertEquals(gtaArea, store.findAreaProfile(gta)?.areas?.region)
+
+        areas.use(gta, store)
+        assertEquals(gtaArea, store.areas.region)
+        assertEquals("GTA 6", sense.current?.name)
+        areas.stop()
+        assertEquals(acArea, store.areas.region)
+        assertEquals(2, store.areaProfiles.size)
+    }
+
+    @Test
+    fun profilesCanBeAddedRenamedDuplicatedAndDeletedWhileStopped() {
+        val store = store()
+        val chosen = mutableListOf<String>()
+        val areas = GameAreas()
+        areas.onChoose = { chosen += it }
+        assertEquals(AreaProfiles.Edit.DONE, areas.saveAs("GTA 6", store))
+        assertEquals(AreaProfiles.Edit.EMPTY, areas.saveAs("  ", store))
+        assertEquals(listOf("GTA 6"), chosen)
+        assertEquals(AreaProfiles.Edit.DONE, areas.duplicate(gta, "Mafia: The Old Country", store))
+        assertEquals(AreaProfiles.Edit.EXISTS, areas.duplicate(gta, "Grand Theft Auto VI", store))
+        assertEquals(AreaProfiles.Edit.EXISTS, areas.rename(gta, "Mafia The Old Country", store))
+        assertEquals(AreaProfiles.Edit.DONE, areas.rename(gta, "Red Dead Redemption 2", store))
+        assertEquals("rdr 2|stream", store.activeAreaProfile)
+        assertEquals("Red Dead Redemption 2", chosen.last())
+        assertEquals(AreaProfiles.Edit.MISSING, areas.rename("yok|stream", "X", store))
+        assertEquals(listOf("Mafia: The Old Country", "Red Dead Redemption 2"), store.gameProfiles(AreaSource.STREAM).map { it.game })
+        areas.delete("rdr 2|stream", store)
+        assertNull(store.activeAreaProfile)
+        assertEquals(general, store.areas.region)
+        assertEquals(listOf("mafia the old country|stream"), store.areaProfiles.map { it.key })
+    }
+
+    /** Eski sürümün kaydı (20 profil): hiçbiri kaybolmaz, her oyun kendi alanlarında kalır. */
+    @Test
+    fun oldSettingsKeepEveryGamesProfile() {
+        val old = (0 until 20).map { AreaProfile("game $it|stream", "Game $it", AreaSet(gtaArea, AreaPreset.CUSTOM, emptyList())) }
+        val loaded = AreaProfile.listFromJson(AreaProfile.listToJson(old))
+        assertEquals(20, loaded.size)
+        assertEquals(old, loaded)
+    }
+
+    @Test
+    fun popularGamesAreSuggested() {
+        val found = GameCatalog.suggestions("assassin", emptyList(), null, 10)
+        assertTrue("Assassin's Creed Valhalla" in found)
+        assertTrue("Assassin's Creed Shadows" in found)
+        assertTrue("Resident Evil 4" in GameCatalog.suggestions("resident evil 4", emptyList(), null))
+        assertTrue("Marvel's Wolverine" in GameCatalog.suggestions("wolverine", emptyList(), null))
+        assertEquals(GameCatalog.POPULAR.size, GameCatalog.POPULAR.map { GameName.key(it) }.toSet().size)
+    }
 }
