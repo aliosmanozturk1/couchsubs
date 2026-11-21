@@ -1517,37 +1517,55 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private DateTime screenShownUntil;
     /// <summary>Ekrandaki çevirilerin okunduğu karenin yazı izi (<see cref="ScreenTranslation.Fingerprint"/>).</summary>
     private string screenFingerprint = "";
+    /// <summary>Ekrandaki son çeviriler: telefon kartı izlenirken süresi bunlarla uzatılır.</summary>
+    private IReadOnlyList<ScreenTranslation.Item> screenItems = [];
+    /// <summary>Telefon kartı ekrandayken sohbeti izleyen yoklama (<see cref="ScreenPhoneFollow"/>); kart yoksa null.</summary>
+    private ScreenPhoneFollow? screenFollow;
+    private CancellationTokenSource? screenFollowWork;
+    /// <summary>"Ekranı çevir" çevirilerinin hafızası (telefon mesajları sohbet başlığıyla); dil ya da motor değişince yenilenir.</summary>
+    private PhoneChatMemory screenMemory = new();
+    private string screenMemoryKey = "";
 
     /// <summary>
     /// Num 9: oyunun şu anki karesinin tamamını bir kez okur, her yazı grubunu ayrı çevirip TV'de kendi yerine, özgün
     /// stilinde koyar (GTA 6 telefonunun yazıları yanında mesaj kartında). Çeviriler hazırlandıkça TV'ye gider. Çeviri
     /// sürerken yeniden basmak onu durdurur. Çeviriler ekrandayken yeniden basınca kare yine okunur: ekran değiştiyse
-    /// (telefonda başka sohbet) yenisi çevrilir, değişmediyse çeviriler kalkar.
+    /// (telefonda başka sohbet) yenisi çevrilir, değişmediyse çeviriler kalkar. Karede GTA 6 telefonu varsa kart ekrandayken
+    /// telefon izlenir (<see cref="FollowPhoneAsync"/>): sohbet değişince kart kendiliğinden yenilenir, telefon kapanınca
+    /// kalkar. <paramref name="refresh"/>: bu izlemenin yenilemesi (tuşa basılmadı).
     /// </summary>
-    public async Task<ScreenOutcome> TranslateScreenAsync()
+    public async Task<ScreenOutcome> TranslateScreenAsync(bool refresh = false)
     {
         var reader = activeReader;
         if (!isRunning || reader is null) return ScreenOutcome.NotRunning;
         if (lastFrame is not { } frame)
         {
             // Çeviri sürüyor ama PS5'ten henüz görüntü gelmedi: tuş sessizce yok sayılmasın.
-            server.SendSubtitle(text["Couldn't capture the screen: no picture from the PS5 yet."], 4000);
+            if (!refresh) server.SendSubtitle(text["Couldn't capture the screen: no picture from the PS5 yet."], 4000);
             return ScreenOutcome.NotRunning;
         }
         if (screenWork is { } running)
         {
+            if (refresh) return ScreenOutcome.Shown;
             running.Cancel();
             screenWork = null;
             HideScreen();
             return ScreenOutcome.Cleared;
         }
-        var wasShown = DateTime.UtcNow < screenShownUntil;
+        var wasShown = !refresh && DateTime.UtcNow < screenShownUntil;
         var previous = screenFingerprint;
 
         using var work = new CancellationTokenSource();
         screenWork = work;
         server.SendStyle(settings.Style);
-        if (!wasShown) server.SendSubtitle(text["Translating the screen…"], 2500);
+        if (!wasShown && !refresh) server.SendSubtitle(text["Translating the screen…"], 2500);
+        var memoryKey = $"{settings.SourceLanguage}|{settings.TargetLanguage}|{OnlineTranslationActive}|{settings.OnlineEngine}";
+        if (memoryKey != screenMemoryKey)
+        {
+            screenMemoryKey = memoryKey;
+            screenMemory = new PhoneChatMemory();
+        }
+        var memory = screenMemory;
         ITextTranslator? translator = null;
         try
         {
@@ -1571,17 +1589,22 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             var items = await ScreenTranslation.TranslateAsync(reading, translator, shown =>
             {
                 if (work.IsCancellationRequested) return;
-                server.SendScreen(shown, ScreenTranslation.DisplayMilliseconds(shown));
-                screenShownUntil = DateTime.UtcNow.AddMilliseconds(ScreenTranslation.DisplayMilliseconds(shown));
-            }, work.Token, frame);
-            server.Clear();
+                // İzlemenin yenilemesinde aynı çeviriler yeniden gönderilmez (TV'de kart yeniden çizilmesin).
+                if (refresh && shown.SequenceEqual(screenItems)) return;
+                var milliseconds = ScreenTranslation.DisplayMilliseconds(shown);
+                server.SendScreen(shown, milliseconds);
+                screenItems = shown;
+                screenShownUntil = DateTime.UtcNow.AddMilliseconds(milliseconds);
+            }, work.Token, frame, memory);
+            if (!refresh) server.Clear();
             if (items.Count == 0)
             {
                 // Yeni karede yazı yok: önceki ekranın çevirileri de kalkar.
-                if (wasShown) HideScreen();
-                server.SendSubtitle(text["No text found on the screen."], 2500);
+                if (wasShown || refresh) HideScreen();
+                if (!refresh) server.SendSubtitle(text["No text found on the screen."], 2500);
                 return ScreenOutcome.NoText;
             }
+            _ = FollowPhoneAsync(frame);
             return ScreenOutcome.Shown;
         }
         catch (OperationCanceledException)
@@ -1591,19 +1614,91 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         catch (TranslatorException error)
         {
             post(() => TranslatorStatus = error.Status);
-            ShowScreenFailure(error, translator);
+            // İzlemenin yenilemesi başarısızsa eski kart kalır; aynı görüntü yeniden denenmez.
+            if (refresh) _ = FollowPhoneAsync(frame);
+            else ShowScreenFailure(error, translator);
             return ScreenOutcome.TranslatorUnavailable;
         }
         catch (Exception error)
         {
             RemotePlayLog.Note($"Ekran çevrilemedi: {error.GetType().Name}: {error.Message}");
-            ShowScreenFailure(error, translator);
+            if (refresh) _ = FollowPhoneAsync(frame);
+            else ShowScreenFailure(error, translator);
             return ScreenOutcome.Failed;
         }
         finally
         {
             if (screenWork == work) screenWork = null;
         }
+    }
+
+    /// <summary>
+    /// Ekran bu kareyle çevrildi: karede telefon varsa kart ekrandayken telefon izlenir (<see cref="ScreenPhoneFollow"/>).
+    /// Sohbet değişip durulunca ekran yeniden çevrilir (hafızadaki mesajlar hemen gelir), telefon aynıyken kartın süresi
+    /// uzar, telefon kapanınca kart kalkar. Önceden kart tek karenin çevirisiydi: başka sohbete geçince eskisi kalıyor,
+    /// süresi dolunca kayboluyordu (Mac ile aynı).
+    /// </summary>
+    private async Task FollowPhoneAsync(Frame frame)
+    {
+        var follow = screenFollow ?? new ScreenPhoneFollow();
+        var look = await Task.Run(() => ScreenPhoneFollow.Look(frame)).ConfigureAwait(true);
+        if (look is not { } found)
+        {
+            if (screenFollow == follow) StopFollowing();
+            return;
+        }
+        follow.Settled(found.Box, found.Signature);
+        if (screenFollow == follow) return;
+        StopFollowing();
+        screenFollow = follow;
+        var work = new CancellationTokenSource();
+        screenFollowWork = work;
+        try
+        {
+            while (!work.IsCancellationRequested)
+            {
+                await Task.Delay(ScreenPhoneFollow.Interval, work.Token).ConfigureAwait(true);
+                if (screenFollow != follow || !isRunning || DateTime.UtcNow >= screenShownUntil) return;
+                if (screenWork is not null || lastFrame is not { } current) continue;
+                var seen = await Task.Run(() => ScreenPhoneFollow.Look(current), work.Token).ConfigureAwait(true);
+                if (work.IsCancellationRequested || screenFollow != follow) return;
+                switch (follow.Next(seen?.Box, seen?.Signature))
+                {
+                    case ScreenPhoneFollow.Step.Keep:
+                        KeepScreen();
+                        break;
+                    case ScreenPhoneFollow.Step.Refresh:
+                        _ = TranslateScreenAsync(refresh: true);
+                        break;
+                    case ScreenPhoneFollow.Step.Stop:
+                        HideScreen();
+                        return;
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            // İzleme bitince (kart kalktı, süresi doldu) sonraki kart yeni bir izlemeyle başlar.
+            if (screenFollow == follow) StopFollowing();
+            work.Dispose();
+        }
+    }
+
+    private void StopFollowing()
+    {
+        screenFollowWork?.Cancel();
+        screenFollowWork = null;
+        screenFollow = null;
+    }
+
+    /// <summary>Telefon kartı izlenirken telefon aynı: çevirilerin süresi dolmak üzereyse yeniden gönderilip uzatılır.</summary>
+    private void KeepScreen()
+    {
+        if (screenItems.Count == 0 || (screenShownUntil - DateTime.UtcNow).TotalSeconds >= 5) return;
+        var milliseconds = ScreenTranslation.DisplayMilliseconds(screenItems);
+        server.SendScreen(screenItems, milliseconds);
+        screenShownUntil = DateTime.UtcNow.AddMilliseconds(milliseconds);
     }
 
     /// <summary>Ekran çevrilemedi: nedeni TV'de (ve bilgisayardaki altyazıda) birkaç saniye görünür, sessizce kaybolmaz.</summary>
@@ -1634,8 +1729,10 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     private void HideScreen()
     {
+        StopFollowing();
         screenShownUntil = default;
         screenFingerprint = "";
+        screenItems = [];
         server.ClearScreen();
         server.Clear();
     }

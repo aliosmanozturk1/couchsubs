@@ -68,7 +68,8 @@ class ScreenPhoneCardTest {
         val cards = root.getJSONArray("cards")
         for (i in 0 until cards.length()) {
             val entry = cards.getJSONObject(i)
-            val card = ScreenPhoneCard.cardBox(box(entry.getJSONArray("phone")))
+            val avoid = entry.optJSONArray("avoid")?.let { all -> (0 until all.length()).map { box(all.getJSONArray(it)) } } ?: emptyList()
+            val card = ScreenPhoneCard.cardBox(box(entry.getJSONArray("phone")), avoid)
             val want = doubles(entry.getJSONArray("card"))
             listOf(card.left, card.top, card.right, card.bottom).zip(want).forEach { (a, b) -> assertEquals(b, a, 1e-9) }
         }
@@ -237,6 +238,96 @@ class ScreenPhoneCardTest {
         assertEquals("#1E1E1E", items[0].surface?.background)
         assertEquals(true, items[0].look?.upper)
         assertEquals("LİSTEYİ KAYDIR", items[0].translation)
+    }
+
+    private fun objects(array: JSONArray) = (0 until array.length()).map { array.getJSONObject(it) }
+    private fun sides(b: TextBox) = listOf(b.left, b.top, b.right, b.bottom)
+
+    /**
+     * Sıkışık balonlar: balonlar arasında en az yarım satır boşluk, hepsi kartın içinde; mesajlar telefon boyuna sığmazsa
+     * kart ekranın kenar payına kadar uzar, yine sığmazsa en eskiler düşer; kartın altında kalan çeviri kartın yanına
+     * alınır (ortak deneme dosyasının `layouts` bölümü; Mac ve Windows aynı sonucu bulur).
+     */
+    @Test
+    fun sharedLayoutVectors() {
+        for (vector in objects(root.getJSONArray("layouts"))) {
+            val name = vector.getString("name")
+            val phone = handset(doubles(vector.getJSONArray("pose")))
+            val outside = vector.optJSONArray("outside")?.let(::objects) ?: emptyList()
+            val items = outside.map { ScreenTranslation.Item(it.getString("source"), it.getString("translation"), box(it.getJSONArray("box")), 0.02) } +
+                objects(vector.getJSONArray("items")).map { m ->
+                    val role = ScreenPhoneCard.Role.values().first { it.wire == m.getString("role") }
+                    val top = m.getDouble("top")
+                    ScreenTranslation.Item(m.getString("source"), m.getString("translation"), TextBox(0.8, 0.2, 0.9, 0.22), m.getDouble("line"),
+                        unchanged = m.getBoolean("unchanged"),
+                        phone = ScreenPhoneCard.Placement(role, TextBox(m.getDouble("left"), top, m.getDouble("right"), top + 0.03)))
+                }
+            val laid = ScreenPhoneCard.layout(items, phone)
+            val n = outside.size
+            val card = laid[n].box
+            assertTrue(name, ScreenPhoneCard.isBackdrop(laid[n]))
+            val rows = laid.drop(n + 1).filter { it.phone?.role != ScreenPhoneCard.Role.HEADER }
+            val line = rows.first().lineHeight
+            for (i in 0 until rows.size - 1) assertTrue(name, rows[i + 1].box.top - rows[i].box.bottom >= line * 0.5 - 1e-9)
+            assertTrue(name, laid.drop(n + 1).all {
+                it.box.left >= card.left && it.box.right <= card.right && it.box.top >= card.top - 1e-9 && it.box.bottom <= card.bottom + 1e-9
+            })
+            assertTrue(name, card.top >= ScreenPhoneCard.SCREEN_MARGIN - 1e-9 && card.bottom <= 1 - ScreenPhoneCard.SCREEN_MARGIN + 1e-9)
+            val messages = objects(vector.getJSONArray("items"))
+            assertEquals(name, messages.last().getString("source"), rows.last().source)
+            for (i in 0 until n) assertEquals(name, 0.0, ScreenPhoneCard.covered(laid[i].box, listOf(card)), 0.0)
+            vector.optJSONArray("card")?.let { sides(card).zip(doubles(it)).forEach { (a, b) -> assertEquals(name, b, a, 1e-6) } }
+            vector.optJSONArray("kept")?.let { kept -> assertEquals(name, (0 until kept.length()).map(kept::getString), rows.map { it.source }) }
+            vector.optJSONArray("moved")?.let { moved ->
+                for (i in 0 until moved.length()) sides(laid[i].box).zip(doubles(moved.getJSONArray(i))).forEach { (a, b) -> assertEquals(name, b, a, 1e-6) }
+            }
+        }
+    }
+
+    /**
+     * Kart ekrandayken telefon izlenir: sohbet değişip durulunca yeniden çevrilir, değişmeyen telefonda kart kalır,
+     * telefon kapanınca kart kalkar; tek karelik ıska kartı kaldırmaz (ortak deneme dosyasının `follow` bölümü).
+     */
+    @Test
+    fun sharedFollowVectors() {
+        fun signature(spec: JSONArray) = ByteArray(768) { (if (it < spec.getInt(1)) spec.getInt(2) else spec.getInt(0)).toByte() }
+        for (vector in objects(root.getJSONArray("follow"))) {
+            val follow = ScreenPhoneFollow()
+            objects(vector.getJSONArray("steps")).forEachIndexed { index, step ->
+                if (step.has("settle")) {
+                    follow.settled(box(step.getJSONArray("settle")), signature(step.getJSONArray("sig")))
+                    return@forEachIndexed
+                }
+                val phone = if (step.isNull("phone")) null else box(step.getJSONArray("phone"))
+                val got = follow.step(phone, if (phone == null) null else signature(step.getJSONArray("sig")))
+                assertEquals("${vector.getString("name")} #$index", step.getString("expect"), got.wire)
+            }
+        }
+    }
+
+    /**
+     * Başka bir sohbete geçip dönünce eski sohbetin mesajları çevirmene yeniden gitmez: çeviriler sohbetin başlığıyla
+     * saklanır ([PhoneChatMemory]; ortak deneme dosyasının `switch` bölümü).
+     */
+    @Test
+    fun switchingChatsReusesTheirTranslations() {
+        val cases = objects(root.getJSONArray("cases"))
+        val plan = root.getJSONObject("switch")
+        val chats = plan.getJSONArray("chats")
+        val calls = plan.getJSONArray("calls")
+        val memory = PhoneChatMemory()
+        val first = mutableMapOf<String, List<String>>()
+        for (i in 0 until chats.length()) {
+            val name = chats.getString(i)
+            val vector = cases.first { it.getString("name") == name }
+            val lines = objects(vector.getJSONArray("lines")).map { TextLine(it.getString("text"), box(it.getJSONArray("box"))) }
+            var count = 0
+            val items = ScreenTranslation.translate(Reading(lines), { count++; "TR $it" },
+                phone = handset(doubles(vector.getJSONArray("pose")), vector.getDouble("aspect")), memory = memory)
+            assertEquals(name, calls.getInt(i), count)
+            val texts = items.map { it.translation }
+            first[name]?.let { assertEquals(name, it, texts) } ?: run { first[name] = texts }
+        }
     }
 
     /** Başka bir sohbete geçince ekranın izi değişir: düğmeye yeniden basmak yeni sohbeti çevirir, sonuçları kaldırmaz. */

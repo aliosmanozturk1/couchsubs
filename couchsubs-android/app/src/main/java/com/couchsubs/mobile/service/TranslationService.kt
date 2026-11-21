@@ -21,6 +21,9 @@ import com.couchsubs.mobile.account.Backend
 import com.couchsubs.mobile.account.SessionHealth
 import com.couchsubs.mobile.account.Telemetry
 import com.couchsubs.mobile.core.CropRegion
+import com.couchsubs.mobile.core.PhoneChatMemory
+import com.couchsubs.mobile.core.ScreenPhoneFollow
+import com.couchsubs.mobile.ocr.CopiedPhoneImage
 import com.couchsubs.mobile.core.DemoTranslator
 import com.couchsubs.mobile.core.watched
 import com.couchsubs.mobile.core.GamePackLibrary
@@ -666,6 +669,8 @@ class TranslationService : Service() {
         val onFrame: (com.couchsubs.mobile.remoteplay.VideoFrame) -> Unit = { frame ->
             val now = System.currentTimeMillis()
             if (screenRequested.compareAndSet(true, false)) startScreen(frame)
+            else if (screenRefreshRequested.compareAndSet(true, false)) startScreen(frame, refresh = true)
+            else followTick(frame, now)
             // Menü açıkken (tekerlek, duraklatma menüsü) altyazı okunmaz: menünün alt ortadaki etiketleri altyazı sanılmasın.
             if (!reading.get() && !detector.menu && now - lastRead >= 1000 / MAX_READS_PER_SECOND) {
                 val area = region
@@ -862,6 +867,9 @@ class TranslationService : Service() {
             return
         }
         val shown = state == LiveStatus.ScreenState.SHOWN
+        // Düğmeye basıldı: süren telefon izlemesi bırakılır; yeni çeviri telefonu yeniden izlemeye başlar.
+        screenFollow = null
+        screenRefreshRequested.set(false)
         screenRecheck = shown
         // Yeni kuşak: önceki sonuçların süresi dolup yeni okumayı kesmez.
         screenGeneration.incrementAndGet()
@@ -875,11 +883,99 @@ class TranslationService : Service() {
     @Volatile private var screenRecheck = false
     /** Ekrandaki sonuçların okunduğu karenin yazı izi ([ScreenTranslation.fingerprint]). */
     @Volatile private var screenFingerprint = ""
+    /** Ekrandaki son sonuçlar ve kalkacakları an (ms): telefon kartı izlenirken süre bunlarla uzatılır. */
+    @Volatile private var screenShown: List<ScreenTranslation.Item> = emptyList()
+    @Volatile private var screenShownUntil = 0L
+    /** Telefon kartı ekrandayken sohbeti izleyen yoklama ([ScreenPhoneFollow]); kart yoksa null. */
+    @Volatile private var screenFollow: ScreenPhoneFollow? = null
+    @Volatile private var lastFollowCheck = 0L
+    private val followBusy = AtomicBoolean(false)
+    /** İzleme telefonun değişip durulduğunu gördü: sıradaki kare sessizce yeniden çevrilsin. */
+    private val screenRefreshRequested = AtomicBoolean(false)
+    /** "Ekranı çevir" çevirilerinin hafızası (telefon mesajları sohbet başlığıyla); dil ya da motor değişince yenilenir. */
+    @Volatile private var screenMemory = PhoneChatMemory()
+    @Volatile private var screenMemoryKey = ""
+
+    /** Sonuçlar gönderildi: kalkacakları an ve süre dolunca (bu kuşakta uzatılmadıysa) kaldırılmaları. */
+    private fun scheduleScreenExpiry(items: List<ScreenTranslation.Item>, milliseconds: Int, generation: Int) {
+        screenShown = items
+        screenShownUntil = System.currentTimeMillis() + milliseconds
+        screenExpiry.schedule({
+            if (screenGeneration.get() == generation && System.currentTimeMillis() >= screenShownUntil - 100) hideScreen()
+        }, milliseconds.toLong(), TimeUnit.MILLISECONDS)
+    }
+
+    /**
+     * Telefon kartı ekrandayken her [ScreenPhoneFollow.INTERVAL_MS]'de bir telefon yoklanır (Mac/iPhone ve Windows ile
+     * aynı): sohbet değişip durulunca ekran sessizce yeniden çevrilir (hafızadaki mesajlar hemen gelir), telefon aynıyken kartın süresi
+     * uzar, telefon kapanınca kart kalkar. Önceden kart tek karenin çevirisiydi: başka sohbete geçince eskisi kalıyor,
+     * süresi dolunca kayboluyordu.
+     */
+    private fun followTick(frame: com.couchsubs.mobile.remoteplay.VideoFrame, now: Long) {
+        val follow = screenFollow ?: return
+        if (now - lastFollowCheck < ScreenPhoneFollow.INTERVAL_MS) return
+        if (LiveState.status.value.screenState != LiveStatus.ScreenState.SHOWN || screenRequested.get()) return
+        if (!followBusy.compareAndSet(false, true)) return
+        lastFollowCheck = now
+        val pixels = SubtitleReader.copyRegion(frame, CropRegion(0.0, 1.0, 0.0, 1.0))
+        if (pixels == null) {
+            followBusy.set(false)
+            return
+        }
+        val generation = screenGeneration.get()
+        try {
+            screenWork.execute {
+                try {
+                    val look = ScreenPhoneFollow.look(CopiedPhoneImage(pixels.width, pixels.height, pixels))
+                    if (screenFollow === follow && screenGeneration.get() == generation) {
+                        when (follow.step(look?.first, look?.second)) {
+                            ScreenPhoneFollow.Step.WAIT -> Unit
+                            ScreenPhoneFollow.Step.KEEP -> keepScreen(generation)
+                            ScreenPhoneFollow.Step.REFRESH -> screenRefreshRequested.set(true)
+                            ScreenPhoneFollow.Step.STOP -> hideScreen()
+                        }
+                    }
+                } catch (error: Exception) {
+                    Log.w(TAG, "screen follow", error)
+                } finally {
+                    followBusy.set(false)
+                }
+            }
+        } catch (error: java.util.concurrent.RejectedExecutionException) {
+            followBusy.set(false)
+        }
+    }
+
+    /** Telefon kartı izlenirken telefon aynı: sonuçlar süresi dolmak üzereyse yeniden gönderilip uzatılır. */
+    private fun keepScreen(generation: Int) {
+        val items = screenShown
+        if (items.isEmpty() || screenShownUntil - System.currentTimeMillis() >= 5000) return
+        val milliseconds = ScreenTranslation.displayMilliseconds(items)
+        server?.sendScreen(items, milliseconds)
+        scheduleScreenExpiry(items, milliseconds, generation)
+    }
+
+    /** Ekran bu kareyle çevrildi: karede telefon varsa kart ekrandayken telefon izlenir ([followTick]). */
+    private fun followPhone(pixels: com.couchsubs.mobile.ocr.RegionPixels, generation: Int) {
+        if (screenGeneration.get() != generation) return
+        val look = ScreenPhoneFollow.look(CopiedPhoneImage(pixels.width, pixels.height, pixels))
+        if (look == null) {
+            screenFollow = null
+            return
+        }
+        val follow = screenFollow ?: ScreenPhoneFollow()
+        follow.settled(look.first, look.second)
+        screenFollow = follow
+    }
 
     /** Çeviriyi durdurur, sonuçları telefondan ve TV'den kaldırır. */
     private fun hideScreen() {
         screenGeneration.incrementAndGet()
         screenRequested.set(false)
+        screenRefreshRequested.set(false)
+        screenFollow = null
+        screenShown = emptyList()
+        screenShownUntil = 0L
         screenRecheck = false
         screenFingerprint = ""
         screenTask?.cancel(true)
@@ -889,20 +985,30 @@ class TranslationService : Service() {
         LiveState.update { it.copy(screen = emptyList(), screenState = LiveStatus.ScreenState.IDLE) }
     }
 
-    /** Sıradaki kare geldi: bütün kare kopyalanır, okuma ve çeviri kendi iş parçacığında sürer. */
-    private fun startScreen(frame: com.couchsubs.mobile.remoteplay.VideoFrame) {
+    /**
+     * Sıradaki kare geldi: bütün kare kopyalanır, okuma ve çeviri kendi iş parçacığında sürer. [refresh]: telefon
+     * izlemesinin yenilemesi (düğmeye basılmadı): "çevriliyor" yazısı çıkmaz, aynı sonuçlar yeniden gönderilmez, hata
+     * olursa eski kart kalır.
+     */
+    private fun startScreen(frame: com.couchsubs.mobile.remoteplay.VideoFrame, refresh: Boolean = false) {
         val pixels = SubtitleReader.copyRegion(frame, CropRegion(0.0, 1.0, 0.0, 1.0))
         val generation = screenGeneration.get()
         if (pixels == null) {
-            failScreen(generation, getString(R.string.screen_no_picture))
+            if (!refresh) failScreen(generation, getString(R.string.screen_no_picture))
             return
         }
         val free = freeTranslator
         val server = server
         if (free == null || server == null) {
-            failScreen(generation, getString(R.string.error_translation))
+            if (!refresh) failScreen(generation, getString(R.string.error_translation))
             return
         }
+        val memoryKey = "${settings.target}|${settings.engine}|${settings.localAiServer?.engineId}"
+        if (memoryKey != screenMemoryKey) {
+            screenMemoryKey = memoryKey
+            screenMemory = PhoneChatMemory()
+        }
+        val memory = screenMemory
         screenTask = screenWork.submit(Runnable {
             try {
                 val reader = screenReader ?: SubtitleReader().also { screenReader = it }
@@ -911,7 +1017,7 @@ class TranslationService : Service() {
                 val echo = com.couchsubs.mobile.core.SubtitleEcho.shared
                 val reading = echo.filter(read, geometry = echo.hasRecent)
                 val fingerprint = ScreenTranslation.fingerprint(reading)
-                if (screenRecheck) {
+                if (screenRecheck && !refresh) {
                     if (screenGeneration.get() != generation) return@Runnable
                     if (ScreenTranslation.isSameScreen(fingerprint, screenFingerprint)) {
                         hideScreen()
@@ -919,35 +1025,41 @@ class TranslationService : Service() {
                     }
                     server.sendSubtitle(getString(R.string.screen_translating), 2500)
                 }
-                val wasShown = screenRecheck
-                screenRecheck = false
+                val wasShown = screenRecheck && !refresh
+                if (!refresh) screenRecheck = false
                 screenFingerprint = fingerprint
                 // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AiTranslator.translateAll).
                 val translator = engineTranslator(free.separate())
                 // Yazıların içindeki kumanda simgeleri okunan kareden kesilir (ButtonIcons). Çeviriler özgün yazının
                 // stilinde kendi yerlerine çizilir; GTA 6 telefonunun yazıları yanında mesaj kartında (ScreenPhoneCard).
                 val phone = com.couchsubs.mobile.core.ScreenPhoneCard.phone(
-                    com.couchsubs.mobile.ocr.CopiedPhoneImage(pixels.width, pixels.height, pixels))
+                    CopiedPhoneImage(pixels.width, pixels.height, pixels))
                 val items = ScreenTranslation.translate(reading, translator, { screenGeneration.get() != generation }, pixels.gray,
-                    pixels.color, phone) { shown ->
+                    pixels.color, phone, memory) { shown ->
                     if (screenGeneration.get() != generation) return@translate
+                    // İzlemenin yenilemesinde aynı çeviriler yeniden gönderilmez (TV'de kart yeniden çizilmesin).
+                    if (refresh && shown == screenShown) return@translate
                     val milliseconds = ScreenTranslation.displayMilliseconds(shown)
                     server.sendScreen(shown, milliseconds)
-                    screenExpiry.schedule({ if (screenGeneration.get() == generation) hideScreen() }, milliseconds.toLong(), TimeUnit.MILLISECONDS)
+                    scheduleScreenExpiry(shown, milliseconds, generation)
                 }
                 if (screenGeneration.get() != generation) return@Runnable
-                server.clear()
+                if (!refresh) server.clear()
                 if (items.isEmpty()) {
                     // Yeni karede yazı yok: önceki ekranın sonuçları da kalkar.
-                    if (wasShown) hideScreen()
+                    if (wasShown || refresh) hideScreen()
                     LiveState.update { it.copy(screenState = LiveStatus.ScreenState.IDLE) }
-                    server.sendSubtitle(getString(R.string.screen_none), 2500)
+                    if (!refresh) server.sendSubtitle(getString(R.string.screen_none), 2500)
+                } else {
+                    followPhone(pixels, generation)
                 }
             } catch (error: InterruptedException) {
                 return@Runnable
             } catch (error: Exception) {
                 Log.w(TAG, "screen", error)
-                failScreen(generation, getString(R.string.screen_failed, getString(R.string.error_translation)))
+                // İzlemenin yenilemesi başarısızsa eski kart kalır; aynı görüntü yeniden denenmez.
+                if (refresh) followPhone(pixels, generation)
+                else failScreen(generation, getString(R.string.screen_failed, getString(R.string.error_translation)))
             }
         })
     }

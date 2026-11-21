@@ -23,6 +23,19 @@ public static class ScreenPhoneCard
     internal const double Gap = 0.008;
     /// <summary>Kart için yanda en az bu kadar yer olmalı; yoksa kart telefonun üstüne konur.</summary>
     internal const double MinWidth = 0.12;
+    /// <summary>
+    /// Kartın istenen eni: telefonun bu katı, en az <see cref="CardMin"/> (yanda yer varsa). Telefon boyundaki dar kartta
+    /// Türkçe mesajlar çok satıra bölünüyor, balonlar iç içe görünüyordu.
+    /// </summary>
+    internal const double CardScale = 1.4, CardMin = 0.22;
+    /// <summary>Mesajlar telefon boyuna sığmazsa kart ekranın bu payına kadar yukarı ve aşağı uzar; yine sığmazsa eski mesajlar düşer.</summary>
+    internal const double ScreenMargin = 0.03;
+    /// <summary>
+    /// Balonlar arası boşluk, balonun iç dolgusu (üst + alt toplamı) ve satır aralığı; satır yüksekliğine oranla. TV yazıyı
+    /// kutunun üstüne yaslar: dolgu, son satırın altında da boşluk bırakır. Önceden balonlar arası 0,35 satırdı, mesajlar
+    /// birbirine yapışık görünüyordu.
+    /// </summary>
+    internal const double BubbleSpacing = 0.6, BubblePadding = 0.6, LineSpacing = 1.2;
     /// <summary>Balonun kart genişliğine oranı (en çok) ve en az.</summary>
     internal const double BubbleShare = 0.8, BubbleMin = 0.3;
     /// <summary>Kartta yazı boyu (kare yüksekliğine oranla) en az bu: telefonun küçük yazısı TV'de okunsun (1080p'de ~24 nokta).</summary>
@@ -145,51 +158,66 @@ public static class ScreenPhoneCard
         return new Handset(pose, frame.Width / (double)Math.Max(1, frame.Height));
     }
 
-    /// <summary>Kartın yeri: telefonun daha geniş boş kalan yanında, telefon boyunda; iki yanda da yer yoksa telefonun üstünde.</summary>
-    internal static TextBox CardBox(TextBox phone)
+    /// <summary>
+    /// Kartın yeri: telefonun yanında, telefon boyunda; iki yanda da yer yoksa telefonun üstünde. İki yanda da yer varsa
+    /// kart başka çevirilerin (<paramref name="avoiding"/>) üstüne en az binen yana, eşitse daha geniş boş kalan yana konur.
+    /// </summary>
+    internal static TextBox CardBox(TextBox phone, IReadOnlyList<TextBox>? avoiding = null)
     {
+        var others = avoiding ?? [];
         double roomLeft = phone.Left - 2 * Gap, roomRight = 1 - phone.Right - 2 * Gap;
-        var width = Math.Min(Math.Max(phone.Right - phone.Left, MinWidth), Math.Max(roomLeft, roomRight));
-        if (width < MinWidth)
+        var wanted = Math.Max((phone.Right - phone.Left) * CardScale, CardMin);
+        TextBox? Side(bool right)
+        {
+            var width = Math.Min(wanted, right ? roomRight : roomLeft);
+            if (width < MinWidth) return null;
+            var left = right ? phone.Right + Gap : phone.Left - Gap - width;
+            return new TextBox(left, phone.Top, left + width, phone.Bottom);
+        }
+        // Önce daha geniş yan; öbür yan ancak başka çevirilerin üstüne daha az binerse seçilir.
+        var candidates = new[] { Side(roomLeft < roomRight), Side(roomLeft >= roomRight) }
+            .Where(box => box is not null).Select(box => box!.Value).ToList();
+        if (candidates.Count == 0)
             return new TextBox(Math.Max(0, phone.Left), phone.Top, Math.Min(1, phone.Right), phone.Bottom);
-        var left = roomLeft >= roomRight ? phone.Left - Gap - width : phone.Right + Gap;
-        return new TextBox(left, phone.Top, left + width, phone.Bottom);
+        var best = candidates[0];
+        foreach (var candidate in candidates.Skip(1))
+            if (Covered(candidate, others) < Covered(best, others) - 1e-9) best = candidate;
+        return best;
     }
+
+    /// <summary>Kutunun başka kutularla örtüşen alanı.</summary>
+    internal static double Covered(TextBox box, IReadOnlyList<TextBox> others) =>
+        others.Sum(other => Math.Max(0, Math.Min(box.Right, other.Right) - Math.Max(box.Left, other.Left))
+                            * Math.Max(0, Math.Min(box.Bottom, other.Bottom) - Math.Max(box.Top, other.Top)));
 
     private sealed record Row(ScreenTranslation.Item Item, double Width, double Height, string Side);
 
     /// <summary>
     /// Telefondaki öğeleri (<c>Phone</c> bilgisi olanlar) kart olarak dizer. Telefonda çevrilmiş öğe yoksa liste olduğu gibi
     /// döner. Çevrilmemiş öğeler (<c>Unchanged</c>: kişi adı, "ok") kartta aslıyla görünür; kart dışındakiler sonra atılır.
+    /// Balonlar arasında en az <see cref="BubbleSpacing"/> satır boşluk kalır; mesajlar telefon boyuna sığmazsa kart uzar,
+    /// yine sığmazsa en eski mesajlar düşer. Kartın altında kalan başka bir çeviri kartın dışına, yanına alınır.
     /// </summary>
     public static IReadOnlyList<ScreenTranslation.Item> Layout(IReadOnlyList<ScreenTranslation.Item> items, Handset handset)
     {
         var onPhone = items.Where(item => item.Phone?.Role.InCard() == true).OrderBy(item => item.Phone!.Spot.Top).ToList();
         if (!onPhone.Any(item => !item.Unchanged)) return items;
-        var card = CardBox(handset.Bounds);
+        var others = items.Where(item => item.Phone?.Role.InCard() != true).ToList();
+        var card = CardBox(handset.Bounds, [.. others.Where(item => !item.Unchanged).Select(item => item.Box)]);
         var cardWidth = card.Right - card.Left;
         var heights = onPhone.Select(item => item.LineHeight).OrderBy(h => h).ToList();
         var line = Math.Max(MinLine, heights[heights.Count / 2]);
-        double pad = cardWidth * 0.05, padY = line * 0.4, spacing = line * 0.35;
+        double pad = cardWidth * 0.05, padY = line * 0.4, spacing = line * BubbleSpacing;
         static TextLook Flat(string align, bool bold) => new(bold, false, align, false, true);
 
-        var result = items.Where(item => item.Phone?.Role.InCard() != true).ToList();
-        result.Add(new ScreenTranslation.Item("", BackdropText, card, line) { Style = CardColor, Look = Flat("left", false) });
-
-        var bodyTop = card.Top + padY;
         var body = onPhone;
+        ScreenTranslation.Item? header = null;
         if (body.Count > 0 && body[0].Phone!.Role == Role.Header)
         {
-            var header = body[0] with
-            {
-                Unchanged = false,
-                Box = new TextBox(card.Left + pad, bodyTop, card.Right - pad, bodyTop + line * 1.4),
-                LineHeight = line, Style = CardColor, Look = Flat("center", true),
-            };
-            result.Add(header);
-            bodyTop = header.Box.Bottom + spacing;
+            header = body[0];
             body = body.Skip(1).ToList();
         }
+        var headerHeight = header is null ? 0 : line * 1.4 + spacing;
 
         // Her satırın kartta kaplayacağı yer: genişliği rolünden, yüksekliği Türkçenin o genişlikte kaç satır tuttuğundan.
         var rows = body.Select(item =>
@@ -208,17 +236,57 @@ public static class ScreenPhoneCard
                 Style = role switch { Role.Outgoing => OutgoingColor, Role.Incoming => IncomingColor, _ => CardColor },
                 Look = Flat(side, role is Role.Contact or Role.Heading),
             };
-            return new Row(placed, width, lines.Count * line * 1.25 + padY, side);
+            var inside = line * (bubble ? BubblePadding : 0.3);
+            return new Row(placed, width, lines.Count * line * LineSpacing + inside, side);
         }).ToList();
-        // Kart dolarsa en eski (en üstteki) satırlar düşer: son mesajlar görünür kalır.
+        // Mesajlar telefon boyuna sığmazsa kart önce aşağı, sonra yukarı uzar (ekranın kenar payına kadar).
+        double Needed() => 2 * padY + headerHeight + rows.Sum(row => row.Height) + spacing * Math.Max(0, rows.Count - 1);
+        double top = card.Top, bottom = card.Bottom;
+        var extra = Needed() - (bottom - top);
+        if (extra > 0)
+        {
+            var down = Math.Min(extra, Math.Max(0, 1 - ScreenMargin - bottom));
+            bottom += down;
+            extra -= down;
+            top -= Math.Min(extra, Math.Max(0, top - ScreenMargin));
+            card = new TextBox(card.Left, top, card.Right, bottom);
+        }
+        // Yine sığmazsa en eski (en üstteki) satırlar düşer: son mesajlar görünür kalır.
+        while (rows.Count > 1 && Needed() > card.Bottom - card.Top + 1e-9) rows.RemoveAt(0);
+
+        var result = new List<ScreenTranslation.Item>(others);
+        // Kartın altında kalan başka bir çeviri kartın telefondan uzak yanına alınır; oraya sığmazsa yerinde kalır.
+        var cardOnLeft = card.Right <= handset.Bounds.Left + 1e-9;
+        for (var i = 0; i < result.Count; i++)
+        {
+            if (result[i].Unchanged || Covered(result[i].Box, [card]) <= 0) continue;
+            var box = result[i].Box;
+            var width = box.Right - box.Left;
+            var left = cardOnLeft ? card.Left - Gap - width : card.Right + Gap;
+            if (left >= 0 && left + width <= 1) result[i] = result[i] with { Box = new TextBox(left, box.Top, left + width, box.Bottom) };
+        }
+        result.Add(new ScreenTranslation.Item("", BackdropText, card, line) { Style = CardColor, Look = Flat("left", false) });
+
+        var bodyTop = card.Top + padY;
+        if (header is not null)
+        {
+            var placed = header with
+            {
+                Unchanged = false,
+                Box = new TextBox(card.Left + pad, bodyTop, card.Right - pad, bodyTop + line * 1.4),
+                LineHeight = line, Style = CardColor, Look = Flat("center", true),
+            };
+            result.Add(placed);
+            bodyTop = placed.Box.Bottom + spacing;
+        }
         var limit = card.Bottom - padY;
-        while (rows.Count > 1 && rows.Sum(row => row.Height) + spacing * (rows.Count - 1) > limit - bodyTop) rows.RemoveAt(0);
         // Önce telefondaki yerine (oranla) yakın, üsttekinin altında; taşan satırlar alttan yukarı itilir.
+        var phone = handset.Bounds;
         var tops = new double[rows.Count];
         var cursor = bodyTop;
         for (var i = 0; i < rows.Count; i++)
         {
-            var wanted = card.Top + rows[i].Item.Phone!.Spot.Top * (card.Bottom - card.Top);
+            var wanted = phone.Top + rows[i].Item.Phone!.Spot.Top * (phone.Bottom - phone.Top);
             tops[i] = Math.Max(wanted, cursor);
             cursor = tops[i] + rows[i].Height + spacing;
         }

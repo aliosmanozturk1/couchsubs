@@ -59,22 +59,30 @@ public enum ScreenTranslation {
     ///
     /// Kare verilince her çeviri özgün yazının stilinde (zemin ve yazı rengi, kalınlık, hiza, BÜYÜK HARF; otomatik ekran
     /// yazısıyla aynı, `TextStyleSampler`) kendi kutusunun yerine çizilir; karede GTA 6 telefonu varsa telefonun yazıları
-    /// yanında bir mesaj kartında dizilir (`ScreenPhoneCard`).
+    /// yanında bir mesaj kartında dizilir (`ScreenPhoneCard`). `memory` verilirse çeviriler (telefon mesajları sohbetin
+    /// başlığıyla) saklanır; aynı sohbete dönünce ya da kart yenilenince çevirmene gitmez (`PhoneChatMemory`). `handset`:
+    /// karesiz sınamalar için.
     public static func translate(_ reading: Reading, using translate: (String) async throws -> String,
-                                 frame: CGImage? = nil, progress: ([Item]) -> Void = { _ in }) async throws -> [Item] {
-        let phone = frame.flatMap(ScreenPhoneCard.phone(in:))
+                                 frame: CGImage? = nil, memory: PhoneChatMemory? = nil, handset: ScreenPhoneCard.Handset? = nil,
+                                 progress: ([Item]) -> Void = { _ in }) async throws -> [Item] {
+        let phone = handset ?? frame.flatMap(ScreenPhoneCard.phone(in:))
         var items: [Item] = []
-        for group in withImages(groups(reading, frame: frame, wholeScreen: true, handset: phone), from: frame) {
+        let all = withImages(groups(reading, frame: frame, wholeScreen: true, handset: phone), from: frame)
+        let chat = chatTitle(all)
+        for group in all {
             try Task.checkCancellation()
             let prepared = group.paragraphs.map(IconText.protect)
             var translated: [String] = []
             for (index, paragraph) in prepared.enumerated() {
-                if let known = known(group.paragraphs[index], in: group) {
+                let source = group.paragraphs[index]
+                if let known = known(source, in: group) ?? remembered(source, in: group, chat: chat, memory: memory) {
                     translated.append(known)
                     continue
                 }
                 let prices = PriceText.protect(paragraph.text)
-                translated.append(PriceText.restore(try await translate(prices.text), prices.values))
+                let result = PriceText.restore(try await translate(prices.text), prices.values)
+                memory?.remember(chat: memoryChat(group, chat), source: source, translation: result)
+                translated.append(result)
             }
             guard let item = item(group, prepared, translated, keepUnchanged: phone != nil) else { continue }
             items.append(styled(item, frame: frame))
@@ -87,17 +95,21 @@ public enum ScreenTranslation {
     /// Çevirmen parçaları tek istekte çevirebiliyorsa (yapay zekâ) ekranın bütün parçaları birlikte gider ve sonuç bir
     /// kerede gelir; yoksa gruplar sırayla çevrilip hazırlandıkça bildirilir. `frame`: bkz. yukarıdaki `translate`.
     public static func translate(_ reading: Reading, using translator: TextTranslator, frame: CGImage? = nil,
+                                 memory: PhoneChatMemory? = nil, handset: ScreenPhoneCard.Handset? = nil,
                                  progress: ([Item]) -> Void = { _ in }) async throws -> [Item] {
         guard translator.translatesTogether else {
-            return try await translate(reading, using: { try await translator.translate($0) }, frame: frame, progress: progress)
+            return try await translate(reading, using: { try await translator.translate($0) }, frame: frame, memory: memory,
+                                       handset: handset, progress: progress)
         }
-        let phone = frame.flatMap(ScreenPhoneCard.phone(in:))
+        let phone = handset ?? frame.flatMap(ScreenPhoneCard.phone(in:))
         let groups = withImages(groups(reading, frame: frame, wholeScreen: true, handset: phone), from: frame)
         let prepared = groups.map { group in group.paragraphs.map(IconText.protect) }
+        let chat = chatTitle(groups)
         // Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND", "BACK") ve telefondaki kişi adları çevirmene gitmez;
-        // fiyatlar adla korunur.
+        // daha önce görülen sohbetin mesajları da (`memory`); fiyatlar adla korunur.
         let sources = groups.flatMap(\.paragraphs)
-        let knowns = groups.flatMap { group in group.paragraphs.map { known($0, in: group) } }
+        let owners = groups.flatMap { group in group.paragraphs.map { _ in group } }
+        let knowns = sources.indices.map { known(sources[$0], in: owners[$0]) ?? remembered(sources[$0], in: owners[$0], chat: chat, memory: memory) }
         let prices = prepared.flatMap { list in list.map { PriceText.protect($0.text) } }
         let asked = prices.indices.filter { knowns[$0] == nil }
         guard !sources.isEmpty else { return [] }
@@ -106,6 +118,7 @@ public enum ScreenTranslation {
         var translations = knowns.map { $0 ?? "" }
         for (k, index) in asked.enumerated() where k < answers.count {
             translations[index] = PriceText.restore(answers[k], prices[index].values)
+            memory?.remember(chat: memoryChat(owners[index], chat), source: sources[index], translation: translations[index])
         }
         var items: [Item] = []
         var next = 0
@@ -129,6 +142,19 @@ public enum ScreenTranslation {
         if group?.phone?.role.keepsText == true { return paragraph }
         guard !paragraph.contains(ButtonIcons.marker) else { return nil }
         return UiCommands.translateLabel(paragraph)
+    }
+
+    /// Telefondaki sohbetin başlığı (kişi adı); sohbet listesinde ya da telefonsuz karede boş.
+    static func chatTitle(_ groups: [Group]) -> String {
+        groups.first { $0.phone?.role == .header }?.paragraphs.first ?? ""
+    }
+
+    /// Hafızadaki yeri: telefon mesajı sohbetin başlığıyla, telefon dışındaki yazı (görev, menü) başlıksız saklanır.
+    static func memoryChat(_ group: Group, _ chat: String) -> String { group.phone == nil ? "" : chat }
+
+    /// Bu sohbette (telefon dışındaki yazıda: bu ekranda) daha önce çevrilmiş parçanın çevirisi (`PhoneChatMemory`).
+    static func remembered(_ paragraph: String, in group: Group, chat: String, memory: PhoneChatMemory?) -> String? {
+        memory?.translation(chat: memoryChat(group, chat), of: paragraph)
     }
 
     /// Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de

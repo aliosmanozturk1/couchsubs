@@ -84,15 +84,19 @@ public static class ScreenTranslation
     /// <paramref name="frame"/> okunan kareyse yazıların içindeki kumanda simgeleri ondan kesilip çeviriye konur, her
     /// çeviri özgün yazının stilinde (zemin ve yazı rengi, kalınlık, hiza, BÜYÜK HARF; otomatik ekran yazısıyla aynı,
     /// <see cref="TextStyleSampler"/>) kendi kutusunun yerine çizilir; karede GTA 6 telefonu varsa telefonun yazıları
-    /// yanında bir mesaj kartında dizilir (<see cref="ScreenPhoneCard"/>).
+    /// yanında bir mesaj kartında dizilir (<see cref="ScreenPhoneCard"/>). <paramref name="memory"/> verilirse çeviriler
+    /// (telefon mesajları sohbetin başlığıyla) saklanır; aynı sohbete dönünce ya da kart yenilenince çevirmene gitmez
+    /// (<see cref="PhoneChatMemory"/>). <paramref name="handset"/>: karesiz sınamalar için.
     /// </summary>
     public static async Task<IReadOnlyList<Item>> TranslateAsync(
         Reading reading, ITextTranslator translator,
-        Action<IReadOnlyList<Item>>? progress = null, CancellationToken cancellationToken = default, Frame? frame = null)
+        Action<IReadOnlyList<Item>>? progress = null, CancellationToken cancellationToken = default, Frame? frame = null,
+        PhoneChatMemory? memory = null, ScreenPhoneCard.Handset? handset = null)
     {
         var items = new List<Item>();
-        var phone = frame is null ? null : ScreenPhoneCard.Phone(frame);
+        var phone = handset ?? (frame is null ? null : ScreenPhoneCard.Phone(frame));
         var groups = ReadGroups(reading, false, frame, wholeScreen: true, handset: phone);
+        var chat = ChatTitle(groups);
         var keep = phone is not null;
         if (frame is not null)
             groups = [.. groups.Select(group => group.Icons is null ? group
@@ -105,7 +109,10 @@ public static class ScreenTranslation
             // fiyatlar adla korunur.
             var sources = groups.SelectMany(group => group.Paragraphs).ToList();
             if (sources.Count == 0) return items;
-            var knowns = groups.SelectMany(group => group.Paragraphs.Select(paragraph => Known(paragraph, group))).ToList();
+            // Daha önce görülen sohbetin mesajları da (memory) gitmez.
+            var owners = groups.SelectMany(group => group.Paragraphs.Select(_ => group)).ToList();
+            var knowns = Enumerable.Range(0, sources.Count)
+                .Select(i => Known(sources[i], owners[i]) ?? Remembered(sources[i], owners[i], chat, memory)).ToList();
             var prices = protectedGroups.SelectMany(group => group.Select(p => PriceText.Protect(p.Text))).ToList();
             var asked = Enumerable.Range(0, sources.Count).Where(i => knowns[i] is null).ToList();
             var answers = asked.Count == 0 ? []
@@ -113,7 +120,10 @@ public static class ScreenTranslation
             cancellationToken.ThrowIfCancellationRequested();
             var translations = knowns.Select(known => known ?? "").ToList();
             for (var k = 0; k < asked.Count && k < answers.Count; k++)
+            {
                 translations[asked[k]] = PriceText.Restore(answers[k], prices[asked[k]].Values);
+                memory?.Remember(MemoryChat(owners[asked[k]], chat), sources[asked[k]], translations[asked[k]]);
+            }
             var next = 0;
             for (var g = 0; g < groups.Count; g++)
             {
@@ -134,14 +144,17 @@ public static class ScreenTranslation
             var translated = new List<string>(group.Paragraphs.Count);
             for (var p = 0; p < group.Paragraphs.Count; p++)
             {
-                if (Known(group.Paragraphs[p], group) is { } known)
+                var source = group.Paragraphs[p];
+                if ((Known(source, group) ?? Remembered(source, group, chat, memory)) is { } known)
                 {
                     translated.Add(known);
                     continue;
                 }
                 var prices = PriceText.Protect(protectedGroups[g][p].Text);
-                translated.Add(PriceText.Restore(
-                    await translator.TranslateAsync(prices.Text, cancellationToken).ConfigureAwait(false), prices.Values));
+                var result = PriceText.Restore(
+                    await translator.TranslateAsync(prices.Text, cancellationToken).ConfigureAwait(false), prices.Values);
+                memory?.Remember(MemoryChat(group, chat), source, result);
+                translated.Add(result);
             }
             if (Build(group, protectedGroups[g], translated, keep) is not { } item) continue;
             items.Add(Styled(item, frame));
@@ -159,6 +172,17 @@ public static class ScreenTranslation
         // Telefondaki kişi adı (sohbet başlığı, listedeki ad) çevrilmez: "Rose" "Gül", "May" "Mayıs" olmasın.
         group?.Phone?.Role.KeepsText() == true ? paragraph
         : paragraph.Contains(ButtonIcons.Marker) ? null : UiCommands.TranslateLabel(paragraph);
+
+    /// <summary>Telefondaki sohbetin başlığı (kişi adı); sohbet listesinde ya da telefonsuz karede boş.</summary>
+    internal static string ChatTitle(IReadOnlyList<Group> groups) =>
+        groups.FirstOrDefault(group => group.Phone?.Role == ScreenPhoneCard.Role.Header)?.Paragraphs.FirstOrDefault() ?? "";
+
+    /// <summary>Hafızadaki yeri: telefon mesajı sohbetin başlığıyla, telefon dışındaki yazı (görev, menü) başlıksız saklanır.</summary>
+    internal static string MemoryChat(Group group, string chat) => group.Phone is null ? "" : chat;
+
+    /// <summary>Bu sohbette (telefon dışındaki yazıda: bu ekranda) daha önce çevrilmiş parçanın çevirisi (<see cref="PhoneChatMemory"/>).</summary>
+    internal static string? Remembered(string paragraph, Group group, string chat, PhoneChatMemory? memory) =>
+        memory?.Translation(MemoryChat(group, chat), paragraph);
 
     /// <summary>
     /// Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de

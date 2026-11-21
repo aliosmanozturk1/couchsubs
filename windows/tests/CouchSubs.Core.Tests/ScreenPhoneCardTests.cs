@@ -74,7 +74,9 @@ public class ScreenPhoneCardTests
         }
         foreach (var entry in all.GetProperty("cards").EnumerateArray())
         {
-            var card = ScreenPhoneCard.CardBox(Box(Numbers(entry.GetProperty("phone"))));
+            var avoid = entry.TryGetProperty("avoid", out var others)
+                ? others.EnumerateArray().Select(other => Box(Numbers(other))).ToList() : [];
+            var card = ScreenPhoneCard.CardBox(Box(Numbers(entry.GetProperty("phone"))), avoid);
             var expected = Numbers(entry.GetProperty("card"));
             Assert.Equal(expected[0], card.Left, 9);
             Assert.Equal(expected[1], card.Top, 9);
@@ -286,6 +288,150 @@ public class ScreenPhoneCardTests
         Assert.Equal(3.0, ScreenRegions.NextChange(5.0, 3.0));
         Assert.Equal(5.0, ScreenRegions.NextChange(5.0, 0));
         Assert.Equal(3.0, ScreenRegions.NextChange(null, 3.0));
+    }
+
+    /// <summary>
+    /// Sıkışık balonlar: balonlar arasında en az yarım satır boşluk, hepsi kartın içinde; mesajlar telefon boyuna sığmazsa
+    /// kart ekranın kenar payına kadar uzar, yine sığmazsa en eskiler düşer; kartın altında kalan çeviri kartın yanına
+    /// alınır (ortak deneme dosyasının layouts bölümü; Mac ve Android aynı sonucu bulur).
+    /// </summary>
+    [Fact]
+    public void SharedLayoutVectors()
+    {
+        foreach (var vector in Vectors().GetProperty("layouts").EnumerateArray())
+        {
+            var name = vector.GetProperty("name").GetString();
+            var phone = Handset(Numbers(vector.GetProperty("pose")));
+            var items = new List<ScreenTranslation.Item>();
+            if (vector.TryGetProperty("outside", out var outside))
+                foreach (var entry in outside.EnumerateArray())
+                    items.Add(new ScreenTranslation.Item(entry.GetProperty("source").GetString()!, entry.GetProperty("translation").GetString()!,
+                                                         Box(Numbers(entry.GetProperty("box"))), 0.02));
+            var outsideCount = items.Count;
+            foreach (var message in vector.GetProperty("items").EnumerateArray())
+            {
+                var top = message.GetProperty("top").GetDouble();
+                var role = Enum.Parse<ScreenPhoneCard.Role>(message.GetProperty("role").GetString()!, ignoreCase: true);
+                items.Add(new ScreenTranslation.Item(message.GetProperty("source").GetString()!, message.GetProperty("translation").GetString()!,
+                                                     new TextBox(0.8, 0.2, 0.9, 0.22), message.GetProperty("line").GetDouble())
+                {
+                    Unchanged = message.GetProperty("unchanged").GetBoolean(),
+                    Phone = new ScreenPhoneCard.Placement(role, new TextBox(message.GetProperty("left").GetDouble(), top,
+                                                                           message.GetProperty("right").GetDouble(), top + 0.03)),
+                });
+            }
+            var laid = ScreenPhoneCard.Layout(items, phone);
+            var card = laid[outsideCount].Box;
+            Assert.True(ScreenPhoneCard.IsBackdrop(laid[outsideCount]), name);
+            var rows = laid.Skip(outsideCount + 1).Where(item => item.Phone?.Role != ScreenPhoneCard.Role.Header).ToList();
+            var line = rows[0].LineHeight;
+            for (var i = 0; i + 1 < rows.Count; i++) Assert.True(rows[i + 1].Box.Top - rows[i].Box.Bottom >= line * 0.5 - 1e-9, name);
+            Assert.All(laid.Skip(outsideCount + 1), item => Assert.True(item.Box.Left >= card.Left && item.Box.Right <= card.Right
+                && item.Box.Top >= card.Top - 1e-9 && item.Box.Bottom <= card.Bottom + 1e-9, name));
+            Assert.True(card.Top >= ScreenPhoneCard.ScreenMargin - 1e-9, name);
+            Assert.True(card.Bottom <= 1 - ScreenPhoneCard.ScreenMargin + 1e-9, name);
+            Assert.Equal(items[^1].Source, rows[^1].Source);
+            for (var i = 0; i < outsideCount; i++) Assert.Equal(0, ScreenPhoneCard.Covered(laid[i].Box, [card]));
+            if (vector.TryGetProperty("card", out var expectedCard)) AssertBox(Numbers(expectedCard), card, name);
+            if (vector.TryGetProperty("kept", out var kept))
+                Assert.True(kept.EnumerateArray().Select(value => value.GetString()).SequenceEqual(rows.Select(row => row.Source)),
+                            $"{name}: {string.Join(", ", rows.Select(row => row.Source))}");
+            if (vector.TryGetProperty("moved", out var moved))
+            {
+                var index = 0;
+                foreach (var expected in moved.EnumerateArray()) AssertBox(Numbers(expected), laid[index++].Box, name);
+            }
+        }
+    }
+
+    private static void AssertBox(double[] expected, TextBox got, string? name)
+    {
+        double[] values = [got.Left, got.Top, got.Right, got.Bottom];
+        for (var i = 0; i < 4; i++)
+            Assert.True(Math.Abs(values[i] - expected[i]) <= 1e-6, $"{name}: [{string.Join(", ", values)}]");
+    }
+
+    /// <summary>
+    /// Kart ekrandayken telefon izlenir: sohbet değişip durulunca yeniden çevrilir, değişmeyen telefonda kart kalır, telefon
+    /// kapanınca kart kalkar; tek karelik ıska kartı kaldırmaz (ortak deneme dosyasının follow bölümü).
+    /// </summary>
+    [Fact]
+    public void SharedFollowVectors()
+    {
+        static byte[] Signature(JsonElement spec)
+        {
+            var v = Numbers(spec);
+            return [.. Enumerable.Range(0, 768).Select(i => (byte)(i < v[1] ? v[2] : v[0]))];
+        }
+        foreach (var vector in Vectors().GetProperty("follow").EnumerateArray())
+        {
+            var name = vector.GetProperty("name").GetString();
+            var follow = new ScreenPhoneFollow();
+            var index = 0;
+            foreach (var step in vector.GetProperty("steps").EnumerateArray())
+            {
+                index++;
+                if (step.TryGetProperty("settle", out var settle))
+                {
+                    follow.Settled(Box(Numbers(settle)), Signature(step.GetProperty("sig")));
+                    continue;
+                }
+                var phone = step.GetProperty("phone");
+                var got = phone.ValueKind == JsonValueKind.Null ? follow.Next(null, null)
+                    : follow.Next(Box(Numbers(phone)), Signature(step.GetProperty("sig")));
+                Assert.True(step.GetProperty("expect").GetString() == got.ToString().ToLowerInvariant(), $"{name} #{index - 1}: {got}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Başka bir sohbete geçip dönünce eski sohbetin mesajları çevirmene yeniden gitmez: çeviriler sohbetin başlığıyla
+    /// saklanır (PhoneChatMemory; ortak deneme dosyasının switch bölümü). Tek tek ve toplu çeviren motorda aynı.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SwitchingChatsReusesTheirTranslations(bool together)
+    {
+        var all = Vectors();
+        var plan = all.GetProperty("switch");
+        var cases = all.GetProperty("cases").EnumerateArray().ToList();
+        var memory = new PhoneChatMemory();
+        var first = new Dictionary<string, string[]>();
+        var expected = plan.GetProperty("calls").EnumerateArray().Select(value => value.GetInt32()).ToList();
+        var index = 0;
+        foreach (var chat in plan.GetProperty("chats").EnumerateArray().Select(value => value.GetString()!))
+        {
+            var vector = cases.First(c => c.GetProperty("name").GetString() == chat);
+            var reading = new Reading(vector.GetProperty("lines").EnumerateArray()
+                .Select(line => new TextLine(line.GetProperty("text").GetString()!, Box(Numbers(line.GetProperty("box"))))));
+            var translator = new Counting(together);
+            var items = await ScreenTranslation.TranslateAsync(reading, translator, memory: memory,
+                handset: Handset(Numbers(vector.GetProperty("pose")), vector.GetProperty("aspect").GetDouble()));
+            Assert.True(expected[index] == translator.Calls, $"{chat}: {translator.Calls}");
+            index++;
+            var texts = items.Select(item => item.Translation).ToArray();
+            if (first.TryGetValue(chat, out var before)) Assert.Equal(before, texts);
+            else first[chat] = texts;
+        }
+    }
+
+    private sealed class Counting(bool together) : ITextTranslator
+    {
+        public int Calls;
+        public bool TranslatesTogether => together;
+
+        public Task<string> TranslateAsync(string source, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult("TR " + source);
+        }
+
+        public Task<IReadOnlyList<string>> TranslateAllAsync(IReadOnlyList<string> sources, CancellationToken cancellationToken = default)
+        {
+            Calls += sources.Count;
+            return Task.FromResult<IReadOnlyList<string>>([.. sources.Select(source => "TR " + source)]);
+        }
     }
 
     private sealed class Fixed(string text) : ITextTranslator

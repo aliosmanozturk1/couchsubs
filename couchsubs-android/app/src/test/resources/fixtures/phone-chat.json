@@ -852,6 +852,107 @@
      "Where are you? Call me back when you can"
     ]
    ]
+  },
+  {
+   "name": "sohbet: başka kişi",
+   "pose": [
+    0.78,
+    0.17,
+    0.78,
+    0.85
+   ],
+   "aspect": 1.777778,
+   "lines": [
+    {
+     "text": "Lucia",
+     "box": [
+      0.7601,
+      0.2376,
+      0.7999,
+      0.2568
+     ]
+    },
+    {
+     "text": "Did you get the money from",
+     "box": [
+      0.6965,
+      0.303,
+      0.8198,
+      0.3204
+     ]
+    },
+    {
+     "text": "the guy downtown?",
+     "box": [
+      0.6965,
+      0.3256,
+      0.784,
+      0.343
+     ]
+    },
+    {
+     "text": "Yesterday 8:15 PM",
+     "box": [
+      0.7561,
+      0.3839,
+      0.8039,
+      0.3978
+     ]
+    },
+    {
+     "text": "Yeah. All of it.",
+     "box": [
+      0.7522,
+      0.4274,
+      0.8655,
+      0.4448
+     ]
+    },
+    {
+     "text": "Meet me at the docks",
+     "box": [
+      0.6965,
+      0.4834,
+      0.8277,
+      0.5008
+     ]
+    },
+    {
+     "text": "On my way",
+     "box": [
+      0.8198,
+      0.5394,
+      0.8655,
+      0.5568
+     ]
+    }
+   ],
+   "groups": [
+    [
+     "header",
+     "Lucia"
+    ],
+    [
+     "incoming",
+     "Did you get the money from the guy downtown?"
+    ],
+    [
+     "note",
+     "Yesterday 8:15 PM"
+    ],
+    [
+     "outgoing",
+     "Yeah. All of it."
+    ],
+    [
+     "incoming",
+     "Meet me at the docks"
+    ],
+    [
+     "outgoing",
+     "On my way"
+    ]
+   ]
   }
  ],
  "outside": {
@@ -1101,7 +1202,7 @@
     0.86
    ],
    "card": [
-    0.472,
+    0.384,
     0.18,
     0.692,
     0.86
@@ -1117,7 +1218,7 @@
    "card": [
     0.288,
     0.18,
-    0.508,
+    0.596,
     0.86
    ]
   },
@@ -1143,10 +1244,32 @@
     0.86
    ],
    "card": [
-    0.642,
+    0.572,
     0.18,
     0.792,
     0.86
+   ]
+  },
+  {
+   "phone": [
+    0.45,
+    0.2,
+    0.6,
+    0.8
+   ],
+   "avoid": [
+    [
+     0.2,
+     0.4,
+     0.4,
+     0.5
+    ]
+   ],
+   "card": [
+    0.608,
+    0.2,
+    0.828,
+    0.8
    ]
   }
  ],
@@ -1346,6 +1469,558 @@
     "Brian",
     "Where are you man",
     "Ok"
+   ]
+  }
+ ],
+ "switch": {
+  "chats": [
+   "sohbet, dik telefon",
+   "sohbet: başka kişi",
+   "sohbet, dik telefon",
+   "sohbet: başka kişi"
+  ],
+  "calls": [
+   5,
+   5,
+   0,
+   0
+  ]
+ },
+ "layouts": [
+  {
+   "name": "sıkışık balonlar aralıklı dizilir",
+   "pose": [
+    0.78,
+    0.17,
+    0.78,
+    0.85
+   ],
+   "items": [
+    {
+     "role": "header",
+     "source": "Brian",
+     "translation": "Brian",
+     "top": 0.04,
+     "left": 0.1,
+     "right": 0.7,
+     "line": 0.018,
+     "unchanged": true
+    },
+    {
+     "role": "incoming",
+     "source": "m0",
+     "translation": "0 Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.12,
+     "left": 0.05,
+     "right": 0.6,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "outgoing",
+     "source": "m1",
+     "translation": "1 Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.19,
+     "left": 0.4,
+     "right": 0.95,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "incoming",
+     "source": "m2",
+     "translation": "2 Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.26,
+     "left": 0.05,
+     "right": 0.6,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "outgoing",
+     "source": "m3",
+     "translation": "3 Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.33,
+     "left": 0.4,
+     "right": 0.95,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "incoming",
+     "source": "m4",
+     "translation": "4 Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.4,
+     "left": 0.05,
+     "right": 0.6,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "outgoing",
+     "source": "m5",
+     "translation": "5 Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.47000000000000003,
+     "left": 0.4,
+     "right": 0.95,
+     "line": 0.018,
+     "unchanged": false
+    }
+   ],
+   "card": [
+    0.408625,
+    0.17816,
+    0.676375,
+    0.8398
+   ],
+   "kept": [
+    "m0",
+    "m1",
+    "m2",
+    "m3",
+    "m4",
+    "m5"
+   ]
+  },
+  {
+   "name": "uzun sohbet: kart uzar, eskiler düşer",
+   "pose": [
+    0.78,
+    0.3,
+    0.78,
+    0.75
+   ],
+   "items": [
+    {
+     "role": "incoming",
+     "source": "m0",
+     "translation": "0 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.05,
+     "left": 0.05,
+     "right": 0.6,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "outgoing",
+     "source": "m1",
+     "translation": "1 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.125,
+     "left": 0.4,
+     "right": 0.95,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "incoming",
+     "source": "m2",
+     "translation": "2 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.2,
+     "left": 0.05,
+     "right": 0.6,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "outgoing",
+     "source": "m3",
+     "translation": "3 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.27499999999999997,
+     "left": 0.4,
+     "right": 0.95,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "incoming",
+     "source": "m4",
+     "translation": "4 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.35,
+     "left": 0.05,
+     "right": 0.6,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "outgoing",
+     "source": "m5",
+     "translation": "5 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.425,
+     "left": 0.4,
+     "right": 0.95,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "incoming",
+     "source": "m6",
+     "translation": "6 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.49999999999999994,
+     "left": 0.05,
+     "right": 0.6,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "outgoing",
+     "source": "m7",
+     "translation": "7 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.5750000000000001,
+     "left": 0.4,
+     "right": 0.95,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "incoming",
+     "source": "m8",
+     "translation": "8 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.65,
+     "left": 0.05,
+     "right": 0.6,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "outgoing",
+     "source": "m9",
+     "translation": "9 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.725,
+     "left": 0.4,
+     "right": 0.95,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "incoming",
+     "source": "m10",
+     "translation": "10 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.8,
+     "left": 0.05,
+     "right": 0.6,
+     "line": 0.018,
+     "unchanged": false
+    },
+    {
+     "role": "outgoing",
+     "source": "m11",
+     "translation": "11 Bu mesajın Türkçesi biraz uzun, iki satır tutar Bu mesajın Türkçesi biraz uzun, iki satır tutar",
+     "top": 0.875,
+     "left": 0.4,
+     "right": 0.95,
+     "line": 0.018,
+     "unchanged": false
+    }
+   ],
+   "card": [
+    0.4887187,
+    0.03,
+    0.7087187,
+    0.97
+   ],
+   "kept": [
+    "m7",
+    "m8",
+    "m9",
+    "m10",
+    "m11"
+   ]
+  },
+  {
+   "name": "kartın altında kalan çeviri yanına alınır",
+   "pose": [
+    0.78,
+    0.17,
+    0.78,
+    0.85
+   ],
+   "outside": [
+    {
+     "source": "Find the car",
+     "translation": "Arabayı bul",
+     "box": [
+      0.55,
+      0.3,
+      0.62,
+      0.33
+     ]
+    }
+   ],
+   "items": [
+    {
+     "role": "incoming",
+     "source": "Where are you man",
+     "translation": "Neredesin adamım",
+     "top": 0.2,
+     "left": 0.1,
+     "right": 0.7,
+     "line": 0.018,
+     "unchanged": false
+    }
+   ],
+   "card": [
+    0.408625,
+    0.17816,
+    0.676375,
+    0.8398
+   ],
+   "kept": [
+    "Where are you man"
+   ],
+   "moved": [
+    [
+     0.330625,
+     0.3,
+     0.400625,
+     0.33
+    ]
+   ]
+  }
+ ],
+ "follow": [
+  {
+   "name": "sohbet değişince yeniden çevrilir, telefon kapanınca kart kalkar",
+   "steps": [
+    {
+     "settle": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      100,
+      0,
+      0
+     ]
+    },
+    {
+     "phone": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      100,
+      0,
+      0
+     ],
+     "expect": "keep"
+    },
+    {
+     "phone": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      100,
+      20,
+      200
+     ],
+     "expect": "keep"
+    },
+    {
+     "phone": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      40,
+      0,
+      0
+     ],
+     "expect": "wait"
+    },
+    {
+     "phone": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      40,
+      0,
+      0
+     ],
+     "expect": "refresh"
+    },
+    {
+     "settle": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      40,
+      0,
+      0
+     ]
+    },
+    {
+     "phone": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      40,
+      0,
+      0
+     ],
+     "expect": "keep"
+    },
+    {
+     "phone": null,
+     "expect": "wait"
+    },
+    {
+     "phone": null,
+     "expect": "wait"
+    },
+    {
+     "phone": null,
+     "expect": "stop"
+    }
+   ]
+  },
+  {
+   "name": "kayan telefon durulunca kart yeniden dizilir",
+   "steps": [
+    {
+     "settle": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      100,
+      0,
+      0
+     ]
+    },
+    {
+     "phone": [
+      0.75,
+      0.17,
+      0.91,
+      0.85
+     ],
+     "sig": [
+      100,
+      0,
+      0
+     ],
+     "expect": "wait"
+    },
+    {
+     "phone": [
+      0.8,
+      0.17,
+      0.96,
+      0.85
+     ],
+     "sig": [
+      100,
+      0,
+      0
+     ],
+     "expect": "wait"
+    },
+    {
+     "phone": [
+      0.8,
+      0.17,
+      0.96,
+      0.85
+     ],
+     "sig": [
+      100,
+      0,
+      0
+     ],
+     "expect": "refresh"
+    }
+   ]
+  },
+  {
+   "name": "tek karelik ıska kartı kaldırmaz",
+   "steps": [
+    {
+     "settle": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      100,
+      0,
+      0
+     ]
+    },
+    {
+     "phone": null,
+     "expect": "wait"
+    },
+    {
+     "phone": null,
+     "expect": "wait"
+    },
+    {
+     "phone": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      100,
+      0,
+      0
+     ],
+     "expect": "keep"
+    },
+    {
+     "phone": null,
+     "expect": "wait"
+    },
+    {
+     "phone": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      100,
+      70,
+      0
+     ],
+     "expect": "wait"
+    },
+    {
+     "phone": [
+      0.7,
+      0.17,
+      0.86,
+      0.85
+     ],
+     "sig": [
+      100,
+      70,
+      0
+     ],
+     "expect": "refresh"
+    }
    ]
   }
  ]

@@ -2131,29 +2131,48 @@ final class AppModel: ObservableObject {
     private var screenShownUntil = Date.distantPast
     /// Ekrandaki çevirilerin okunduğu karenin yazı izi (`ScreenTranslation.fingerprint`).
     private var screenFingerprint = ""
+    /// Ekrandaki son çeviriler: telefon kartı izlenirken süresi bunlarla uzatılır.
+    private var screenItems: [ScreenTranslation.Item] = []
+    /// Telefon kartı ekrandayken sohbeti izleyen yoklama (`ScreenPhoneFollow`); kart yoksa nil.
+    private var screenFollow: ScreenPhoneFollow?
+    private var screenFollowTask: Task<Void, Never>?
+    /// "Ekranı çevir" çevirilerinin hafızası (telefon mesajları sohbet başlığıyla); dil ya da motor değişince yenilenir.
+    private var screenMemory = PhoneChatMemory()
+    private var screenMemoryKey = ""
 
     /// ⌥⌘T: oyunun şu anki karesinin tamamını bir kez okur, her yazı grubunu ayrı çevirip TV'de kendi yerine koyar.
     /// Çeviriler hazırlandıkça TV'ye gider. Çeviri sürerken yeniden basmak onu durdurur. Çeviriler ekrandayken yeniden
     /// basınca kare yine okunur: ekran değiştiyse (telefonda başka sohbet) yenisi çevrilir, değişmediyse çeviriler kalkar.
-    func translateScreen() {
+    /// Karede GTA 6 telefonu varsa kart ekrandayken telefon izlenir (`followPhone`): sohbet değişince kart kendiliğinden
+    /// yenilenir, telefon kapanınca kalkar. `refresh`: bu izlemenin yenilemesi (tuşa basılmadı).
+    func translateScreen(refresh: Bool = false) {
         guard isRunning else { return }
         guard let frame = lastFrame else {
             // Çeviri sürüyor ama PS5'ten henüz görüntü gelmedi: tuş sessizce yok sayılmasın.
-            server.sendSubtitle(String(localized: "Couldn't capture the screen: no picture from the PS5 yet."), durationMs: 4000)
+            if !refresh {
+                server.sendSubtitle(String(localized: "Couldn't capture the screen: no picture from the PS5 yet."), durationMs: 4000)
+            }
             return
         }
         if let task = screenTask {
+            if refresh { return }
             task.cancel()
             screenTask = nil
             hideScreen()
             return
         }
-        let wasShown = Date() < screenShownUntil
+        let wasShown = !refresh && Date() < screenShownUntil
         let previous = screenFingerprint
         server.sendStyle(settings.style)
-        if !wasShown { server.sendSubtitle(String(localized: "Translating the screen…"), durationMs: 2500) }
+        if !wasShown && !refresh { server.sendSubtitle(String(localized: "Translating the screen…"), durationMs: 2500) }
         let reader = VisionReader(language: settings.sourceLanguage)
         let translator = makeTranslator()
+        let memoryKey = "\(settings.sourceLanguage)|\(settings.targetLanguage)|\(onlineTranslationActive)|\(settings.onlineEngine)"
+        if memoryKey != screenMemoryKey {
+            screenMemoryKey = memoryKey
+            screenMemory = PhoneChatMemory()
+        }
+        let memory = screenMemory
         let server = self.server
         screenTask = Task { [weak self] in
             do {
@@ -2177,28 +2196,85 @@ final class AppModel: ObservableObject {
                 // Yapay zekâda ekranın bütün yazıları tek istekte gider (bkz. AITranslationCore.translateAll). Yazının
                 // içindeki kumanda simgeleri okunan kareden kesilip TV'de çevirinin içine konur (ButtonIcons). Çeviriler
                 // özgün yazının stilinde kendi yerlerine çizilir; GTA 6 telefonunun yazıları yanında mesaj kartında.
-                let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame) { shown in
-                    guard !Task.isCancelled else { return }
+                let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame, memory: memory) { shown in
+                    // İzlemenin yenilemesinde aynı çeviriler yeniden gönderilmez (TV'de kart yeniden çizilmesin).
+                    guard !Task.isCancelled, !(refresh && self?.screenItems == shown) else { return }
                     let milliseconds = ScreenTranslation.displayMilliseconds(shown)
                     server.sendScreen(shown, durationMs: milliseconds)
+                    self?.screenItems = shown
                     self?.screenShownUntil = Date().addingTimeInterval(Double(milliseconds) / 1000)
                 }
-                server.clear()
+                if !refresh { server.clear() }
                 if items.isEmpty {
                     // Yeni karede yazı yok: önceki ekranın çevirileri de kalkar.
-                    if wasShown { self?.hideScreen() }
-                    server.sendSubtitle(String(localized: "No text found on the screen."), durationMs: 2500)
+                    if wasShown || refresh { self?.hideScreen() }
+                    if !refresh { server.sendSubtitle(String(localized: "No text found on the screen."), durationMs: 2500) }
+                } else {
+                    self?.followPhone(in: frame)
                 }
             } catch is CancellationError {
                 return
             } catch let error as TranslatorError {
                 self?.translatorStatus = Self.translatorStatus(after: error)
-                self?.showScreenFailure(error, translator: translator)
+                // İzlemenin yenilemesi başarısızsa eski kart kalır; aynı görüntü yeniden denenmez.
+                if refresh { self?.followPhone(in: frame) } else { self?.showScreenFailure(error, translator: translator) }
             } catch {
-                self?.showScreenFailure(error, translator: translator)
+                if refresh { self?.followPhone(in: frame) } else { self?.showScreenFailure(error, translator: translator) }
             }
             if !Task.isCancelled { self?.screenTask = nil }
         }
+    }
+
+    /// Ekran bu kareyle çevrildi: karede telefon varsa kart ekrandayken telefon izlenir (`ScreenPhoneFollow`). Sohbet
+    /// değişip durulunca ekran yeniden çevrilir (hafızadaki mesajlar hemen gelir), telefon aynıyken kartın süresi uzar,
+    /// telefon kapanınca kart kalkar. Önceden kart tek karenin çevirisiydi: başka sohbete geçince eskisi kalıyor, süresi
+    /// dolunca kayboluyordu.
+    private func followPhone(in frame: CGImage) {
+        let follow = screenFollow ?? ScreenPhoneFollow()
+        Task { [weak self] in
+            guard let look = await Task.detached(priority: .utility, operation: { ScreenPhoneFollow.look(frame) }).value else {
+                if self?.screenFollow === follow { self?.stopFollowing() }
+                return
+            }
+            follow.settled(look.box, signature: look.signature)
+            guard let self, self.screenFollow !== follow else { return }
+            self.stopFollowing()
+            self.screenFollow = follow
+            self.screenFollowTask = Task { [weak self] in
+                // İzleme bitince (kart kalktı, süresi doldu) sonraki kart yeni bir izlemeyle başlar.
+                defer { if let self, self.screenFollow === follow { self.stopFollowing() } }
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: UInt64(ScreenPhoneFollow.interval) * 1_000_000)
+                    guard let self, !Task.isCancelled, self.screenFollow === follow, self.isRunning,
+                          Date() < self.screenShownUntil else { return }
+                    guard self.screenTask == nil, let current = self.lastFrame else { continue }
+                    let look = await Task.detached(priority: .utility, operation: { ScreenPhoneFollow.look(current) }).value
+                    guard !Task.isCancelled, self.screenFollow === follow else { return }
+                    switch follow.step(look?.box, signature: look?.signature) {
+                    case .wait: continue
+                    case .keep: self.keepScreen()
+                    case .refresh: self.translateScreen(refresh: true)
+                    case .stop:
+                        self.hideScreen()
+                        return
+                    }
+                }
+            }
+        }
+    }
+
+    private func stopFollowing() {
+        screenFollowTask?.cancel()
+        screenFollowTask = nil
+        screenFollow = nil
+    }
+
+    /// Telefon kartı izlenirken telefon aynı: çevirilerin süresi dolmak üzereyse yeniden gönderilip uzatılır.
+    private func keepScreen() {
+        guard !screenItems.isEmpty, screenShownUntil.timeIntervalSinceNow < 5 else { return }
+        let milliseconds = ScreenTranslation.displayMilliseconds(screenItems)
+        server.sendScreen(screenItems, durationMs: milliseconds)
+        screenShownUntil = Date().addingTimeInterval(Double(milliseconds) / 1000)
     }
 
     /// Ekran çevrilemedi: nedeni TV'de (ve bilgisayardaki altyazıda) birkaç saniye görünür, sessizce kaybolmaz.
@@ -2226,8 +2302,10 @@ final class AppModel: ObservableObject {
     }
 
     private func hideScreen() {
+        stopFollowing()
         screenShownUntil = .distantPast
         screenFingerprint = ""
+        screenItems = []
         server.clearScreen()
         server.clear()
     }

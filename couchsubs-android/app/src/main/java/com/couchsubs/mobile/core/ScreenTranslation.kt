@@ -55,16 +55,22 @@ object ScreenTranslation {
      */
     fun translateGroups(
         reading: Reading, translate: (String) -> String, cancelled: () -> Boolean = { false }, frame: GrayFrame? = null,
-        color: ((Int, Int) -> Int)? = null, phone: ScreenPhoneCard.Handset? = null, progress: (List<Item>) -> Unit = {},
+        color: ((Int, Int) -> Int)? = null, phone: ScreenPhoneCard.Handset? = null, memory: PhoneChatMemory? = null,
+        progress: (List<Item>) -> Unit = {},
     ): List<Item> {
         val items = mutableListOf<Item>()
-        for (group in withImages(groups(reading, wholeScreen = true, handset = phone, frame = frame), frame)) {
+        val all = withImages(groups(reading, wholeScreen = true, handset = phone, frame = frame), frame)
+        val chat = chatTitle(all)
+        for (group in all) {
             if (cancelled()) return present(items, phone)
             // Simgeler çeviride uydurma adlarla korunur (IconText); sözlükteki kısa etiketler çevirmene gitmez, fiyatlar
             // adla korunur (PriceText).
             val prepared = group.paragraphs.map { IconText.protect(it) }
             val translated = prepared.mapIndexed { index, paragraph ->
-                known(group.paragraphs[index], group) ?: PriceText.protect(paragraph.text).let { PriceText.restore(translate(it.text), it.values) }
+                val source = group.paragraphs[index]
+                known(source, group) ?: remembered(source, group, chat, memory)
+                    ?: PriceText.protect(paragraph.text).let { PriceText.restore(translate(it.text), it.values) }
+                        .also { memory?.remember(memoryChat(group, chat), source, it) }
             }
             val item = item(group, prepared, translated, keepUnchanged = phone != null) ?: continue
             items.add(styled(item, frame, color))
@@ -80,27 +86,37 @@ object ScreenTranslation {
      * kumanda simgeleri ondan kesilip çeviriye konur ve her çeviri özgün yazının stilinde (zemin ve yazı rengi —
      * [color] verilirse gerçek renk —, kalınlık, hiza, BÜYÜK HARF; otomatik ekran yazısıyla aynı, [TextStyleSampler])
      * kendi kutusunun yerine çizilir. [phone]: karede bulunan GTA 6 telefonu; yazıları yanında bir mesaj kartında
-     * dizilir ([ScreenPhoneCard]).
+     * dizilir ([ScreenPhoneCard]). [memory] verilirse çeviriler (telefon mesajları sohbetin başlığıyla) saklanır; aynı
+     * sohbete dönünce ya da kart yenilenince çevirmene gitmez ([PhoneChatMemory]).
      */
     fun translate(
         reading: Reading, translator: TextTranslator, cancelled: () -> Boolean = { false }, frame: GrayFrame? = null,
-        color: ((Int, Int) -> Int)? = null, phone: ScreenPhoneCard.Handset? = null, progress: (List<Item>) -> Unit = {},
+        color: ((Int, Int) -> Int)? = null, phone: ScreenPhoneCard.Handset? = null, memory: PhoneChatMemory? = null,
+        progress: (List<Item>) -> Unit = {},
     ): List<Item> {
         if (!translator.translatesTogether)
-            return translateGroups(reading, { translator.translate(it) }, cancelled, frame, color, phone, progress)
+            return translateGroups(reading, { translator.translate(it) }, cancelled, frame, color, phone, memory, progress)
         val groups = withImages(groups(reading, wholeScreen = true, handset = phone, frame = frame), frame)
         // Simgeler çeviride uydurma adlarla korunur (IconText). Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND",
         // "BACK") ve telefondaki kişi adları çevirmene gitmez; fiyatlar adla korunur (PriceText).
         val prepared = groups.map { group -> group.paragraphs.map { IconText.protect(it) } }
         val sources = groups.flatMap { it.paragraphs }
         if (sources.isEmpty()) return emptyList()
-        val knowns = groups.flatMap { group -> group.paragraphs.map { known(it, group) } }
+        val chat = chatTitle(groups)
+        // Daha önce görülen sohbetin mesajları da çevirmene gitmez ([memory]).
+        val owners = groups.flatMap { group -> group.paragraphs.map { group } }
+        val knowns = sources.indices.map { known(sources[it], owners[it]) ?: remembered(sources[it], owners[it], chat, memory) }
         val prices = prepared.flatMap { group -> group.map { PriceText.protect(it.text) } }
         val asked = prices.indices.filter { knowns[it] == null }
         val answers = if (asked.isEmpty()) emptyList() else translator.translateAll(asked.map { prices[it].text })
         if (cancelled()) return emptyList()
         val translations = knowns.map { it ?: "" }.toMutableList()
-        asked.forEachIndexed { k, index -> if (k < answers.size) translations[index] = PriceText.restore(answers[k], prices[index].values) }
+        asked.forEachIndexed { k, index ->
+            if (k < answers.size) {
+                translations[index] = PriceText.restore(answers[k], prices[index].values)
+                memory?.remember(memoryChat(owners[index], chat), sources[index], translations[index])
+            }
+        }
         val items = mutableListOf<Item>()
         var next = 0
         for ((index, group) in groups.withIndex()) {
@@ -125,6 +141,17 @@ object ScreenTranslation {
         paragraph.indexOf(ButtonIcons.MARKER) >= 0 -> null
         else -> UiCommands.translate(paragraph)
     }
+
+    /** Telefondaki sohbetin başlığı (kişi adı); sohbet listesinde ya da telefonsuz karede boş. */
+    internal fun chatTitle(groups: List<Group>): String =
+        groups.firstOrNull { it.phone?.role == ScreenPhoneCard.Role.HEADER }?.paragraphs?.firstOrNull() ?: ""
+
+    /** Hafızadaki yeri: telefon mesajı sohbetin başlığıyla, telefon dışındaki yazı (görev, menü) başlıksız saklanır. */
+    internal fun memoryChat(group: Group, chat: String): String = if (group.phone == null) "" else chat
+
+    /** Bu sohbette (telefon dışındaki yazıda: bu ekranda) daha önce çevrilmiş parçanın çevirisi ([PhoneChatMemory]). */
+    internal fun remembered(paragraph: String, group: Group, chat: String, memory: PhoneChatMemory?): String? =
+        memory?.translation(memoryChat(group, chat), paragraph)
 
     /**
      * Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de

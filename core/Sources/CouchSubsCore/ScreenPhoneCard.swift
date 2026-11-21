@@ -21,6 +21,15 @@ public enum ScreenPhoneCard {
     static let gap = 0.008
     /// Kart için yanda en az bu kadar yer olmalı; yoksa kart telefonun üstüne konur.
     static let minWidth = 0.12
+    /// Kartın istenen eni: telefonun bu katı, en az `cardMin` (yanda yer varsa). Telefon boyundaki dar kartta Türkçe
+    /// mesajlar çok satıra bölünüyor, balonlar iç içe görünüyordu.
+    static let cardScale = 1.4, cardMin = 0.22
+    /// Mesajlar telefon boyuna sığmazsa kart ekranın bu payına kadar yukarı ve aşağı uzar; yine sığmazsa eski mesajlar düşer.
+    static let screenMargin = 0.03
+    /// Balonlar arası boşluk, balonun iç dolgusu (üst + alt toplamı) ve satır aralığı; satır yüksekliğine oranla. TV
+    /// yazıyı kutunun üstüne yaslar: dolgu, son satırın altında da boşluk bırakır. Önceden balonlar arası 0,35 satırdı,
+    /// mesajlar birbirine yapışık görünüyordu.
+    static let bubbleSpacing = 0.6, bubblePadding = 0.6, lineSpacing = 1.2
     /// Balonun kart genişliğine oranı (en çok) ve en az.
     static let bubbleShare = 0.8, bubbleMin = 0.3
     /// Kartta yazı boyu (kare yüksekliğine oranla) en az bu: telefonun küçük yazısı TV'de okunsun (1080p'de ~24 nokta).
@@ -128,48 +137,56 @@ public enum ScreenPhoneCard {
         return Handset(pose: pose, aspect: Double(frame.width) / Double(max(1, frame.height)))
     }
 
-    /// Kartın yeri: telefonun daha geniş boş kalan yanında, telefon boyunda; iki yanda da yer yoksa telefonun üstünde.
-    static func cardBox(_ phone: TextBox) -> TextBox {
+    /// Kartın yeri: telefonun yanında, telefon boyunda; iki yanda da yer yoksa telefonun üstünde. İki yanda da yer varsa
+    /// kart başka çevirilerin (`avoiding`) üstüne en az binen yana, eşitse daha geniş boş kalan yana konur.
+    static func cardBox(_ phone: TextBox, avoiding others: [TextBox] = []) -> TextBox {
         let roomLeft = phone.left - 2 * gap, roomRight = 1 - phone.right - 2 * gap
-        let width = min(max(phone.right - phone.left, minWidth), max(roomLeft, roomRight))
-        guard width >= minWidth else {
+        let wanted = max((phone.right - phone.left) * cardScale, cardMin)
+        func side(right: Bool) -> TextBox? {
+            let width = min(wanted, right ? roomRight : roomLeft)
+            guard width >= minWidth else { return nil }
+            let left = right ? phone.right + gap : phone.left - gap - width
+            return TextBox(left: left, top: phone.top, right: left + width, bottom: phone.bottom)
+        }
+        // Önce daha geniş yan; öbür yan ancak başka çevirilerin üstüne daha az binerse seçilir.
+        let candidates = [side(right: roomLeft < roomRight), side(right: roomLeft >= roomRight)].compactMap { $0 }
+        guard var best = candidates.first else {
             return TextBox(left: max(0, phone.left), top: phone.top, right: min(1, phone.right), bottom: phone.bottom)
         }
-        let left = roomLeft >= roomRight ? phone.left - gap - width : phone.right + gap
-        return TextBox(left: left, top: phone.top, right: left + width, bottom: phone.bottom)
+        for candidate in candidates.dropFirst() where covered(candidate, others) < covered(best, others) - 1e-9 { best = candidate }
+        return best
+    }
+
+    /// Kutunun başka kutularla örtüşen alanı.
+    static func covered(_ box: TextBox, _ others: [TextBox]) -> Double {
+        others.reduce(0) { sum, other in
+            sum + max(0, min(box.right, other.right) - max(box.left, other.left))
+                * max(0, min(box.bottom, other.bottom) - max(box.top, other.top))
+        }
     }
 
     /// Telefondaki öğeleri (`phone` bilgisi olanlar) kart olarak dizer. Telefonda çevrilmiş öğe yoksa liste olduğu gibi
     /// döner. Çevrilmemiş öğeler (`unchanged`: kişi adı, "ok") kartta aslıyla görünür; kart dışındakiler sonra atılır.
+    /// Balonlar arasında en az `bubbleSpacing` satır boşluk kalır; mesajlar telefon boyuna sığmazsa kart uzar, yine
+    /// sığmazsa en eski mesajlar düşer. Kartın altında kalan başka bir çeviri kartın dışına, yanına alınır.
     public static func layout(_ items: [ScreenTranslation.Item], handset: Handset) -> [ScreenTranslation.Item] {
         let onPhone = items.filter { $0.phone?.role.inCard == true }.sorted { $0.phone!.spot.top < $1.phone!.spot.top }
         guard onPhone.contains(where: { !$0.unchanged }) else { return items }
-        let card = cardBox(handset.bounds)
+        let others = items.filter { $0.phone?.role.inCard != true }
+        var card = cardBox(handset.bounds, avoiding: others.filter { !$0.unchanged }.map(\.box))
         let cardWidth = card.right - card.left
         let heights = onPhone.map(\.lineHeight).sorted()
         let line = max(minLine, heights[heights.count / 2])
-        let pad = cardWidth * 0.05, padY = line * 0.4, spacing = line * 0.35
+        let pad = cardWidth * 0.05, padY = line * 0.4, spacing = line * bubbleSpacing
         let flat = { (align: TextLook.Align, bold: Bool) in TextLook(bold: bold, condensed: false, align: align, upper: false, flat: true) }
 
-        var result = items.filter { $0.phone?.role.inCard != true }
-        var backdrop = ScreenTranslation.Item(source: "", translation: backdropText, box: card, lineHeight: line)
-        backdrop.style = cardColor
-        backdrop.look = flat(.left, false)
-        result.append(backdrop)
-
-        var bodyTop = card.top + padY
         var body = onPhone
+        var header: ScreenTranslation.Item?
         if let first = body.first, first.phone?.role == .header {
-            var header = first
-            header.unchanged = false
-            header.box = TextBox(left: card.left + pad, top: bodyTop, right: card.right - pad, bottom: bodyTop + line * 1.4)
-            header.lineHeight = line
-            header.style = cardColor
-            header.look = flat(.center, true)
-            result.append(header)
-            bodyTop = header.box.bottom + spacing
+            header = first
             body.removeFirst()
         }
+        let headerHeight = header == nil ? 0 : line * 1.4 + spacing
 
         // Her satırın kartta kaplayacağı yer: genişliği rolünden, yüksekliği Türkçenin o genişlikte kaç satır tuttuğundan.
         struct Row { var item: ScreenTranslation.Item; var width: Double; var height: Double; var side: TextLook.Align }
@@ -191,18 +208,53 @@ public enum ScreenPhoneCard {
             }
             let side: TextLook.Align = role == .outgoing ? .right : role == .note ? .center : .left
             placed.look = flat(side, role == .contact || role == .heading)
-            return Row(item: placed, width: width, height: Double(lines.count) * line * 1.25 + padY, side: side)
+            let inside = line * (bubble ? bubblePadding : 0.3)
+            return Row(item: placed, width: width, height: Double(lines.count) * line * lineSpacing + inside, side: side)
         }
-        // Kart dolarsa en eski (en üstteki) satırlar düşer: son mesajlar görünür kalır.
+        // Mesajlar telefon boyuna sığmazsa kart önce aşağı, sonra yukarı uzar (ekranın kenar payına kadar).
+        func needed() -> Double {
+            2 * padY + headerHeight + rows.reduce(0) { $0 + $1.height } + spacing * Double(max(0, rows.count - 1))
+        }
+        var extra = needed() - (card.bottom - card.top)
+        if extra > 0 {
+            let down = min(extra, max(0, 1 - screenMargin - card.bottom))
+            card.bottom += down
+            extra -= down
+            card.top -= min(extra, max(0, card.top - screenMargin))
+        }
+        // Yine sığmazsa en eski (en üstteki) satırlar düşer: son mesajlar görünür kalır.
+        while rows.count > 1, needed() > card.bottom - card.top + 1e-9 { rows.removeFirst() }
+
+        var result = others
+        // Kartın altında kalan başka bir çeviri kartın telefondan uzak yanına alınır; oraya sığmazsa yerinde kalır.
+        let cardOnLeft = card.right <= handset.bounds.left + 1e-9
+        for index in result.indices where !result[index].unchanged && covered(result[index].box, [card]) > 0 {
+            let box = result[index].box, width = box.right - box.left
+            let left = cardOnLeft ? card.left - gap - width : card.right + gap
+            if left >= 0, left + width <= 1 { result[index].box = TextBox(left: left, top: box.top, right: left + width, bottom: box.bottom) }
+        }
+        var backdrop = ScreenTranslation.Item(source: "", translation: backdropText, box: card, lineHeight: line)
+        backdrop.style = cardColor
+        backdrop.look = flat(.left, false)
+        result.append(backdrop)
+
+        var bodyTop = card.top + padY
+        if var header {
+            header.unchanged = false
+            header.box = TextBox(left: card.left + pad, top: bodyTop, right: card.right - pad, bottom: bodyTop + line * 1.4)
+            header.lineHeight = line
+            header.style = cardColor
+            header.look = flat(.center, true)
+            result.append(header)
+            bodyTop = header.box.bottom + spacing
+        }
         let limit = card.bottom - padY
-        while rows.count > 1, rows.reduce(0, { $0 + $1.height }) + spacing * Double(rows.count - 1) > limit - bodyTop {
-            rows.removeFirst()
-        }
         // Önce telefondaki yerine (oranla) yakın, üsttekinin altında; taşan satırlar alttan yukarı itilir.
+        let phone = handset.bounds
         var tops: [Double] = []
         var cursor = bodyTop
         for row in rows {
-            let wanted = card.top + row.item.phone!.spot.top * (card.bottom - card.top)
+            let wanted = phone.top + row.item.phone!.spot.top * (phone.bottom - phone.top)
             let top = max(wanted, cursor)
             tops.append(top)
             cursor = top + row.height + spacing

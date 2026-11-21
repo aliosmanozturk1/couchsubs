@@ -16,7 +16,7 @@ final class ScreenPhoneCardTests: XCTestCase {
             let pose: [Double]; let aspect: Double; let boxes: [Entry]
         }
         struct Flat: Decodable { let pose: [Double]; let aspect: Double; let box: [Double]; let flat: [Double] }
-        struct Card: Decodable { let phone: [Double]; let card: [Double] }
+        struct Card: Decodable { let phone: [Double]; let card: [Double]; let avoid: [[Double]]? }
         let cases: [Case]
         let outside: Outside
         let flat: [Flat]
@@ -59,7 +59,7 @@ final class ScreenPhoneCardTests: XCTestCase {
             XCTAssertEqual(spot.bottom - spot.top, entry.flat[3] - entry.flat[1], accuracy: 0.012, "\(entry)")
         }
         for entry in all.cards {
-            let card = ScreenPhoneCard.cardBox(box(entry.phone))
+            let card = ScreenPhoneCard.cardBox(box(entry.phone), avoiding: (entry.avoid ?? []).map(box))
             for (a, b) in zip([card.left, card.top, card.right, card.bottom], entry.card) { XCTAssertEqual(a, b, accuracy: 1e-9) }
         }
     }
@@ -230,6 +230,117 @@ final class ScreenPhoneCardTests: XCTestCase {
         let json = SubtitleServer.json(items[0])
         XCTAssertNotNil(json["surface"])
         XCTAssertNotNil(json["style"])
+    }
+
+    private struct Shared: Decodable {
+        struct Layout: Decodable {
+            struct Message: Decodable {
+                let role: String; let source: String; let translation: String; let top: Double; let left: Double
+                let right: Double; let line: Double; let unchanged: Bool
+            }
+            struct Outside: Decodable { let source: String; let translation: String; let box: [Double] }
+            let name: String; let pose: [Double]; let items: [Message]; let outside: [Outside]?
+            let card: [Double]?; let kept: [String]?; let moved: [[Double]]?
+        }
+        struct Follow: Decodable {
+            struct Step: Decodable { let settle: [Double]?; let phone: [Double]?; let sig: [Int]?; let expect: String? }
+            let name: String; let steps: [Step]
+        }
+        struct Switch: Decodable { let chats: [String]; let calls: [Int] }
+        let layouts: [Layout]; let follow: [Follow]; let `switch`: Switch
+    }
+
+    private func shared() throws -> Shared {
+        let url = Bundle.module.url(forResource: "Fixtures", withExtension: nil)!.appendingPathComponent("phone-chat.json")
+        return try JSONDecoder().decode(Shared.self, from: Data(contentsOf: url))
+    }
+
+    /// Sıkışık balonlar: balonlar arasında en az yarım satır boşluk, hepsi kartın içinde; mesajlar telefon boyuna
+    /// sığmazsa kart ekranın kenar payına kadar uzar, yine sığmazsa en eskiler düşer; kartın altında kalan çeviri kartın
+    /// yanına alınır (ortak deneme dosyasının `layouts` bölümü; Windows ve Android aynı sonucu bulur).
+    func testSharedLayoutVectors() throws {
+        for vector in try shared().layouts {
+            let phone = handset(vector.pose)
+            var items = (vector.outside ?? []).map { entry -> ScreenTranslation.Item in
+                var item = ScreenTranslation.Item(source: entry.source, translation: entry.translation, box: box(entry.box), lineHeight: 0.02)
+                item.unchanged = false
+                return item
+            }
+            items += vector.items.map { message in
+                var item = ScreenTranslation.Item(source: message.source, translation: message.translation,
+                                                  box: TextBox(left: 0.8, top: 0.2, right: 0.9, bottom: 0.22), lineHeight: message.line)
+                item.unchanged = message.unchanged
+                item.phone = ScreenPhoneCard.Placement(role: ScreenPhoneCard.Role(rawValue: message.role)!,
+                                                       spot: TextBox(left: message.left, top: message.top, right: message.right,
+                                                                     bottom: message.top + 0.03))
+                return item
+            }
+            let laid = ScreenPhoneCard.layout(items, handset: phone)
+            let outsideCount = vector.outside?.count ?? 0
+            let card = laid[outsideCount].box
+            XCTAssertTrue(ScreenPhoneCard.isBackdrop(laid[outsideCount]), vector.name)
+            let rows = laid[(outsideCount + 1)...].filter { $0.phone?.role != .header }
+            let line = rows.first!.lineHeight
+            for (upper, lower) in zip(rows, rows.dropFirst()) {
+                XCTAssertGreaterThanOrEqual(lower.box.top - upper.box.bottom, line * 0.5 - 1e-9, vector.name)
+            }
+            XCTAssertTrue(laid[(outsideCount + 1)...].allSatisfy { $0.box.left >= card.left && $0.box.right <= card.right
+                && $0.box.top >= card.top - 1e-9 && $0.box.bottom <= card.bottom + 1e-9 }, vector.name)
+            XCTAssertGreaterThanOrEqual(card.top, ScreenPhoneCard.screenMargin - 1e-9, vector.name)
+            XCTAssertLessThanOrEqual(card.bottom, 1 - ScreenPhoneCard.screenMargin + 1e-9, vector.name)
+            XCTAssertEqual(rows.last?.source, vector.items.last?.source, vector.name)
+            for index in 0..<outsideCount { XCTAssertEqual(ScreenPhoneCard.covered(laid[index].box, [card]), 0, vector.name) }
+            if let expected = vector.card {
+                for (a, b) in zip([card.left, card.top, card.right, card.bottom], expected) { XCTAssertEqual(a, b, accuracy: 1e-6, vector.name) }
+            }
+            if let kept = vector.kept { XCTAssertEqual(rows.map(\.source), kept, vector.name) }
+            if let moved = vector.moved {
+                for (index, expected) in moved.enumerated() {
+                    let got = laid[index].box
+                    for (a, b) in zip([got.left, got.top, got.right, got.bottom], expected) { XCTAssertEqual(a, b, accuracy: 1e-6, vector.name) }
+                }
+            }
+        }
+    }
+
+    /// Kart ekrandayken telefon izlenir: sohbet değişip durulunca yeniden çevrilir, değişmeyen telefonda kart kalır,
+    /// telefon kapanınca kart kalkar; tek karelik ıska kartı kaldırmaz (ortak deneme dosyasının `follow` bölümü).
+    func testSharedFollowVectors() throws {
+        func signature(_ spec: [Int]) -> [UInt8] {
+            (0..<768).map { UInt8($0 < spec[1] ? spec[2] : spec[0]) }
+        }
+        for vector in try shared().follow {
+            let follow = ScreenPhoneFollow()
+            for (index, step) in vector.steps.enumerated() {
+                if let settle = step.settle {
+                    follow.settled(box(settle), signature: signature(step.sig!))
+                    continue
+                }
+                let got = follow.step(step.phone.map(box), signature: step.phone == nil ? nil : signature(step.sig!))
+                XCTAssertEqual(got.rawValue, step.expect, "\(vector.name) #\(index)")
+            }
+        }
+    }
+
+    /// Başka bir sohbete geçip dönünce eski sohbetin mesajları çevirmene yeniden gitmez: çeviriler sohbetin başlığıyla
+    /// saklanır (`PhoneChatMemory`; ortak deneme dosyasının `switch` bölümü).
+    func testSwitchingChatsReusesTheirTranslations() async throws {
+        let all = try vectors().cases
+        let plan = try shared().switch
+        let memory = PhoneChatMemory()
+        var first: [String: [String]] = [:]
+        for (name, expected) in zip(plan.chats, plan.calls) {
+            let vector = try XCTUnwrap(all.first { $0.name == name })
+            let reading = Reading(lines: vector.lines.map { TextLine($0.text, box: box($0.box)) })
+            var calls = 0
+            let items = try await ScreenTranslation.translate(reading, using: { text in
+                calls += 1
+                return "TR " + text
+            }, memory: memory, handset: handset(vector.pose, vector.aspect))
+            XCTAssertEqual(calls, expected, name)
+            let texts = items.map(\.translation)
+            if let before = first[name] { XCTAssertEqual(texts, before, name) } else { first[name] = texts }
+        }
     }
 
     /// Başka bir sohbete geçince ekranın izi değişir: tuşa yeniden basmak yeni sohbeti çevirir, çevirileri kaldırmaz.

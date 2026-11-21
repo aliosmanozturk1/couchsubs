@@ -23,6 +23,22 @@ object ScreenPhoneCard {
     const val GAP = 0.008
     /** Kart için yanda en az bu kadar yer olmalı; yoksa kart telefonun üstüne konur. */
     const val MIN_WIDTH = 0.12
+    /**
+     * Kartın istenen eni: telefonun bu katı, en az [CARD_MIN] (yanda yer varsa). Telefon boyundaki dar kartta Türkçe
+     * mesajlar çok satıra bölünüyor, balonlar iç içe görünüyordu.
+     */
+    const val CARD_SCALE = 1.4
+    const val CARD_MIN = 0.22
+    /** Mesajlar telefon boyuna sığmazsa kart ekranın bu payına kadar yukarı ve aşağı uzar; yine sığmazsa eski mesajlar düşer. */
+    const val SCREEN_MARGIN = 0.03
+    /**
+     * Balonlar arası boşluk, balonun iç dolgusu (üst + alt toplamı) ve satır aralığı; satır yüksekliğine oranla. TV yazıyı
+     * kutunun üstüne yaslar: dolgu, son satırın altında da boşluk bırakır. Önceden balonlar arası 0,35 satırdı, mesajlar
+     * birbirine yapışık görünüyordu.
+     */
+    const val BUBBLE_SPACING = 0.6
+    const val BUBBLE_PADDING = 0.6
+    const val LINE_SPACING = 1.2
     /** Balonun kart genişliğine oranı (en çok) ve en az. */
     const val BUBBLE_SHARE = 0.8
     const val BUBBLE_MIN = 0.3
@@ -130,14 +146,32 @@ object ScreenPhoneCard {
         return Handset(pose, image.width.toDouble() / maxOf(1, image.height))
     }
 
-    /** Kartın yeri: telefonun daha geniş boş kalan yanında, telefon boyunda; iki yanda da yer yoksa telefonun üstünde. */
-    internal fun cardBox(phone: TextBox): TextBox {
+    /**
+     * Kartın yeri: telefonun yanında, telefon boyunda; iki yanda da yer yoksa telefonun üstünde. İki yanda da yer varsa
+     * kart başka çevirilerin ([others]) üstüne en az binen yana, eşitse daha geniş boş kalan yana konur.
+     */
+    internal fun cardBox(phone: TextBox, others: List<TextBox> = emptyList()): TextBox {
         val roomLeft = phone.left - 2 * GAP
         val roomRight = 1 - phone.right - 2 * GAP
-        val width = minOf(maxOf(phone.right - phone.left, MIN_WIDTH), maxOf(roomLeft, roomRight))
-        if (width < MIN_WIDTH) return TextBox(maxOf(0.0, phone.left), phone.top, minOf(1.0, phone.right), phone.bottom)
-        val left = if (roomLeft >= roomRight) phone.left - GAP - width else phone.right + GAP
-        return TextBox(left, phone.top, left + width, phone.bottom)
+        val wanted = maxOf((phone.right - phone.left) * CARD_SCALE, CARD_MIN)
+        fun side(right: Boolean): TextBox? {
+            val width = minOf(wanted, if (right) roomRight else roomLeft)
+            if (width < MIN_WIDTH) return null
+            val left = if (right) phone.right + GAP else phone.left - GAP - width
+            return TextBox(left, phone.top, left + width, phone.bottom)
+        }
+        // Önce daha geniş yan; öbür yan ancak başka çevirilerin üstüne daha az binerse seçilir.
+        val candidates = listOfNotNull(side(roomLeft < roomRight), side(roomLeft >= roomRight))
+        var best = candidates.firstOrNull()
+            ?: return TextBox(maxOf(0.0, phone.left), phone.top, minOf(1.0, phone.right), phone.bottom)
+        for (candidate in candidates.drop(1)) if (covered(candidate, others) < covered(best, others) - 1e-9) best = candidate
+        return best
+    }
+
+    /** Kutunun başka kutularla örtüşen alanı. */
+    internal fun covered(box: TextBox, others: List<TextBox>): Double = others.sumOf { other ->
+        maxOf(0.0, minOf(box.right, other.right) - maxOf(box.left, other.left)) *
+            maxOf(0.0, minOf(box.bottom, other.bottom) - maxOf(box.top, other.top))
     }
 
     private class Row(val item: ScreenTranslation.Item, val width: Double, val height: Double, val side: String)
@@ -145,33 +179,32 @@ object ScreenPhoneCard {
     /**
      * Telefondaki öğeleri (`phone` bilgisi olanlar) kart olarak dizer. Telefonda çevrilmiş öğe yoksa liste olduğu gibi
      * döner. Çevrilmemiş öğeler ([ScreenTranslation.Item.unchanged]: kişi adı, "ok") kartta aslıyla görünür; kart
-     * dışındakiler sonra atılır.
+     * dışındakiler sonra atılır. Balonlar arasında en az [BUBBLE_SPACING] satır boşluk kalır; mesajlar telefon boyuna
+     * sığmazsa kart uzar, yine sığmazsa en eski mesajlar düşer. Kartın altında kalan başka bir çeviri kartın dışına,
+     * yanına alınır.
      */
     fun layout(items: List<ScreenTranslation.Item>, handset: Handset): List<ScreenTranslation.Item> {
         val onPhone = items.filter { it.phone?.role?.inCard == true }.sortedBy { it.phone!!.spot.top }
         if (onPhone.none { !it.unchanged }) return items
-        val card = cardBox(handset.bounds)
-        val cardWidth = card.right - card.left
+        val others = items.filter { it.phone?.role?.inCard != true }
+        val start = cardBox(handset.bounds, others.filter { !it.unchanged }.map { it.box })
+        var cardTop = start.top
+        var cardBottom = start.bottom
+        val cardWidth = start.right - start.left
         val heights = onPhone.map { it.lineHeight }.sorted()
         val line = maxOf(MIN_LINE, heights[heights.size / 2])
         val pad = cardWidth * 0.05
         val padY = line * 0.4
-        val spacing = line * 0.35
+        val spacing = line * BUBBLE_SPACING
         fun flat(align: String, bold: Boolean) = TextLook(bold, false, align, false)
 
-        val result = items.filter { it.phone?.role?.inCard != true }.toMutableList()
-        result.add(ScreenTranslation.Item("", BACKDROP_TEXT, card, line, surface = CARD, look = flat("left", false)))
-
-        var bodyTop = card.top + padY
         var body = onPhone
-        val first = body.first()
-        if (first.phone?.role == Role.HEADER) {
-            val header = first.copy(box = TextBox(card.left + pad, bodyTop, card.right - pad, bodyTop + line * 1.4), lineHeight = line,
-                surface = CARD, look = flat("center", true), unchanged = false)
-            result.add(header)
-            bodyTop = header.box.bottom + spacing
+        var header: ScreenTranslation.Item? = null
+        if (body.first().phone?.role == Role.HEADER) {
+            header = body.first()
             body = body.drop(1)
         }
+        val headerHeight = if (header == null) 0.0 else line * 1.4 + spacing
 
         // Her satırın kartta kaplayacağı yer: genişliği rolünden, yüksekliği Türkçenin o genişlikte kaç satır tuttuğundan.
         val rows = body.map { item ->
@@ -191,16 +224,46 @@ object ScreenPhoneCard {
             val side = if (role == Role.OUTGOING) "right" else if (role == Role.NOTE) "center" else "left"
             val placed = item.copy(unchanged = false, lineHeight = line, surface = surface,
                 look = flat(side, role == Role.CONTACT || role == Role.HEADING))
-            Row(placed, width, lines.size * line * 1.25 + padY, side)
+            val inside = line * (if (bubble) BUBBLE_PADDING else 0.3)
+            Row(placed, width, lines.size * line * LINE_SPACING + inside, side)
         }.toMutableList()
-        // Kart dolarsa en eski (en üstteki) satırlar düşer: son mesajlar görünür kalır.
+        // Mesajlar telefon boyuna sığmazsa kart önce aşağı, sonra yukarı uzar (ekranın kenar payına kadar).
+        fun needed(): Double = 2 * padY + headerHeight + rows.sumOf { it.height } + spacing * maxOf(0, rows.size - 1)
+        var extra = needed() - (cardBottom - cardTop)
+        if (extra > 0) {
+            val down = minOf(extra, maxOf(0.0, 1 - SCREEN_MARGIN - cardBottom))
+            cardBottom += down
+            extra -= down
+            cardTop -= minOf(extra, maxOf(0.0, cardTop - SCREEN_MARGIN))
+        }
+        // Yine sığmazsa en eski (en üstteki) satırlar düşer: son mesajlar görünür kalır.
+        while (rows.size > 1 && needed() > cardBottom - cardTop + 1e-9) rows.removeAt(0)
+        val card = TextBox(start.left, cardTop, start.right, cardBottom)
+
+        // Kartın altında kalan başka bir çeviri kartın telefondan uzak yanına alınır; oraya sığmazsa yerinde kalır.
+        val cardOnLeft = card.right <= handset.bounds.left + 1e-9
+        val result = others.map { item ->
+            if (item.unchanged || covered(item.box, listOf(card)) <= 0) return@map item
+            val width = item.box.right - item.box.left
+            val left = if (cardOnLeft) card.left - GAP - width else card.right + GAP
+            if (left >= 0 && left + width <= 1) item.copy(box = TextBox(left, item.box.top, left + width, item.box.bottom)) else item
+        }.toMutableList()
+        result.add(ScreenTranslation.Item("", BACKDROP_TEXT, card, line, surface = CARD, look = flat("left", false)))
+
+        var bodyTop = card.top + padY
+        if (header != null) {
+            val placed = header.copy(box = TextBox(card.left + pad, bodyTop, card.right - pad, bodyTop + line * 1.4), lineHeight = line,
+                surface = CARD, look = flat("center", true), unchanged = false)
+            result.add(placed)
+            bodyTop = placed.box.bottom + spacing
+        }
         val limit = card.bottom - padY
-        while (rows.size > 1 && rows.sumOf { it.height } + spacing * (rows.size - 1) > limit - bodyTop) rows.removeAt(0)
         // Önce telefondaki yerine (oranla) yakın, üsttekinin altında; taşan satırlar alttan yukarı itilir.
+        val phone = handset.bounds
         val tops = DoubleArray(rows.size)
         var cursor = bodyTop
         rows.forEachIndexed { index, row ->
-            val wanted = card.top + row.item.phone!!.spot.top * (card.bottom - card.top)
+            val wanted = phone.top + row.item.phone!!.spot.top * (phone.bottom - phone.top)
             tops[index] = maxOf(wanted, cursor)
             cursor = tops[index] + row.height + spacing
         }
