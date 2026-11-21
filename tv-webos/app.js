@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.56';
+  var APP_VERSION = '0.9.57';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -1275,8 +1275,13 @@
   // Alttan en az %3: ekran kenarı taşan (overscan) TV'lerde altyazının alt satırı kesilmesin.
   var BOTTOM_MIN_PERCENT = 3;
 
+  // Tizen 2.3 (2015 Samsung, #761): HDMI penceresi sayfanın önünde, ekranın üst kısmında; çeviri alttaki şeritte kalır
+  // (platform.subtitleBand, ekran yüksekliğinin yüzdesi). Şeridi olmayan platformda 0.
+  var SUBTITLE_BAND = Number(platform.subtitleBand) || 0;
+
   function setBottom(percent) {
-    bottomPercent = Math.max(BOTTOM_MIN_PERCENT, Math.min(85, percent));
+    var top = SUBTITLE_BAND ? Math.max(BOTTOM_MIN_PERCENT, SUBTITLE_BAND - 15) : 85;
+    bottomPercent = Math.max(BOTTOM_MIN_PERCENT, Math.min(top, percent));
     layout();
   }
 
@@ -1286,7 +1291,8 @@
   function layout() {
     var el = $('subtitle');
     var cover = $('subtitle-cover');
-    var box = placement === 'fixed' || !currentBox ? null : screenBox(currentBox, isOverlay());
+    // Şeritli platformda oyundaki altyazının yeri pencerenin içinde kalır, oraya çizilen çeviri görünmezdi: hep şerit.
+    var box = placement === 'fixed' || !currentBox || SUBTITLE_BAND ? null : screenBox(currentBox, isOverlay());
     el.style.left = '8%';
     el.style.right = '8%';
     el.style.top = 'auto';
@@ -1471,7 +1477,7 @@
 
   function nudgeSubtitle(step) {
     // Yer oyundaki altyazıya bağlıysa kumandayla taşınmaz.
-    if (placement !== 'fixed') return;
+    if (placement !== 'fixed' && !SUBTITLE_BAND) return;
     setBottom(bottomPercent + step);
     save('bottom', bottomPercent);
     // Nereye gittiği görülsün diye yazı yoksa örnek gösterilir.

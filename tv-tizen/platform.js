@@ -180,9 +180,104 @@
   }
 
   // '100%'ten başka bir pencere gerekiyor mu: geniş yüzey, kabul edilmiş özel pencere ya da Sarı ile seçilmiş tam
-  // genişlik yöntemi.
+  // genişlik yöntemi. Tizen 2.3'te pencere hep sabit üst alandadır (aşağıda), yeniden istenmez.
   function customWindow() {
+    if (FRONT_ONLY) return false;
     return isWide() || acceptedRect !== null || method() !== 'full';
+  }
+
+  // --- Tizen 2.3: HDMI penceresi hep sayfanın önünde (2015 Samsung TV'ler, #761) ---
+  // TVWindow show()'un zPosition değişkeni (BEHIND) Tizen 2.4'te geldi; 2.3'te pencere her zaman sayfanın ÖNÜNDE çizilir
+  // (Samsung TVWindow belgesi: "FRONT ... behaves in the same way as it did before Tizen 2.4"). '100%' pencere bu yüzden
+  // HDMI girişi açılır açılmaz (2-3 sn) sayfanın tamamını örtüyordu: uygulama "kayboluyor", çeviri TV'de görünmüyordu.
+  // 2.3'te pencere ekranın üst %75'ine 16:9 olarak açılır (ortada), çeviri alttaki boş şeritte gösterilir
+  // (subtitleBand; app.js altyazıyı bu şeride sabitler). Bekleme ekranı, panel, eşleştirme kodu, ipuçları ya da demo
+  // görünürken pencere gizlenir (tvwindow.hide), kapanınca yeniden açılır: yoksa pencere onları da örterdi.
+  var FRONT_RECT = ['12.5%', '0%', '75%', '75%'];
+  var FRONT_BAND = 25;
+  var FRONT_COVERS = ['waiting', 'panel', 'no-picture', 'pairing', 'source-tip', 'panel-tip', 'demo-badge'];
+  var FRONT_POLL = 500;
+
+  // Önce Tizen'in kendi bildirdiği sürüm, okunamazsa tarayıcı kimliğindeki "Tizen 2.3".
+  function tizenVersion() {
+    var version = '';
+    try {
+      version = String(tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version') || '');
+    } catch (e) {}
+    if (version) return version;
+    try {
+      var match = /Tizen\s+(\d+\.\d+)/.exec(navigator.userAgent || '');
+      return match ? match[1] : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // '2.3', '2.3.1' → true; '2.4', '3.0', okunamayan → false (bugünkü davranış).
+  function versionBelow(text, major, minor) {
+    var match = /^(\d+)\.(\d+)/.exec(String(text || ''));
+    if (!match) return false;
+    var a = Number(match[1]);
+    var b = Number(match[2]);
+    return a < major || (a === major && b < minor);
+  }
+
+  var TIZEN_VERSION = tizenVersion();
+  var FRONT_ONLY = versionBelow(TIZEN_VERSION, 2, 4);
+  var frontWanted = false;
+  var frontShown = false;
+  var frontTimer = null;
+
+  // Pencerenin örteceği bir kutu (bekleme ekranı, panel, ipucu ...) görünüyor mu?
+  function pageCovered() {
+    try {
+      for (var i = 0; i < FRONT_COVERS.length; i++) {
+        var el = document.getElementById(FRONT_COVERS[i]);
+        if (el && !/(^|\s)hidden(\s|$)/.test(el.className || '')) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  function frontShow(done, failed) {
+    try {
+      tizen.tvwindow.show(function () {
+        frontShown = true;
+        notePicture(reportedSizes() + ' · tizen ' + TIZEN_VERSION + ' front ' + rectText(FRONT_RECT) + ' ok');
+        if (done) done();
+      }, function (e) {
+        notePicture(reportedSizes() + ' · tizen ' + TIZEN_VERSION + ' front fail ' + errorText(e));
+        if (failed) failed(e);
+      }, FRONT_RECT, 'MAIN');
+    } catch (e) {
+      notePicture(reportedSizes() + ' · tizen ' + TIZEN_VERSION + ' front fail ' + errorText(e));
+      if (failed) failed(e);
+    }
+  }
+
+  function frontHide() {
+    frontShown = false;
+    try {
+      tizen.tvwindow.hide(function () {}, function () {}, 'MAIN');
+    } catch (e) {}
+    notePicture(pictureLog.replace(/ · hidden$/, '') + ' · hidden');
+  }
+
+  // Kutular açılıp kapandıkça pencere gizlenir ya da yeniden açılır.
+  function syncFront() {
+    if (!frontWanted) return;
+    var covered = pageCovered();
+    if (covered && frontShown) frontHide();
+    else if (!covered && !frontShown) frontShow(null, null);
+  }
+
+  function watchFront() {
+    if (frontTimer !== null) return;
+    try {
+      frontTimer = setInterval(syncFront, FRONT_POLL);
+    } catch (e) {
+      frontTimer = false;
+    }
   }
 
   // --- Panelin gerçek ölçüsü (#304, tanı ve tam genişlik yöntemi için) ---
@@ -496,6 +591,14 @@
   // reddeder; reddederse alan ölçüsüne düşülür). Hepsi reddedilirse '100%' kalır.
   // why: yeniden istemenin nedeni (tanı satırının başına yazılır; ilk açılışta yok).
   function showWindow(done, failed, why) {
+    if (FRONT_ONLY) {
+      frontWanted = true;
+      watchFront();
+      return frontShow(function () {
+        syncFront();
+        done();
+      }, failed);
+    }
     var wide = isWide();
     var mode = wide ? pictureMode() : method();
     var prefix = why ? why + ' → ' : '';
@@ -624,6 +727,8 @@
     // Sarı tuş Samsung'da her zaman vardır (app.js tuş listesinde gösterir). Geniş yüzeyde (21:9, 32:9) HDMI görüntüsü:
     // 'fit' 16:9 tam yükseklik, 'fill' ekranı doldurur (gerer). 16:9 yüzeyde görüntü yöntemi: 'full' | 'wide21' | 'wide32'.
     pictureModes: function () {
+      // Tizen 2.3'te pencere sabit üst alanda: Sarı'nın yöntemleri yok.
+      if (FRONT_ONLY) return null;
       return isWide() ? pictureMode() : method();
     },
     // Sarı'nın sırayla geçtiği görüntü yöntemleri; app.js "Görüntü yöntemi 2/3" yazar. Geniş yüzeyde null (sığdır/doldur).
@@ -658,6 +763,11 @@
     // Arka plana düşen uygulama bağlantıyı kapatır: Samsung önplandaki uygulamayı söylemediği için bilgisayar
     // uygulamayı ancak bağlantı yoksa yeniden açar (TvKeeper).
     closeWhenHidden: true,
+    // Tizen 2.3: HDMI penceresi sayfanın önünde ve ekranın üst kısmında; çeviri alttaki bu yükseklikte (yüzde) şeritte
+    // kalmalı (app.js). Tizen 2.4 ve sonrasında 0: pencere sayfanın arkasında, çeviri her yerde görünür.
+    subtitleBand: FRONT_ONLY ? FRONT_BAND : 0,
+    // Birim testi için.
+    tizenVersion: TIZEN_VERSION,
 
     init: function () {
       // Renk ve sayı tuşları istenmezse TV kendisi kullanır.

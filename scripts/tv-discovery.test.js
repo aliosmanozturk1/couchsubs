@@ -69,7 +69,8 @@ function element() {
 // noPicture: görüntü vermeyen girişler; noPictureHelp: görüntü gelmezse app.js kutuyu açar (LG, Samsung gibi);
 // labels: platform.inputLabel'ın verdiği giriş adları.
 function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdmi, resolution, closeWhenHidden, panelTips, hello, savedId, params,
-                   auth = null, storedKeys = null, identities = null, noPicture = [], noPictureHelp = false, labels = null }) {
+                   auth = null, storedKeys = null, identities = null, noPicture = [], noPictureHelp = false, labels = null,
+                   subtitleBand = 0 }) {
   const clock = makeClock();
   const storage = new Map();
   if (saved) storage.set('couchsubs.server', saved);
@@ -173,6 +174,7 @@ function startTv({ saved, alive, localIp, hasLocalAddress, consolePort, savedHdm
   if (closeWhenHidden) platform.closeWhenHidden = true;
   if (noPictureHelp) platform.noPictureHelp = true;
   if (labels) platform.inputLabel = (port) => labels[port] || '';
+  if (subtitleBand) platform.subtitleBand = subtitleBand;
 
   const document = {
     hidden: false,
@@ -1026,4 +1028,13 @@ test('LG: adaylar tükenince giriş kutusu açılır', () => {
   tv.clock.advance(10500);
   assert.strictEqual(tv.element('no-picture').className, '');
   assert.match(tv.element('no-picture-text').textContent, /HDMI 2/);
+});
+
+// #761: Tizen 2.3'te HDMI penceresi sayfanın önünde, ekranın üst %75'inde; çeviri alttaki şeritte kalmalı.
+test('Tizen 2.3 şeridi: kumandayla altyazı şeridin dışına çıkmaz; şeritsiz platformda yukarı çıkar', () => {
+  const press = (tv) => { for (let i = 0; i < 12; i++) tv.key(38); return parseFloat(tv.element('subtitle').style.bottom); };
+  const band = startTv({ alive: new Set(), subtitleBand: 25 });
+  assert.ok(press(band) <= 10, band.element('subtitle').style.bottom);
+  const free = startTv({ alive: new Set() });
+  assert.ok(press(free) > 30, free.element('subtitle').style.bottom);
 });

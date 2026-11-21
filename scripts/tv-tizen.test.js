@@ -35,6 +35,7 @@ function load(innerWidth, innerHeight, opts = {}) {
     window.innerHeight = Math.round(width * opts.screen[1] / opts.screen[0]);
   } };
   const shown = [];
+  const hidden = [];
   const store = {};
   if (opts.picture) store['couchsubs.picture'] = opts.picture;
   window = { innerWidth, innerHeight, addEventListener() {},
@@ -57,9 +58,10 @@ function load(innerWidth, innerHeight, opts = {}) {
   };
   const tvwindow = {
     setSource(source, ok) { ok(); },
+    hide(ok) { hidden.push(true); current = null; if (ok) ok(); },
     show(ok, fail, rect, type, z) {
       if (opts.cssBounds) bounds = fullArea = page();
-      const entry = { rect: [...rect], type, z, ok: false, page: page() };
+      const entry = { rect: [...rect], type, z, args: arguments.length, ok: false, page: page() };
       shown.push(entry);
       if (outside(rect) || (opts.reject && opts.reject(rect))) {
         const error = new Error('outside'); error.name = 'NotSupportedError';
@@ -87,6 +89,11 @@ function load(innerWidth, innerHeight, opts = {}) {
   const resetWindow = () => { current = ['0px', '0px', fullArea[0] + 'px', fullArea[1] + 'px']; };
   const tizen = {
     systeminfo: {
+      // opts.version: Tizen sürümü (platform.version); verilmezse okunamaz (bugünkü TV'ler gibi davranılır).
+      getCapability(key) {
+        if (key === 'http://tizen.org/feature/platform.version' && opts.version) return opts.version;
+        throw new Error('NotSupportedError');
+      },
       getPropertyValue(name, ok, fail) {
         if (name === 'DISPLAY') return opts.display ? ok(opts.display) : fail && fail(new Error('none'));
         ok({ connected: [{ type: 'HDMI', number: 1 }], disconnected: [] });
@@ -96,12 +103,16 @@ function load(innerWidth, innerHeight, opts = {}) {
   };
   const webapis = opts.model || opts.is8k ? { productinfo: { getRealModel: () => opts.model || '',
     is8KPanelSupported: () => !!opts.is8k } } : undefined;
-  const document = { querySelector: (q) => (q === 'meta[name="viewport"]' ? meta : null), documentElement: { style: {} } };
+  // opts.elements: sayfadaki kutuların className'i (id → değer); verilmeyen kutu yoktur.
+  const elements = {};
+  for (const id of Object.keys(opts.elements || {})) elements[id] = { className: opts.elements[id] };
+  const document = { querySelector: (q) => (q === 'meta[name="viewport"]' ? meta : null), documentElement: { style: {} },
+    getElementById: (id) => elements[id] || null };
   vm.runInNewContext(code, { window, document, tizen, webapis, setTimeout, clearTimeout, setInterval });
   const diagnostics = [];
   window.COUCHSUBS_PLATFORM.pictureDiagnostics((text) => diagnostics.push(text));
   // accepted: Samsung'un kabul ettiği istekler (reddedilen denemeler hariç).
-  return { platform: window.COUCHSUBS_PLATFORM, meta, shown, store, diagnostics, current: () => current, window, document,
+  return { platform: window.COUCHSUBS_PLATFORM, meta, shown, hidden, elements, store, diagnostics, current: () => current, window, document,
     accepted: () => shown.filter((s) => s.ok),
     runTimers, tick, resolution, resetWindow, listeners, pending: () => timers.filter((t) => t.fn).length, intervals: () => intervals.length };
 }
@@ -284,6 +295,11 @@ function loadNetwork({ ethernet, wifi, samsung }) {
   };
   const tizen = {
     systeminfo: {
+      // opts.version: Tizen sürümü (platform.version); verilmezse okunamaz (bugünkü TV'ler gibi davranılır).
+      getCapability(key) {
+        if (key === 'http://tizen.org/feature/platform.version' && opts.version) return opts.version;
+        throw new Error('NotSupportedError');
+      },
       getPropertyValue(name, ok, fail) {
         if (name === 'ETHERNET_NETWORK') return answer(ethernet)(name, ok, fail);
         if (name === 'WIFI_NETWORK') return answer(wifi)(name, ok, fail);
@@ -639,4 +655,65 @@ test('Görünüm beklemesi sürerken Sarı\'ya yeniden basılırsa eski deneme b
   assert.equal(loaded.store['couchsubs.samsungPicture'], 'wide32');
   assert.match(loaded.diagnostics.at(-1), /· wide32 /);
   assert.equal(loaded.meta.content, 'width=1920');
+});
+
+// #761: 2015 Samsung TV (Tizen 2.3). TVWindow show()'un zPosition değişkeni 2.4'te geldi; 2.3'te pencere hep sayfanın
+// önünde. '100%' penceresi HDMI açılır açılmaz sayfayı örtüyordu: uygulama 2-3 sn görünüp kayboluyor, çeviri TV'de
+// görünmüyordu.
+const FRONT = ['12.5%', '0%', '75%', '75%'];
+
+test('Tizen 2.3: HDMI penceresi üst %75\'te, zPosition verilmeden; çeviri için alt şerit, Sarı yöntemleri yok', () => {
+  for (const version of ['2.3', '2.3.1']) {
+    const loaded = load(1920, 1080, { version, screen: [1920, 1080] });
+    assert.equal(loaded.platform.subtitleBand, 25, version);
+    assert.deepEqual(playHdmi(loaded), [FRONT], version);
+    assert.equal(loaded.shown[0].args, 4, version);
+    assert.equal(loaded.shown[0].z, undefined, version);
+    assert.equal(loaded.platform.pictureModes(), null, version);
+    assert.match(loaded.diagnostics[loaded.diagnostics.length - 1], /tizen 2\.3(\.1)? front 12\.5%,0%,75%,75% ok/);
+    // Sinyal değişince pencere yeniden istenmez (zaten sabit), sınama zamanlayıcısı da pencere açmaz.
+    loaded.resolution({ width: 3840, height: 2160, frequency: 60, type: 'HDMI' });
+    loaded.runTimers();
+    assert.equal(loaded.shown.length, 1, version);
+  }
+});
+
+test('Tizen 2.3: bekleme ekranı ya da panel görünürken pencere gizlenir, kapanınca yeniden açılır', () => {
+  const loaded = load(1920, 1080, { version: '2.3', elements: { waiting: 'hidden', panel: '', 'panel-tip': 'hidden' } });
+  playHdmi(loaded);
+  // Panel açık: pencere hemen gizlenir (yoksa paneli örterdi).
+  assert.equal(loaded.hidden.length, 1);
+  loaded.tick();
+  assert.equal(loaded.hidden.length, 1);
+  assert.equal(loaded.shown.length, 1);
+  // Panel kapanınca pencere aynı yere yeniden açılır.
+  loaded.elements.panel.className = 'hidden';
+  loaded.tick();
+  assert.equal(loaded.shown.length, 2);
+  assert.deepEqual(loaded.shown[1].rect, FRONT);
+  loaded.tick();
+  assert.equal(loaded.shown.length, 2);
+  // Bağlantı koptu, bekleme ekranı açıldı: yine gizlenir.
+  loaded.elements.waiting.className = '';
+  loaded.tick();
+  assert.equal(loaded.hidden.length, 2);
+});
+
+test('Tizen 2.4 ve sonrası (ya da sürüm okunamazsa): pencere sayfanın arkasında, şerit yok', () => {
+  for (const version of ['2.4', '2.4.0', '3.0', '6.5', undefined]) {
+    const loaded = load(1920, 1080, { version, elements: { panel: '' } });
+    assert.equal(loaded.platform.subtitleBand, 0, String(version));
+    assert.deepEqual(playHdmi(loaded), [FULL], String(version));
+    assert.equal(loaded.shown[0].z, 'BEHIND', String(version));
+    loaded.tick();
+    assert.equal(loaded.hidden.length, 0, String(version));
+  }
+});
+
+test('Tizen 2.3: TVWindow show istisna atarsa ya da reddederse uygulama kapanmaz, durum inputError', () => {
+  const loaded = load(1920, 1080, { version: '2.3', reject: () => true });
+  const statuses = [];
+  loaded.platform.showHdmi(1, null, (s) => statuses.push(s));
+  assert.deepEqual(statuses, ['loading', 'inputError']);
+  assert.match(loaded.diagnostics[loaded.diagnostics.length - 1], /front fail NotSupportedError/);
 });

@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// TV paketlerinin betikleri ES5 ile ayrıştırılır: 2015-2016 Samsung TV'lerin (Tizen 2.3-2.4) eski tarayıcısı ok
+// fonksiyonu, let/const, şablon metni ve benzerini tanımaz; tek bir satır bütün sayfayı açılışta durdururdu (#761).
+// acorn gerekir: COUCHSUBS_ACORN (acorn paketinin klasörü) ya da require('acorn'). CI kurar (tv-screen-tests.yml).
+// Çalıştırma: npm install --no-save --prefix /tmp/acorn acorn@8.14.0 &&
+//   COUCHSUBS_ACORN=/tmp/acorn/node_modules/acorn node --test scripts/tv-es5.test.js
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+let acorn = null;
+try {
+  acorn = require(process.env.COUCHSUBS_ACORN || 'acorn');
+} catch (e) {
+  acorn = null;
+}
+
+const root = path.join(__dirname, '..');
+// Samsung paketine giren betikler (scripts/package-tizen.sh) ve LG/Android TV'nin platform betikleri.
+const FILES = ['tv-webos/app.js', 'tv-webos/i18n.js', 'tv-webos/config.js', 'tv-tizen/platform.js',
+  'tv-webos/platform.js', 'tv-android/platform.js'];
+
+test('TV betikleri ES5 ile ayrıştırılıyor (Tizen 2.3-2.4 tarayıcısı)', { skip: !acorn && 'acorn bulunamadı' }, () => {
+  for (const name of FILES) {
+    const file = path.join(root, name);
+    if (!fs.existsSync(file)) continue;
+    const code = fs.readFileSync(file, 'utf8');
+    assert.doesNotThrow(() => acorn.parse(code, { ecmaVersion: 5, sourceType: 'script' }), name);
+  }
+});
+
+test('ES5 denetimi gerçekten ES2015 sözdizimini yakalıyor', { skip: !acorn && 'acorn bulunamadı' }, () => {
+  for (const code of ['var f = () => 1;', 'let a = 1;', 'var s = `x`;', 'var {a} = b;', 'class A {}']) {
+    assert.throws(() => acorn.parse(code, { ecmaVersion: 5, sourceType: 'script' }), code);
+  }
+});
+
+test('Tizen paketinin sayfası ES2015+ API\'sini korumasız çağırmıyor', () => {
+  // Tizen 2.3'ün tarayıcısında olmayabilecek API'ler yalnız varlık denetimiyle kullanılır.
+  const app = fs.readFileSync(path.join(root, 'tv-webos/app.js'), 'utf8');
+  const platform = fs.readFileSync(path.join(root, 'tv-tizen/platform.js'), 'utf8');
+  for (const [name, code] of [['app.js', app], ['tv-tizen/platform.js', platform]]) {
+    for (const api of ['fetch(', 'Object.assign(', '.includes(', '.startsWith(', '.endsWith(', 'new Map(', 'new Set(',
+      'Symbol(', 'new URL(', 'URLSearchParams', 'requestAnimationFrame(', '.classList']) {
+      assert.ok(code.indexOf(api) < 0, name + ': ' + api);
+    }
+  }
+  // Array.from yalnız varlık denetimiyle.
+  assert.ok(!/[^?]\s*Array\.from\(/.test(app.replace(/Array\.from \? Array\.from\(/g, '')), 'Array.from korumasız');
+});

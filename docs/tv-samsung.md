@@ -10,7 +10,8 @@ adımları: [tv-kurulum.md](tv-kurulum.md#samsung-tv).
 | 5.0 ve üstü | 2019+ | Desteklenir, gerçek TV'de denendi |
 | 3.0–4.0 | 2017–2018 | Deneysel (bkz. aşağı) |
 | 2.4 | 2016 | Deneysel: dört uygulama da (Mac, Windows, Android telefon, iPhone) kurulumu dener (en eski sürüm 2.4); paket imzalanmadan önce sadeleştirilir (`LegacyTizenPackage`) |
-| 2.3 ve eskisi, Orsay | 2015 ve öncesi | Desteklenmez: kurulum `TooOld` ile durur |
+| 2.3 | 2015 | Deneysel, yalnız elle kurulum: CouchSubs'ın kendi kurulumu `TooOld` ile durur; Tizen Studio ile kurulan paket TV uygulaması 0.9.57'den beri çalışmalı ([aşağıda](#2015-modeller-tizen-23)) |
+| Orsay | 2014 ve öncesi | Desteklenmez |
 
 Tizen 3.0 için yapılanlar ve neyin doğrulandığı:
 
@@ -163,6 +164,31 @@ tizen install -n CouchSubs.wgt -s TV_IP:26101 -- KLASOR
   `CouchSubs-samsung-kaynak.zip` ile tekrarlayın.
 - Sonucu (kuruldu mu, hangi adımda ne dedi) #638'e yazarsanız 2016 modeller için yolu netleştiririz. `tizen install`
   çıktısı yeterli; DUID ve IP satırlarını silebilirsiniz.
+
+## 2015 modeller (Tizen 2.3)
+
+CouchSubs'ın kendi kurulumu Tizen 2.3'ü `TooOld` ile reddeder; paket yukarıdaki 2016 adımlarıyla elle kurulabilir
+(#761'de Tizen Studio ve Apps2Samsung ile kuruldu). 3. adımda `config.xml`'deki
+`required_version="2.4"` değerini `2.3` yapın; yoksa TV paketi reddeder.
+
+**0.9.56 ve eskisinde uygulama 2-3 saniye görünüp kayboluyordu (#761).** Neden: TVWindow `show()`'un `zPosition`
+değişkeni (`BEHIND`, HDMI görüntüsü sayfanın arkasında) Tizen 2.4'te geldi. Samsung'un TVWindow belgesi: değer
+verilmezse ya da `FRONT` ise "Tizen 2.4'ten önceki gibi" davranır, pencere sayfanın **önünde** çizilir. Tizen 2.3'te
+`'100%'` pencere HDMI girişi açılır açılmaz (2-3 sn) sayfanın tamamını örtüyordu: bekleme ekranı, panel ve çeviri
+görünmüyor, çeviri yalnız telefonda/bilgisayarda kalıyordu. Sayfanın betikleri zaten ES5'tir
+(`scripts/tv-es5.test.js`); `tizen.*`/`webapis.*` çağrıları `try/catch` içindedir, sorun sözdizimi değildi.
+
+0.9.57'den beri `tv-tizen/platform.js` Tizen sürümünü (`platform.version`) okur; 2.4'ten eskiyse:
+
+- HDMI penceresi `zPosition` verilmeden ekranın üst %75'inde, ortada 16:9 açılır (`12.5%, 0%, 75%, 75%`).
+- Çeviri alttaki %25'lik şeritte gösterilir (`platform.subtitleBand`); oyundaki altyazının yerine göre yerleşim ve
+  ekran çevirisi kutuları pencerenin altında kalacağı için kullanılmaz. Kumandanın yukarı/aşağı okları altyazıyı
+  yalnız şerit içinde taşır.
+- Bekleme ekranı, panel, eşleştirme kodu, ipuçları ya da demo görünürken pencere gizlenir (`tvwindow.hide`), kapanınca
+  yeniden açılır. Bağlanınca panel 8 sn açık kaldığı için görüntü o kadar gecikir.
+- Sarı tuşun görüntü yöntemleri yoktur. Bilgi panelindeki "Pencere" satırı `tizen 2.3 front ... ok` yazar.
+
+Gerçek bir 2015 TV'de doğrulanmadı (yalnız Node'da sahte TVWindow ile, `scripts/tv-tizen.test.js`).
 
 ## Yapı
 
