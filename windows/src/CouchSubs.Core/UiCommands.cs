@@ -35,6 +35,8 @@ public static class UiCommands
         ["SIT"] = "Otur", ["STAND UP"] = "Kalk", ["SLEEP"] = "Uyu", ["SHOWER"] = "Duş al", ["TURN OFF"] = "Kapat",
         ["TURN ON"] = "Aç", ["WATCH"] = "İzle", ["LISTEN"] = "Dinle", ["DRIVE"] = "Sür", ["GET IN"] = "Bin",
         ["GET OUT"] = "İn", ["STEAL"] = "Çal", ["HACK"] = "Hackle", ["LOOT"] = "Yağmala", ["COLLECT"] = "Topla",
+        // GTA 6 telefonu ve bar menüsü ("SCROLL / SEND / BACK", "TIP $10 / ORDER / BARTENDER").
+        ["SEND"] = "Gönder", ["TIP"] = "Bahşiş ver", ["BARTENDER"] = "Barmen",
     };
 
     /// <summary>

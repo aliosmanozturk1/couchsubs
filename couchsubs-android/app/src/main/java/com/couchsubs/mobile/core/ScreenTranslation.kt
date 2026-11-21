@@ -54,11 +54,14 @@ object ScreenTranslation {
         color: ((Int, Int) -> Int)? = null, phone: TextBox? = null, progress: (List<Item>) -> Unit = {},
     ): List<Item> {
         val items = mutableListOf<Item>()
-        for (group in withImages(groups(reading), frame)) {
+        for (group in withImages(groups(reading, wholeScreen = true), frame)) {
             if (cancelled()) return present(items, phone)
-            // Simgeler çeviride uydurma adlarla korunur (IconText).
+            // Simgeler çeviride uydurma adlarla korunur (IconText); sözlükteki kısa etiketler çevirmene gitmez, fiyatlar
+            // adla korunur (PriceText).
             val prepared = group.paragraphs.map { IconText.protect(it) }
-            val translated = prepared.map { translate(it.text) }
+            val translated = prepared.mapIndexed { index, paragraph ->
+                known(group.paragraphs[index]) ?: PriceText.protect(paragraph.text).let { PriceText.restore(translate(it.text), it.values) }
+            }
             val item = item(group, prepared, translated, keepUnchanged = phone != null) ?: continue
             items.add(styled(item, frame, color))
             val shown = present(items, phone)
@@ -81,13 +84,19 @@ object ScreenTranslation {
     ): List<Item> {
         if (!translator.translatesTogether)
             return translateGroups(reading, { translator.translate(it) }, cancelled, frame, color, phone, progress)
-        val groups = withImages(groups(reading), frame)
-        // Simgeler çeviride uydurma adlarla korunur (IconText).
+        val groups = withImages(groups(reading, wholeScreen = true), frame)
+        // Simgeler çeviride uydurma adlarla korunur (IconText). Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND",
+        // "BACK") çevirmene gitmez; fiyatlar adla korunur (PriceText).
         val prepared = groups.map { group -> group.paragraphs.map { IconText.protect(it) } }
-        val paragraphs = prepared.flatMap { group -> group.map { it.text } }
-        if (paragraphs.isEmpty()) return emptyList()
-        val translations = translator.translateAll(paragraphs)
+        val sources = groups.flatMap { it.paragraphs }
+        if (sources.isEmpty()) return emptyList()
+        val knowns = sources.map(::known)
+        val prices = prepared.flatMap { group -> group.map { PriceText.protect(it.text) } }
+        val asked = prices.indices.filter { knowns[it] == null }
+        val answers = if (asked.isEmpty()) emptyList() else translator.translateAll(asked.map { prices[it].text })
         if (cancelled()) return emptyList()
+        val translations = knowns.map { it ?: "" }.toMutableList()
+        asked.forEachIndexed { k, index -> if (k < answers.size) translations[index] = PriceText.restore(answers[k], prices[index].values) }
         val items = mutableListOf<Item>()
         var next = 0
         for ((index, group) in groups.withIndex()) {
@@ -101,6 +110,13 @@ object ScreenTranslation {
         if (shown.isNotEmpty()) progress(shown)
         return shown
     }
+
+    /**
+     * Oyun arayüzü sözlüğündeki kısa etiketin Türkçesi ("SCROLL" → "KAYDIR", "TIP" → "BAHŞİŞ VER"); simgeli ya da
+     * sözlükte olmayan parçada null (çevirmene gider).
+     */
+    internal fun known(paragraph: String): String? =
+        if (paragraph.indexOf(ButtonIcons.MARKER) >= 0) null else UiCommands.translate(paragraph)
 
     /**
      * Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de
@@ -173,11 +189,16 @@ object ScreenTranslation {
      * biniyorsa ve yazı boyu benziyorsa o gruba katılır; küçük harfle başlayan satır üstteki bitmemiş cümleye katılır
      * ([continues]). Gruplar yukarıdan aşağı; en çok [MAX_GROUPS], en çok yazısı olanlar.
      */
-    fun groups(reading: Reading, keepPrompts: Boolean = false, keepIdentifiers: Boolean = false): List<Group> {
-        val marked = reading.withButtonIcons()
+    fun groups(reading: Reading, keepPrompts: Boolean = false, keepIdentifiers: Boolean = false, wholeScreen: Boolean = false): List<Group> {
+        var marked = (if (wholeScreen) Reading(reading.lines.map(::repaired)) else reading).withButtonIcons()
+        // "Ekranı çevir": tuş çubukları atılmaz, etiketlerine bölünür ([promptPieces]); fiyatlar düzelir ([PriceText.repair]).
+        if (wholeScreen) marked = Reading(marked.lines.flatMap { line ->
+            if (line.icons.isNullOrEmpty() && line.box != null && (ButtonPrompts.isPrompt(line.text) || hasWideGap(line))) promptPieces(line)
+            else listOf(line)
+        })
         val lines = (if (keepPrompts) marked else marked.withoutButtonPrompts()).withoutOcrNoise(keepIdentifiers).lines
             .filter { it.box != null && ScreenText.isWords(it.text) }
-            .sortedBy { it.box!!.top }
+            .sortedWith(compareBy<TextLine>({ it.box!!.top }, { it.box!!.left }))
         val groups = mutableListOf<MutableList<TextLine>>()
         for (line in lines) {
             var index = groups.indexOfLast { belongs(line.box!!, it.last().box!!) }
@@ -195,6 +216,56 @@ object ScreenTranslation {
             val icons = ScreenText.paragraphIcons(group)
             Group(ScreenText.paragraphs(group), box, heights[heights.size / 2], if (icons.any { it.isNotEmpty() }) icons else null)
         }
+    }
+
+    /** Satırın ve sözcüklerinin fiyat düzeltmesi (uzunluk değişmez). */
+    internal fun repaired(line: TextLine): TextLine =
+        line.copy(text = PriceText.repair(line.text), words = line.words?.map { it.copy(text = PriceText.repair(it.text)) })
+
+    /**
+     * Tuş çubuğunun etiketleri: tuş adları ve simgeleri ("R1", "△", okunmuş "X"/"O"), fiyatlar ("$10") ve harfsiz
+     * parçalar ayırıcıdır, çeviriye girmez; aralarındaki her sözcük öbeği ayrı satır olur, kutusu sözcüklerinin yeri.
+     * Sözcük yerleri biliniyorsa geniş boşluk da ayırır ("TIP $10   ORDER   BARTENDER"). İki harfi olmayan öbek atılır.
+     */
+    internal fun promptPieces(line: TextLine): List<TextLine> {
+        val box = line.box ?: return listOf(line)
+        val measured = !line.words.isNullOrEmpty()
+        val words = if (measured) line.words!! else ButtonIcons.estimate(line.text, box)
+        val gap = if (measured) wideGap(words) else Double.POSITIVE_INFINITY
+        val runs = mutableListOf(mutableListOf<TextWord>())
+        for (word in words) {
+            if (isPromptSeparator(word.text)) {
+                runs.add(mutableListOf())
+                continue
+            }
+            val last = runs.last().lastOrNull()
+            if (last != null && word.box.left - last.box.right > gap) runs.add(mutableListOf())
+            runs.last().add(word)
+        }
+        return runs.filter { run -> run.sumOf { word -> word.text.count { it.isLetter() } } >= 2 }.map { run ->
+            val span = run.drop(1).fold(run[0].box) { all, word -> all.union(word.box) }
+            TextLine(run.joinToString(" ") { it.text }, TextBox(span.left, box.top, span.right, box.bottom), run, confidence = line.confidence)
+        }
+    }
+
+    /** Sözcüklerin arasında bu kadar boşluk (harf başına ortalama genişliğin üç katı) ayrı seçenek demektir. */
+    private fun wideGap(words: List<TextWord>): Double {
+        val chars = words.sumOf { it.text.length }
+        return if (chars == 0) Double.POSITIVE_INFINITY else words.sumOf { it.box.right - it.box.left } / chars * 3
+    }
+
+    /** Sözcük yerleri bilinen satırda aynı satıra düşmüş ayrı seçenekler var mı (geniş boşluk). */
+    internal fun hasWideGap(line: TextLine): Boolean {
+        val words = line.words ?: return false
+        if (words.size < 2) return false
+        val gap = wideGap(words)
+        return words.zipWithNext().any { (a, b) -> b.box.left - a.box.right > gap }
+    }
+
+    /** Tuş çubuğunda çeviriye girmeyen parça: tuş adı/simgesi, tek harf (okunmuş simge), fiyat ya da harfsiz parça. */
+    internal fun isPromptSeparator(word: String): Boolean {
+        val core = word.trim('(', ')', '[', ']', '{', '}', '<', '>')
+        return ButtonIcons.isButtonName(core) || PriceText.isMoney(core) || core.none { it.isLetter() } || (core.length == 1 && core != "a")
     }
 
     /**

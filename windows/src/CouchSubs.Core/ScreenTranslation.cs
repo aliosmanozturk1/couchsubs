@@ -85,7 +85,7 @@ public static class ScreenTranslation
         Action<IReadOnlyList<Item>>? progress = null, CancellationToken cancellationToken = default, Frame? frame = null)
     {
         var items = new List<Item>();
-        var groups = ReadGroups(reading, false, frame);
+        var groups = ReadGroups(reading, false, frame, wholeScreen: true);
         var phone = frame is null ? null : ScreenPhoneCard.Phone(frame);
         var keep = phone is not null;
         if (frame is not null)
@@ -95,10 +95,18 @@ public static class ScreenTranslation
         var protectedGroups = groups.Select(group => group.Paragraphs.Select(IconText.Protect).ToList()).ToList();
         if (translator.TranslatesTogether)
         {
-            var paragraphs = protectedGroups.SelectMany(group => group.Select(p => p.Text)).ToList();
-            if (paragraphs.Count == 0) return items;
-            var translations = await translator.TranslateAllAsync(paragraphs, cancellationToken).ConfigureAwait(false);
+            // Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND", "BACK") çevirmene gitmez; fiyatlar adla korunur.
+            var sources = groups.SelectMany(group => group.Paragraphs).ToList();
+            if (sources.Count == 0) return items;
+            var knowns = sources.Select(Known).ToList();
+            var prices = protectedGroups.SelectMany(group => group.Select(p => PriceText.Protect(p.Text))).ToList();
+            var asked = Enumerable.Range(0, sources.Count).Where(i => knowns[i] is null).ToList();
+            var answers = asked.Count == 0 ? []
+                : await translator.TranslateAllAsync([.. asked.Select(i => prices[i].Text)], cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
+            var translations = knowns.Select(known => known ?? "").ToList();
+            for (var k = 0; k < asked.Count && k < answers.Count; k++)
+                translations[asked[k]] = PriceText.Restore(answers[k], prices[asked[k]].Values);
             var next = 0;
             for (var g = 0; g < groups.Count; g++)
             {
@@ -117,8 +125,17 @@ public static class ScreenTranslation
             cancellationToken.ThrowIfCancellationRequested();
             var group = groups[g];
             var translated = new List<string>(group.Paragraphs.Count);
-            foreach (var paragraph in protectedGroups[g])
-                translated.Add(await translator.TranslateAsync(paragraph.Text, cancellationToken).ConfigureAwait(false));
+            for (var p = 0; p < group.Paragraphs.Count; p++)
+            {
+                if (Known(group.Paragraphs[p]) is { } known)
+                {
+                    translated.Add(known);
+                    continue;
+                }
+                var prices = PriceText.Protect(protectedGroups[g][p].Text);
+                translated.Add(PriceText.Restore(
+                    await translator.TranslateAsync(prices.Text, cancellationToken).ConfigureAwait(false), prices.Values));
+            }
             if (Build(group, protectedGroups[g], translated, keep) is not { } item) continue;
             items.Add(Styled(item, frame));
             var shown = Present(items, phone);
@@ -126,6 +143,13 @@ public static class ScreenTranslation
         }
         return Present(items, phone);
     }
+
+    /// <summary>
+    /// Oyun arayüzü sözlüğündeki kısa etiketin Türkçesi ("SCROLL" → "KAYDIR", "TIP" → "BAHŞİŞ VER"); simgeli ya da
+    /// sözlükte olmayan parçada null (çevirmene gider).
+    /// </summary>
+    internal static string? Known(string paragraph) =>
+        paragraph.Contains(ButtonIcons.Marker) ? null : UiCommands.TranslateLabel(paragraph);
 
     /// <summary>
     /// Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de
@@ -198,18 +222,87 @@ public static class ScreenTranslation
     internal static IReadOnlyList<Group> Groups(Reading reading, bool menuRows, bool keepIdentifiers) =>
         ReadGroups(reading, menuRows, null, keepIdentifiers);
 
-    private static IReadOnlyList<Group> ReadGroups(Reading reading, bool menuRows, Frame? frame, bool keepIdentifiers = false)
+    /// <summary>
+    /// <paramref name="wholeScreen"/> ("Ekranı çevir"): yazı tanımanın bozduğu fiyatlar düzelir (<see cref="PriceText.Repair"/>)
+    /// ve tuş çubukları atılmaz, etiketlerine bölünür (<see cref="PromptPieces"/>): tuş simgeleri ve fiyatlar çeviriye
+    /// girmez, ekranda görünür kalır; aynı satırdaki her seçenek kendi kutusunda çevrilir, çeviriler üst üste binmez.
+    /// </summary>
+    private static IReadOnlyList<Group> ReadGroups(Reading reading, bool menuRows, Frame? frame, bool keepIdentifiers = false,
+                                                   bool wholeScreen = false)
     {
-        var marked = reading.WithButtonIcons();
+        var marked = (wholeScreen ? new Reading(reading.Lines.Select(Repaired)) : reading).WithButtonIcons();
+        if (wholeScreen)
+            marked = new Reading(marked.Lines.SelectMany(line =>
+                line.Icons is not { Count: > 0 } && line.Box is not null && (ButtonPrompts.IsPrompt(line.Text) || HasWideGap(line))
+                    ? PromptPieces(line) : [line]));
         // Tam ekranda yalnız aksi halde atılacak kumanda ipuçlarında kareye bak.
         if (frame is not null)
             marked = new Reading(marked.Lines.Select(line => line.Icons is not { Count: > 0 } && ButtonPrompts.IsPrompt(line.Text)
                 ? ButtonIcons.MarkFree(line, frame) : line));
         var lines = marked.WithoutButtonPrompts().WithoutOcrNoise(keepIdentifiers).Lines
             .Where(line => line.Box is not null && IsWords(line.Text))
-            .OrderBy(line => line.Box!.Value.Top)
+            .OrderBy(line => line.Box!.Value.Top).ThenBy(line => line.Box!.Value.Left)
             .ToList();
         return GroupsFromLines(lines, menuRows);
+    }
+
+    /// <summary>Satırın ve sözcüklerinin fiyat düzeltmesi (uzunluk değişmez).</summary>
+    internal static TextLine Repaired(TextLine line) => line with
+    {
+        Text = PriceText.Repair(line.Text),
+        Words = line.Words is { } words ? [.. words.Select(word => word with { Text = PriceText.Repair(word.Text) })] : null,
+    };
+
+    /// <summary>
+    /// Tuş çubuğunun etiketleri: tuş adları ve simgeleri ("R1", "△", okunmuş "X"/"O"), fiyatlar ("$10") ve harfsiz
+    /// parçalar ayırıcıdır, çeviriye girmez; aralarındaki her sözcük öbeği ayrı satır olur, kutusu sözcüklerinin yeri.
+    /// Sözcük yerleri biliniyorsa geniş boşluk da ayırır ("TIP $10   ORDER   BARTENDER"). İki harfi olmayan öbek atılır.
+    /// </summary>
+    internal static IReadOnlyList<TextLine> PromptPieces(TextLine line)
+    {
+        if (line.Box is not { } box) return [line];
+        var measured = line.Words is { Count: > 0 };
+        var words = measured ? line.Words! : ButtonIcons.Estimate(line.Text, box);
+        var gap = measured ? WideGap(words) : double.PositiveInfinity;
+        var runs = new List<List<TextWord>> { new() };
+        foreach (var word in words)
+        {
+            if (IsPromptSeparator(word.Text))
+            {
+                runs.Add([]);
+                continue;
+            }
+            if (runs[^1].Count > 0 && word.Box.Left - runs[^1][^1].Box.Right > gap) runs.Add([]);
+            runs[^1].Add(word);
+        }
+        return [.. runs.Where(run => run.Sum(word => word.Text.Count(char.IsLetter)) >= 2).Select(run =>
+        {
+            var span = run.Select(word => word.Box).Aggregate((a, b) => a.Union(b));
+            return new TextLine(string.Join(' ', run.Select(word => word.Text)), new TextBox(span.Left, box.Top, span.Right, box.Bottom),
+                                line.Confidence, run);
+        })];
+    }
+
+    /// <summary>Sözcüklerin arasında bu kadar boşluk (harf başına ortalama genişliğin üç katı) ayrı seçenek demektir.</summary>
+    private static double WideGap(IReadOnlyList<TextWord> words)
+    {
+        var chars = words.Sum(word => word.Text.Length);
+        return chars == 0 ? double.PositiveInfinity : words.Sum(word => word.Box.Right - word.Box.Left) / chars * 3;
+    }
+
+    /// <summary>Sözcük yerleri bilinen satırda aynı satıra düşmüş ayrı seçenekler var mı (geniş boşluk).</summary>
+    internal static bool HasWideGap(TextLine line)
+    {
+        if (line.Words is not { Count: >= 2 } words) return false;
+        var gap = WideGap(words);
+        return words.Zip(words.Skip(1)).Any(pair => pair.Second.Box.Left - pair.First.Box.Right > gap);
+    }
+
+    /// <summary>Tuş çubuğunda çeviriye girmeyen parça: tuş adı/simgesi, tek harf (okunmuş simge), fiyat ya da harfsiz parça.</summary>
+    internal static bool IsPromptSeparator(string word)
+    {
+        var core = word.Trim('(', ')', '[', ']', '{', '}', '<', '>');
+        return ButtonIcons.IsButtonName(core) || PriceText.IsMoney(core) || !core.Any(char.IsLetter) || (core.Length == 1 && core != "a");
     }
 
     // Satırlar süzülmüş, kutulu ve yukarıdan aşağıya sıralıdır.

@@ -108,22 +108,21 @@ final class FreeButtonIconsTests: XCTestCase {
         XCTAssertEqual(slots.last?.count, 0)
     }
 
-    func testFullScreenRecoversOnlyAVisiblePrompt() async throws {
+    /// "Ekranı çevir"de tuş ipucu atılmaz: etiketi kendi kutusunda çevrilir, tuş ("R2") çeviriye girmez ve ekranda
+    /// özgün haliyle görünür kalır (simgesi görünse de görünmese de; GTA 6 tuş çubuğu ve etkileşim seçenekleri).
+    func testFullScreenTranslatesThePromptLabelAndLeavesTheButton() async throws {
         let reading = Reading(lines: [line(word("R2", 0.05, 0.11), word("Swing", 0.13, 0.28))])
-        var calls: [String] = []
-        func translate(_ source: String) async throws -> String {
-            calls.append(source)
-            return "TR: " + source
+        for image in [frame(), frame(22)] {
+            var calls: [String] = []
+            let items = try await ScreenTranslation.translate(reading, using: { source in
+                calls.append(source)
+                return "TR: " + source
+            }, frame: image)
+            XCTAssertEqual(calls, ["Swing"])
+            XCTAssertEqual(items.map(\.translation), ["TR: Swing"])
+            XCTAssertEqual(items.first?.box.left, 0.13)
+            XCTAssertNil(items.first?.icons)
         }
-        let absent = try await ScreenTranslation.translate(reading, using: translate, frame: frame())
-        XCTAssertTrue(absent.isEmpty)
-        XCTAssertTrue(calls.isEmpty)
-        let image = frame(22)
-        let shown = try await ScreenTranslation.translate(reading, using: translate, frame: image)
-        XCTAssertEqual(calls.count, 1)
-        XCTAssertTrue(shown.first?.translation.contains("Swing") == true)
-        let expected = try XCTUnwrap(ButtonIcons.crop(image, TextBox(left: 0.035, top: 0.1, right: 0.125, bottom: 0.9)))
-        XCTAssertEqual(shown.first?.icons?.first?.image, expected)
     }
 
     func testCommandGlossaryPreservesMarkersAndFallsBackForUnknownCommands() {

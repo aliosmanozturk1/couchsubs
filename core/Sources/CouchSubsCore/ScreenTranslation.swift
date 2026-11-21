@@ -60,11 +60,18 @@ public enum ScreenTranslation {
                                  frame: CGImage? = nil, progress: ([Item]) -> Void = { _ in }) async throws -> [Item] {
         let phone = frame.flatMap(ScreenPhoneCard.phone(in:))
         var items: [Item] = []
-        for group in withImages(groups(reading, frame: frame), from: frame) {
+        for group in withImages(groups(reading, frame: frame, wholeScreen: true), from: frame) {
             try Task.checkCancellation()
             let prepared = group.paragraphs.map(IconText.protect)
             var translated: [String] = []
-            for paragraph in prepared { translated.append(try await translate(paragraph.text)) }
+            for (index, paragraph) in prepared.enumerated() {
+                if let known = known(group.paragraphs[index]) {
+                    translated.append(known)
+                    continue
+                }
+                let prices = PriceText.protect(paragraph.text)
+                translated.append(PriceText.restore(try await translate(prices.text), prices.values))
+            }
             guard let item = item(group, prepared, translated, keepUnchanged: phone != nil) else { continue }
             items.append(styled(item, frame: frame))
             let shown = present(items, phone: phone)
@@ -80,13 +87,21 @@ public enum ScreenTranslation {
         guard translator.translatesTogether else {
             return try await translate(reading, using: { try await translator.translate($0) }, frame: frame, progress: progress)
         }
-        let groups = withImages(groups(reading, frame: frame), from: frame)
+        let groups = withImages(groups(reading, frame: frame, wholeScreen: true), from: frame)
         let phone = frame.flatMap(ScreenPhoneCard.phone(in:))
         let prepared = groups.map { group in group.paragraphs.map(IconText.protect) }
-        let paragraphs = prepared.flatMap { list in list.map { $0.text } }
-        guard !paragraphs.isEmpty else { return [] }
-        let translations = try await translator.translateAll(paragraphs)
+        // Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND", "BACK") çevirmene gitmez; fiyatlar adla korunur.
+        let sources = groups.flatMap(\.paragraphs)
+        let knowns = sources.map(known)
+        let prices = prepared.flatMap { list in list.map { PriceText.protect($0.text) } }
+        let asked = prices.indices.filter { knowns[$0] == nil }
+        guard !sources.isEmpty else { return [] }
+        let answers = asked.isEmpty ? [] : try await translator.translateAll(asked.map { prices[$0].text })
         try Task.checkCancellation()
+        var translations = knowns.map { $0 ?? "" }
+        for (k, index) in asked.enumerated() where k < answers.count {
+            translations[index] = PriceText.restore(answers[k], prices[index].values)
+        }
         var items: [Item] = []
         var next = 0
         for (index, group) in groups.enumerated() {
@@ -100,6 +115,13 @@ public enum ScreenTranslation {
         let shown = present(items, phone: phone)
         if !shown.isEmpty { progress(shown) }
         return shown
+    }
+
+    /// Oyun arayüzü sözlüğündeki kısa etiketin Türkçesi ("SCROLL" → "KAYDIR", "TIP" → "BAHŞİŞ VER"); simgeli ya da
+    /// sözlükte olmayan parçada nil (çevirmene gider).
+    static func known(_ paragraph: String) -> String? {
+        guard !paragraph.contains(ButtonIcons.marker) else { return nil }
+        return UiCommands.translateLabel(paragraph)
     }
 
     /// Öğeye özgün yazının görünüşü: zemin ve yazı rengi, kalınlık, dar yazı, hiza; özgün yazı BÜYÜK HARFse çeviri de
@@ -177,8 +199,20 @@ public enum ScreenTranslation {
     /// satır, üstündeki satırın hemen altındaysa, yatayda onunla üst üste biniyorsa ve yazı boyu benziyorsa o gruba
     /// katılır; küçük harfle başlayan satır üstteki bitmemiş cümleye katılır (`continues`). Gruplar yukarıdan aşağı; en çok
     /// `maxGroups`, en çok yazısı olanlar.
-    public static func groups(_ reading: Reading, frame: CGImage? = nil, keepIdentifiers: Bool = false) -> [Group] {
-        var marked = reading.withButtonIcons()
+    ///
+    /// `wholeScreen` ("Ekranı çevir"): yazı tanımanın bozduğu fiyatlar düzelir (`PriceText.repair`) ve tuş çubukları
+    /// atılmaz, etiketlerine bölünür (`promptPieces`): tuş simgeleri ve fiyatlar çeviriye girmez, ekranda görünür kalır;
+    /// aynı satırdaki her seçenek kendi kutusunda çevrilir, çeviriler üst üste binmez.
+    public static func groups(_ reading: Reading, frame: CGImage? = nil, keepIdentifiers: Bool = false,
+                              wholeScreen: Bool = false) -> [Group] {
+        var marked = (wholeScreen ? Reading(lines: reading.lines.map(repaired)) : reading).withButtonIcons()
+        if wholeScreen {
+            marked = Reading(lines: marked.lines.flatMap { line -> [TextLine] in
+                guard (line.icons ?? []).isEmpty, line.box != nil,
+                      ButtonPrompts.isPrompt(line.text) || hasWideGap(line) else { return [line] }
+                return promptPieces(line)
+            })
+        }
         // Tam ekranda yalnız aksi halde atılacak kısa ipuçlarında simgeyi görüntüden doğrula.
         if let frame {
             marked = Reading(lines: marked.lines.map { line in
@@ -187,8 +221,63 @@ public enum ScreenTranslation {
         }
         let lines = marked.withoutButtonPrompts().withoutOcrNoise(keepIdentifiers: keepIdentifiers).lines
             .filter { $0.box != nil && isWords($0.text) }
-            .sorted { $0.box!.top < $1.box!.top }
+            // Aynı satırdaki parçalar (tuş çubuğunun etiketleri) soldan sağa; sıralama kararlı değildir.
+            .sorted { $0.box!.top != $1.box!.top ? $0.box!.top < $1.box!.top : $0.box!.left < $1.box!.left }
         return groups(from: lines)
+    }
+
+    /// Satırın ve sözcüklerinin fiyat düzeltmesi (uzunluk değişmez).
+    static func repaired(_ line: TextLine) -> TextLine {
+        var fixed = line
+        fixed.text = PriceText.repair(line.text)
+        fixed.words = line.words?.map { TextWord(PriceText.repair($0.text), box: $0.box) }
+        return fixed
+    }
+
+    /// Tuş çubuğunun etiketleri: tuş adları ve simgeleri ("R1", "△", okunmuş "X"/"O"), fiyatlar ("$10") ve harfsiz
+    /// parçalar ayırıcıdır, çeviriye girmez; aralarındaki her sözcük öbeği ayrı satır olur, kutusu sözcüklerinin yeri.
+    /// Sözcük yerleri biliniyorsa geniş boşluk da ayırır ("TIP $10   ORDER   BARTENDER"). İki harfi olmayan öbek atılır.
+    static func promptPieces(_ line: TextLine) -> [TextLine] {
+        guard let box = line.box else { return [line] }
+        let measured = !(line.words ?? []).isEmpty
+        let words = measured ? line.words! : ButtonIcons.estimate(line.text, box)
+        let gap = measured ? wideGap(words) : .infinity
+        var runs: [[TextWord]] = [[]]
+        for word in words {
+            if isPromptSeparator(word.text) {
+                runs.append([])
+                continue
+            }
+            if let last = runs[runs.count - 1].last, word.box.left - last.box.right > gap { runs.append([]) }
+            runs[runs.count - 1].append(word)
+        }
+        return runs.filter { run in run.reduce(0) { $0 + $1.text.filter(\.isLetter).count } >= 2 }.map { run in
+            let span = run.dropFirst().reduce(run[0].box) { $0.union($1.box) }
+            return TextLine(run.map(\.text).joined(separator: " "),
+                            box: TextBox(left: span.left, top: box.top, right: span.right, bottom: box.bottom),
+                            confidence: line.confidence, words: run)
+        }
+    }
+
+    /// Sözcüklerin arasında bu kadar boşluk (harf başına ortalama genişliğin üç katı) ayrı seçenek demektir.
+    private static func wideGap(_ words: [TextWord]) -> Double {
+        let chars = words.reduce(0) { $0 + $1.text.count }
+        guard chars > 0 else { return .infinity }
+        return words.reduce(0.0) { $0 + ($1.box.right - $1.box.left) } / Double(chars) * 3
+    }
+
+    /// Sözcük yerleri bilinen satırda aynı satıra düşmüş ayrı seçenekler var mı (geniş boşluk).
+    static func hasWideGap(_ line: TextLine) -> Bool {
+        guard let words = line.words, words.count >= 2 else { return false }
+        let gap = wideGap(words)
+        return zip(words, words.dropFirst()).contains { $1.box.left - $0.box.right > gap }
+    }
+
+    /// Tuş çubuğunda çeviriye girmeyen parça: tuş adı/simgesi, tek harf (okunmuş simge), fiyat ya da harfsiz parça.
+    static func isPromptSeparator(_ word: String) -> Bool {
+        let core = word.trimmingCharacters(in: CharacterSet(charactersIn: "()[]{}<>"))
+        return ButtonIcons.isButtonName(core) || PriceText.isMoney(core) || !core.contains(where: \.isLetter)
+            || (core.count == 1 && core != "a")
     }
 
     /// Kutuları bilinen, süzülmüş ve sıralı satırları yeniden işaretlemeden gruplar.

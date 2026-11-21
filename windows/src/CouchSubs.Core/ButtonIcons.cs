@@ -225,7 +225,7 @@ public static class ButtonIcons
     }
 
     /// <summary>Sözcük yerleri bilinmiyorsa satırın kutusu harf sayısına göre paylaştırılır.</summary>
-    private static IReadOnlyList<TextWord> Estimate(string text, TextBox box)
+    internal static IReadOnlyList<TextWord> Estimate(string text, TextBox box)
     {
         var trimmed = text.Trim();
         if (trimmed.Length == 0) return [];

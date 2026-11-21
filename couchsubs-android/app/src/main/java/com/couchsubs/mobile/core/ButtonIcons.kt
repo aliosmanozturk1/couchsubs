@@ -50,6 +50,9 @@ object ButtonIcons {
         "✕", "×", "⨯", "✖", "○", "◯", "●", "□", "▢", "◻", "■", "△", "▲", "⨂",
     )
 
+    /** Sözcük bir kumanda tuşunun adı ya da simgesi mi ("R3", "(L1)", "△"). */
+    internal fun isButtonName(text: String): Boolean = text.trim { it in BRACKETS }.uppercase() in names
+
     /** Fiile yapışık okunan simgeden sonra gelemeyecek harfler: "Uses", "Used", "User", "Pushy", "Tape" sözcüktür. */
     private const val INFLECTIONS = "sdeyr"
 
@@ -246,7 +249,7 @@ object ButtonIcons {
     }
 
     /** Sözcük yerleri bilinmiyorsa satırın kutusu harf sayısına göre paylaştırılır. */
-    private fun estimate(text: String, box: TextBox): List<TextWord> {
+    internal fun estimate(text: String, box: TextBox): List<TextWord> {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return emptyList()
         val width = (box.right - box.left) / trimmed.length

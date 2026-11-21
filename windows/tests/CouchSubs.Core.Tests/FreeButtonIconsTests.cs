@@ -141,19 +141,23 @@ public class FreeButtonIconsTests
         Assert.Empty(candidate.Icons[1]);
     }
 
+    /// <summary>
+    /// "Ekranı çevir"de tuş ipucu atılmaz: etiketi kendi kutusunda çevrilir, tuş ("R2") çeviriye girmez ve ekranda özgün
+    /// haliyle görünür kalır (simgesi görünse de görünmese de; GTA 6 tuş çubuğu ve etkileşim seçenekleri).
+    /// </summary>
     [Fact]
-    public async Task FullScreenRecoversAButtonPromptOnlyWhenItsIconIsVisible()
+    public async Task FullScreenTranslatesThePromptLabelAndLeavesTheButton()
     {
         var reading = new Reading([Line(Word("R2", 0.05, 0.11), Word("Swing", 0.13, 0.28))]);
         var reader = new LinesReader(reading);
-        var translator = new FakeTranslator();
-        Assert.Empty(await ScreenTranslation.TranslateAsync(Draw(400, 40), reader, translator));
-        Assert.Empty(translator.Requested);
-        var frame = Draw(400, 40, (22, 11, 18));
-        var item = Assert.Single(await ScreenTranslation.TranslateAsync(frame, reader, translator));
-        Assert.Single(translator.Requested);
-        Assert.Contains("Swing", item.Translation);
-        Assert.Equal(ButtonIcons.Crop(frame, new TextBox(0.035, 0.1, 0.125, 0.9)), Assert.Single(item.Icons!).Image);
+        foreach (var frame in new[] { Draw(400, 40), Draw(400, 40, (22, 11, 18)) })
+        {
+            var translator = new FakeTranslator();
+            var item = Assert.Single(await ScreenTranslation.TranslateAsync(frame, reader, translator));
+            Assert.Equal(["Swing"], translator.Requested);
+            Assert.Equal(0.13, item.Box.Left);
+            Assert.Null(item.Icons);
+        }
     }
 
     [Fact]

@@ -39,6 +39,8 @@ enum UiCommands {
         "WATCH": "İzle", "LISTEN": "Dinle", "DRIVE": "Sür",
         "GET IN": "Bin", "GET OUT": "İn", "STEAL": "Çal",
         "HACK": "Hackle", "LOOT": "Yağmala", "COLLECT": "Topla",
+        // GTA 6 telefonu ve bar menüsü ("SCROLL / SEND / BACK", "TIP $10 / ORDER / BARTENDER").
+        "SEND": "Gönder", "TIP": "Bahşiş ver", "BARTENDER": "Barmen",
     ]
 
     /// Bütün parçalar bilinen büyük harfli komutlarsa çevirir; aralarındaki ve sondaki simgeleri korur.

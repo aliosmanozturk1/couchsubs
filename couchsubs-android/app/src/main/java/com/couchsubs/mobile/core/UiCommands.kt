@@ -37,6 +37,8 @@ object UiCommands {
         "SIT" to "Otur", "STAND UP" to "Kalk", "SLEEP" to "Uyu", "SHOWER" to "Duş al", "TURN OFF" to "Kapat",
         "TURN ON" to "Aç", "WATCH" to "İzle", "LISTEN" to "Dinle", "DRIVE" to "Sür", "GET IN" to "Bin",
         "GET OUT" to "İn", "STEAL" to "Çal", "HACK" to "Hackle", "LOOT" to "Yağmala", "COLLECT" to "Topla",
+        // GTA 6 telefonu ve bar menüsü ("SCROLL / SEND / BACK", "TIP $10 / ORDER / BARTENDER").
+        "SEND" to "Gönder", "TIP" to "Bahşiş ver", "BARTENDER" to "Barmen",
         // Menü terimleri (ekran yazısı menüleri: tekerlek menü, duraklatma menüsü, ayarlar).
         "ON" to "Açık", "OFF" to "Kapalı", "LOAD" to "Yükle", "SETTINGS" to "Ayarlar", "MAP" to "Harita",
         "RESUME" to "Sürdür", "QUIT" to "Çık", "NEXT" to "İleri", "PREVIOUS" to "Önceki", "ALL" to "Tümü",
