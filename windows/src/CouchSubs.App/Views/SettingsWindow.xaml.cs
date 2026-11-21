@@ -647,9 +647,8 @@ public partial class SettingsWindow : Window
         }
     }
 
-    // Cover-picker labels are Windows-only; avoid changing the shared Mac/iOS localization catalog.
-    private static string CoverText(string english, string turkish) =>
-        Localizer.Current.Language == "tr" ? turkish : english;
+    // Kapak metinleri artık Mac ile ortak katalogda (Localizable.xcstrings); Türkçe parametre yalnız okunurluk için kalır.
+    private static string CoverText(string english, string turkish) => Localizer.Current[english];
 
     /// <summary>"Grand Theft Auto V" → "GTA": ilk üç sözcüğün baş harfleri (rakam olduğu gibi).</summary>
     internal static string Initials(string title)

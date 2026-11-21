@@ -1,6 +1,10 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Choose game cover…": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Choose game cover…"}},"tr":{"stringUnit":{"state":"translated","value":"Oyun kapağı seç…"}}}},
+    "Remove game cover": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Remove game cover"}},"tr":{"stringUnit":{"state":"translated","value":"Oyun kapağını kaldır"}}}},
+    "The game cover could not be saved.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The game cover could not be saved."}},"tr":{"stringUnit":{"state":"translated","value":"Oyun kapağı kaydedilemedi."}}}},
+    "Images": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Images"}},"tr":{"stringUnit":{"state":"translated","value":"Görseller"}}}},
     "This Mac's own Turkish voice: speaks at once, nothing to download. Sounds more mechanical.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This Mac's own Turkish voice: speaks at once, nothing to download. Sounds more mechanical."}},"tr":{"stringUnit":{"state":"translated","value":"Mac'in kendi Türkçe sesi: anında konuşur, indirme gerekmez. Daha mekanik duyulur."}}}},
     "No Turkish voice is installed on this Mac. Add one in System Settings › Accessibility › Spoken Content › System Voice › Manage Voices.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No Turkish voice is installed on this Mac. Add one in System Settings › Accessibility › Spoken Content › System Voice › Manage Voices."}},"tr":{"stringUnit":{"state":"translated","value":"Bu Mac'te Türkçe ses yüklü değil. Sistem Ayarları › Erişilebilirlik › Seslendirilen İçerik › Sistem Sesi › Sesleri Yönet'ten ekleyin."}}}},
     "New game packs": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"New game packs"}},"tr":{"stringUnit":{"state":"translated","value":"Yeni oyun paketleri"}}}},

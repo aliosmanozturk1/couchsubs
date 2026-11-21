@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import AppKit
 import CouchSubsCore
+import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -1050,6 +1052,9 @@ private struct GamePackImportSheet: View {
 /// Paket karosu: oyunun kısaltması, adı ve satır sayısı.
 private struct PackTile: View {
     let pack: PackShelfItem
+    /// Kapak değişince karo yeniden çizilir (dosya aynı adla değişir).
+    @State private var coverVersion = 0
+    @State private var coverFailed = false
 
     /// Adın kelimelerinin baş harfleri (en çok üç): "Red Dead Redemption 2" → "RDR".
     private var initials: String {
@@ -1057,25 +1062,95 @@ private struct PackTile: View {
         return String(words.prefix(3).compactMap(\.first)).uppercased()
     }
 
+    /// Kullanıcının seçtiği kapak (Windows ile aynı: yalnız bu bilgisayarda, ~/Library/Application Support/CouchSubs/covers).
+    private var cover: NSImage? {
+        _ = coverVersion
+        guard let file = GameCoverStore.url(for: pack.id), FileManager.default.fileExists(atPath: file.path) else { return nil }
+        return NSImage(contentsOf: file)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: Theme.space("m")) {
-            Text(verbatim: initials)
-                .font(.csCaption.weight(.semibold))
-                .foregroundStyle(Color.csText)
+            // Kapak ya da baş harfler; tıklayınca kapak seçilir, sağ tıkta seç/kaldır (Windows ile aynı).
+            Button(action: chooseCover) {
+                Group {
+                    if let cover {
+                        Image(nsImage: cover).resizable().scaledToFill()
+                    } else {
+                        Text(verbatim: initials)
+                            .font(.csCaption.weight(.semibold))
+                            .foregroundStyle(Color.csText)
+                    }
+                }
                 .frame(width: 48, height: 48)
-                .background(Color.csSurface2, in: RoundedRectangle(cornerRadius: Theme.radius("inner"), style: .continuous))
-                .accessibilityHidden(true)
+                .background(Color.csSurface2)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.radius("inner"), style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .help(Text("Choose game cover…"))
+            .accessibilityLabel(Text("Choose game cover…"))
+            .contextMenu {
+                Button("Choose game cover…", action: chooseCover)
+                Button("Remove game cover") {
+                    GameCoverStore.remove(for: pack.id)
+                    coverVersion += 1
+                }
+                .disabled(cover == nil)
+            }
             VStack(alignment: .leading, spacing: Theme.space("hair")) {
                 Text(verbatim: pack.title).font(.csHeadline).fixedSize(horizontal: false, vertical: true)
                 Text(verbatim: String(format: String(localized: "%@ lines"), pack.entries.formatted()))
                     .font(.csCaption)
                     .foregroundStyle(Color.csSecondary)
+                if coverFailed {
+                    Text("The game cover could not be saved.").font(.csCaption).foregroundStyle(Color.csDanger)
+                }
             }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .tile()
-        .accessibilityElement(children: .combine)
+    }
+
+    /// Resim seçilir, ortasından kare kesilip 128 piksellik PNG olarak kaydedilir (Windows ChoosePackCover ile aynı).
+    private func chooseCover() {
+        let panel = NSOpenPanel()
+        panel.title = String(localized: "Choose game cover…")
+        panel.allowedContentTypes = [.png, .jpeg]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        coverFailed = false
+        do {
+            try GameCoverStore.save(try Self.thumbnail(of: url), for: pack.id)
+            coverVersion += 1
+        } catch {
+            coverFailed = true
+        }
+    }
+
+    enum CoverError: Error { case unreadable }
+
+    static func thumbnail(of url: URL, side target: Int = 128) throws -> Data {
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard size <= 8 * 1024 * 1024,
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 512,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+              ] as CFDictionary)
+        else { throw CoverError.unreadable }
+        let side = min(image.width, image.height)
+        guard side > 0, let square = image.cropping(to: CGRect(x: (image.width - side) / 2, y: (image.height - side) / 2, width: side, height: side)),
+              let context = CGContext(data: nil, width: target, height: target, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { throw CoverError.unreadable }
+        context.interpolationQuality = .high
+        context.draw(square, in: CGRect(x: 0, y: 0, width: target, height: target))
+        guard let thumb = context.makeImage(),
+              let png = NSBitmapImageRep(cgImage: thumb).representation(using: .png, properties: [:])
+        else { throw CoverError.unreadable }
+        return png
     }
 }
 
