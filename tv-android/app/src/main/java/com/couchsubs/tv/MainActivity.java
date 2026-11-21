@@ -10,6 +10,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputManager;
+import android.media.tv.TvTrackInfo;
 import android.media.tv.TvView;
 import android.os.Build;
 import android.os.Bundle;
@@ -46,6 +47,8 @@ public class MainActivity extends Activity implements TvPage.Host {
     /** Katman açılamadı; neden DisplayMode.FAILED_* (uygulama yeniden katmana geçmez, nedeni gösterir). */
     static final String EXTRA_OVERLAY_FAILED = "overlayFailed";
     private static final String EXTRA_DISPLAY_MODE = "displayMode";
+    /** CouchSubs ekranı TV'nin kendi giriş ekranından kendini geri aldı (bkz. ScreenReclaim): ekran ve mod değişmez. */
+    private static final String EXTRA_RECLAIM = "reclaim";
     private static final long WATCH_EVERY_MS = 1000;
     private static final long HELP_VISIBLE_MS = 25_000;
     /** Giriş seçicide bundan çok düğme varsa yan yana sığmaz, alt alta dizilir. */
@@ -89,6 +92,10 @@ public class MainActivity extends Activity implements TvPage.Host {
     private final PageRestarts pageRestarts = new PageRestarts();
     /** Görüntü geldikten sonraki kesinti: bir kez yeniden açılır, olmazsa söylenir (bkz. PictureOutage). */
     private final PictureOutage outage = new PictureOutage();
+    /** Sinyal değişirken TV'nin kendi giriş ekranı öne gelince CouchSubs'ın geri alınması (#794). */
+    private final ScreenReclaim reclaim = new ScreenReclaim();
+    /** Ekranın son duraklatıldığı an (onPause). */
+    private long pausedAt = -1;
     private boolean outageWatching;
     private final Runnable outageTick = this::checkOutage;
     /** Bilgi panelindeki TvView durumu; sayfanın iş parçacığından okunur. */
@@ -147,18 +154,21 @@ public class MainActivity extends Activity implements TvPage.Host {
             tvView = new TvView(this);
             tvView.setCallback(new TvView.TvInputCallback() {
                 @Override public void onConnectionFailed(String inputId) {
+                    signalChanged();
                     tvState = "connection failed";
                     noVideo();
                     lostPicture();
                     retuneLater();
                 }
                 @Override public void onDisconnected(String inputId) {
+                    signalChanged();
                     tvState = "disconnected";
                     noVideo();
                     lostPicture();
                     retuneLater();
                 }
                 @Override public void onVideoAvailable(String inputId) {
+                    signalChanged();
                     tvState = "available";
                     retuneAttempts = 0;
                     watch.videoAvailable();
@@ -170,6 +180,7 @@ public class MainActivity extends Activity implements TvPage.Host {
                     status("playing");
                 }
                 @Override public void onVideoUnavailable(String inputId, int reason) {
+                    signalChanged();
                     tvState = "unavailable: " + reasonName(reason);
                     lostPicture();
                     // PS5 oyuna girerken çözünürlük ya da HDR değiştirir; TV bunu kısa bir "ayarlanıyor" olarak bildirir.
@@ -180,6 +191,13 @@ public class MainActivity extends Activity implements TvPage.Host {
                         return;
                     }
                     noVideo();
+                }
+                // HDR/çözünürlük değişimi çoğu TV'de bu ikisinden biriyle gelir (#794).
+                @Override public void onVideoSizeChanged(String inputId, int width, int height) {
+                    signalChanged();
+                }
+                @Override public void onTracksChanged(String inputId, List<TvTrackInfo> tracks) {
+                    signalChanged();
                 }
             });
             // HDMI sesi tam sesle açılır. Android'in HDMI ses yolu (TvInputHardwareManager) uygulama ses düzeyi
@@ -234,6 +252,14 @@ public class MainActivity extends Activity implements TvPage.Host {
             case TvInputManager.VIDEO_UNAVAILABLE_REASON_AUDIO_ONLY: return "audio only";
             default: return "reason " + reason;
         }
+    }
+
+    /**
+     * TvView sinyal olayı (görüntü geldi/gitti, boyut/iz değişti, bağlantı koptu). Yalnız ekran öndeyken sayılır: ekran
+     * duraklatılınca giriş bırakılır, ondan sonraki olaylar bizimdir (bkz. ScreenReclaim).
+     */
+    private void signalChanged() {
+        if (resumed) reclaim.signal(SystemClock.elapsedRealtime(), watch.tunedAt());
     }
 
     /**
@@ -665,19 +691,17 @@ public class MainActivity extends Activity implements TvPage.Host {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         TvPage.storeDisplayMode(this, intent.getStringExtra(EXTRA_DISPLAY_MODE));
-        if (page == null) return;
-        // Kullanıcı katmanı kapatıp uygulamayı açtıysa kumandadan yeniden açılış (parametresiz) onu katmana geri atmaz.
-        boolean stay = leftOverlay && paramsOf(intent).isEmpty();
-        if (!stay && DisplayMode.OVERLAY.equals(TvPage.storedDisplayMode(this)) && overlayAllowed()) {
-            String params = paramsOf(intent);
-            if (!params.isEmpty()) launchParams = params;
+        if (page == null || intent.getBooleanExtra(EXTRA_RECLAIM, false)) return;
+        String params = paramsOf(intent);
+        // Bilgisayarın/telefonun adresiyle gelen açılış ekranı değiştirmez (yalnız adres iletilir); kullanıcı katmandan
+        // çıktıysa kumandadan yeniden açılış da onu katmana geri atmaz (bkz. DisplayMode.switchOnNewIntent).
+        if (DisplayMode.switchOnNewIntent(params, leftOverlay, TvPage.storedDisplayMode(this), overlayAllowed())) {
             switchToOverlay(R.string.overlay_selected);
             return;
         }
-        String params = paramsOf(intent);
         if (!params.isEmpty()) {
             launchParams = params;
-            if (page != null) page.relaunch(params);
+            page.relaunch(params);
         }
     }
 
@@ -723,8 +747,10 @@ public class MainActivity extends Activity implements TvPage.Host {
         super.onResume();
         resumed = true;
         userLeaving = false;
+        // Ekran yalnız duraklatıldıysa (üstte bildirim, giriş bırakılmadı) giriş yeniden açılmaz (#794).
+        boolean held = session.held();
         String id = session.toForeground();
-        if (tvView != null && id != null) tune(id);
+        if (tvView != null && id != null && !held) tune(id);
     }
 
     /** Uygulamadan çıkılınca (Ana ekran, başka uygulama) Türkçe dublaj susar; altyazı bağlantısı sürer (TV-NP). */
@@ -736,14 +762,54 @@ public class MainActivity extends Activity implements TvPage.Host {
         // üstüne çizilmez.
         boolean leftByUser = userLeaving;
         userLeaving = false;
+        // #794: PS5 açılınca, HDR devreye girince ya da bildirimle TV kendi HDMI ekranını öne çekti; görüntü uygulamada
+        // geliyordu. Katmana geçilmez, CouchSubs ekranı kısa süre sonra geri alınır.
+        // Geri alma hakkı dolduysa (TV sürekli geri itiyor) izin varsa katmana geçilir: eskiden CouchSubs arkada kalıyor,
+        // altyazı bağlantısı açık olduğundan telefon/bilgisayar TV'yi "bağlı" görüyor ama yazı görünmeyen ekrana
+        // çiziliyordu ("telefonda altyazı sürüyor, TV'de yok; test yazısı çıkıyor").
+        ScreenReclaim.Action taken = isFinishing() || tvView == null ? ScreenReclaim.Action.NONE
+                : reclaim.onTakenAway(pausedAt, watch.played());
+        if (taken == ScreenReclaim.Action.RECLAIM) {
+            releaseForBackground("taken over");
+            if (page != null) page.background(true);
+            handler.postDelayed(this::reclaimScreen, ScreenReclaim.DELAY_MS);
+            return;
+        }
+        if (taken == ScreenReclaim.Action.GIVE_UP && overlayAllowed()) {
+            switchToOverlay(R.string.overlay_fallback);
+            if (isFinishing()) return;
+        }
         if (!isFinishing() && tvView != null && watch.takenOver(SystemClock.elapsedRealtime(), overlayAllowed(), leftByUser)) {
             switchToOverlay(R.string.overlay_fallback);
             // Arka plandan ön plan servisi başlatılamadıysa (Android 12+ kısıtı) ekran açık kalır, normal yoldan devam.
             if (isFinishing()) return;
         }
         if (page != null) page.background(true);
-        // Ekran artık görünmüyor: giriş onPause'da bırakıldı; arada yeniden tutulmuş olmasın diye bir kez daha bırakılır.
+        // Ekran artık görünmüyor: giriş onPause'da bırakılmadıysa (bildirimle duraklatılmıştı) şimdi bırakılır; arada
+        // yeniden tutulmuş olmasın diye bir kez daha bırakılır.
+        releaseForBackground("background");
         if (tvView != null && !resumed) resetQuietly(tvView);
+    }
+
+    /**
+     * #794: TV'nin kendi giriş ekranından CouchSubs'ı geri öne getirir. Android 8-9'da her zaman; Android 10+ arka plandan
+     * açma kısıtı yalnız "diğer uygulamaların üzerinde göster" izni olan uygulamaya izin verir (masaüstünün kurduğu APK'da
+     * var, Play paketinde yok); izin yoksa sistem açmayı sessizce engeller, eski davranış kalır.
+     */
+    private void reclaimScreen() {
+        if (resumed || isFinishing() || isDestroyed()) return;
+        try {
+            startActivity(new Intent(this, MainActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    .putExtra(EXTRA_RECLAIM, true));
+        } catch (RuntimeException ignored) {
+            // TV açmaya izin vermedi.
+        }
+    }
+
+    /** Ekran önden çekildi: TvView girişi tutuyorsa bırakılır (giriş unutulmaz, öne gelince açılır). */
+    private void releaseForBackground(String why) {
+        if (tvView != null && session.toBackground()) releaseHdmi(false, why);
     }
 
     @Override
@@ -768,10 +834,14 @@ public class MainActivity extends Activity implements TvPage.Host {
     protected void onPause() {
         super.onPause();
         resumed = false;
+        pausedAt = SystemClock.elapsedRealtime();
         stopWatching();
         watch.pause();
         stopOutageWatch();
-        if (tvView != null && session.toBackground()) releaseHdmi(false, "background");
+        // #794: ekran yalnız duraklatıldıysa (üstte yarı saydam bildirim ya da sistem penceresi; Android: onPause ekran hâlâ
+        // görünürken de gelir, görünmez olunca onStop) giriş tutulur, görüntü kesilmez; onStop'ta bırakılır. Kullanıcı
+        // başka ekrana geçiyorsa (onUserLeaveHint: Giriş, Ana ekran, başka uygulama) eskisi gibi hemen bırakılır (#453).
+        if (userLeaving || isFinishing()) releaseForBackground("background");
     }
 
     /** Bağlantı koptuysa birkaç kez, gittikçe seyrek yeniden dener. */

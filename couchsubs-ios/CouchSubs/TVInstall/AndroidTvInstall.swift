@@ -493,17 +493,23 @@ final class AndroidTvInstaller {
         return String(data: data, encoding: .utf8)
     }
 
-    /// Kurulu uygulamayı telefonun adresiyle açar (kurmadan, sessizce): TV onay sorarsa vazgeçilir. Bloklar.
+    /// Kurulu uygulamayı telefonun adresiyle açar (kurmadan, sessizce): TV onay sorarsa vazgeçilir. Bloklar. Uygulama TV'de
+    /// zaten çalışıyorsa (ekranı önde ya da arkada, ya da katmanı) `am start` gönderilmez, `AndroidTVApp.alreadyRunning`
+    /// döner: `am start` çalışan uygulamayı öne çekiyor, TV uygulaması da parametreli açılışta katmana dönüp ekranı
+    /// kapatıyordu (X, Android TV 8, beta.74; Windows ve Android telefonla aynı).
     func open(launchParams: String?, connectTimeout: TimeInterval = 3) throws -> String {
         let adb = try AdbConnection.connect(host: host, port: port, key: try adbKey(),
                                             onApprovalNeeded: { throw AndroidInstallFailure(error: .notApproved, detail: "onay gerekiyor") },
                                             connectTimeout: connectTimeout)
         defer { adb.close() }
+        if AndroidTVApp.isRunning((try? adb.run(AndroidTVApp.runningCommand)) ?? "") { return AndroidTVApp.alreadyRunning }
         return try adb.run(Self.startCommand(launchParams)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
-/// Android TV'de CouchSubs TV'yi telefonun adresiyle açar ve bağlı değilken arada bir yeniden açar (ADB açıksa).
+/// Android TV'de CouchSubs TV'yi telefonun adresiyle açar (ADB açıksa). Ne zaman açılacağı `AndroidTVOpenRule`'dadır: bu
+/// çeviride bağlanmış uygulama bir daha açılmaz, hiç bağlanmadıysa en çok üç kez, 30 sn arayla; TV'de zaten çalışıyorsa
+/// `am start` gönderilmez (Mac, Windows ve Android telefonla aynı kural).
 ///
 /// Eskiden telefon Android TV'ye hiç dokunmuyor, TV uygulaması telefonu ağı (yalnız 8787 portunu) tarayarak bulmak
 /// zorunda kalıyordu: TV başka alt ağdaysa, tarama telefonu kaçırırsa ya da telefonun portu değiştiyse "Ağda CouchSubs
@@ -514,17 +520,17 @@ final class AndroidTVKeeper: KeeperControlling, @unchecked Sendable {
     private let port: UInt16
     private let launchParams: String?
     private let appConnected: @Sendable () -> Bool
-    private let relaunchInterval: TimeInterval
     private let open: @Sendable (String, UInt16, String?) throws -> String
     private let log: @Sendable (String) -> Void
     /// Her açma denemesinin sonucu (ana ekrandaki satır): açıldıysa nil.
     private let onOpenResult: @Sendable (TVOpenProblem?) -> Void
     private let lock = NSLock()
     private var loop: Task<Void, Never>?
-    private var lastLaunch: Date?
+    private var rule: AndroidTVOpenRule
     private var lastResult: String?
 
-    init(host: String, port: UInt16, server: String, appConnected: @escaping @Sendable () -> Bool, relaunchInterval: TimeInterval = 30,
+    init(host: String, port: UInt16, server: String, appConnected: @escaping @Sendable () -> Bool,
+         relaunchInterval: TimeInterval = AndroidTVOpenRule.defaultInterval, maxOpens: Int = AndroidTVOpenRule.defaultMaxOpens,
          open: @escaping @Sendable (String, UInt16, String?) throws -> String = { host, port, params in
              try AndroidTvInstaller(host: host, port: port).open(launchParams: params)
          }, log: @escaping @Sendable (String) -> Void = { InstallLog.shared.write($0) },
@@ -534,21 +540,29 @@ final class AndroidTVKeeper: KeeperControlling, @unchecked Sendable {
         self.port = port
         launchParams = AndroidTvInstaller.launchParams(server: server)
         self.appConnected = appConnected
-        self.relaunchInterval = relaunchInterval
+        rule = AndroidTVOpenRule(maxOpens: maxOpens, interval: relaunchInterval)
         self.open = open
         self.log = log
     }
 
-    /// Bir kontrol: TV uygulaması bağlı değilse ve son açılıştan `relaunchInterval` geçtiyse açar. Bloklar.
+    /// Bir kontrol: `AndroidTVOpenRule` izin verirse açmayı dener. Bloklar.
     func tick(now: Date = Date()) {
-        guard !host.isEmpty, !appConnected() else { return }
+        guard !host.isEmpty else { return }
+        let connected = appConnected()
         lock.lock()
-        if let lastLaunch, now.timeIntervalSince(lastLaunch) < relaunchInterval { lock.unlock(); return }
-        lastLaunch = now
+        let due = rule.shouldTry(connected: connected, now: now.timeIntervalSinceReferenceDate)
         lock.unlock()
+        guard due else { return }
         let result: String
         do {
-            result = "açıldı: \(try open(host, port, launchParams))"
+            let output = try open(host, port, launchParams)
+            // Uygulama TV'de çalışırken bulunduysa `am start` gönderilmedi: açılış sayılmaz.
+            if output != AndroidTVApp.alreadyRunning {
+                lock.lock()
+                rule.opened()
+                lock.unlock()
+            }
+            result = "açıldı: \(output)"
             onOpenResult(nil)
         } catch {
             result = "açılamadı: \(error)"
@@ -585,9 +599,11 @@ final class AndroidTVKeeper: KeeperControlling, @unchecked Sendable {
         loop = nil
     }
 
+    /// "Otomatik açmayı dene" ya da öne dönüş: sayaç sıfırlanır, sonraki kontrol beklemeden dener (uygulama bağlıysa ya da
+    /// TV'de çalışıyorsa yine açılmaz).
     func reconnect() {
         lock.lock()
-        lastLaunch = nil
+        rule.reset()
         lock.unlock()
     }
 

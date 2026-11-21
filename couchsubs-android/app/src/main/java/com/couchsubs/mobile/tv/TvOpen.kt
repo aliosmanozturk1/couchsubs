@@ -62,12 +62,61 @@ object TvOpenRetry {
     fun take(): Boolean = requested.getAndSet(false)
     fun clear() = requested.set(false)
 
-    /** En çok [ms] bekler; "Otomatik açmayı dene" istenirse hemen döner (açma döngülerinin varsayılan beklemesi). */
-    fun waitOrRetry(ms: Long, step: Long = 1_000L) {
+    /**
+     * En çok [ms] bekler; "Otomatik açmayı dene" istenirse hemen döner (açma döngülerinin varsayılan beklemesi). İstek
+     * yüzünden döndüyse true.
+     */
+    fun waitOrRetry(ms: Long, step: Long = 1_000L): Boolean {
         var left = ms
-        while (left > 0 && !take()) {
+        while (left > 0) {
+            if (take()) return true
             Thread.sleep(minOf(step, left))
             left -= step
         }
+        return false
+    }
+}
+
+/**
+ * Android TV bekçisinin "şimdi açmayı dene" kararı (Mac/iPhone'daki AndroidTVOpenRule ve Windows'taki AndroidTvOpenRule ile
+ * aynı kural).
+ *
+ * X'te bildirildi (Android TV 8, çeviri MacBook'tan, beta.74): "TV'den uygulamayı açtığımda çevirili ekran gelip hemen başka
+ * bir ekrana geçiyor, HDMI seçemiyorum". Bekçi TV uygulaması bağlı görünmediği her an, 30 sn'de bir ve sınırsız `am start`
+ * gönderiyordu; kullanıcı CouchSubs'ı kumandadan açınca katmanın bağlantısı kapanıp sayfanınki kurulana kadar geçen birkaç
+ * saniye de buna yetiyordu. TV uygulaması (0.9.54 ve öncesi) parametreli açılışta kayıtlı katman tercihine dönüp ekranı
+ * kapatıyordu. Artık: bu çeviride bir kez bağlanan uygulama bir daha açılmaz; hiç bağlanmadıysa en çok [maxOpens] kez,
+ * aralarında en az [intervalMs]; "Otomatik açmayı dene" ([reset]) sıfırlar. Uygulama TV'de zaten çalışıyorsa `am start` hiç
+ * gönderilmez (AndroidTvInstaller.ALREADY_RUNNING) ve açılış sayılmaz.
+ */
+class AndroidTvOpenRule(private val maxOpens: Int = DEFAULT_MAX_OPENS, private val intervalMs: Long = DEFAULT_INTERVAL_MS) {
+    companion object {
+        const val DEFAULT_MAX_OPENS = 3
+        const val DEFAULT_INTERVAL_MS = 30_000L
+    }
+
+    var opens = 0
+        private set
+    var everConnected = false
+        private set
+    private var lastAttempt: Long? = null
+
+    /** Bu kontrolde açma denensin mi ([now]: ms, tekdüze saat); true dönerse deneme zamanı yazılır. */
+    @Synchronized fun shouldTry(connected: Boolean, now: Long): Boolean {
+        if (connected) { everConnected = true; return false }
+        if (everConnected || opens >= maxOpens) return false
+        lastAttempt?.let { if (now - it < intervalMs) return false }
+        lastAttempt = now
+        return true
+    }
+
+    /** `am start` gerçekten gönderildi (uygulama kapalıydı). */
+    @Synchronized fun opened() { opens++ }
+
+    /** "Otomatik açmayı dene": yeniden en çok [maxOpens] kez, beklemeden. */
+    @Synchronized fun reset() {
+        opens = 0
+        everConnected = false
+        lastAttempt = null
     }
 }

@@ -51,38 +51,89 @@ public static class TvOpenText
 }
 
 /// <summary>
-/// Android TV'de CouchSubs TV'yi bilgisayarın adresiyle açar ve bağlı değilken en çok <c>relaunchInterval</c>'da bir
-/// yeniden açar (ADB açıksa; iPhone'daki AndroidTVKeeper ve Android telefondaki keepAndroidTvOpen ile aynı). Eskiden
-/// bilgisayar Android TV'ye hiç dokunmuyordu: çeviri başlayınca TV uygulaması kendiliğinden açılmıyordu. ADB kapalıysa ya
-/// da TV bu bilgisayarı onaylamadıysa sessizce geçilir; nedeni ana ekranda söylenir.
+/// Android TV bekçisinin "şimdi açmayı dene" kararı (Mac/iPhone'daki AndroidTVOpenRule ve Android telefondaki
+/// AndroidTvOpenRule ile aynı kural).
 /// </summary>
-/// <param name="open">Uygulamayı açar (TV onay sorarsa beklemeden hata verir); çıktısı günlüğe yazılır.</param>
+/// <remarks>
+/// X'te bildirildi (Android TV 8, çeviri MacBook'tan, beta.74): "TV'den uygulamayı açtığımda çevirili ekran gelip hemen
+/// başka bir ekrana geçiyor, HDMI seçemiyorum". Bekçi TV uygulaması bağlı görünmediği her an, 30 sn'de bir ve sınırsız
+/// <c>am start</c> gönderiyordu; kullanıcı CouchSubs'ı kumandadan açınca katmanın bağlantısı kapanıp sayfanınki kurulana
+/// kadar geçen birkaç saniye de buna yetiyordu. TV uygulaması (0.9.54 ve öncesi) parametreli açılışta kayıtlı katman
+/// tercihine dönüp ekranı kapatıyordu. Artık: bu çeviride bir kez bağlanan uygulama bir daha açılmaz; hiç bağlanmadıysa
+/// en çok <c>maxOpens</c> kez, aralarında en az <c>interval</c>; "Otomatik açmayı dene" ve uykudan dönüş sıfırlar.
+/// Uygulama TV'de zaten çalışıyorsa <c>am start</c> hiç gönderilmez (<see cref="AlreadyRunning"/>) ve açılış sayılmaz.
+/// </remarks>
+public sealed class AndroidTvOpenRule(int maxOpens = AndroidTvOpenRule.DefaultMaxOpens, TimeSpan? interval = null)
+{
+    public const int DefaultMaxOpens = 3;
+    public static readonly TimeSpan DefaultInterval = TimeSpan.FromSeconds(30);
+    /// <summary>Açıcı uygulamayı TV'de çalışırken buldu, <c>am start</c> göndermedi (AndroidTvInstaller.AlreadyRunning).</summary>
+    public const string AlreadyRunning = "zaten açık";
+
+    private DateTime? lastAttempt;
+    public int Opens { get; private set; }
+    public bool EverConnected { get; private set; }
+
+    /// <summary>Bu kontrolde açma denensin mi; true dönerse deneme zamanı yazılır.</summary>
+    public bool ShouldTry(bool connected, DateTime now)
+    {
+        if (connected) { EverConnected = true; return false; }
+        if (EverConnected || Opens >= maxOpens) return false;
+        if (lastAttempt is { } last && now - last < (interval ?? DefaultInterval)) return false;
+        lastAttempt = now;
+        return true;
+    }
+
+    /// <summary><c>am start</c> gerçekten gönderildi (uygulama kapalıydı).</summary>
+    public void Opened() => Opens++;
+
+    /// <summary>"Otomatik açmayı dene" ya da uykudan dönüş: yeniden en çok <c>maxOpens</c> kez, beklemeden.</summary>
+    public void Reset()
+    {
+        Opens = 0;
+        EverConnected = false;
+        lastAttempt = null;
+    }
+}
+
+/// <summary>
+/// Android TV'de CouchSubs TV'yi bilgisayarın adresiyle açar (ADB açıksa); ne zaman açılacağı <see cref="AndroidTvOpenRule"/>'dadır
+/// (iPhone/Mac'teki AndroidTVKeeper ve Android telefondaki keepAndroidTvOpen ile aynı). Eskiden bilgisayar Android TV'ye
+/// hiç dokunmuyordu: çeviri başlayınca TV uygulaması kendiliğinden açılmıyordu. ADB kapalıysa ya da TV bu bilgisayarı
+/// onaylamadıysa sessizce geçilir; nedeni ana ekranda söylenir.
+/// </summary>
+/// <param name="open">Uygulamayı açar (TV onay sorarsa beklemeden hata verir); çıktısı günlüğe yazılır. Uygulama zaten
+/// çalışıyorsa <see cref="AndroidTvOpenRule.AlreadyRunning"/> döner.</param>
 /// <param name="classify">Açma hatasının ana ekrandaki karşılığı.</param>
 public sealed class AndroidTvKeeper(Func<Task<string>> open, Func<bool> appConnected, Func<Exception, TvOpenProblem> classify,
                                     Action<TvOpenProblem?>? onOpenResult = null, Action<string>? log = null,
-                                    TimeSpan? relaunchInterval = null, Func<DateTime>? clock = null) : IDisposable
+                                    TimeSpan? relaunchInterval = null, Func<DateTime>? clock = null,
+                                    int maxOpens = AndroidTvOpenRule.DefaultMaxOpens) : IDisposable
 {
-    public static readonly TimeSpan DefaultRelaunchInterval = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan DefaultRelaunchInterval = AndroidTvOpenRule.DefaultInterval;
     private readonly Func<DateTime> now = clock ?? (() => DateTime.UtcNow);
     private readonly SemaphoreSlim tickLock = new(1, 1);
+    private readonly AndroidTvOpenRule rule = new(maxOpens, relaunchInterval);
     private CancellationTokenSource? loop;
-    private DateTime? lastLaunch;
     private string? lastResult;
 
-    /// <summary>Bir kontrol: TV uygulaması bağlı değilse ve son açılıştan <c>relaunchInterval</c> geçtiyse açar.</summary>
+    /// <summary>Bir kontrol: <see cref="AndroidTvOpenRule"/> izin verirse açmayı dener.</summary>
     public async Task TickAsync()
     {
-        if (appConnected()) return;
+        var connected = appConnected();
         await tickLock.WaitAsync();
         try
         {
-            var time = now();
-            if (lastLaunch is { } last && time - last < (relaunchInterval ?? DefaultRelaunchInterval)) return;
-            lastLaunch = time;
+            bool due;
+            lock (rule) due = rule.ShouldTry(connected, now());
+            if (!due) return;
             string result;
             try
             {
-                result = "açıldı: " + (await open()).Trim();
+                var output = (await open()).Trim();
+                // Uygulama TV'de çalışırken bulunduysa am start gönderilmedi: açılış sayılmaz.
+                if (output != AndroidTvOpenRule.AlreadyRunning) lock (rule) rule.Opened();
+                result = "açıldı: " + output;
                 onOpenResult?.Invoke(null);
             }
             catch (Exception error)
@@ -115,8 +166,14 @@ public sealed class AndroidTvKeeper(Func<Task<string>> open, Func<bool> appConne
         });
     }
 
-    /// <summary>Uykudan dönüşte ya da "Otomatik açmayı dene"de: bir sonraki kontrol beklemeden açar.</summary>
-    public void Reconnect() => lastLaunch = null;
+    /// <summary>
+    /// Uykudan dönüşte ya da "Otomatik açmayı dene"de: sayaç sıfırlanır, sonraki kontrol beklemeden dener (uygulama bağlıysa
+    /// ya da TV'de çalışıyorsa yine açılmaz).
+    /// </summary>
+    public void Reconnect()
+    {
+        lock (rule) rule.Reset();
+    }
 
     public void Stop()
     {

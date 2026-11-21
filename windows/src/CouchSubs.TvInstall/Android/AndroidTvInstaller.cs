@@ -35,6 +35,25 @@ public sealed partial class AndroidTvInstaller(string host, string keyDirectory,
         return $"{command} --es params '{launchParams}'";
     }
 
+    /// <summary>
+    /// CouchSubs TV çalışıyor mu: etkinlik yığınlarındaki kayıtlar (ekran arka planda olsa da yığındadır) ve paketin
+    /// servisleri (katman). Mac/iPhone'daki AndroidTVApp.runningCommand ve Android telefondaki ile aynı.
+    /// </summary>
+    public const string RunningCommand =
+        $"shell:dumpsys activity activities | grep Hist; dumpsys activity services {PackageName} | grep ServiceRecord";
+
+    /// <summary>Uygulama zaten açıkken <see cref="OpenAsync"/>'in döndürdüğü sonuç (<c>am start</c> gönderilmedi).</summary>
+    public const string AlreadyRunning = "zaten açık";
+
+    /// <summary>
+    /// <see cref="RunningCommand"/> çıktısında CouchSubs TV'nin ekranı ya da katman servisi var mı. Boş ya da tanınmayan
+    /// çıktı (çok eski TV'de <c>grep</c> yok) çalışmıyor sayılır: eski yol, bekçinin açma sınırı yine geçerli.
+    /// </summary>
+    public static bool IsRunning(string output) =>
+        output.Split('\n').Any(line =>
+            ((line.Contains("Hist") && line.Contains("ActivityRecord{")) || line.Contains("ServiceRecord{"))
+            && line.Contains(PackageName + "/"));
+
     /// <summary>TV'de ADB açık mı (port yanıt veriyor mu)?</summary>
     public static async Task<bool> IsReachableAsync(string host, int port = DefaultPort, TimeSpan? timeout = null)
     {
@@ -173,7 +192,13 @@ public sealed partial class AndroidTvInstaller(string host, string keyDirectory,
     /// bilgisayarı hiç onaylamadıysa onay sorusu beklenmez: <see cref="AndroidInstallError.NotApproved"/> fırlatılır.
     /// ADB kapalıysa <see cref="AndroidInstallError.Unreachable"/>.
     /// </summary>
-    /// <returns><c>am start</c> çıktısı.</returns>
+    /// <remarks>
+    /// Uygulama TV'de zaten çalışıyorsa (ekranı önde ya da arkada, ya da katmanı) <c>am start</c> gönderilmez ve
+    /// <see cref="AlreadyRunning"/> döner. X'te bildirildi (Android TV 8, beta.74): <c>am start</c> çalışan uygulamayı öne
+    /// çekiyor, TV uygulaması da parametreli açılışta kayıtlı katman tercihine dönüp ekranı kapatıyordu; kullanıcı
+    /// CouchSubs'ın ekranında HDMI seçemiyor, TV'nin kendi girişindeyken de CouchSubs öne geliyordu.
+    /// </remarks>
+    /// <returns><c>am start</c> çıktısı ya da <see cref="AlreadyRunning"/>.</returns>
     public static async Task<string> OpenAsync(string host, string keyDirectory, string? launchParams, int port = DefaultPort,
         CancellationToken cancellationToken = default)
     {
@@ -181,6 +206,22 @@ public sealed partial class AndroidTvInstaller(string host, string keyDirectory,
             throw new AndroidInstallException(AndroidInstallError.Unreachable, "ADB kapalı");
         await using var adb = await AdbConnection.ConnectAsync(host, port, LoadOrCreateKey(keyDirectory),
             () => throw new AndroidInstallException(AndroidInstallError.NotApproved, "onay gerekiyor"), cancellationToken: cancellationToken);
+        return await OpenOnAsync(adb, launchParams, cancellationToken);
+    }
+
+    /// <summary><see cref="OpenAsync"/>'in kurulmuş bağlantıdaki adımları: çalışıyorsa dokunmaz, değilse <c>am start</c>.</summary>
+    internal static async Task<string> OpenOnAsync(AdbConnection adb, string? launchParams, CancellationToken cancellationToken = default)
+    {
+        string running;
+        try
+        {
+            running = await adb.RunAsync(RunningCommand, cancellationToken: cancellationToken);
+        }
+        catch (Exception error) when (error is not OperationCanceledException and not AndroidInstallException)
+        {
+            running = "";
+        }
+        if (IsRunning(running)) return AlreadyRunning;
         return (await adb.RunAsync(StartCommand(launchParams), cancellationToken: cancellationToken)).Trim();
     }
 

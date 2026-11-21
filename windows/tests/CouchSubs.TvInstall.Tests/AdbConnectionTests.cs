@@ -252,6 +252,48 @@ public class AdbConnectionTests
     public void StartCommandQuotesTheParams(string? launchParams, string expected) =>
         Assert.Equal(expected, AndroidTvInstaller.StartCommand(launchParams));
 
+    /// <summary>
+    /// X'te bildirildi (Android TV 8, Mac beta.74): bekçinin <c>am start</c>'ı çalışan uygulamayı öne çekiyor, TV uygulaması
+    /// da katmana dönüp ekranı kapatıyordu. Uygulama TV'de çalışıyorsa (ekranı yığında ya da katman servisi) am start gitmez.
+    /// </summary>
+    [Fact]
+    public async Task OpenDoesNotStartTheAppWhenItIsAlreadyRunning()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        using var key = AndroidTvInstaller.LoadOrCreateKey(dir);
+        await using var tv = new FakeAdbd { TrustedKey = key, Reply = "    * Hist #0: ActivityRecord{6c1b2f0 u0 com.couchsubs.tv/.MainActivity t42}\n" };
+        tv.Serve();
+        string result;
+        await using (var adb = await AdbConnection.ConnectAsync("127.0.0.1", tv.Port, key, () => { }))
+            result = await AndroidTvInstaller.OpenOnAsync(adb, "{\"server\":\"http://192.168.1.4:8787\"}");
+        Assert.Equal(AndroidTvInstaller.AlreadyRunning, result);
+        Assert.Equal([AndroidTvInstaller.RunningCommand], tv.OpenedServices);
+    }
+
+    [Fact]
+    public async Task OpenStartsTheAppWhenItIsClosed()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        using var key = AndroidTvInstaller.LoadOrCreateKey(dir);
+        await using var tv = new FakeAdbd { TrustedKey = key, Reply = "Starting: Intent { cmp=com.couchsubs.tv/.MainActivity }\n" };
+        tv.Serve();
+        string result;
+        await using (var adb = await AdbConnection.ConnectAsync("127.0.0.1", tv.Port, key, () => { }))
+            result = await AndroidTvInstaller.OpenOnAsync(adb, null);
+        Assert.StartsWith("Starting", result);
+        Assert.Equal(2, tv.OpenedServices.Count);
+        Assert.StartsWith("shell:am start", tv.OpenedServices[1]);
+    }
+
+    [Theory]
+    [InlineData("    * Hist #0: ActivityRecord{6c1b2f0 u0 com.couchsubs.tv/.MainActivity t42}", true)]
+    [InlineData("  * ServiceRecord{9f3e2a1 u0 com.couchsubs.tv/.OverlayService}", true)]
+    [InlineData("    * Hist #0: ActivityRecord{2a1d9e1 u0 com.android.tv.launcher/.MainActivity t1}", false)]
+    [InlineData("  mLastPausedActivity: ActivityRecord{6c1b2f0 u0 com.couchsubs.tv/.MainActivity t42}", false)]
+    [InlineData("/system/bin/sh: grep: not found", false)]
+    [InlineData("", false)]
+    public void RunningAppIsRecognised(string output, bool running) => Assert.Equal(running, AndroidTvInstaller.IsRunning(output));
+
     [Fact]
     public async Task RefusedAppopsTriesPmGrantAndDoesNotFailTheInstall()
     {

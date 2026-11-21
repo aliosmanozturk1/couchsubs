@@ -28,6 +28,9 @@ final class FallbackWatch {
 
     void tuned(long now) { tunedAt = now; }
 
+    /** Girişin son açıldığı an; -1: açılmadı. */
+    long tunedAt() { return tunedAt; }
+
     /** Uygulama girişi açtıktan hemen sonra arka plana itildi: TV HDMI'yı kendi oynatıcısında açtı. */
     boolean takenOver(long now, boolean canDrawOverlays) {
         return canDrawOverlays && tunedAt >= 0 && now - tunedAt < TAKEOVER_MS;

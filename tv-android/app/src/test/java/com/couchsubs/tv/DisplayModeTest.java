@@ -76,4 +76,22 @@ public class DisplayModeTest {
         assertTrue(DisplayMode.isChange("inApp", "overlay"));
         assertTrue(DisplayMode.isChange("overlay", "inApp"));
     }
+
+    /**
+     * 0.9.56, X'te Android TV 8 (çeviri Mac'ten, beta.74): "TV'den uygulamayı açtığımda çevirili ekran gelip hemen başka bir
+     * ekrana geçiyor, HDMI seçemiyorum". Mac'in adresiyle gelen yeniden açılış kayıtlı katman tercihine dönüp ekranı
+     * kapatıyordu. Adresli açılış ekranı değiştirmez; katmandan çıkan kullanıcı kumandadan açınca da ekranda kalır.
+     */
+    @Test
+    public void reopeningWithTheComputerAddressNeverLeavesTheScreen() {
+        String params = "{\"server\":\"http://192.168.1.4:8787\"}";
+        assertFalse(DisplayMode.switchOnNewIntent(params, true, "overlay", true));
+        assertFalse(DisplayMode.switchOnNewIntent(params, false, "overlay", true));
+        assertFalse(DisplayMode.switchOnNewIntent("", true, "overlay", true));
+        assertFalse(DisplayMode.switchOnNewIntent(null, true, "overlay", true));
+        // Katmana hiç girilmemiş ekranda kumandadan açılış kayıtlı katman tercihine uyar (eski davranış).
+        assertTrue(DisplayMode.switchOnNewIntent("", false, "overlay", true));
+        assertFalse(DisplayMode.switchOnNewIntent("", false, "overlay", false));
+        assertFalse(DisplayMode.switchOnNewIntent("", false, "inApp", true));
+    }
 }

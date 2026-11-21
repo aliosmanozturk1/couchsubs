@@ -89,26 +89,38 @@ object TvSessionLauncher {
     /** Android TV uygulaması bağlı değilken en çok bu aralıkla yeniden açılır. */
     const val ANDROID_RELAUNCH_MS = 30_000L
 
+    /** Android TV bekçisi bağlantıya bu aralıkla bakar (açmanın kendisi [AndroidTvOpenRule]'un aralığına uyar). */
+    const val ANDROID_CHECK_MS = 5_000L
+
     /**
-     * Android TV: ADB açıksa (uygulama bu telefondan kurulduysa) CouchSubs TV telefonun adresiyle açılır ve bağlanana kadar
-     * arada bir yeniden açılır. Yalnız adres gider; TV yine ekrandaki kodun onayıyla (/pair) eşleşir. Eskiden telefon
-     * Android TV'ye hiç dokunmuyor, TV uygulaması telefonu ağ taramasıyla bulamazsa "Ağda CouchSubs aranıyor…"da kalıyordu
-     * (iPhone'daki AndroidTVKeeper ile aynı). ADB kapalıysa sessizce vazgeçilir; tarama yolu sürer.
+     * Android TV: ADB açıksa (uygulama bu telefondan kurulduysa) CouchSubs TV telefonun adresiyle açılır. Ne zaman açılacağı
+     * [AndroidTvOpenRule]'dadır: bu çeviride bağlanmış uygulama bir daha açılmaz, hiç bağlanmadıysa en çok üç kez, 30 sn
+     * arayla; TV'de zaten çalışıyorsa `am start` gönderilmez (Windows, Mac ve iPhone'la aynı). Yalnız adres gider; TV yine
+     * ekrandaki kodun onayıyla (/pair) eşleşir. Eskiden telefon Android TV'ye hiç dokunmuyor, TV uygulaması telefonu ağ
+     * taramasıyla bulamazsa "Ağda CouchSubs aranıyor…"da kalıyordu. ADB kapalıysa sessizce vazgeçilir; tarama yolu sürer.
      *
-     * @param open (adres, ADB portu, başlatma parametreleri) → `am start` çıktısı; testlerde sahtesi verilir.
+     * @param open (adres, ADB portu, başlatma parametreleri) → `am start` çıktısı ya da AndroidTvInstaller.ALREADY_RUNNING;
+     *   testlerde sahtesi verilir.
+     * @param sleep en çok verilen süre bekler; "Otomatik açmayı dene" istendiyse true döner (sayaç sıfırlanır).
      */
     internal fun keepAndroidTvOpen(
         tv: InstalledTv, server: String, active: () -> Boolean, connected: () -> Boolean,
-        open: (String, Int, String?) -> String, log: (String) -> Unit = {}, sleep: (Long) -> Unit = { TvOpenRetry.waitOrRetry(it) },
-        onOpenResult: (TvOpenProblem?) -> Unit = {},
+        open: (String, Int, String?) -> String, log: (String) -> Unit = {},
+        sleep: (Long) -> Boolean = { TvOpenRetry.waitOrRetry(it) },
+        onOpenResult: (TvOpenProblem?) -> Unit = {}, now: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+        rule: AndroidTvOpenRule = AndroidTvOpenRule(),
     ) {
         val adbPort = tv.port.takeIf { it > 0 } ?: com.couchsubs.mobile.tv.android.AdbConnection.DEFAULT_PORT
         val params = com.couchsubs.mobile.tv.android.AndroidTvInstaller.launchParams(server)
         var last: String? = null
         while (active()) {
-            if (!connected()) {
+            if (rule.shouldTry(connected(), now())) {
                 val result = try {
-                    "açıldı: " + open(tv.host, adbPort, params).also { onOpenResult(null) }
+                    val output = open(tv.host, adbPort, params)
+                    // Uygulama TV'de çalışırken bulunduysa `am start` gönderilmedi: açılış sayılmaz.
+                    if (output != com.couchsubs.mobile.tv.android.AndroidTvInstaller.ALREADY_RUNNING) rule.opened()
+                    onOpenResult(null)
+                    "açıldı: $output"
                 } catch (error: Exception) {
                     onOpenResult(TvOpenProblem.ofAndroidTv(error))
                     "açılamadı: ${error.message ?: error.javaClass.simpleName}"
@@ -117,7 +129,7 @@ object TvSessionLauncher {
                 if (result != last) log("Android TV (${tv.host}:$adbPort) telefonun adresiyle $result")
                 last = result
             }
-            sleep(ANDROID_RELAUNCH_MS)
+            if (sleep(ANDROID_CHECK_MS)) rule.reset()
         }
     }
 

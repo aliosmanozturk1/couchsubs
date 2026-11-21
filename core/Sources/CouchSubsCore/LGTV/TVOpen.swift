@@ -52,3 +52,71 @@ public enum TVOpenText {
     /// Kurulum sihirbazının son adımı (TV seçildiyse).
     public static let wizardNote = "Every time you start translating, CouchSubs tries to open the TV app by itself. If it doesn't open, open CouchSubs on the TV."
 }
+
+/// Android TV bekçisinin "şimdi açmayı dene" kararı (Mac ve iPhone; Windows'taki AndroidTvOpenRule ve Android telefondaki
+/// AndroidTvOpenRule ile aynı kural).
+///
+/// X'te bildirildi (Android TV 8, çeviri MacBook'tan, beta.74): "TV'den uygulamayı açtığımda çevirili ekran gelip hemen başka
+/// bir ekrana geçiyor, HDMI seçemiyorum". Bekçi TV uygulaması bağlı görünmediği her an, 30 sn'de bir ve sınırsız `am start`
+/// gönderiyordu; kullanıcı CouchSubs'ı kumandadan açınca katmanın bağlantısı kapanıp sayfanınki kurulana kadar geçen birkaç
+/// saniye de buna yetiyordu. TV uygulaması (0.9.54 ve öncesi) parametreli açılışta kayıtlı katman tercihine dönüp ekranı
+/// kapatıyordu; kullanıcı TV'nin kendi girişindeyken de CouchSubs öne çekiliyordu. Artık:
+/// - TV uygulaması bu çeviride bir kez bağlandıysa bekçi onu bir daha açmaz (kullanıcı çıktı ya da başka girişe geçti);
+/// - hiç bağlanmadıysa en çok `maxOpens` kez, aralarında en az `interval` saniye açılır;
+/// - "Otomatik açmayı dene" ve uykudan dönüş (`reset`) sayacı sıfırlar.
+/// Uygulama TV'de zaten çalışıyorsa (ekranı ya da katmanı) `am start` hiç gönderilmez (ADB tarafı `AndroidTVApp.isRunning`
+/// ile bakar) ve bu açılış sayılmaz.
+public struct AndroidTVOpenRule: Sendable {
+    public static let defaultMaxOpens = 3
+    public static let defaultInterval: TimeInterval = 30
+
+    public let maxOpens: Int
+    public let interval: TimeInterval
+    public private(set) var opens = 0
+    public private(set) var everConnected = false
+    private var lastAttempt: TimeInterval?
+
+    public init(maxOpens: Int = AndroidTVOpenRule.defaultMaxOpens, interval: TimeInterval = AndroidTVOpenRule.defaultInterval) {
+        self.maxOpens = maxOpens
+        self.interval = interval
+    }
+
+    /// Bu kontrolde açma denensin mi (`now`: saniye, tekdüze saat). true dönerse deneme zamanı yazılır.
+    public mutating func shouldTry(connected: Bool, now: TimeInterval) -> Bool {
+        if connected { everConnected = true; return false }
+        if everConnected || opens >= maxOpens { return false }
+        if let lastAttempt, now - lastAttempt < interval { return false }
+        lastAttempt = now
+        return true
+    }
+
+    /// `am start` gerçekten gönderildi (uygulama kapalıydı).
+    public mutating func opened() { opens += 1 }
+
+    /// "Otomatik açmayı dene" ya da uykudan dönüş: yeniden en çok `maxOpens` kez, beklemeden.
+    public mutating func reset() {
+        opens = 0
+        everConnected = false
+        lastAttempt = nil
+    }
+}
+
+/// CouchSubs TV Android TV'de çalışıyor mu (ADB kabuğundan; Windows ve Android telefondaki AndroidTvApp ile aynı).
+public enum AndroidTVApp {
+    public static let packageName = "com.couchsubs.tv"
+
+    /// Etkinlik yığınlarındaki kayıtlar (ekran arka planda olsa da yığındadır) ve paketin servisleri (katman).
+    public static let runningCommand = "shell:dumpsys activity activities | grep Hist; dumpsys activity services \(packageName) | grep ServiceRecord"
+
+    /// `runningCommand` çıktısında CouchSubs TV'nin ekranı ya da katman servisi var mı. Çıktı boşsa ya da tanınmıyorsa
+    /// (çok eski TV'de `grep` yok) çalışmıyor sayılır: eski yol, açma sınırı yine geçerli.
+    public static func isRunning(_ output: String) -> Bool {
+        output.split(whereSeparator: \.isNewline).contains { line in
+            ((line.contains("Hist") && line.contains("ActivityRecord{")) || line.contains("ServiceRecord{"))
+                && line.contains("\(packageName)/")
+        }
+    }
+
+    /// Uygulama zaten açıkken açma denemesinin sonucu (günlükte "açıldı: zaten açık").
+    public static let alreadyRunning = "zaten açık"
+}

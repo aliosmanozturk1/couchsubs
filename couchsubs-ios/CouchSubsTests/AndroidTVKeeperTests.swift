@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import CouchSubsCore
 import XCTest
 @testable import CouchSubs
 
@@ -47,13 +48,35 @@ final class AndroidTVKeeperTests: XCTestCase {
         connected.add("1")
         keeper.tick(now: start.addingTimeInterval(120))
         XCTAssertEqual(opened.all.count, 2)
-        // Uygulama öne gelince beklemeden yeniden denenir.
+        // X, Android TV 8 (beta.74): bağlanmış uygulamanın bağlantısı düşünce (kullanıcı kumandadan açtı, başka girişe geçti)
+        // bekçi onu bir daha açmaz; eskiden hemen `am start` gidiyor, ekran katmana atılıyordu.
         connected.add("0")
         keeper.tick(now: start.addingTimeInterval(121))
-        XCTAssertEqual(opened.all.count, 3)
+        keeper.tick(now: start.addingTimeInterval(300))
+        XCTAssertEqual(opened.all.count, 2)
+        // "Otomatik açmayı dene" sayacı sıfırlar.
         keeper.reconnect()
-        keeper.tick(now: start.addingTimeInterval(122))
+        keeper.tick(now: start.addingTimeInterval(301))
+        XCTAssertEqual(opened.all.count, 3)
+    }
+
+    /// Hiç bağlanmayan uygulama en çok üç kez açılır; TV'de zaten çalışıyorsa (`am start` gönderilmedi) açılış sayılmaz.
+    func testNeverConnectedAppIsOpenedAtMostThreeTimesAndRunningOneIsNotCounted() {
+        let opened = Calls()
+        let running = Calls()
+        let keeper = AndroidTVKeeper(host: "192.168.1.120", port: 5555, server: "http://192.168.1.124:8787",
+                                     appConnected: { false }, relaunchInterval: 30,
+                                     open: { _, _, _ in
+                                         opened.add("try")
+                                         return running.all.last == "1" ? AndroidTVApp.alreadyRunning : "Starting"
+                                     }, log: { _ in })
+        let start = Date()
+        running.add("1")
+        for step in 0..<4 { keeper.tick(now: start.addingTimeInterval(Double(step) * 31)) }
         XCTAssertEqual(opened.all.count, 4)
+        running.add("0")
+        for step in 4..<10 { keeper.tick(now: start.addingTimeInterval(Double(step) * 31)) }
+        XCTAssertEqual(opened.all.count, 7)
     }
 
     func testClosedAdbIsSilentAndLoggedOnce() {

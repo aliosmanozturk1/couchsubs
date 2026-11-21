@@ -52,6 +52,21 @@ final class DisplayMode {
         return leftOverlay && start == Start.OVERLAY ? Start.IN_APP : start;
     }
 
+    /**
+     * CouchSubs ekranı açıkken yeniden açıldı (onNewIntent): kayıtlı tercih katmansa katmana geçilsin mi.
+     *
+     * Bilgisayarın ya da telefonun adresiyle gelen açılış (launchParams dolu) ekranı hiç değiştirmez, yalnız adres sayfaya
+     * iletilir. X'te bildirildi (Android TV 8, 0.9.54, Mac beta.74): Mac TV uygulamasını bağlı görmediği birkaç saniyede
+     * adresiyle yeniden açıyordu; kullanıcı katmanı kapatıp CouchSubs'ı kumandadan açmışken bu açılış onu yeniden katmana
+     * atıyor, ekran kapanıyordu ("çevirili ekran gelip hemen başka bir ekrana geçiyor, HDMI seçemiyorum"). Kullanıcı
+     * katmandan çıktıysa (leftOverlay) kumandadan yeniden açılış da katmana atmaz.
+     */
+    static boolean switchOnNewIntent(String launchParams, boolean leftOverlay, String preference, boolean canDrawOverlays) {
+        if (launchParams != null && !launchParams.isEmpty()) return false;
+        if (leftOverlay) return false;
+        return OVERLAY.equals(normalize(preference)) && canDrawOverlays;
+    }
+
     /** Katman servisinin uygulamayı geri açarken bildirdiği neden (bkz. OverlayService). */
     static final String FAILED_PERMISSION = "permission";
     static final String FAILED_WINDOW = "window";

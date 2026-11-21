@@ -62,9 +62,43 @@ class TvSessionLauncherTest {
         var rounds = 0
         TvSessionLauncher.keepAndroidTvOpen(InstalledTv(TvBrand.ANDROID_TV, "192.168.1.120", 41235), "http://192.168.1.124:8787",
             active = { rounds < 4 }, connected = { rounds >= 2 },
-            open = { host, port, params -> opened += "$host:$port $params"; "Starting" }, log = { logged += it }, sleep = { rounds++ })
+            open = { host, port, params -> opened += "$host:$port $params"; "Starting" }, log = { logged += it },
+            sleep = { rounds++; false }, now = { rounds * 30_000L })
         assertEquals(List(2) { """192.168.1.120:41235 {"server":"http://192.168.1.124:8787"}""" }, opened)
         assertEquals(1, logged.size)
+    }
+
+    /**
+     * X, Android TV 8 (Mac beta.74): bağlanmış uygulamanın bağlantısı düşünce (kullanıcı kumandadan açtı, başka girişe geçti)
+     * bekçi onu bir daha açmaz; hiç bağlanmayan en çok üç kez açılır, TV'de zaten çalışıyorsa açılış sayılmaz. "Otomatik
+     * açmayı dene" sayacı sıfırlar.
+     */
+    @Test fun androidTvIsNotReopenedOnceConnectedAndAtMostThreeTimesOtherwise() {
+        var rounds = 0
+        var opens = 0
+        TvSessionLauncher.keepAndroidTvOpen(InstalledTv(TvBrand.ANDROID_TV, "192.168.1.120"), "http://192.168.1.124:8787",
+            active = { rounds < 40 }, connected = { rounds == 3 }, open = { _, _, _ -> opens++; "Starting" },
+            sleep = { rounds++; false }, now = { rounds * 5_000L })
+        assertEquals(1, opens)
+
+        rounds = 0
+        var tries = 0
+        TvSessionLauncher.keepAndroidTvOpen(InstalledTv(TvBrand.ANDROID_TV, "192.168.1.120"), "http://192.168.1.124:8787",
+            active = { rounds < 120 }, connected = { false },
+            open = { _, _, _ -> tries++; if (rounds < 30) com.couchsubs.mobile.tv.android.AndroidTvInstaller.ALREADY_RUNNING else "Starting" },
+            sleep = { rounds++; rounds == 100 }, now = { rounds * 5_000L })
+        // 0-29. turlar (150 sn) uygulama çalışıyor: 5 deneme, sayılmaz; sonra 3 açılış; 100. turda yeniden dene: 3 açılış daha.
+        assertEquals(5 + 3 + 3, tries)
+    }
+
+    @Test fun runningTvAppIsRecognised() {
+        val installer = com.couchsubs.mobile.tv.android.AndroidTvInstaller
+        assertTrue(installer.isRunning("    * Hist #0: ActivityRecord{6c1b2f0 u0 com.couchsubs.tv/.MainActivity t42}"))
+        assertTrue(installer.isRunning("  * ServiceRecord{9f3e2a1 u0 com.couchsubs.tv/.OverlayService}"))
+        assertFalse(installer.isRunning("    * Hist #0: ActivityRecord{2a1d9e1 u0 com.android.tv.launcher/.MainActivity t1}"))
+        assertFalse(installer.isRunning("  mLastPausedActivity: ActivityRecord{6c1b2f0 u0 com.couchsubs.tv/.MainActivity t42}"))
+        assertFalse(installer.isRunning("/system/bin/sh: grep: not found"))
+        assertFalse(installer.isRunning(""))
     }
 
     @Test fun closedAdbOnAndroidTvIsSilentAndLoggedOnce() {
@@ -72,7 +106,8 @@ class TvSessionLauncherTest {
         var rounds = 0
         TvSessionLauncher.keepAndroidTvOpen(InstalledTv(TvBrand.ANDROID_TV, "192.168.1.120"), "http://192.168.1.124:8787",
             active = { rounds < 3 }, connected = { false },
-            open = { _, port, _ -> assertEquals(5555, port); throw java.io.IOException("ADB kapalı") }, log = { logged += it }, sleep = { rounds++ })
+            open = { _, port, _ -> assertEquals(5555, port); throw java.io.IOException("ADB kapalı") }, log = { logged += it },
+            sleep = { rounds++; false }, now = { rounds * 30_000L })
         assertEquals(listOf("Android TV (192.168.1.120:5555) telefonun adresiyle açılamadı: ADB kapalı"), logged)
     }
 
@@ -84,7 +119,8 @@ class TvSessionLauncherTest {
             com.couchsubs.mobile.tv.android.AndroidInstallException(com.couchsubs.mobile.tv.android.AndroidInstallError.NOT_APPROVED), null))
         TvSessionLauncher.keepAndroidTvOpen(InstalledTv(TvBrand.ANDROID_TV, "192.168.1.120"), "http://192.168.1.124:8787",
             active = { rounds < 3 }, connected = { false },
-            open = { _, _, _ -> failures.removeFirst()?.let { throw it }; "Starting" }, sleep = { rounds++ }, onOpenResult = { results += it })
+            open = { _, _, _ -> failures.removeFirst()?.let { throw it }; "Starting" }, sleep = { rounds++; false },
+            onOpenResult = { results += it }, now = { rounds * 30_000L })
         assertEquals(listOf(TvOpenProblem.DEBUG_OFF, TvOpenProblem.DEBUG_NOT_APPROVED, null), results)
     }
 

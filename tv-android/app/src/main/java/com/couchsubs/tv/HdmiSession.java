@@ -52,6 +52,12 @@ final class HdmiSession {
         open = false;
     }
 
+    /**
+     * TvView girişi şu an tutuyor mu. Ekran yalnız duraklatılıp (üstte bildirim) bırakılmadan geri geldiyse giriş yeniden
+     * açılmaz; açılırsa görüntü boş yere bir an kesilir (#794).
+     */
+    boolean held() { return open; }
+
     /** Son açılan giriş, yoksa null. */
     String input() { return input; }
 }

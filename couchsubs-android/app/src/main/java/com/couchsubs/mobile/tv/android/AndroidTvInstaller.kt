@@ -135,6 +135,24 @@ class AndroidTvInstaller(
         }
 
         /**
+         * CouchSubs TV çalışıyor mu: etkinlik yığınlarındaki kayıtlar (ekran arka planda olsa da yığındadır) ve paketin
+         * servisleri (katman). Windows'taki RunningCommand ve Mac/iPhone'daki AndroidTVApp.runningCommand ile aynı.
+         */
+        const val RUNNING_COMMAND = "shell:dumpsys activity activities | grep Hist; dumpsys activity services $PACKAGE_NAME | grep ServiceRecord"
+
+        /** Uygulama zaten açıkken [open]'ın döndürdüğü sonuç (`am start` gönderilmedi). */
+        const val ALREADY_RUNNING = "zaten açık"
+
+        /**
+         * [RUNNING_COMMAND] çıktısında CouchSubs TV'nin ekranı ya da katman servisi var mı. Boş ya da tanınmayan çıktı (çok
+         * eski TV'de `grep` yok) çalışmıyor sayılır: eski yol, bekçinin açma sınırı yine geçerli.
+         */
+        fun isRunning(output: String): Boolean = output.lineSequence().any { line ->
+            ((line.contains("Hist") && line.contains("ActivityRecord{")) || line.contains("ServiceRecord{")) &&
+                line.contains("$PACKAGE_NAME/")
+        }
+
+        /**
          * Yalnız sunucu adresi gider; erişim anahtarı gitmez (Android TV kullanıcı onaylı eşleştirmeyle bağlanır). Adres
          * tırnak ya da ters bölü içeriyorsa null.
          */
@@ -195,12 +213,16 @@ class AndroidTvInstaller(
 
     /**
      * Kurulu uygulamayı telefonun adresiyle açar (kurmadan, sessizce): TV telefonu ağda aramadan bağlanır. TV bu telefonu
-     * onaylamamışsa onay beklenmez, NOT_APPROVED ile vazgeçilir.
+     * onaylamamışsa onay beklenmez, NOT_APPROVED ile vazgeçilir. Uygulama TV'de zaten çalışıyorsa (ekranı önde ya da
+     * arkada, ya da katmanı) `am start` gönderilmez, [ALREADY_RUNNING] döner: `am start` çalışan uygulamayı öne çekiyor,
+     * TV uygulaması da parametreli açılışta katmana dönüp ekranı kapatıyordu (X, Android TV 8, beta.74; Windows ve iPhone'la
+     * aynı).
      */
     fun open(params: String? = launchParams): String {
         val key = adbKey()
         return connector(key) { throw AndroidInstallException(AndroidInstallError.NOT_APPROVED, "açılışta onay beklenmez") }.use { adb ->
-            adb.run(startCommand(params)).trim()
+            val running = try { adb.run(RUNNING_COMMAND) } catch (_: IOException) { "" }
+            if (isRunning(running)) ALREADY_RUNNING else adb.run(startCommand(params)).trim()
         }
     }
 
