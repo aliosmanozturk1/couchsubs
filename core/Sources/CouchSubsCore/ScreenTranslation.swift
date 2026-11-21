@@ -552,15 +552,17 @@ public enum ScreenTranslation {
         }
     }
 
-    /// Yalnız özel adlardan oluşan yazı ("JASON & LUCIA", "Bonnie & Clyde"): "&" ile bağlı, her biri bir iki sözcüklük,
-    /// büyük harfle başlayan adlar. Çevirmene gitmez; çevirisi aslıdır (kutusu çizilmez, özgün yazı görünür kalır).
+    /// Yalnız özel adlardan oluşan yazı ("JASON & LUCIA", "Bonnie & Clyde"): "&" ile bağlı, her biri bir iki sözcüklük
+    /// (BÜYÜK HARFLİ yazıda tek sözcüklük), büyük harfle başlayan adlar. Çevirmene gitmez; çevirisi aslıdır (kutusu çizilmez, özgün yazı görünür kalır).
     public static func keepsNames(_ text: String) -> Bool {
         let plain = IconText.plain(text).trimmingCharacters(in: .whitespacesAndNewlines)
         let parts = plain.components(separatedBy: " & ")
         guard parts.count >= 2 else { return false }
+        // BÜYÜK HARFLİ yazıda her ad tek sözcük: "JASON & LUCIA MAP" (sekmeler tek satır okununca) ad değildir.
+        let most = TextStyleSampler.isUpper(plain) ? 1 : 2
         return parts.allSatisfy { part in
             let words = part.split(separator: " ")
-            return (1...2).contains(words.count) && words.allSatisfy { word in
+            return (1...most).contains(words.count) && words.allSatisfy { word in
                 word.filter(\.isLetter).count >= 2 && word.allSatisfy { $0.isLetter || "'’-.".contains($0) }
                     && word.first?.isUppercase == true && !SpeakerNames.notNames.contains(word.lowercased())
             }

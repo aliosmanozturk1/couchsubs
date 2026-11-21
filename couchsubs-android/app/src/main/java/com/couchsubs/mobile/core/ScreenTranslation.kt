@@ -561,9 +561,11 @@ object ScreenTranslation {
     fun keepsNames(text: String): Boolean {
         val parts = IconText.plain(text).trim().split(" & ")
         if (parts.size < 2) return false
+        // BÜYÜK HARFLİ yazıda her ad tek sözcük: "JASON & LUCIA MAP" (sekmeler tek satır okununca) ad değildir.
+        val most = if (TextStyleSampler.isUpper(IconText.plain(text))) 1 else 2
         return parts.all { part ->
             val words = part.split(' ').filter { it.isNotEmpty() }
-            words.size in 1..2 && words.all { word ->
+            words.size in 1..most && words.all { word ->
                 word.count { it.isLetter() } >= 2 && word.all { it.isLetter() || it in "'’-." } &&
                     word.first().isUpperCase() &&
                     word.lowercase() !in com.couchsubs.mobile.translation.SpeakerNameGuard.NOT_NAMES

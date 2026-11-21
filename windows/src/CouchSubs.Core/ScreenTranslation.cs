@@ -619,16 +619,18 @@ public static class ScreenTranslation
 
     /// <summary>
     /// Yalnız özel adlardan oluşan yazı ("JASON &amp; LUCIA", "Bonnie &amp; Clyde"): "&amp;" ile bağlı, her biri bir iki
-    /// sözcüklük, büyük harfle başlayan adlar. Çevirmene gitmez; çevirisi aslıdır (kutusu çizilmez, özgün yazı görünür kalır).
+    /// sözcüklük (BÜYÜK HARFLİ yazıda tek sözcüklük), büyük harfle başlayan adlar. Çevirmene gitmez; çevirisi aslıdır (kutusu çizilmez, özgün yazı görünür kalır).
     /// </summary>
     public static bool KeepsNames(string text)
     {
         var parts = IconText.Plain(text).Trim().Split(" & ");
         if (parts.Length < 2) return false;
+        // BÜYÜK HARFLİ yazıda her ad tek sözcük: "JASON & LUCIA MAP" (sekmeler tek satır okununca) ad değildir.
+        var most = TextStyleSampler.IsUpper(IconText.Plain(text)) ? 1 : 2;
         return parts.All(part =>
         {
             var words = part.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            return words.Length is >= 1 and <= 2 && words.All(word =>
+            return words.Length >= 1 && words.Length <= most && words.All(word =>
                 word.Count(char.IsLetter) >= 2 && word.All(c => char.IsLetter(c) || "'’-.".Contains(c))
                 && char.IsUpper(word[0]) && !SpeakerNameGuard.NotNames.Contains(word.ToLowerInvariant()));
         });

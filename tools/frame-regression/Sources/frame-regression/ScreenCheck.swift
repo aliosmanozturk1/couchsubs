@@ -92,7 +92,15 @@ extension Runner {
                 clock += RegionWatcher.autoIntervalMs
             }
             autoUnits = areas.flatMap { server.current[$0.id] ?? [] }
-            notes += Self.judge(autoUnits, calls: auto.calls.map(\.source), expected, image).map { "otomatik: " + $0 }
+            let autoNotes = Self.judge(autoUnits, calls: auto.calls.map(\.source), expected, image)
+            notes += autoNotes.map { "otomatik: " + $0 }
+            // Kalan karede alanlar ve çizilenler de yazılır (CI'daki Vision okuması yereldekinden farklı olabilir).
+            if !autoNotes.isEmpty {
+                notes.append("otomatik alanlar: " + areas.map { String(format: "[%.3f %.3f %.3f %.3f]", $0.region.left, $0.region.top,
+                                                                                 $0.region.right, $0.region.bottom) }.joined(separator: " "))
+                notes.append("otomatik çizilen: " + autoUnits.map(Self.describe).joined(separator: " | "))
+                notes.append("otomatik okunan: " + auto.calls.map(\.source).joined(separator: " | "))
+            }
         }
         // 3) Oyunun hazır alanları (GTA 6: sol üstte yardım kutusu, sağda mesaj kartı): alan yazının bir kısmını keser;
         // her bloğun bulunması beklenmez, ama birleşme, fotoğrafı örtme, siyah kutu ve ad çevirisi olmamalı.
