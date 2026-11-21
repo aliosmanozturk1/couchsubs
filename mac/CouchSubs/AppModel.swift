@@ -544,6 +544,9 @@ final class AppModel: ObservableObject {
         didSet {
             // Sihirbaz bitince ana ekran TV'siz de açılsın.
             if step == .done, oldValue != .done { store.save(true, for: StoreKey.setupComplete) }
+            guard step != oldValue else { return }
+            usage.record(.screen(step.screenName))
+            if step == .done, !demoMode { usage.record(.onboardingDone(target: settings.output.rawValue, console: usageConsole)) }
         }
     }
     @Published var accountId: Data?
@@ -591,6 +594,14 @@ final class AppModel: ObservableObject {
                 server.sendStyle(settings.style)
             }
             if settings.autoScreenText != oldValue.autoScreenText { showsAutoScreenTextNotice = false }
+            if settings.usageData != oldValue.usageData {
+                usage.setEnabled(settings.usageData)
+                // Ayarı değiştiren notu görmüştür. didSet içindeki atama didSet'i yeniden çağırmaz; kayıt burada yinelenir.
+                if !settings.usageNoticeSeen {
+                    settings.usageNoticeSeen = true
+                    if let data = try? JSONEncoder().encode(settings) { defaults.set(data, forKey: StoreKey.settings) }
+                }
+            }
             if settings.appearance != oldValue.appearance { settings.appearance.apply() }
             let windowAppChanged = settings.frameSource == .remotePlayWindow && settings.remotePlayApp != oldValue.remotePlayApp
             let xboxAudioChanged = isXbox && settings.xboxAudioOnDevice != oldValue.xboxAudioOnDevice
@@ -650,7 +661,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var sessionStartedAt: Date?
     /// Son satırın ölçümleri (yazı tanıma, çeviri, gecikme, güven).
     @Published var lastMetrics: LineMetrics?
-    @Published var showHistory = false
+    @Published var showHistory = false {
+        didSet { if showHistory, !oldValue { usage.record(.screen("history")) } }
+    }
     /// Geçmişin yazıldığı dosya (testlerde nil: hiçbir şey yazılmaz).
     private var historyFile: URL?
     private let historyQueue = DispatchQueue(label: "history.json", qos: .utility)
@@ -674,7 +687,9 @@ final class AppModel: ObservableObject {
         set { framePreview.image = newValue }
     }
     @Published var showAbout = false
-    @Published var showSettings = false
+    @Published var showSettings = false {
+        didSet { if showSettings, !oldValue { usage.record(.screen("settings")) } }
+    }
     /// Ayarlar açılınca gösterilen bölüm (ana ekrandaki "Çeviri" satırı Çeviri'yi açar); sayfa kapanınca başa döner.
     @Published var settingsSection: SettingsSection = .appearance
 
@@ -719,6 +734,12 @@ final class AppModel: ObservableObject {
     /// Ayarlarda listelenen paketler (açılışta arka planda yüklenince dolar).
     @Published var installedPacks: [GamePackLibrary.Info] = []
     private let pool: LinePool
+    /// Kullanım verisi (Ayarlar › Kullanım verisi; bkz. `UsageStats`). Ölçüm kimliği derlemede yoksa, Mac App Store
+    /// sürümünde ve testlerde hiçbir şey göndermez.
+    let usage: UsageStats
+    private var usageTimer: Task<Void, Never>?
+    /// Bu çeviri oturumunun başlangıcı, gösterilen satırlar, paketten gelenler ve satır gelen paketler (kullanım verisi).
+    private var usageSession: (started: Date, lines: Int, packLines: Int, packs: Set<String>)?
     /// Oynanan oyun: PS5'in bildirdiği, kullanıcının seçtiği ya da paketten tanınan (havuza giden satırlar bu oyunla gider).
     let gameChoice: GameChoice
     /// Oyuna göre alanlar: oyun değişince kayıtlı alanları uygular ya da önerir (bkz. CouchSubsCore GameAreas).
@@ -839,6 +860,9 @@ final class AppModel: ObservableObject {
             }
         }
         pool = LinePool(file: poolFile, app: AppIdentity.version, platform: "mac", enabled: curated.sharePool && !testing)
+        usage = UsageStats(config: testing ? nil : UsageMeasurement.config(), enabled: curated.usageData,
+                           idFile: poolFile.deletingLastPathComponent().appendingPathComponent("usage-id"),
+                           appVersion: AppIdentity.version, osVersion: UsageMeasurement.osVersion, platform: "mac")
         probesGame = !testing
         gameChoice = GameChoice(defaults: defaults)
         if !testing {
@@ -891,6 +915,7 @@ final class AppModel: ObservableObject {
             startPool()
             startPackUpdates()
         }
+        usage.record(.screen(step.screenName))
     }
 
     /// Paket sunucusunun adresi yapılandırıldıysa (Info.plist `CSPacksBaseURL`) açılışta ve günde bir bakılır; PS5'te
@@ -1046,6 +1071,9 @@ final class AppModel: ObservableObject {
         }
 
         server.onClientsChanged = { [weak self] count in
+            if let self, self.tvClients == 0, count > 0, self.isRunning {
+                self.usage.record(.tvConnected(count: count, brand: self.tv?.brand.rawValue ?? "unknown"))
+            }
             self?.tvClients = count
             if count > 0 { self?.tvOpenProblem = nil }
             // TV uygulaması bağlandı: bu Samsung TV'de kurulu olduğu artık biliniyor (bekçi listeye bakmadan açar).
@@ -1064,10 +1092,18 @@ final class AppModel: ObservableObject {
     /// Beş dakikada bir ve uygulama kapanırken havuz kuyruğu gönderilir; sunucuya ulaşılamazsa sonra yeniden denenir.
     private func startPool() {
         let pool = self.pool
+        let usage = self.usage
         poolTimer = Task.detached(priority: .background) {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(LinePool.flushInterval))
                 await pool.flush()
+            }
+        }
+        // Kullanım verisi dakikada bir, arka planda; ağ hatasında sonraki tura kalır.
+        usageTimer = Task.detached(priority: .background) {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(UsageStats.flushInterval))
+                await usage.flush()
             }
         }
         terminateObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
@@ -1087,6 +1123,7 @@ final class AppModel: ObservableObject {
             let done = DispatchSemaphore(value: 0)
             Task.detached {
                 await pool.flush()
+                await usage.flush()
                 done.signal()
             }
             _ = done.wait(timeout: .now() + 3)
@@ -1905,6 +1942,13 @@ final class AppModel: ObservableObject {
         keepAwake()
         server.pairing.setSession(true)
         isRunning = true
+        if !settings.usageNoticeSeen { settings.usageNoticeSeen = true }
+        if !demoMode {
+            usageSession = (Date(), 0, 0, [])
+            usage.record(.sessionStart(target: settings.output.rawValue,
+                                       engine: onlineTranslationActive ? settings.onlineEngine.rawValue : "free",
+                                       packs: settings.gamePacks, console: usageConsole))
+        }
         if screenHotkey == nil { screenHotkey = GlobalHotkey(.translateScreen) { [weak self] in self?.translateScreen() } }
         screenHotkey?.enabled = true
         updateClickThroughHotkey()
@@ -2127,6 +2171,7 @@ final class AppModel: ObservableObject {
             self?.updateSubtitleOffTip()
             self?.addToHistory(source: source, translation: translation, origin: pipeline?.lastOrigin == "paket" ? .pack : .engine)
             if let self { self.gameChoice.noteLine(fromPack: pipeline?.lastOrigin == "paket", packs: self.packs) }
+            self?.countUsageLine(fromPack: pipeline?.lastOrigin == "paket")
             if let box = pipeline?.lastBox { self?.lastSubtitleBox = box }
         }
         pipeline.onMetrics = { [weak self] metrics in self?.lastMetrics = metrics }
@@ -2370,6 +2415,11 @@ final class AppModel: ObservableObject {
     /// Çeviriyi durdurur. `closingTVApp`: kullanıcı durdurdu, TV uygulaması da kapanır (#268); ayar değişikliği gibi
     /// iç yeniden başlatmalarda `false` verilir, TV açık kalır ve ardından gelen `start()` aynı bağlantıyı kullanır.
     func stop(closingTVApp: Bool = true) {
+        if let usageSession {
+            usage.record(.sessionStop(seconds: Int(Date().timeIntervalSince(usageSession.started)), lines: usageSession.lines,
+                                      packLines: usageSession.packLines))
+            self.usageSession = nil
+        }
         session?.stop()
         session = nil
         updateGameProbe(connected: false)
@@ -2414,6 +2464,23 @@ final class AppModel: ObservableObject {
         updateClickThroughHotkey()
         overlayHide()
     }
+
+    /// Gösterilen satır kullanım verisinin oturum sayımına girer; paketten geldiyse paketi oturumda bir kez bildirilir.
+    private func countUsageLine(fromPack: Bool) {
+        guard var current = usageSession else { return }
+        current.lines += 1
+        if fromPack {
+            current.packLines += 1
+            if let pack = packs.searchScope, current.packs.insert(pack).inserted { usage.record(.packHit(pack)) }
+        }
+        usageSession = current
+    }
+
+    /// Kullanım verisindeki konsol türü.
+    var usageConsole: String { isXbox ? "xbox" : "ps5" }
+
+    /// İlk açılıştaki kullanım verisi notu: ölçüm bu derlemede varsa ve not daha önce görülmediyse.
+    var showsUsageNotice: Bool { usage.isConfigured && !settings.usageNoticeSeen }
 
     private func sessionStateChanged(_ state: SessionState) {
         // Altyazı günlüğünde durumun türü ve kopmanın nedeni (adres ve ayrıntı remoteplay.log'da). Neden eskiden

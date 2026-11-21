@@ -56,6 +56,12 @@ public sealed class LiveServices : IAppServices
     public LinePool? Pool { get; } = new(Path.Combine(AppPaths.Data, "pool.json"),
         AppVersion.Current(System.Reflection.Assembly.GetEntryAssembly() ?? typeof(LiveServices).Assembly));
     public string? HistoryFile { get; } = Path.Combine(AppPaths.Data, "history.json");
+    // Kullanım verisi: ölçüm kimliği ve API sırrı derlemeden (CouchSubsGaMeasurementId, CouchSubsGaApiSecret); yoksa kapalı.
+    public UsageStats? Usage { get; } = UsageStats.Config.FromBuild() is { } usage
+        ? new UsageStats(usage, Path.Combine(AppPaths.Data, "usage-id"),
+            AppVersion.Current(System.Reflection.Assembly.GetEntryAssembly() ?? typeof(LiveServices).Assembly),
+            "Windows " + Environment.OSVersion.Version)
+        : null;
     public Task<RunningGame?> RunningGameAsync(string host) => ConsoleDiscovery.RunningGameAsync(host);
     // Paket sunucusu yapılandırıldıysa (COUCHSUBS_PACKS_URL ya da derlemedeki CouchSubsPacksUrl) indirilen paketler
     // kullanıcının paket klasörüne gider; adres yoksa kapalı.

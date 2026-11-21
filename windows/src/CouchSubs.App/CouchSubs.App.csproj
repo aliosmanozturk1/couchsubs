@@ -32,6 +32,13 @@
     <AssemblyMetadata Include="CouchSubsPacksFallbackUrl" Value="$(CouchSubsPacksFallbackUrl)" />
   </ItemGroup>
 
+  <!-- Kullanım verisi (GA4 Measurement Protocol): `-p:CouchSubsGaMeasurementId=G-… -p:CouchSubsGaApiSecret=…` ile verilir
+       (CI: GA_MEASUREMENT_ID, GA_API_SECRET sırları); boşsa ölçüm tamamen kapalı (UsageStats). -->
+  <ItemGroup>
+    <AssemblyMetadata Include="CouchSubsGaMeasurementId" Value="$(CouchSubsGaMeasurementId)" />
+    <AssemblyMetadata Include="CouchSubsGaApiSecret" Value="$(CouchSubsGaApiSecret)" />
+  </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Assets\logo.png" />
     <!-- ShellWindow.xaml pencere simgesi olarak bunu okur; ApplicationIcon yalnız exe simgesidir. -->

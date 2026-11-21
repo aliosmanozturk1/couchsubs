@@ -92,6 +92,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private string? dubbingError;
     private IReadOnlyList<GamePackLibrary.Info> installedPacks = [];
     private Timer? poolTimer;
+    private Timer? usageTimer;
+    /// <summary>Bu çeviri oturumunun kullanım verisi sayımı; çeviri yokken null.</summary>
+    private UsageSession? usageSession;
     /// <summary>Bağlıyken iki dakikada bir PS5'e çalışan oyunu sorar (havuza giden satırlar oyunla gider).</summary>
     private CancellationTokenSource? gameProbe;
     public static readonly TimeSpan GameProbeInterval = TimeSpan.FromMinutes(2);
@@ -275,6 +278,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             ClearFirewallPrompt();
             // Sihirbaz bitince ana ekran TV'siz de açılsın.
             if (value == OnboardingStep.Done) store.Save(StoreKeys.SetupComplete, true);
+            services.Usage?.Record(UsageStats.Event.Screen(ScreenName(value)));
+            if (value == OnboardingStep.Done && !demoMode)
+                services.Usage?.Record(UsageStats.Event.OnboardingDone(UsageTarget, UsageConsole));
         }
     }
     public int StepCount => (int)OnboardingStep.Done - (consoleKind == GameConsoleKind.Xbox ? 1 : 0);
@@ -550,6 +556,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         set
         {
             value = value with { CpuTranslationThreads = CpuThreadOptions.Normalize(value.CpuTranslationThreads, Environment.ProcessorCount) };
+            // Kullanım verisi ayarı değiştiyse ilk açılış notu artık gerekmez.
+            if (value.UsageData != settings.UsageData) value = value with { UsageNoticeSeen = true };
             var old = settings;
             if (!Set(ref settings, value, [nameof(UsesFreeGemini)])) return;
             settingsStore.Save(value);
@@ -563,6 +571,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             if ((old.MisreadWaitMs != value.MisreadWaitMs || old.PartialWaitMs != value.PartialWaitMs) && pipeline is not null) ApplyWaits(pipeline);
             if (old.SharePool != value.SharePool) services.Pool?.SetEnabled(value.SharePool);
             if (old.AutoScreenText != value.AutoScreenText) ShowsAutoScreenTextNotice = false;
+            if (old.UsageData != value.UsageData) services.Usage?.SetEnabled(value.UsageData);
+            if (old.UsageNoticeSeen != value.UsageNoticeSeen) Changed(nameof(ShowsUsageNotice));
             if (old.TranslationDevice != value.TranslationDevice)
             {
                 GpuFallbackWarning = false;
@@ -1746,6 +1756,13 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             sleep.Begin(KeepsDisplayOn);
             IsRunning = true;
             UpdateTroubleClocks();
+            if (!settings.UsageNoticeSeen) Settings = settings with { UsageNoticeSeen = true };
+            if (!demoMode)
+            {
+                usageSession = new UsageSession();
+                services.Usage?.Record(UsageStats.Event.SessionStart(UsageTarget,
+                    OnlineTranslationActive ? settings.OnlineEngine.ToString().ToLowerInvariant() : "free", settings.GamePacks, UsageConsole));
+            }
         }
         catch (Exception error)
         {
@@ -1938,6 +1955,11 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Oturumu bitirir; TV uygulamasına çıkış gönderildiyse mesajın yazılmasını bekleyen görevi döner.</summary>
     private Task StopSession(bool closeTvApp)
     {
+        if (usageSession is { } finished)
+        {
+            usageSession = null;
+            services.Usage?.Record(UsageStats.Event.SessionStop((int)(DateTime.UtcNow - finished.Started).TotalSeconds, finished.Lines, finished.PackLines));
+        }
         server.Pairing.SetSession(false);
         var stoppedKeeper = keeper;
         keeper = null;
@@ -2072,6 +2094,12 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         server.Dispose();
         poolTimer?.Dispose();
         packTimer?.Dispose();
+        usageTimer?.Dispose();
+        if (services.Usage is { } usage)
+        {
+            try { usage.FlushAsync().Wait(TimeSpan.FromSeconds(2)); }
+            catch (AggregateException) { }
+        }
         // Kapanırken kuyruk bir kez daha gönderilir; en çok birkaç saniye beklenir.
         if (services.Pool is { } pool)
         {
@@ -2292,6 +2320,70 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Paketler yalnız İngilizce→Türkçede ve ayar açıkken kullanılır.</summary>
     private bool PacksActive => settings.GamePacks && settings.SourceLanguage == "en" && settings.TargetLanguage == "tr" && services.GamePacks is not null;
 
+    /// <summary>Kullanım verisi dakikada bir, arka planda gönderilir; ağ hatasında sonraki tura kalır.</summary>
+    private void StartUsage()
+    {
+        if (services.Usage is not { } usage) return;
+        usage.SetEnabled(settings.UsageData);
+        usage.Record(UsageStats.Event.Screen(ScreenName(step)));
+        usageTimer = new Timer(_ => _ = usage.FlushAsync(), null, UsageStats.FlushInterval, UsageStats.FlushInterval);
+    }
+
+    /// <summary>Kullanım verisinde ekranın adı (Mac ile aynı); kurulum bitince ana ekran.</summary>
+    public static string ScreenName(OnboardingStep step) => step switch
+    {
+        OnboardingStep.Welcome => "welcome",
+        OnboardingStep.SecondAccount => "second_account",
+        OnboardingStep.PsnLogin => "psn_login",
+        OnboardingStep.Console => "console",
+        OnboardingStep.Tv => "tv",
+        OnboardingStep.Translation => "translation",
+        OnboardingStep.Test => "test",
+        OnboardingStep.BetterTranslation => "better_translation",
+        _ => "home",
+    };
+
+    /// <summary>Ayarlar, geçmiş gibi ayrı pencereler açıldı (kullanım verisinde ekran).</summary>
+    public void NoteScreen(string name) => services.Usage?.Record(UsageStats.Event.Screen(name));
+
+    /// <summary>Kullanım verisindeki altyazı hedefi (tv, computer, both) ve konsol türü (ps5, xbox).</summary>
+    private string UsageTarget => settings.Output.ToString().ToLowerInvariant();
+    private string UsageConsole => IsXbox ? "xbox" : "ps5";
+
+    /// <summary>Kullanım verisindeki TV markası (Mac ile aynı adlar).</summary>
+    public static string UsageBrand(TvBrand? brand) => brand switch
+    {
+        TvBrand.Lg => "lg",
+        TvBrand.Samsung => "samsung",
+        TvBrand.AndroidTv => "androidTV",
+        _ => "unknown",
+    };
+
+    /// <summary>İlk açılıştaki kullanım verisi notu: ölçüm bu derlemede varsa ve not daha önce görülmediyse.</summary>
+    public bool ShowsUsageNotice => services.Usage is { IsConfigured: true } && !settings.UsageNoticeSeen;
+    /// <summary>Ayarlardaki "Kullanım verisi" anahtarı yalnız ölçüm bu derlemede varsa görünür.</summary>
+    public bool UsageConfigured => services.Usage is { IsConfigured: true };
+
+    /// <summary>Gösterilen satır kullanım verisinin oturum sayımına girer; paketten geldiyse paketi oturumda bir kez bildirilir.</summary>
+    private void CountUsageLine(bool fromPack, string? pack)
+    {
+        if (usageSession is not { } current) return;
+        current.Lines++;
+        if (fromPack)
+        {
+            current.PackLines++;
+            if (pack is not null && current.Packs.Add(pack)) services.Usage?.Record(UsageStats.Event.PackHit(pack));
+        }
+    }
+
+    private sealed class UsageSession
+    {
+        public DateTime Started { get; } = DateTime.UtcNow;
+        public int Lines { get; set; }
+        public int PackLines { get; set; }
+        public HashSet<string> Packs { get; } = [];
+    }
+
     private void StartPacksAndPool()
     {
         // Paketler ilk altyazıyı bekletmesin diye açılışta arka planda yüklenir.
@@ -2302,6 +2394,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 post(() => InstalledPacks = packs.Packs);
             });
         StartPackUpdates();
+        StartUsage();
         if (services.Pool is not { } pool) return;
         pool.SetEnabled(settings.SharePool);
         // Beş dakikada bir gönderilir; sunucuya ulaşılamazsa kuyruk diskte bekler, sonra yeniden denenir.
@@ -2492,6 +2585,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             // Satır yalnız tek bir pakette bulunduysa o pakete bir oy: son 20 satırın 5'i aynı paketten gelince oyun odur.
             var hit = services.GamePacks?.TakeDistinctiveHit();
             var recognised = gameSense.NoteLine(origin == LineOrigin.Pack ? hit?.Id : null, origin == LineOrigin.Pack ? hit?.Title : null);
+            var pack = origin == LineOrigin.Pack ? services.GamePacks?.SearchScope : null;
             post(() =>
             {
                 if (recognised)
@@ -2505,6 +2599,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 UpdateSubtitleOffTip();
                 if (box is not null) lastSubtitleBox = box;
                 AddToHistory(source, translation, origin);
+                CountUsageLine(origin == LineOrigin.Pack, pack);
             });
         };
         // Model bu arada inmiş olabilir; her çeviri sonucu durumu günceller.
@@ -3095,6 +3190,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     {
         // TV uygulaması bağlandı: bu TV'de kurulu olduğu artık biliniyor (liste "yok" demiş olsa da).
         if (count > 0 && tv is { Brand: TvBrand.Samsung } connected) SamsungAppKnowledge.Mark(connected.Host);
+        if (tvClients == 0 && count > 0 && isRunning) services.Usage?.Record(UsageStats.Event.TvConnected(count, UsageBrand(tv?.Brand)));
         TvClients = count;
         if (count > 0) OpenProblem = null;
         UpdateTroubleClocks();

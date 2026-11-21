@@ -394,6 +394,10 @@ public sealed record UserSettings
     public bool SharePool { get; init; } = LinePool.EnabledByDefault;
     /// <summary>Oynanan oyun paketle tanınmazsa çeviri başladıktan iki dakika sonra bir kez sorulur (bkz. <see cref="GameSense"/>).</summary>
     public bool AskGame { get; init; } = true;
+    /// <summary>Kullanım verisi: telefonlardaki gibi kimliğe bağlanmayan kullanım istatistikleri gönderilir (bkz. <see cref="UsageStats"/>).</summary>
+    public bool UsageData { get; init; } = UsageStats.EnabledByDefault;
+    /// <summary>Kullanım verisi bilgi notu gösterildi (ilk açılışta bir kez). Eski ayar dosyalarında yoktur (false).</summary>
+    public bool UsageNoticeSeen { get; init; }
     /// <summary>Altyazıdaki konuşan adı ("ARTHUR: …") çeviride gösterilir; kapalıysa yalnız Türkçe cümle görünür.</summary>
     public bool ShowSpeakerNames { get; init; } = true;
     /// <summary>
@@ -802,6 +806,8 @@ public interface IAppServices
     PackPartial? FindPartialInPacks(string text) => null;
     /// <summary>Ortak havuz; testlerde null (hiçbir şey gönderilmez).</summary>
     LinePool? Pool => null;
+    /// <summary>Kullanım verisi (GA4 Measurement Protocol); derlemede kimlik yoksa ve testlerde null (hiçbir şey gönderilmez).</summary>
+    UsageStats? Usage => null;
     /// <summary>PS5'te o an çalışan oyun (yalnız bağlı PS5'e keşif sorusu); bilinmiyorsa ve testlerde null.</summary>
     Task<RunningGame?> RunningGameAsync(string host) => Task.FromResult<RunningGame?>(null);
     /// <summary>Paket sunucusundan yeni paketler; adres yapılandırılmadıysa ve testlerde null.</summary>

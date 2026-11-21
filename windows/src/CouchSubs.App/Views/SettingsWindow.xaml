@@ -345,6 +345,19 @@
                                 </StackPanel>
                             </DockPanel>
                             <Separator Margin="0" />
+                            <!-- Kullanım verisi: telefonlardaki Profil › Kullanım verisi ile aynı ad ve açıklama; ölçüm yoksa gizli. -->
+                            <StackPanel x:Name="UsageDataRow">
+                                <DockPanel MinHeight="{DynamicResource size.buttonLarge}" Margin="0,8">
+                                    <CheckBox x:Name="UsageData" DockPanel.Dock="Right" Margin="12,0,0,0" VerticalAlignment="Center"
+                                              AutomationProperties.Name="{t:T 'Usage data'}" Checked="OnUsageData" Unchecked="OnUsageData" />
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{t:T 'Usage data'}" Style="{StaticResource HeadlineText}" />
+                                        <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Text="{t:T 'Error and usage statistics'}" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <Separator Margin="0" />
+                            </StackPanel>
                             <DockPanel MinHeight="{DynamicResource size.buttonLarge}" Margin="0,8">
                                 <CheckBox x:Name="AskGame" DockPanel.Dock="Right" Margin="12,0,0,0" VerticalAlignment="Center"
                                           AutomationProperties.Name="{t:T 'Ask which game I\'m playing'}" Checked="OnAskGame" Unchecked="OnAskGame" />

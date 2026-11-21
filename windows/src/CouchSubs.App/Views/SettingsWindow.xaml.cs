@@ -42,6 +42,7 @@ public partial class SettingsWindow : Window
     internal SettingsWindow(AppController controller)
     {
         this.controller = controller;
+        controller.NoteScreen("settings");
         InitializeComponent();
         InstalledVersion.Text = Localizer.Current.Format("Installed version: %@", AppVersion.Current(typeof(SettingsWindow).Assembly));
         var settings = controller.Settings;
@@ -102,6 +103,9 @@ public partial class SettingsWindow : Window
         ShowEngine();
         GamePacks.IsChecked = settings.GamePacks;
         SharePool.IsChecked = settings.SharePool;
+        UsageData.IsChecked = settings.UsageData;
+        // Telefonlardaki Profil › Kullanım verisi ile aynı; ölçüm bu derlemede yoksa gizli.
+        UsageDataRow.Visibility = controller.UsageConfigured ? Visibility.Visible : Visibility.Collapsed;
         AskGame.IsChecked = settings.AskGame;
         SpeakerNames.IsChecked = settings.ShowSpeakerNames;
         SpeakerColors.IsChecked = settings.SpeakerColors;
@@ -586,6 +590,8 @@ public partial class SettingsWindow : Window
     private void OnGamePacks(object sender, RoutedEventArgs e) => Update(s => s with { GamePacks = GamePacks.IsChecked == true });
 
     private void OnSharePool(object sender, RoutedEventArgs e) => Update(s => s with { SharePool = SharePool.IsChecked == true });
+
+    private void OnUsageData(object sender, RoutedEventArgs e) => Update(s => s with { UsageData = UsageData.IsChecked == true });
 
     private void OnAskGame(object sender, RoutedEventArgs e) => Update(s => s with { AskGame = AskGame.IsChecked == true });
 

@@ -23,6 +23,7 @@ public partial class HistoryWindow : Window
     internal HistoryWindow(AppController controller)
     {
         this.controller = controller;
+        controller.NoteScreen("history");
         InitializeComponent();
         KeptHint.Text = Localizer.Current.Format("The last %lld translated lines are kept on this computer.", SubtitleHistory.DefaultLimit);
         controller.PropertyChanged += OnChanged;

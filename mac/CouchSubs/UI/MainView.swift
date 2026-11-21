@@ -405,6 +405,8 @@ private struct LiveSubtitlesTile: View {
             if model.showsAutoScreenTextNotice {
                 HintText(text: "Automatic on-screen text translation is experimental; you can turn it on in Settings.")
             }
+            // Kullanım verisi ilk açılışta bir kez söylenir; ilk çeviride ya da ayar değişince kaybolur.
+            if model.showsUsageNotice { HintText(text: "CouchSubs measures how the app is used without linking it to you; no subtitle text, picture or account data is sent. You can turn this off in Settings › Game packs › Usage data.") }
             // Görüntü bir dakikadır geliyor ama hiç altyazı satırı okunmadı (GitHub #503, #566, #572; SubtitleOffTip).
             if model.showsSubtitleOffTip {
                 HintText(text: "Turn on the game's own subtitles: CouchSubs reads the English subtitles on screen, not the audio.")

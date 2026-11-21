@@ -20,6 +20,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CSGAApiSecret</key>
+	<string>$(GA_API_SECRET)</string>
+	<key>CSGAMeasurementID</key>
+	<string>$(GA_MEASUREMENT_ID)</string>
 	<key>CSPacksBaseURL</key>
 	<string>$(PACKS_API_BASE_URL)</string>
 	<key>CSPacksFallbackURL</key>

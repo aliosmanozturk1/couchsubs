@@ -1,14 +1,14 @@
 # Gizlilik / Privacy
 
-*Son güncelleme / Last updated: 2026-11-19*
+*Son güncelleme / Last updated: 2026-11-21*
 
 ## Türkçe
 
 CouchSubs, Enmera tarafından yayınlanan açık kaynaklı bir uygulamadır. Hesap istemez, sizi izlemez. CouchSubs üçüncü taraf reklam ağı ya da reklam SDK'sı kullanmaz, reklam kimliğini (IDFA/AAID) toplamaz ve sizi uygulamalar arasında izlemez. Uygulamada ve sitede yalnızca geliştiricinin (Enmera) kendi ürünlerinin tanıtımı ve sponsor bağlantıları gösterilebilir; bu görseller sunucumuzdan (couchsubs.enmeraapps.com/promo.json) yüklenir, gösterim sıklığı yalnızca cihazda tutulur, tıklama bağlantıyı tarayıcıda açar.
 Kendi sunucumuza giden tek şey, kapatabileceğiniz ortak havuzdaki İngilizce oyun metnidir (aşağıya bakın).
-Bilgisayar ve TV uygulamaları hiçbir kişisel veri toplamaz; reklam, analiz ya da izleme kodu içermez. iPhone ve
-Android telefon uygulamalarının kimliğe bağlanmayan kullanım istatistikleri için aşağıdaki "iPhone uygulaması" ve
-"Android telefon uygulaması" bölümlerine bakın.
+TV uygulamaları hiçbir kişisel veri toplamaz; reklam, analiz ya da izleme kodu içermez. Bilgisayar (Windows, Mac) ve
+telefon (iPhone, Android) uygulamalarının kimliğe bağlanmayan, kapatılabilen kullanım istatistikleri için aşağıdaki
+"Kullanım istatistikleri", "iPhone uygulaması" ve "Android telefon uygulaması" bölümlerine bakın.
 
 **Bilgisayarda kalanlar**
 
@@ -41,6 +41,16 @@ Android telefon uygulamalarının kimliğe bağlanmayan kullanım istatistikleri
   En az iki farklı kurulumda okunan satırlar her gece kendiliğinden makine çevirisiyle (kendi Cloudflare
   hesabımızdaki Workers AI) o oyunun Türkçe yamasına dönüştürülür ve herkese dağıtılır; yamada satırı kimin
   gönderdiğine dair bir bilgi bulunmaz. Kapatınca gönderim hemen durur ve bekleyen satırlar silinir.
+- **Kullanım istatistikleri (Ayarlar › Oyun paketleri › Kullanım verisi'nden kapatılabilir, varsayılan açık):** Windows
+  uygulaması ve GitHub'dan indirilen Mac uygulaması, telefonlardaki ölçümün aynısını kimliğinize bağlamadan Google
+  Analytics'e (Measurement Protocol, `www.google-analytics.com`) gönderir. Giden: açılan ekranlar, kurulumun bitmesi ve
+  seçilen altyazı hedefi (TV, bilgisayar ya da ikisi), çevirinin başlaması (hedef, çeviri motoru, paketlerin açık olup
+  olmadığı, konsol türü: PS5 ya da Xbox) ve bitmesi (süre, satır sayısı, hazır paketten gelen satır sayısı), bağlanan TV
+  sayısı ve markası, kullanılan oyun paketinin adı; ayrıca uygulama sürümü, işletim sistemi sürümü ve bu kuruluma özgü
+  rastgele bir kimlik (bilgisayarda saklanan UUID). Google, isteğin IP adresinden yaklaşık konumu (ülke) çıkarabilir.
+  Altyazı metni, görüntü, PSN ya da Microsoft hesabı ve anahtarlar gönderilmez; reklam kişiselleştirmesi her zaman
+  kapalıdır, çökme raporu gönderilmez. Kapatınca hiçbir şey gönderilmez ve bekleyen olaylar silinir. İlk açılışta bu
+  ölçüm kısa bir notla söylenir. Mac App Store sürümünde bu ölçüm yoktur. Google'ın kendi gizlilik koşulları geçerlidir.
 - **Ev ağı:** PS5 ve LG TV'yi bulmak ve onlarla eşleşmek için yalnız yerel ağ kullanılır.
 
 TV uygulaması altyazıları yalnız ev ağındaki CouchSubs bilgisayarından alır ve internete bağlanmaz.
@@ -110,8 +120,9 @@ Sorularınız ve silme talepleriniz için: info@enmera.com.tr ya da https://gith
 
 CouchSubs is open-source software published by Enmera. It needs no account and does not track you. CouchSubs uses no third-party ad network or ad SDK, does not collect the advertising identifier (IDFA/AAID) and does not track you across apps. The app and the website may show only promotions of the developer's (Enmera's) own products and sponsor links; these images are loaded from our server (couchsubs.enmeraapps.com/promo.json), how often they are shown is kept on the device only, and a tap opens the link in your browser.
 The only thing sent to a server of ours is English game text for the shared pool, which you can turn off (see
-below). The computer and TV apps collect no personal data and contain no advertising, analytics or tracking code. For
-the unlinked usage statistics of the iPhone and Android phone apps, see "iPhone app" and "Android phone app" below.
+below). The TV apps collect no personal data and contain no advertising, analytics or tracking code. For the unlinked
+usage statistics of the computer (Windows, Mac) and phone (iPhone, Android) apps, which you can turn off, see "Usage
+statistics", "iPhone app" and "Android phone app" below.
 
 **Stays on your computer:** the game picture received from the PS5 is processed in memory only to read
 subtitles and is never stored or uploaded. Subtitles and translations are produced on your computer and
@@ -127,6 +138,17 @@ translation, the English subtitle text that was read is sent to DeepL (`api.deep
 `api-free.deepl.com`) to be translated; no picture, audio or account data is sent, and DeepL's own privacy
 terms apply. The key is stored in the Keychain on Mac and in the DPAPI-encrypted file on Windows. Nothing is
 sent to DeepL unless you turn this on. PS5 and TV discovery and pairing use your local network only.
+
+**Usage statistics (on by default, turn off in Settings › Game packs › Usage data):** the Windows app and the Mac app
+downloaded from GitHub send the same measurement as the phone apps to Google Analytics (Measurement Protocol,
+`www.google-analytics.com`) without linking it to you. What is sent: opened screens, finishing setup and the chosen
+subtitle target (TV, computer or both), translation start (target, engine, whether packs are on, console type: PS5 or
+Xbox) and stop (duration, number of lines, lines from a ready-made pack), the number and brand of connected TVs, the name
+of the game pack used, plus the app version, the operating system version and a random ID made for this installation (a
+UUID stored on the computer). Google may derive the approximate location (country) from the request's IP address. No
+subtitle text, picture, PSN or Microsoft account or keys are sent; ad personalisation is always off and no crash reports
+are sent. When turned off nothing is sent and waiting events are deleted. A short note tells you about this on first
+launch. The Mac App Store version does not include this measurement. Google's own privacy terms apply.
 
 **Shared pool (can be turned off in Settings › Translation):** English subtitle lines that were read and are not
 in any game pack are sent to `couchsubs-pool.enmera.workers.dev` to make better Turkish translations for

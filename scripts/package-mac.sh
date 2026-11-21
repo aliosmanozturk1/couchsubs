@@ -40,6 +40,13 @@ APP_VERSION="${APP_VERSION:-$(git describe --tags --abbrev=0 --match 'v*' 2>/dev
 APP_VERSION="${APP_VERSION:-0.1.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(git rev-list --count HEAD)}"
 VERSION_ARGS=(MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER")
+# Kullanım verisi (GA4 Measurement Protocol): CI'da GA_MEASUREMENT_ID ve GA_API_SECRET sırlarından, yerelde aynı adlı
+# ortam değişkenlerinden. İkisi de yoksa uygulamada ölçüm tamamen kapalı (UsageStats).
+if [[ -n "$GA_MEASUREMENT_ID" && -n "$GA_API_SECRET" ]]; then
+  VERSION_ARGS+=(GA_MEASUREMENT_ID="$GA_MEASUREMENT_ID" GA_API_SECRET="$GA_API_SECRET")
+else
+  echo "Uyarı: GA_MEASUREMENT_ID/GA_API_SECRET verilmedi; bu pakette kullanım verisi kapalı."
+fi
 
 SIGN_ARGS=(CODE_SIGN_IDENTITY="-")
 if [[ -n "$DEVELOPER_ID" ]]; then

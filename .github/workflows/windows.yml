@@ -14,6 +14,12 @@ on:
         description: Android TV APK'sı (tv-android iş akışının çıktısı) uygulamaya gömülsün
         type: boolean
         default: false
+    # Kullanım verisinin kimlikleri (release.yml geçirir); yoksa Windows paketinde ölçüm kapalı.
+    secrets:
+      GA_MEASUREMENT_ID:
+        required: false
+      GA_API_SECRET:
+        required: false
 
 env:
   FFMPEG_VERSION: "7.1.2"
@@ -219,13 +225,23 @@ jobs:
           if [ -d android-apk ]; then ./scripts/bundle-android-apk.sh "$(ls android-apk/*.apk | head -1)"; fi
 
       # Sürüm etiketten gelir (v0.1.0-beta.10 → 0.1.0-beta.10); uygulama içi güncelleme bununla karşılaştırır.
+      # Kullanım verisi (GA4 Measurement Protocol) yalnız sürüm etiketinde ve iki sır da tanımlıysa açılır; yoksa ölçüm kapalı.
       - name: Yayınla
         shell: bash
+        env:
+          GA_MEASUREMENT_ID: ${{ secrets.GA_MEASUREMENT_ID }}
+          GA_API_SECRET: ${{ secrets.GA_API_SECRET }}
         run: |
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION=0.1.0-dev; fi
+          USAGE_ARGS=()
+          if [[ "$GITHUB_REF_TYPE" == tag && -n "$GA_MEASUREMENT_ID" && -n "$GA_API_SECRET" ]]; then
+            USAGE_ARGS=(-p:CouchSubsGaMeasurementId="$GA_MEASUREMENT_ID" -p:CouchSubsGaApiSecret="$GA_API_SECRET")
+          else
+            echo "::warning title=Kullanım verisi kapalı::GA_MEASUREMENT_ID/GA_API_SECRET yok ya da sürüm etiketi değil; Windows paketinde ölçüm kapalı."
+          fi
           dotnet publish windows/src/CouchSubs.App -c Release -r win-x64 --self-contained -o publish/CouchSubs -p:Version="$VERSION" \
             -p:CouchSubsPacksUrl=https://couchsubs-packs.enmera.workers.dev \
-            -p:CouchSubsPacksFallbackUrl=https://couchsubs-packs.enmeraapps.com
+            -p:CouchSubsPacksFallbackUrl=https://couchsubs-packs.enmeraapps.com "${USAGE_ARGS[@]}"
 
       # CTranslate2'nin resmi Windows wheel'i CPU ve NVIDIA CUDA kodunu içerir. Python uygulamayla birlikte
       # gelir; kullanıcının Python kurması gerekmez. CUDA bulunmazsa uygulama CPU'ya döner.

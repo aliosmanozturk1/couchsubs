@@ -27,6 +27,8 @@ struct WelcomeStep: View {
                         Label("A free second PlayStation Network account", systemImage: "person.2")
                     }
                 }
+                // Kullanım verisi ilk açılışta bir kez söylenir (telefonlardaki karşılama ekranıyla aynı anlam).
+                if model.showsUsageNotice { HintText(text: "CouchSubs measures how the app is used without linking it to you; no subtitle text, picture or account data is sent. You can turn this off in Settings › Game packs › Usage data.") }
             }
         }
     }

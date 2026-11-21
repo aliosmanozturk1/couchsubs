@@ -14,6 +14,10 @@
                 </StackPanel>
             </c:Card>
             <TextBlock x:Name="Requirements" Margin="0,16,0,0" TextWrapping="Wrap" Style="{StaticResource HintText}" />
+            <!-- Kullanım verisi ilk açılışta bir kez söylenir (telefonlardaki karşılama ekranıyla aynı anlam). -->
+            <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" Style="{StaticResource HintText}"
+                       Text="{t:T 'CouchSubs measures how the app is used without linking it to you; no subtitle text, picture or account data is sent. You can turn this off in Settings › Game packs › Usage data.'}"
+                       Visibility="{Binding ShowsUsageNotice, Converter={StaticResource VisibleIf}}" />
         </StackPanel>
     </c:StepLayout>
 </UserControl>

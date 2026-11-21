@@ -762,6 +762,12 @@ private struct GamePacksPage: View {
             SwitchRow(title: "Send the English subtitles read to the shared pool", isOn: $model.settings.sharePool)
             HintText(text: "Only the game's English text is sent, anonymously. It is used to make better Turkish translations for everyone.")
             Divider().overlay(Color.csBorder)
+            // Telefonlardaki Profil › Kullanım verisi ile aynı ad ve açıklama; ölçüm bu derlemede yoksa (Mac App Store) gizli.
+            if model.usage.isConfigured {
+                SwitchRow(title: "Usage data", isOn: $model.settings.usageData)
+                HintText(text: "Error and usage statistics")
+                Divider().overlay(Color.csBorder)
+            }
             SwitchRow(title: "Ask which game I'm playing", isOn: $model.settings.askGame)
             HintText(text: "If no pack recognises the game, asked once two minutes after translation starts.")
             Divider().overlay(Color.csBorder)

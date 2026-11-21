@@ -9,6 +9,11 @@
 #   MACOS_CERT_PASSWORD     .p12 dosyasının parolası
 #   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8   App Store Connect API anahtarı (notarytool için; .p8 içeriği)
 #   SPARKLE_ED_PRIVATE_KEY  Sparkle güncelleme imzası için ed25519 özel anahtarı (PEM)
+# Kullanım verisi (Ayarlar › Oyun paketleri › Kullanım verisi; GA4 Measurement Protocol, web veri akışı):
+#   GA_MEASUREMENT_ID       Ölçüm kimliği (G-…)
+#   GA_API_SECRET           Aynı akışın Measurement Protocol API sırrı
+# İkisi de tanımlıysa GitHub/Sparkle Mac paketinde ve Windows paketinde ölçüm açılır; yoksa ölçüm kapalı (no-op).
+# Mac App Store sürümü bunları hiç almaz (APP_STORE derlemesinde ölçüm kapalı).
 # Sırlar eksikse Mac paketi imzasız çıkar (uyarı verilir); imzalı paket eskisi gibi scripts/release-mac.sh ile elle
 # yüklenir. Sürüm önce taslak açılır, bütün dosyalar yüklenip denetlenince "en son sürüm" yapılır. Her dosyaya
 # derleme kanıtı (build provenance) eklenir: gh attestation verify <dosya> -R yorulmazsinan/couchsubs
@@ -27,6 +32,9 @@ jobs:
     uses: ./.github/workflows/windows.yml
     with:
       with-android: true
+    secrets:
+      GA_MEASUREMENT_ID: ${{ secrets.GA_MEASUREMENT_ID }}
+      GA_API_SECRET: ${{ secrets.GA_API_SECRET }}
 
   android:
     uses: ./.github/workflows/tv-android.yml
@@ -133,6 +141,9 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Paketle
+        env:
+          GA_MEASUREMENT_ID: ${{ secrets.GA_MEASUREMENT_ID }}
+          GA_API_SECRET: ${{ secrets.GA_API_SECRET }}
         run: |
           APKS=(android-apk/*.apk)
           ANDROID_APK="${APKS[0]}" ./scripts/package-mac.sh

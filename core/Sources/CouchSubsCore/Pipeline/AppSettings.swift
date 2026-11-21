@@ -148,6 +148,10 @@ public struct UserSettings: Codable, Equatable {
     public var sharePool = LinePool.enabledByDefault
     /// Oynanan oyun paketle tanınmazsa çeviri başladıktan iki dakika sonra bir kez sorulur (bkz. `GameSense`).
     public var askGame = true
+    /// Kullanım verisi: telefonlardaki gibi kimliğe bağlanmayan kullanım istatistikleri gönderilir (bkz. `UsageStats`).
+    public var usageData = UsageStats.enabledByDefault
+    /// Kullanım verisi bilgi notu gösterildi (ilk açılışta bir kez). Eski kayıtlarda yoktur (false).
+    public var usageNoticeSeen = false
     /// Altyazıdaki konuşan adı ("ARTHUR: …") çeviride gösterilir; kapalıysa yalnız Türkçe cümle görünür.
     public var showSpeakerNames = true
     /// Konuşana göre renk: "Mattia: …" satırında ad ve satır o konuşanın sabit renginde görünür (bkz. `SpeakerColors`).
@@ -229,6 +233,8 @@ public struct UserSettings: Codable, Equatable {
         gamePacks = try values.decodeIfPresent(Bool.self, forKey: .gamePacks) ?? defaults.gamePacks
         sharePool = try values.decodeIfPresent(Bool.self, forKey: .sharePool) ?? defaults.sharePool
         askGame = try values.decodeIfPresent(Bool.self, forKey: .askGame) ?? defaults.askGame
+        usageData = try values.decodeIfPresent(Bool.self, forKey: .usageData) ?? defaults.usageData
+        usageNoticeSeen = try values.decodeIfPresent(Bool.self, forKey: .usageNoticeSeen) ?? defaults.usageNoticeSeen
         showSpeakerNames = try values.decodeIfPresent(Bool.self, forKey: .showSpeakerNames) ?? defaults.showSpeakerNames
         speakerColors = try values.decodeIfPresent(Bool.self, forKey: .speakerColors) ?? defaults.speakerColors
         fastSubtitleDetection = try values.decodeIfPresent(Bool.self, forKey: .fastSubtitleDetection) ?? defaults.fastSubtitleDetection

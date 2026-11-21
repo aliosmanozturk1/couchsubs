@@ -60,6 +60,10 @@ imzalı, Sparkle pakete girmiş mi.
 
 - **Sparkle yok.** Paket hedefe bağlanmaz; `CouchSubsApp.swift`'te güncelleyici ve "Check for updates…" menüsü
   `#if !APP_STORE` içinde. Info.plist'te `SU*` anahtarları yok (`mac/AppStore/Info.plist`).
+- **Kullanım verisi yok.** GitHub/Sparkle Mac sürümü ve Windows, Google Analytics'e (Measurement Protocol) kullanım
+  olayları gönderir (`UsageStats`); App Store sürümünde `UsageMeasurement.config()` `APP_STORE` bayrağıyla hep nil döner,
+  Info.plist'te `CSGA*` anahtarları yok, Ayarlar'daki "Kullanım verisi" anahtarı ve ilk açılış notu görünmez. App Store
+  gizlilik beyanı ("veri toplanmıyor") güncellenmeden bu açılmamalı.
 - **Yetkiler** (`mac/AppStore/CouchSubs.entitlements`): `app-sandbox`, `network.client` (PS5, PSN girişi, TV, çeviri
   hizmetleri, paketler, dublaj modeli indirme), `network.server` (8787'deki altyazı sunucusu: TV uygulaması ve OBS;
   Remote Play'in UDP portları; Samsung girişinin `localhost` dönüşü). Dosya seçme ya da başka yetki gerekmedi.
