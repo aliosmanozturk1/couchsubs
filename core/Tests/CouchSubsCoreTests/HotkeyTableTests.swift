@@ -131,6 +131,24 @@ final class HotkeyTableTests: XCTestCase {
         XCTAssertEqual(HotkeyTable.key(partly.hotkeys, .screen, slot: 1), HotkeyKey([.option, .command], 0x11))
     }
 
+    /// Önceki Mac sürümünden gelen ayar (kısayol alanı yok): ⌥⌘T ve ⌥⌘L ikinci tuş olur, Num tuşları da çalışır.
+    /// Yeni kurulumda (ayar yok) ya da yeni biçimdeki ayarda bir şey değişmez.
+    func testLegacyMacShortcutsStayForUpgrades() throws {
+        XCTAssertTrue(LegacyMacHotkeys.isLegacy(Data(#"{"sourceLanguage":"en","output":"tv"}"#.utf8)))
+        XCTAssertFalse(LegacyMacHotkeys.isLegacy(nil))
+        XCTAssertFalse(LegacyMacHotkeys.isLegacy(try JSONEncoder().encode(UserSettings())))
+        let choices = LegacyMacHotkeys.apply([])
+        XCTAssertEqual(HotkeyTable.keys(choices, .screen), [HotkeyKey([], 0x5C), HotkeyKey([.option, .command], 0x11)])
+        XCTAssertEqual(HotkeyTable.keys(choices, .clickThrough), [HotkeyKey([], 0x59), HotkeyKey([.option, .command], 0x25)])
+        XCTAssertEqual(LegacyMacHotkeys.screen.label, "⌥⌘T")
+        XCTAssertEqual(LegacyMacHotkeys.clickThrough.label, "⌥⌘L")
+        // ⌥⌘ birleşimleri macOS 15 kısıtına girmez (yalnız ⌥ / ⌥⇧ girer).
+        XCTAssertEqual(HotkeyTable.validate(LegacyMacHotkeys.screen), .none)
+        XCTAssertEqual(HotkeyTable.validate(LegacyMacHotkeys.clickThrough), .none)
+        // Diğer işler varsayılanda kalır.
+        XCTAssertEqual(HotkeyTable.keys(choices, .freeArea), HotkeyTable.keys([], .freeArea))
+    }
+
     func testAreaActionsAreNumbered() {
         XCTAssertEqual(HotkeyAction.extraRegion1.areaNumber, 1)
         XCTAssertEqual(HotkeyAction.extraRegion3.areaNumber, 3)

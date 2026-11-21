@@ -143,7 +143,8 @@ yalnız altyazıyı okumak için kullanır. Siz oyunu HDMI'dan, gecikmesiz oynam
   **Ctrl+Shift+5** serbest alanı çevirir, **Num 0** / **Ctrl+Shift+0** canlı altyazıyı duraklatır, **Num 7** /
   **Ctrl+Shift+7** altyazı penceresinde tıklamaları geçirir, **Num 8** / **Ctrl+Shift+8** ayarlardaki görüntüyü
   yeniler. Sayı tuş takımı olmayan klavyede harflerin üstündeki rakamlar Ctrl+Shift (Mac'te ⌃⇧) ile kullanılır.
-  Windows'ta ve Mac'te tuşlar **Ayarlar › Kısayollar**'dan değiştirilebilir.
+  Windows'ta ve Mac'te tuşlar **Ayarlar › Kısayollar**'dan değiştirilebilir. Önceki sürümden gelen Mac'lerde **⌥⌘T** (ekranı
+  çevir) ve **⌥⌘L** (tıklamalar) da çalışmayı sürdürür.
 - Çeviri makine çevirisidir; bazı cümleler kusurlu olabilir.
 
 ## Yerel yapay zekâ ile çeviri (Ollama, LM Studio)
@@ -300,7 +301,7 @@ stays on your computer; **Test connection** checks the server and the model. Whi
 **Shortcuts** (while translating, even with CouchSubs in the background): on Windows **Num 9** or **Ctrl+Shift+9**
 translates the screen; Num 1–3, 5, 0, 7 and 8 also work as Ctrl+Shift+1–3, 5, 0, 7 and 8, so laptops without a numeric
 keypad can use them (on a Mac the same keys with **⌃⇧**). The keys can be changed in **Settings › Keyboard shortcuts**
-on Windows and Mac.
+on Windows and Mac. Macs upgraded from an earlier version keep **⌥⌘T** and **⌥⌘L** as the second keys.
 
 Copyright (C) 2026 Sinan Yorulmaz. Licensed under the [GNU AGPL-3.0](LICENSE) (forks must keep this notice, see
 [NOTICE](NOTICE)); third-party components are listed in

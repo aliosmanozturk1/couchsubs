@@ -839,7 +839,8 @@ final class AppModel: ObservableObject {
         let tv = store.load(LGTV.self, for: StoreKey.tv)
         let tvKeySaved = store.load(String.self, for: StoreKey.tvKey) != nil
         let paired = tv != nil && tvKeySaved
-        let loaded = defaults.data(forKey: StoreKey.settings).flatMap { try? JSONDecoder().decode(UserSettings.self, from: $0) } ?? UserSettings()
+        let saved = defaults.data(forKey: StoreKey.settings)
+        let loaded = saved.flatMap { try? JSONDecoder().decode(UserSettings.self, from: $0) } ?? UserSettings()
         // Xbox (Beta): konsol türü, Microsoft jetonu ve seçilen Xbox.
         let platform = defaults.string(forKey: XboxStoreKey.platform).flatMap(ConsolePlatform.init(rawValue:)) ?? .playstation
         self.platform = platform
@@ -866,6 +867,8 @@ final class AppModel: ObservableObject {
         let autoScreenTextNotice = curated.migratingAutoScreenText()
         // Otomatik ekran yazısı kapalıyken hazır alanlar ve GTA 6 telefonu da bir kez kapatılır (altyazı dışında çeviri yok).
         curated.migratingScreenTextExtras()
+        // Önceki sürümden gelen kurulumda eski ⌥⌘T ve ⌥⌘L ikinci tuş olarak kalır (bir kez; kayıtla birlikte yazılır).
+        if LegacyMacHotkeys.isLegacy(saved) { curated.hotkeys = LegacyMacHotkeys.apply(curated.hotkeys) }
         settings = curated
         showsAutoScreenTextNotice = autoScreenTextNotice
         streamBackground = StreamBackground(stored: defaults.string(forKey: StoreKey.streamBackground))

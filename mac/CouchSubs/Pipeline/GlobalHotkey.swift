@@ -11,7 +11,7 @@ import Foundation
 /// Carbon `RegisterEventHotKey` kullanılır: yalnız kayıtlı tuş birleşimini alır, öbür tuşları görmez; bu yüzden ne
 /// Erişilebilirlik ne de Giriş İzleme izni ister ve App Store sanal alanında (sandbox) çalışır. `NSEvent` genel tuş
 /// dinleyicisi (`addGlobalMonitorForEvents`) her tuşu görür ve Erişilebilirlik izni ister; o yüzden kullanılmaz.
-/// macOS 15'ten beri yalnız ⌥ ya da ⌥⇧ ile kurulan kısayollar alınamaz; `HotkeyTable.validate` bunları reddeder.
+/// macOS 15, yalnız ⌥ ya da ⌥⇧ ile kurulan kısayolları tuş dinleyicilerine karşı kısıtladı (bu Mac'te kayıt hata dönmüyor, olay gelmeyebilir); ⌥ özel karakter de yazar. `HotkeyTable.validate` bunları baştan reddeder. ⌥⌘, ⌃⇧ gibi birleşimler kısıta girmez; HotkeyModelTests kaydını sınar.
 ///
 /// Kısayollar yalnız `enabled` iken tutulur; böylece çeviri kapalıyken sayı tuşları diğer uygulamalarda normal çalışır.
 /// Tuşu başka bir uygulama tutuyorsa sessizce atlanır, işin öbür tuşu yine çalışır.

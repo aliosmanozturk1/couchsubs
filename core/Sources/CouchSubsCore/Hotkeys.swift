@@ -101,7 +101,7 @@ public enum HotkeyProblem: Equatable, Sendable {
     /// Harf, rakam ve gezinme tuşları tek başına ya da tek değiştiriciyle diğer uygulamalarda yazıyı ve uygulama
     /// kısayollarını (⌘C, ⌃A) bozar.
     case needsModifier
-    /// Yalnız ⌥ ya da ⌥⇧: macOS 15'ten beri bu kısayollar alınamaz (tuş dinleyicilerine karşı); ayrıca ⌥ özel
+    /// Yalnız ⌥ ya da ⌥⇧: macOS 15 bu kısayolları tuş dinleyicilerine karşı kısıtladı (kayıt hata dönmese de olay gelmeyebilir); ayrıca ⌥ özel
     /// karakter yazar (Windows'taki AltGr sorununun karşılığı).
     case optionOnly
     /// macOS'un kendi işi var (ekran görüntüsü ⌘⇧3/4/5, ekranı kilitle ⌃⌘Q).
@@ -189,7 +189,7 @@ public enum HotkeyTable {
     public static func validate(_ key: HotkeyKey) -> HotkeyProblem {
         guard keyName(key.keyCode) != nil else { return .unsupportedKey }
         let modifiers = key.modifiers
-        // macOS 15'ten beri yalnız ⌥ / ⌥⇧ ile kısayol alınamaz.
+        // macOS 15'in kısıtı ve ⌥'nin özel karakter yazması: yalnız ⌥ / ⌥⇧ kabul edilmez.
         if modifiers == .option || modifiers == [.option, .shift] { return .optionOnly }
         if isReserved(key) { return .reserved }
         if standsAlone(key.keyCode) { return .none }
@@ -246,4 +246,25 @@ public enum HotkeyTable {
     private static let navigation: [UInt32: String] = [
         0x73: "Home", 0x77: "End", 0x74: "Page Up", 0x79: "Page Down", 0x7B: "←", 0x7C: "→", 0x7D: "↓", 0x7E: "↑",
     ]
+}
+
+/// Değiştirilebilir kısayollardan önceki Mac sürümlerinin sabit kısayolları: ⌥⌘T ekranı çevirir, ⌥⌘L tıklamaları
+/// geçirir. Önceki sürümden gelen kurulumda bu iki tuş ilgili işin ikinci tuşu (⌃⇧rakam yerine) olarak bir kez atanır;
+/// kullanıcının alışkanlığı bozulmaz, Num tuşu da çalışır. Yeni kurulum Windows'taki varsayılanlarla açılır. ⌥⌘
+/// birleşimleri macOS 15'in kısıtına (yalnız ⌥ ya da ⌥⇧) girmez; `HotkeyTable.validate` de geçirir.
+public enum LegacyMacHotkeys {
+    public static let screen = HotkeyKey([.option, .command], 0x11)
+    public static let clickThrough = HotkeyKey([.option, .command], 0x25)
+
+    /// Kayıtlı ayar önceki bir sürümden mi: ayar var ama kısayol alanı yok. Ayar hiç yoksa (yeni kurulum) false.
+    public static func isLegacy(_ saved: Data?) -> Bool {
+        guard let saved, let object = try? JSONSerialization.jsonObject(with: saved) as? [String: Any] else { return false }
+        return object["hotkeys"] == nil
+    }
+
+    /// Eski iki tuşu ikinci yuvaya koyar (başka işte duruyorsa oradan taşınır).
+    public static func apply(_ choices: [HotkeyChoice]) -> [HotkeyChoice] {
+        let withScreen = HotkeyTable.assign(choices, .screen, slot: 1, key: screen).choices
+        return HotkeyTable.assign(withScreen, .clickThrough, slot: 1, key: clickThrough).choices
+    }
 }
