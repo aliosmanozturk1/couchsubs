@@ -7,7 +7,9 @@ import SwiftUI
 /// Alanın canlı önizlemesi: son PS5 karesi (yoksa yer tutucu), üstünde alanın çerçevesi; alanın dışı karartılır, okunacak
 /// yer belirgin olur. Çerçeve içinden sürüklenerek taşınır, sekiz tutamacından (köşeler ve kenar ortaları) sürüklenerek
 /// boyutlandırılır. `centered` (altyazı alanında "Ortada tut" açıkken): yatay boyut ortadan değişir, alan ortalı kalır.
-/// Kurallar `RegionEdit`'tedir (Windows ve Android ile aynı); her değişiklik `onChange` ile bildirilir.
+/// Kurallar `RegionEdit`'tedir (Windows ve Android ile aynı). Sürükleme boyunca yalnız önizlemedeki taslak (`RegionDrag`)
+/// değişir; `onChange` bırakınca bir kez çağrılır. Her harekette ayar yazılınca bütün Ayarlar sayfası yeniden çiziliyor,
+/// pencere titriyordu (GitHub #802). Kaydırma önizlemenin kendi koordinatlarındadır, çerçeve kaydıkça değişmez.
 struct RegionPreview: View {
     let region: CropRegion
     let frame: CGImage?
@@ -17,8 +19,10 @@ struct RegionPreview: View {
     var placeholder: LocalizedStringKey = "The game picture appears here once translating starts."
     let onChange: (CropRegion) -> Void
 
-    /// Sürükleme başladığında bölge (sürükleme hep bu bölgeye göre hesaplanır).
-    @State private var dragStart: CropRegion? = nil
+    /// Süren sürüklemenin taslağı (hep sürüklemenin başladığı bölgeye göre hesaplanır); sürükleme yokken nil.
+    @State private var drag: RegionDrag? = nil
+    /// Önizlemenin koordinat alanı: sürüklenen çerçeve ya da tutamaç yer değiştirse de kaydırma buna göre ölçülür.
+    private static let space = "RegionPreview"
 
     /// Görünen tutamaç ve parmakla tutma alanı (dokunmatikte küçük kare tutulmaz).
     private static let handle: CGFloat = 10
@@ -27,8 +31,9 @@ struct RegionPreview: View {
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
-            let box = CGRect(x: size.width * region.left, y: size.height * region.top,
-                             width: size.width * (region.right - region.left), height: size.height * (region.bottom - region.top))
+            let shown = drag?.region ?? region
+            let box = CGRect(x: size.width * shown.left, y: size.height * shown.top,
+                             width: size.width * (shown.right - shown.left), height: size.height * (shown.bottom - shown.top))
             ZStack(alignment: .topLeading) {
                 if let frame {
                     Image(decorative: frame, scale: 1).resizable()
@@ -52,33 +57,38 @@ struct RegionPreview: View {
                     .overlay(Rectangle().strokeBorder(Color.csAccent, lineWidth: 2))
                     .frame(width: box.width, height: box.height)
                     .offset(x: box.minX, y: box.minY)
-                    .gesture(drag(.move, in: size))
+                    .gesture(dragging(.move, in: size))
                     .accessibilityLabel(Text("Subtitle area"))
-                ForEach(Array(RegionEdit.handles(region).enumerated()), id: \.offset) { _, spot in
+                ForEach(Array(RegionEdit.handles(shown).enumerated()), id: \.offset) { _, spot in
                     Rectangle()
                         .fill(Color.csAccent)
                         .frame(width: Self.handle, height: Self.handle)
                         .frame(width: Self.grip, height: Self.grip)
                         .contentShape(Rectangle())
                         .offset(x: size.width * spot.x - Self.grip / 2, y: size.height * spot.y - Self.grip / 2)
-                        .gesture(drag(spot.handle, in: size))
+                        .gesture(dragging(spot.handle, in: size))
                         .accessibilityHidden(true)
                 }
             }
+            .coordinateSpace(name: Self.space)
         }
         .aspectRatio(16 / 9, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius("inner")))
     }
 
-    private func drag(_ handle: RegionEdit.Handle, in size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+    private func dragging(_ handle: RegionEdit.Handle, in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
             .onChanged { value in
-                let start = dragStart ?? region
-                dragStart = start
-                onChange(RegionEdit.dragged(start, handle: handle, dx: value.translation.width / max(1, size.width),
-                                            dy: value.translation.height / max(1, size.height), centered: centered))
+                var next = drag ?? RegionDrag(start: region, handle: handle)
+                next.move(dx: value.translation.width / max(1, size.width), dy: value.translation.height / max(1, size.height),
+                          centered: centered)
+                drag = next
             }
-            .onEnded { _ in dragStart = nil }
+            .onEnded { _ in
+                let result = drag?.result
+                drag = nil
+                if let result { onChange(result) }
+            }
     }
 }
 

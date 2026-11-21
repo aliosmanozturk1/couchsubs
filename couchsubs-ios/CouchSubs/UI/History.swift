@@ -339,7 +339,8 @@ struct ExtraAreasTile: View {
 private struct ExtraAreaEditor: View {
     let id: String
     @Binding var settings: UserSettings
-    @ObservedObject var preview: PhoneFramePreview
+    /// Önizleme ayrı görünümde izlenir: her yeni karede yalnız önizleme yeniden çizilir, ad alanı ve seçimler değil.
+    let preview: PhoneFramePreview
 
     var body: some View {
         if let area = settings.extraAreas.first(where: { $0.id == id }) {
@@ -362,7 +363,7 @@ private struct ExtraAreaEditor: View {
                 SegmentedTabs(options: [ExtraAreaPreset.quest: "Quest", .notification: "Notification", .phone: "Phone"],
                               selection: Binding(get: { ExtraAreaPreset.matching(area.region) ?? .quest },
                                                  set: { preset in settings.updateExtraArea(id: id) { $0.region = preset.region } }))
-                RegionPreview(region: area.region, frame: preview.image) { region in
+                ExtraAreaPreview(region: area.region, preview: preview) { region in
                     settings.updateExtraArea(id: id) { $0.region = region }
                 }
                 .opacity(area.enabled ? 1 : 0.5)
@@ -370,6 +371,17 @@ private struct ExtraAreaEditor: View {
             .padding(Mobile.Space.gap)
             .background(Mobile.Palette.surface2, in: RoundedRectangle(cornerRadius: Mobile.Radius.control))
         }
+    }
+}
+
+/// Ek alanın önizlemesi, son PS5 karesiyle (kare değişince yalnız bu görünüm yeniden çizilir).
+private struct ExtraAreaPreview: View {
+    let region: CropRegion
+    @ObservedObject var preview: PhoneFramePreview
+    let onChange: (CropRegion) -> Void
+
+    var body: some View {
+        RegionPreview(region: region, frame: preview.image, onChange: onChange)
     }
 }
 

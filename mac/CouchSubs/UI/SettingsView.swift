@@ -510,7 +510,8 @@ private struct ExtraAreasCard: View {
 private struct ExtraAreaEditor: View {
     let id: String
     @Binding var settings: UserSettings
-    @ObservedObject var preview: FramePreview
+    /// Önizleme ayrı görünümde izlenir: her yeni karede yalnız önizleme yeniden çizilir, ad alanı ve seçimler değil.
+    let preview: FramePreview
 
     var body: some View {
         if let area = settings.extraAreas.first(where: { $0.id == id }) {
@@ -535,7 +536,7 @@ private struct ExtraAreaEditor: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                RegionPreview(region: area.region, frame: preview.image) { region in
+                ExtraAreaPreview(region: area.region, preview: preview) { region in
                     settings.updateExtraArea(id: id) { $0.region = region }
                 }
                 .opacity(area.enabled ? 1 : 0.5)
@@ -543,6 +544,17 @@ private struct ExtraAreaEditor: View {
             .padding(Theme.space("m"))
             .background(Color.csSurface2, in: RoundedRectangle(cornerRadius: Theme.radius("inner"), style: .continuous))
         }
+    }
+}
+
+/// Ek alanın önizlemesi, son PS5 karesiyle (kare değişince yalnız bu görünüm yeniden çizilir).
+private struct ExtraAreaPreview: View {
+    let region: CropRegion
+    @ObservedObject var preview: FramePreview
+    let onChange: (CropRegion) -> Void
+
+    var body: some View {
+        RegionPreview(region: region, frame: preview.image, onChange: onChange)
     }
 }
 

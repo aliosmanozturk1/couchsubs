@@ -81,4 +81,31 @@ final class RegionEditTests: XCTestCase {
         XCTAssertEqual(centered.right - centered.left, RegionEdit.minimumSize, accuracy: 1e-9)
         XCTAssertEqual((centered.left + centered.right) / 2, 0.50, accuracy: 1e-9)
     }
+
+    /// GitHub #802: telefon ek alanı sürüklenirken ayar her harekette değil, bırakınca bir kez yazılır; kaydırma hep
+    /// başlangıç çerçevesine göredir (taslak değiştikçe kaymaz).
+    func testDragWritesTheSettingOnceWhenReleased() {
+        let phone = ExtraAreaPreset.phone.region
+        var saves: [CropRegion] = []
+        var drag = RegionDrag(start: phone, handle: [.right, .bottom])
+        for step in 1...60 {
+            drag.move(dx: -0.002 * Double(step), dy: -0.003 * Double(step), centered: false)
+            XCTAssertEqual(drag.start, phone)
+        }
+        if let result = drag.result { saves.append(result) }
+        XCTAssertEqual(saves.count, 1)
+        assertClose(CropRegion(top: 0.50, bottom: 0.77, left: 0.72, right: 0.86), saves[0])
+
+        var moved = RegionDrag(start: phone, handle: .move)
+        moved.move(dx: -0.10, dy: 0.20, centered: false)
+        assertClose(CropRegion(top: 0.55, bottom: 1.00, left: 0.62, right: 0.88), moved.region)
+    }
+
+    func testDragThatEndsWhereItStartedWritesNothing() {
+        var drag = RegionDrag(start: area, handle: .move)
+        XCTAssertNil(drag.result)
+        drag.move(dx: 0.05, dy: 0, centered: false)
+        drag.move(dx: 0, dy: 0, centered: false)
+        XCTAssertNil(drag.result)
+    }
 }

@@ -372,7 +372,8 @@ private fun presetName(preset: ExtraAreaPreset) = stringResource(when (preset) {
  * Alanın canlı önizlemesi: son karenin üstünde çerçeve; alanın dışı karartılır, okunacak yer belirgin olur. Çerçeve
  * içinden sürüklenerek taşınır, sekiz tutamacından (köşeler ve kenar ortaları) sürüklenerek boyutlandırılır. [centered]
  * (altyazı alanında "Ortada tut" açıkken): yatay boyut ortadan değişir, alan ortalı kalır. Kurallar [RegionEdit]'tedir (Windows, Mac ve iPhone ile
- * aynı). Çerçevenin dışından başlayan sürükleme bir şey değiştirmez.
+ * aynı). Çerçevenin dışından başlayan sürükleme bir şey değiştirmez. Sürükleme boyunca yalnız önizlemedeki taslak değişir;
+ * [onChange] bırakınca bir kez çağrılır, ayar her harekette yazılmaz (GitHub #802; Windows RegionPicker, Mac RegionDrag).
  */
 @Composable
 fun RegionPreview(region: CropRegion, centered: Boolean = false, onChange: (CropRegion) -> Unit) {
@@ -384,6 +385,8 @@ fun RegionPreview(region: CropRegion, centered: Boolean = false, onChange: (Crop
     val current by rememberUpdatedState(region)
     val change by rememberUpdatedState(onChange)
     val evenly by rememberUpdatedState(centered)
+    // Süren sürüklemenin taslağı; sürükleme yokken null.
+    var draft by remember { mutableStateOf<CropRegion?>(null) }
     Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(Tokens.Radius.control)).background(Color.Black)) {
         frame?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
             ?: Text(stringResource(R.string.area_preview_empty), style = Tokens.Type.caption, color = Tokens.Color.secondary,
@@ -401,19 +404,28 @@ fun RegionPreview(region: CropRegion, centered: Boolean = false, onChange: (Crop
                     handle = RegionEdit.handleAt(start, at.x.toDouble() / size.width, at.y.toDouble() / size.height,
                         grab.toDouble() / size.width, grab.toDouble() / size.height)
                 },
-                onDragEnd = { handle = null },
-                onDragCancel = { handle = null },
+                onDragEnd = {
+                    val result = draft
+                    handle = null
+                    draft = null
+                    if (result != null && result != start) change(result)
+                },
+                onDragCancel = {
+                    handle = null
+                    draft = null
+                },
             ) { pointer, drag ->
                 val grabbed = handle ?: return@detectDragGestures
                 pointer.consume()
                 moved += drag
-                change(RegionEdit.dragged(start, grabbed, moved.x.toDouble() / size.width, moved.y.toDouble() / size.height, evenly))
+                draft = RegionEdit.dragged(start, grabbed, moved.x.toDouble() / size.width, moved.y.toDouble() / size.height, evenly)
             }
         }) {
-            val left = (region.left * size.width).toFloat()
-            val top = (region.top * size.height).toFloat()
-            val right = (region.right * size.width).toFloat()
-            val bottom = (region.bottom * size.height).toFloat()
+            val shown = draft ?: region
+            val left = (shown.left * size.width).toFloat()
+            val top = (shown.top * size.height).toFloat()
+            val right = (shown.right * size.width).toFloat()
+            val bottom = (shown.bottom * size.height).toFloat()
             val shade = Color.Black.copy(alpha = 0.5f)
             drawRect(shade, Offset.Zero, Size(size.width, top))
             drawRect(shade, Offset(0f, bottom), Size(size.width, size.height - bottom))
@@ -421,7 +433,7 @@ fun RegionPreview(region: CropRegion, centered: Boolean = false, onChange: (Crop
             drawRect(shade, Offset(right, top), Size(size.width - right, bottom - top))
             drawRect(Tokens.Color.accent, Offset(left, top), Size(right - left, bottom - top), style = Stroke(2.dp.toPx()))
             val handleSize = 9.dp.toPx()
-            RegionEdit.handles(region).forEach { grip ->
+            RegionEdit.handles(shown).forEach { grip ->
                 drawRect(Tokens.Color.accent, Offset((grip.x * size.width).toFloat() - handleSize / 2, (grip.y * size.height).toFloat() - handleSize / 2),
                     Size(handleSize, handleSize))
             }

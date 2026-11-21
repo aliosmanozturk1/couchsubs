@@ -74,3 +74,28 @@ public enum RegionEdit {
 
     private static func clamp(_ value: Double, _ low: Double, _ high: Double) -> Double { min(max(value, low), high) }
 }
+
+/// Sürüklenen çerçevenin taslağı. Sürükleme boyunca yalnız taslak değişir, ayar bırakınca bir kez yazılır: her fare
+/// hareketinde ayar yazılsaydı bütün Ayarlar sayfası yeniden çizilir, pencere titrerdi (GitHub #802). Kaydırma hep
+/// sürüklemenin başladığı çerçeveye göre hesaplanır. Windows'ta RegionPicker, Android'de RegionPreview aynı kuralla çalışır.
+public struct RegionDrag: Equatable, Sendable {
+    /// Sürükleme başladığında çerçeve.
+    public let start: CropRegion
+    public let handle: RegionEdit.Handle
+    /// Önizlemede gösterilen taslak.
+    public private(set) var region: CropRegion
+
+    public init(start: CropRegion, handle: RegionEdit.Handle) {
+        self.start = start
+        self.handle = handle
+        region = start
+    }
+
+    /// Başlangıçtan (dx, dy) kadar (kenara oranla) sürüklendi.
+    public mutating func move(dx: Double, dy: Double, centered: Bool) {
+        region = RegionEdit.dragged(start, handle: handle, dx: dx, dy: dy, centered: centered)
+    }
+
+    /// Bırakınca yazılacak çerçeve; hiç değişmediyse nil (tıklamak ayar yazmaz).
+    public var result: CropRegion? { region == start ? nil : region }
+}
