@@ -41,7 +41,7 @@ public enum TextStyleSampler {
     private static let samplesX = 48
     private static let samplesY = 10
 
-    private struct Pixel { var luma: Int, r: Int, g: Int, b: Int }
+    private struct Pixel { var luma: Int, r: Int, g: Int, b: Int; var edge = false }
 
     /// `frame`: okunan alanın görüntüsü; `box` ve `lines` ona oranla. `lines`: bloğun satırları (metni ve kutusu); boşsa
     /// yalnız blok kutusu örneklenir.
@@ -62,7 +62,19 @@ public enum TextStyleSampler {
         guard !low.isEmpty, !high.isEmpty else {
             return (neutral, TextLook(bold: false, condensed: condensed, align: align, upper: upper, flat: false))
         }
-        let (ink, ground) = low.count < high.count ? (low, high) : (high, low)
+        // Zemin çok olan küme; ama kutunun hemen dışındaki şerit (yazı yok) öteki kümeye yakınsa zemin odur. Sıkı kutudaki
+        // kalın dar yazıda (GTA 6 sekmeleri, tuş ipuçları) harf noktaları zeminden çok olabiliyor, kutu beyaz çiziliyordu
+        // (#860). Kutunun kendi kenarı da çok olan kümedeyse (seçili menü satırının ters renkli zemini kutunun kendisidir,
+        // şeridi değil) çok olan küme zemin kalır.
+        var (ink, ground) = low.count < high.count ? (low, high) : (high, low)
+        if let around = surrounding(frame, boxes) {
+            func meanLuma(_ list: [Pixel]) -> Double { Double(list.map(\.luma).reduce(0, +)) / Double(list.count) }
+            let lowFirst = abs(meanLuma(low) - around) <= abs(meanLuma(high) - around)
+            let groundIsLow = low.count >= high.count
+            let edges = pixels.filter(\.edge).count
+            let edgeShare = edges == 0 ? 0 : Double(ground.filter(\.edge).count) / Double(edges)
+            if lowFirst != groundIsLow, edgeShare < filledEdge { (ink, ground) = (ground, ink) }
+        }
         let bold = Double(ink.count) / Double(pixels.count) >= boldInk
         let background = mean(ground)
         var foreground = mean(ink)
@@ -96,8 +108,37 @@ public enum TextStyleSampler {
                                          width: samplesX, height: samplesY) else { return }
         for i in stride(from: 0, to: grid.bytes.count, by: 4) {
             let r = Int(grid.bytes[i]), g = Int(grid.bytes[i + 1]), b = Int(grid.bytes[i + 2])
-            pixels.append(Pixel(luma: (299 * r + 587 * g + 114 * b) / 1000, r: r, g: g, b: b))
+            let x = (i / 4) % grid.width, y = (i / 4) / grid.width
+            pixels.append(Pixel(luma: (299 * r + 587 * g + 114 * b) / 1000, r: r, g: g, b: b,
+                                edge: x == 0 || y == 0 || x == grid.width - 1 || y == grid.height - 1))
         }
+    }
+
+    /// Satır kutularının hemen dışındaki şeridin (üstte ve altta satır yüksekliğinin dörtte biri, yanlarda aynı genişlikte)
+    /// ortanca parlaklığı; şerit kareden taşıyorsa ya da başka satırın kutusuna giriyorsa o parça atlanır.
+    static let ringShare = 0.25
+    /// Kutunun kenar noktalarının en az bu kadarı çok olan kümedeyse kutu dolu bir zemindir (seçili satır); şeride bakılmaz.
+    static let filledEdge = 0.7
+
+    private static func surrounding(_ frame: CGImage, _ boxes: [TextBox]) -> Double? {
+        var pixels: [Pixel] = []
+        let aspect = Double(frame.width) / Double(max(1, frame.height))
+        for box in boxes {
+            let dy = (box.bottom - box.top) * ringShare
+            let dx = dy / aspect
+            let strips = [
+                TextBox(left: box.left, top: box.top - dy, right: box.right, bottom: box.top),
+                TextBox(left: box.left, top: box.bottom, right: box.right, bottom: box.bottom + dy),
+                TextBox(left: box.left - dx, top: box.top, right: box.left, bottom: box.bottom),
+                TextBox(left: box.right, top: box.top, right: box.right + dx, bottom: box.bottom),
+            ]
+            for strip in strips where strip.left >= 0 && strip.top >= 0 && strip.right <= 1 && strip.bottom <= 1
+                && !boxes.contains(where: { ScreenTranslation.overlap($0, strip) > 0.2 }) {
+                collect(frame, strip, into: &pixels)
+            }
+        }
+        guard pixels.count >= 16 else { return nil }
+        return Double(pixels.map(\.luma).sorted()[pixels.count / 2])
     }
 
     private static func otsu(_ pixels: [Pixel]) -> Int {

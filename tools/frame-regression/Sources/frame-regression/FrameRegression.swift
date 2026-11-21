@@ -120,8 +120,9 @@ enum Report {
         Swift.print(row("Harita kartı sınıflama", summary.map))
         Swift.print(row("Çizim kutusu örtme (piksel ≥%95)", summary.cover))
         Swift.print(row("Telefon çevirisi gösteriliyor", summary.phoneTranslation))
+        Swift.print(row("Ekran yazısı (menü, görev listesi)", summary.screen))
         let misses = summary.frames.filter { $0.captured == false || $0.falseAccept == false || $0.phoneExpected != $0.phoneDetected
-            || $0.mapExpected != $0.mapDetected || ($0.coverage.map { $0 < coverPass } ?? false) }
+            || $0.mapExpected != $0.mapDetected || ($0.coverage.map { $0 < coverPass } ?? false) || $0.screen == false }
         for frame in misses {
             var notes: [String] = []
             if frame.captured == false { notes.append("altyazı yakalanmadı (beklenen \"\(frame.expected ?? "")\", giden \(frame.sent))") }
@@ -129,6 +130,7 @@ enum Report {
             if frame.phoneExpected != frame.phoneDetected { notes.append("telefon \(frame.phoneExpected) ≠ \(frame.phoneDetected)") }
             if frame.mapExpected != frame.mapDetected { notes.append("harita kartı \(frame.mapExpected) ≠ \(frame.mapDetected)") }
             if let coverage = frame.coverage, coverage < coverPass { notes.append(String(format: "kutu örtmüyor (%%%.0f)", coverage * 100)) }
+            if frame.screen == false { notes.append("ekran yazısı: " + (frame.screenNotes ?? []).joined(separator: "; ")) }
             Swift.print("    ✗ \(frame.id): " + notes.joined(separator: "; "))
         }
         for scenario in summary.scenarios where !scenario.passed {

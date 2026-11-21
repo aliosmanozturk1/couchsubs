@@ -260,6 +260,11 @@ public final class ScreenTextDetector: @unchecked Sendable {
     /// alana bölünüp ikisi de kesik okunuyor, kutular sırayla gidip geliyordu). Bölge yatayda bir, dikeyde yarım karo
     /// genişlediği için yatayda iki, dikeyde bir boş karoya kadar aralıklı bileşenler kesişir. Birleşen sahne dokusu
     /// kadar büyürse birleşmez.
+    /// Aynı karo satırındaki bileşenler arasında en çok bu kadar sütun (iki uç arası) olunca birleşir; ikisi de en az iki
+    /// karo genişse (sekme öbekleri) `wideRowReach`. Tek karoluk etiketler (tekerlek menü) arası dar kalır.
+    static let rowReach = 3
+    static let wideRowReach = 4
+
     static func merged(_ components: [(cells: Cells, tiles: [Int])]) -> [(cells: Cells, tiles: [Int])] {
         var result = components
         var changed = true
@@ -268,7 +273,13 @@ public final class ScreenTextDetector: @unchecked Sendable {
             outer: for i in result.indices {
                 for j in result.indices where j > i {
                     let a = result[i].cells, b = result[j].cells
-                    guard a.left <= b.right + 2, b.left <= a.right + 2, a.top <= b.bottom + 1, b.top <= a.bottom + 1 else { continue }
+                    // Aynı satırdaki bileşenler (menü şeridinin sekmeleri) iki (sekme öbekleri arasında üç) boş karoya kadar birleşir: seçili sekme renkli
+                    // olduğu için aday olmuyor, iki yanındaki alanlar onu ortadan kesiyordu ("MAP" → "M", #859).
+                    let sameRow = a.top <= b.bottom && b.top <= a.bottom
+                    let wide = a.right - a.left >= 1 && b.right - b.left >= 1
+                    let reach = sameRow ? (wide ? Self.wideRowReach : Self.rowReach) : 2
+                    guard a.left <= b.right + reach, b.left <= a.right + reach, a.top <= b.bottom + 1, b.top <= a.bottom + 1
+                    else { continue }
                     let union = Cells(left: min(a.left, b.left), top: min(a.top, b.top),
                                       right: max(a.right, b.right), bottom: max(a.bottom, b.bottom))
                     guard Double(union.area) <= maxShare * Double(columns * rows) else { continue }

@@ -84,7 +84,7 @@ public sealed class ScreenTextDetector
     }
 
     /// <summary>Karo dikdörtgeni (sütun/satır, iki uç dahil).</summary>
-    private readonly record struct Cells(int Left, int Top, int Right, int Bottom)
+    internal readonly record struct Cells(int Left, int Top, int Right, int Bottom)
     {
         public int Area => (Right - Left + 1) * (Bottom - Top + 1);
 
@@ -355,7 +355,12 @@ public sealed class ScreenTextDetector
     /// sol kenarı hizalı, aralarında en çok iki boş satır olan en az üç bileşen (sütundaki etiketler: tuş çubuğu). Birleşen
     /// alan ekranın %35'ini aşarsa birleşmez. <c>Aligned</c>: hizalı etiket sütunu (arayüz kanıtı).
     /// </summary>
-    private static (List<(Cells Cells, List<int> Tiles)> Components, List<bool> Aligned) Merge(List<(Cells Cells, List<int> Tiles)> input)
+    /// <summary>Aynı karo satırındaki bileşenler arasında en çok bu kadar sütun (iki uç arası) olunca birleşir.</summary>
+    internal const int RowReach = 3;
+    /// <summary>Aynı satırda iki yanı da en az iki karo genişse (sekme adları) bu kadar sütun aralığa kadar birleşir.</summary>
+    internal const int WideRowReach = 4;
+
+    internal static (List<(Cells Cells, List<int> Tiles)> Components, List<bool> Aligned) Merge(List<(Cells Cells, List<int> Tiles)> input)
     {
         var items = input.Select(item => (item.Cells, Tiles: new List<int>(item.Tiles), Aligned: false)).ToList();
         static Cells Join(Cells a, Cells b) => new(Math.Min(a.Left, b.Left), Math.Min(a.Top, b.Top), Math.Max(a.Right, b.Right), Math.Max(a.Bottom, b.Bottom));
@@ -369,7 +374,12 @@ public sealed class ScreenTextDetector
                     var (a, b) = (items[i].Cells, items[j].Cells);
                     var horizontal = Math.Max(a.Left, b.Left) - Math.Min(a.Right, b.Right) - 1;
                     var vertical = Math.Max(a.Top, b.Top) - Math.Min(a.Bottom, b.Bottom) - 1;
-                    if (horizontal > 2 || vertical > 0 || !Small(Join(a, b))) continue;
+                    // Aynı satırdaki bileşenler (menü şeridinin sekmeleri) iki boş karoya kadar birleşir: seçili sekme renkli
+                    // olduğu için aday olmuyor, iki yanındaki alanlar onu ortadan kesiyordu ("MAP" → "M", #859).
+                    var sameRow = Math.Max(a.Top, b.Top) <= Math.Min(a.Bottom, b.Bottom);
+                    // İki yanı da en az iki karo genişse (sekme adı) üç boş karoya kadar; tek karoluk etiket (tekerlek menü) eskisi gibi.
+                    var wide = a.Right - a.Left >= 1 && b.Right - b.Left >= 1;
+                    if (horizontal > (sameRow ? (wide ? WideRowReach : RowReach) - 1 : 2) || vertical > 0 || !Small(Join(a, b))) continue;
                     items[i] = (Join(a, b), [.. items[i].Tiles, .. items[j].Tiles], items[i].Aligned || items[j].Aligned);
                     items.RemoveAt(j);
                     changed = true;

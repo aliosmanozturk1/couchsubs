@@ -102,10 +102,11 @@ final class FreeButtonIconsTests: XCTestCase {
                                       line(word("Incoming", 0.65, 0.79), word("call", 0.8, 0.89))])
         let candidate = RegionWatcher.candidate(reading, in: full, frame: frame(22))
         XCTAssertEqual(candidate.blocks?.count, 2)
-        XCTAssertEqual(candidate.paragraphs, ["\(marker) Swing", "Incoming call"])
-        let slots = try XCTUnwrap(candidate.icons)
-        XCTAssertNotNil(slots.first?.first?.image)
-        XCTAssertEqual(slots.last?.count, 0)
+        // Satır başındaki tuş simgesi çeviriye girmez, kutunun dışında kalır; ekranda görünür (#860).
+        XCTAssertEqual(candidate.paragraphs, ["Swing", "Incoming call"])
+        XCTAssertNil(candidate.icons)
+        let swing = try XCTUnwrap(candidate.blocks?.first)
+        XCTAssertGreaterThanOrEqual(swing.box.left, 0.11)
     }
 
     /// "Ekranı çevir"de tuş ipucu atılmaz: etiketi kendi kutusunda çevrilir, tuş ("R2") çeviriye girmez ve ekranda

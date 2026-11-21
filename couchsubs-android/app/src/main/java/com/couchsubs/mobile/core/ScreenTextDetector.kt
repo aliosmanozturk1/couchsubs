@@ -31,6 +31,10 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
         const val SAMPLE_GAP_MS = 100L
         const val MAX_AREAS = 4
         const val MAX_COVER = 0.35
+        /** Aynı karo satırındaki bileşenler arasında en çok bu kadar sütun (iki uç arası) olunca birleşir. */
+        const val ROW_REACH = 3
+        /** İki bileşen de en az iki karo genişse aynı satırda en çok bu kadar sütun arayla birleşir. */
+        const val WIDE_ROW_REACH = 4
         const val NAME = "Screen text"
         /** Menü durumu: en az bu kadar bileşen aynı 300 ms içinde belirip duruyor. */
         const val MENU_COMPONENTS = 3
@@ -378,7 +382,7 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
     }
 
     /** Genişletilmiş bölgeleri kesişen bileşenler birleşir; birleşimi çok büyük olan ayrı kalır. */
-    private fun joined(list: List<List<Int>>): List<List<Int>> {
+    internal fun joined(list: List<List<Int>>): List<List<Int>> {
         val groups = list.map { it.toMutableList() }.toMutableList()
         var changed = true
         while (changed) {
@@ -386,7 +390,8 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
             loop@ for (i in groups.indices) for (j in i + 1 until groups.size) {
                 val a = regionOf(groups[i]) ?: continue
                 val b = regionOf(groups[j]) ?: continue
-                if (a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top) continue
+                if ((a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top) &&
+                    !sameRow(groups[i], groups[j])) continue
                 val union = groups[i] + groups[j]
                 if (regionOf(union) == null) continue
                 groups[i] = union.toMutableList()
@@ -396,6 +401,23 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
             }
         }
         return groups
+    }
+
+    /**
+     * Aynı karo satırındaki bileşenler (menü şeridinin sekmeleri) iki boş karoya kadar birleşir: seçili sekme renkli olduğu
+     * için aday olmuyor, iki yanındaki alanlar onu ortadan kesiyordu ("MAP" → "M", #859). İki bileşen de en az iki karo
+     * genişse (sekme adları; seçili sekme üç karo olabilir) üç boş karoya kadar ([WIDE_ROW_REACH]); tek karoluk tekerlek
+     * etiketleri ayrı kalır.
+     */
+    internal fun sameRow(a: List<Int>, b: List<Int>): Boolean {
+        val aRows = a.map { it / COLUMNS }
+        val bRows = b.map { it / COLUMNS }
+        if (aRows.min() > bRows.max() || bRows.min() > aRows.max()) return false
+        val aColumns = a.map { it % COLUMNS }
+        val bColumns = b.map { it % COLUMNS }
+        val wide = aColumns.max() - aColumns.min() >= 1 && bColumns.max() - bColumns.min() >= 1
+        val reach = if (wide) WIDE_ROW_REACH else ROW_REACH
+        return aColumns.min() <= bColumns.max() + reach && bColumns.min() <= aColumns.max() + reach
     }
 
     private fun moved(old: CropRegion, new: CropRegion): Boolean {

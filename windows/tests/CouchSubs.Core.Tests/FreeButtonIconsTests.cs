@@ -136,9 +136,10 @@ public class FreeButtonIconsTests
                                    Line(Word("Incoming", 0.65, 0.79), Word("call", 0.8, 0.89))]);
         var candidate = RegionWatcher.MakeCandidate(reading, new CropRegion(0, 1, 0, 1), frame);
         Assert.Equal(2, candidate.Blocks!.Count);
-        Assert.Equal(new[] { $"{M} Swing", "Incoming call" }, candidate.Paragraphs);
-        Assert.NotNull(Assert.Single(candidate.Icons![0]).Image);
-        Assert.Empty(candidate.Icons[1]);
+        // Satır başındaki tuş simgesi çeviriye girmez, kutunun dışında kalır; ekranda görünür (#860).
+        Assert.Equal(new[] { "Swing", "Incoming call" }, candidate.Paragraphs);
+        Assert.Null(candidate.Icons);
+        Assert.True(candidate.Blocks![0].Box.Left >= 0.11);
     }
 
     /// <summary>

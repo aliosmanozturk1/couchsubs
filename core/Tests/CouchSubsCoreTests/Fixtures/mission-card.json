@@ -340,6 +340,173 @@
     }
    ],
    "cards": []
+  },
+  {
+   "name": "#856 portreli kart: başlık portrenin sağında, açıklama portrenin altından",
+   "lines": [
+    {
+     "text": "ISLAND DREAMS",
+     "box": [
+      0.187,
+      0.193,
+      0.35,
+      0.244
+     ]
+    },
+    {
+     "text": "Keep an eye on the bachelor party",
+     "box": [
+      0.147,
+      0.276,
+      0.429,
+      0.31
+     ]
+    },
+    {
+     "text": "while searching Kenton's dive spot for",
+     "box": [
+      0.146,
+      0.326,
+      0.462,
+      0.363
+     ]
+    },
+    {
+     "text": "treasure.",
+     "box": [
+      0.145,
+      0.382,
+      0.222,
+      0.409
+     ]
+    }
+   ],
+   "cards": [
+    {
+     "title": "ISLAND DREAMS",
+     "subtitles": [],
+     "body": [
+      "Keep an eye on the bachelor party while searching Kenton's dive spot for treasure."
+     ],
+     "details": [],
+     "helpCorner": true
+    }
+   ]
+  },
+  {
+   "name": "#856 görev listesi: her görevin başlığı ve açıklaması ayrı",
+   "lines": [
+    {
+     "text": "ISLAND DREAMS",
+     "box": [
+      0.269,
+      0.181,
+      0.39,
+      0.215
+     ]
+    },
+    {
+     "text": "Keep an eye on the bachelor party while",
+     "box": [
+      0.271,
+      0.237,
+      0.512,
+      0.274
+     ]
+    },
+    {
+     "text": "searching Kenton's dive spot for treasure.",
+     "box": [
+      0.269,
+      0.269,
+      0.522,
+      0.297
+     ]
+    },
+    {
+     "text": "HIGH TIDE",
+     "box": [
+      0.269,
+      0.33,
+      0.349,
+      0.365
+     ]
+    },
+    {
+     "text": "Meet Boobie at the marina and pick up the",
+     "box": [
+      0.269,
+      0.388,
+      0.528,
+      0.414
+     ]
+    },
+    {
+     "text": "package before the coast guard arrives.",
+     "box": [
+      0.269,
+      0.416,
+      0.512,
+      0.447
+     ]
+    },
+    {
+     "text": "DOWN BY THE DOCKS",
+     "box": [
+      0.267,
+      0.474,
+      0.425,
+      0.519
+     ]
+    },
+    {
+     "text": "Follow the cargo truck to Port Gellhorn and",
+     "box": [
+      0.271,
+      0.533,
+      0.533,
+      0.57
+     ]
+    },
+    {
+     "text": "find out who is buying the stolen goods.",
+     "box": [
+      0.269,
+      0.566,
+      0.515,
+      0.594
+     ]
+    }
+   ],
+   "cards": [
+    {
+     "title": "ISLAND DREAMS",
+     "subtitles": [],
+     "body": [
+      "Keep an eye on the bachelor party while searching Kenton's dive spot for treasure."
+     ],
+     "details": [],
+     "helpCorner": false
+    },
+    {
+     "title": "HIGH TIDE",
+     "subtitles": [],
+     "body": [
+      "Meet Boobie at the marina and pick up the package before the coast guard arrives."
+     ],
+     "details": [],
+     "helpCorner": false
+    },
+    {
+     "title": "DOWN BY THE DOCKS",
+     "subtitles": [],
+     "body": [
+      "Follow the cargo truck to Port Gellhorn and find out who is buying the stolen goods."
+     ],
+     "details": [],
+     "helpCorner": false
+    }
+   ]
   }
  ]
 }

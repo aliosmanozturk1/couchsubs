@@ -15,7 +15,8 @@
 # git archive ile ayrı bir klasöre açılır (çalışma ağacına dokunulmaz) ve aynı koşucu ona karşı derlenir.
 #
 # Kırmızı (çıkış 1): altyazı satırı yakalama oranı önceki etiketin altına düştü; ya da yanlış kabul arttı, telefon/harita
-# sınıflaması, kutu örtme ya da telefon çevirisi senaryosu geriledi. Sürüm iş akışı (release.yml) bu betiği zorunlu
+# sınıflaması, kutu örtme, telefon çevirisi senaryosu ya da ekran yazısı (menü sekmeleri, görev listesi; "Ekranı çevir",
+# otomatik ekran yazısı ve hazır alanlar) geriledi. Sürüm iş akışı (release.yml) bu betiği zorunlu
 # kapı olarak koşar. Yalnız macOS (Apple Vision); Android ve Windows aynı okumalarla (testdata/frames/ocr) kendi
 # testlerinde koşar.
 

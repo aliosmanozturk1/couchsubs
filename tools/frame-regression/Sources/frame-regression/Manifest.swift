@@ -41,6 +41,8 @@ struct Frame: Decodable {
     var phone: String?
     /// Haritada görev kartı var mı.
     var mapCard: Bool?
+    /// Ekran yazısı denetimi (menü, görev listesi; `ScreenExpectation`).
+    var screen: ScreenExpectation?
 
     var cropRegion: CropRegion {
         guard let region, region.count == 4 else { return CropRegion() }

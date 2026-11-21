@@ -31,6 +31,8 @@ object MissionCard {
     const val MAX_WIDTH = 0.55
     /** Açıklama en az bu kadar sözcük. */
     const val BODY_WORDS = 6
+    /** Başlığın solundaki görev resmi en çok başlık yüksekliğinin bu katı genişliktedir; açıklama resmin altından başlar. */
+    const val PICTURE_WIDTH = 2.5
 
     /** Bulunan kart: satırların sırası (verilen listede), yukarıdan aşağı. */
     data class Card(val title: List<Int>, val subtitles: List<Int>, val body: List<Int>, val details: List<Int>) {
@@ -72,8 +74,11 @@ object MissionCard {
                 last = next
                 rest.removeFirst()
             }
+            // Başlığın solunda görev resmi (portre) olabilir: açıklama resmin altından, başlıktan daha solda başlar (#856).
+            fun underTitle(i: Int) = aligned(i, start, titleHeight) || (boxes[i]!!.left < boxes[start]!!.left &&
+                boxes[start]!!.left - boxes[i]!!.left <= titleHeight * PICTURE_WIDTH * 9 / 16)
             val first = rest.firstOrNull() ?: continue
-            if (!isSentence(lines[first].text) || !aligned(first, start, titleHeight) ||
+            if (!isSentence(lines[first].text) || !underTitle(first) ||
                 boxes[first]!!.top - boxes[last]!!.bottom > titleHeight * TITLE_GAP || height(first) > titleHeight * 1.1) continue
             val line = height(first)
             val body = mutableListOf(first)
@@ -81,7 +86,12 @@ object MissionCard {
             rest.removeFirst()
             while (true) {
                 val next = rest.firstOrNull() ?: break
-                if (!aligned(next, first, line) || abs(height(next) - line) > line * 0.3) break
+                // Alt satır cümlenin devamı: yazı boyu benzer; küçük harfle başlayan kısa son satır ("treasure.") harfleri
+                // kısa diye daha alçak okunabilir. Sıradaki görevin BÜYÜK HARFLİ başlığı açıklamaya katılmaz (görev listesi).
+                val continuation = lines[next].text.firstOrNull()?.isLowerCase() == true && height(next) <= line * 1.5 &&
+                    !SubtitleStabilizer.endsSentence(lines[last].text.trim())
+                if (!aligned(next, first, line) || isTitle(lines[next].text) ||
+                    (abs(height(next) - line) > line * 0.3 && !continuation)) break
                 val gap = boxes[next]!!.top - boxes[last]!!.bottom
                 // Satır ya cümlenin devamı (dar boşluk) ya da yeni bir açıklama paragrafı: daha geniş boşluk, önceki satır
                 // cümleyi bitirmiş ve yeni satır ayrıntı satırından uzun bir cümle ("Distance 2.4 mi" ayrıntıdır).
@@ -93,9 +103,15 @@ object MissionCard {
                 rest.removeFirst()
             }
             val right = body.maxOf { boxes[it]!!.right }
+            // Altında cümle olan BÜYÜK HARFLİ satır ayrıntı değil, sıradaki görevin başlığıdır.
+            fun nextTitle(i: Int): Boolean {
+                if (!isTitle(lines[i].text)) return false
+                val after = order.firstOrNull { it != i && boxes[it]!!.top > boxes[i]!!.bottom - 1e-9 } ?: return false
+                return isSentence(lines[after].text) && boxes[after]!!.top - boxes[i]!!.bottom <= height(i) * TITLE_GAP
+            }
             while (true) {
                 val next = rest.firstOrNull() ?: break
-                if (words(lines[next].text) > DETAIL_WORDS || height(next) > line * 1.3 ||
+                if (nextTitle(next) || words(lines[next].text) > DETAIL_WORDS || height(next) > line * 1.3 ||
                     boxes[next]!!.top - boxes[last]!!.bottom > line * DETAIL_GAP ||
                     !(aligned(next, first, line) || abs(boxes[next]!!.right - right) <= line * ALIGNMENT * 9 / 16)) break
                 details.add(next)

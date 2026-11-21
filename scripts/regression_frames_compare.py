@@ -3,7 +3,7 @@
 """Gerçek kare gerileme setinin iki koşusunu (önceki etiket, bu çekirdek) karşılaştırır (scripts/regression-frames.sh).
 
 Kırmızı (çıkış 1): altyazı yakalama oranı düştü, yanlış kabul arttı ya da telefon/harita sınıflaması, kutu örtme, telefon
-çevirisi senaryosu geriledi. Ayrıca karede kare: önceki etikette geçip bu çekirdekte kalan her kare listelenir.
+çevirisi senaryosu ya da ekran yazısı (menü sekmeleri, görev listesi, özel ad, fotoğraf/tuş simgesi örtme) geriledi. Ayrıca karede kare: önceki etikette geçip bu çekirdekte kalan her kare listelenir.
 GITHUB_STEP_SUMMARY tanımlıysa tablo oraya da yazılır.
 """
 
@@ -19,6 +19,7 @@ METRICS = [
     ("map", "Harita kartı sınıflama", False),
     ("cover", "Çizim kutusu örtme (piksel ≥%95)", False),
     ("phoneTranslation", "Telefon çevirisi gösteriliyor", False),
+    ("screen", "Ekran yazısı (menü, görev listesi)", False),
 ]
 
 
@@ -46,6 +47,8 @@ def frame_failures(summary):
             notes.append("harita kartı")
         if frame.get("coverage") is not None and frame["coverage"] < 0.95:
             notes.append("kutu örtmüyor")
+        if frame.get("screen") is False:
+            notes.append("ekran yazısı: " + "; ".join(frame.get("screenNotes") or []))
         if notes:
             failed[frame["id"]] = notes
     for scenario in summary["scenarios"]:
@@ -61,7 +64,8 @@ def main():
              f"| Ölçüt | {base['core']} | {head['core']} | Durum |", "|---|---|---|---|"]
     red = False
     for key, name, lower in METRICS:
-        b, h = base[key], head[key]
+        # Ölçütü bilmeyen eski koşucunun özeti: boş sayılır.
+        b, h = base.get(key, {"passed": 0, "total": 0}), head.get(key, {"passed": 0, "total": 0})
         if key == "cover":
             # Kutu yalnız yakalanan satırlarda ölçülür; paydalar farklı olabilir. Önceki etikette örten, bu çekirdekte
             # örtmeyen kare varsa gerilemedir.

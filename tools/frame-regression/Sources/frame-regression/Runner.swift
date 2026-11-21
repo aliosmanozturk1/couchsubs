@@ -21,6 +21,9 @@ struct FrameResult: Codable {
     var phoneDetected: String
     var mapExpected: Bool
     var mapDetected: Bool
+    /// Ekran yazısı denetimi geçti mi ("Ekranı çevir" ve otomatik ekran yazısı); beklenen yoksa nil.
+    var screen: Bool?
+    var screenNotes: [String]?
 }
 
 struct ScenarioResult: Codable {
@@ -49,6 +52,8 @@ struct Summary: Codable {
     var cover: Metric
     /// Telefon çevirisi senaryoları (çeviri gelince telefonda gösteriliyor).
     var phoneTranslation: Metric
+    /// Ekran yazısı: menü sekmeleri ayrı, görev başlığı/açıklaması ayrı, özel ad çevrilmez, fotoğraf örtülmez, özgün renk.
+    var screen: Metric
     var frames: [FrameResult]
     var scenarios: [ScenarioResult]
 }
@@ -104,7 +109,13 @@ final class Runner {
             let image = images[frame.id]!
             classify(frame, image, into: &results[frame.id]!)
         }
-        // 3) Telefon çevirisi senaryoları.
+        // 3) Ekran yazısı (menü, görev listesi).
+        for frame in manifest.frames where frame.screen != nil {
+            let notes = await checkScreen(frame, images[frame.id]!)
+            results[frame.id]!.screen = notes.isEmpty
+            results[frame.id]!.screenNotes = notes.isEmpty ? nil : notes
+        }
+        // 4) Telefon çevirisi senaryoları.
         var scenarios: [ScenarioResult] = []
         for scenario in manifest.phoneScenarios {
             scenarios.append(await runPhone(scenario))
@@ -119,6 +130,7 @@ final class Runner {
             map: metric(frames.map { $0.mapExpected == $0.mapDetected }),
             cover: metric(frames.compactMap { $0.coverage.map { $0 >= coverPass } }),
             phoneTranslation: metric(scenarios.map(\.passed)),
+            screen: metric(frames.compactMap(\.screen)),
             frames: frames,
             scenarios: scenarios)
     }

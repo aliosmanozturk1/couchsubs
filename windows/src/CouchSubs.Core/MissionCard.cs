@@ -30,6 +30,8 @@ internal static class MissionCard
     internal const double MaxWidth = 0.55;
     /// <summary>Açıklama en az bu kadar sözcük.</summary>
     internal const int BodyWords = 6;
+    /// <summary>Başlığın solundaki görev resmi en çok başlık yüksekliğinin bu katı genişliktedir; açıklama resmin altından başlar.</summary>
+    internal const double PictureWidth = 2.5;
 
     /// <summary>Bulunan kart: satırların sırası (verilen listede), yukarıdan aşağı.</summary>
     internal sealed record Card(IReadOnlyList<int> Title, IReadOnlyList<int> Subtitles, IReadOnlyList<int> Body,
@@ -74,13 +76,21 @@ internal static class MissionCard
                 last = next;
                 rest.Dequeue();
             }
-            if (!rest.TryPeek(out var first) || !IsSentence(lines[first].Text) || !Aligned(first, start, titleHeight)
+            // Başlığın solunda görev resmi (portre) olabilir: açıklama resmin altından, başlıktan daha solda başlar (#856).
+            bool UnderTitle(int i) => Aligned(i, start, titleHeight)
+                || (B(i).Left < B(start).Left && B(start).Left - B(i).Left <= titleHeight * PictureWidth * 9 / 16);
+            if (!rest.TryPeek(out var first) || !IsSentence(lines[first].Text) || !UnderTitle(first)
                 || B(first).Top - B(last).Bottom > titleHeight * TitleGap || Height(first) > titleHeight * 1.1) continue;
             var line = Height(first);
             var body = new List<int> { first };
             last = first;
             rest.Dequeue();
-            while (rest.TryPeek(out var next) && Aligned(next, first, line) && Math.Abs(Height(next) - line) <= line * 0.3)
+            // Alt satır cümlenin devamı: yazı boyu benzer; küçük harfle başlayan kısa son satır ("treasure.") harfleri kısa
+            // diye daha alçak okunabilir. Sıradaki görevin BÜYÜK HARFLİ başlığı açıklamaya katılmaz (görev listesi).
+            while (rest.TryPeek(out var next) && Aligned(next, first, line) && !IsTitle(lines[next].Text)
+                   && (Math.Abs(Height(next) - line) <= line * 0.3
+                       || (lines[next].Text.Length > 0 && char.IsLower(lines[next].Text[0]) && Height(next) <= line * 1.5
+                           && !SubtitleStabilizer.EndsSentence(lines[last].Text.Trim()))))
             {
                 var gap = B(next).Top - B(last).Bottom;
                 // Satır ya cümlenin devamı (dar boşluk) ya da yeni bir açıklama paragrafı: daha geniş boşluk, önceki satır
@@ -93,7 +103,14 @@ internal static class MissionCard
                 rest.Dequeue();
             }
             var right = body.Max(i => B(i).Right);
-            while (rest.TryPeek(out var next) && Words(lines[next].Text) <= DetailWords && Height(next) <= line * 1.3
+            // Altında cümle olan BÜYÜK HARFLİ satır ayrıntı değil, sıradaki görevin başlığıdır.
+            bool NextTitle(int i)
+            {
+                if (!IsTitle(lines[i].Text)) return false;
+                var after = order.Where(j => B(j).Top > B(i).Bottom - 1e-9 && j != i).Select(j => (int?)j).FirstOrDefault();
+                return after is { } a && IsSentence(lines[a].Text) && B(a).Top - B(i).Bottom <= Height(i) * TitleGap;
+            }
+            while (rest.TryPeek(out var next) && !NextTitle(next) && Words(lines[next].Text) <= DetailWords && Height(next) <= line * 1.3
                    && B(next).Top - B(last).Bottom <= line * DetailGap
                    && (Aligned(next, first, line) || Math.Abs(B(next).Right - right) <= line * Alignment * 9 / 16))
             {

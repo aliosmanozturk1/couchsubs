@@ -171,6 +171,8 @@ public static class ScreenTranslation
     internal static string? Known(string paragraph, Group? group = null) =>
         // Telefondaki kişi adı (sohbet başlığı, listedeki ad) çevrilmez: "Rose" "Gül", "May" "Mayıs" olmasın.
         group?.Phone?.Role.KeepsText() == true ? paragraph
+        // "JASON & LUCIA" gibi yalnız özel adlardan oluşan sekme/başlık çevrilmez (#859).
+        : KeepsNames(paragraph) ? paragraph
         : paragraph.Contains(ButtonIcons.Marker) ? null : UiCommands.TranslateLabel(paragraph);
 
     /// <summary>Telefondaki sohbetin başlığı (kişi adı); sohbet listesinde ya da telefonsuz karede boş.</summary>
@@ -385,15 +387,26 @@ public static class ScreenTranslation
     {
         var marked = (wholeScreen ? new Reading(reading.Lines.Select(Repaired)) : reading).WithButtonIcons();
         if (wholeScreen)
+        {
             marked = new Reading(marked.Lines.SelectMany(line =>
                 line.Icons is not { Count: > 0 } && line.Box is not null && (ButtonPrompts.IsPrompt(line.Text) || HasWideGap(line))
                     ? PromptPieces(line) : [line]));
-        // Tam ekranda yalnız aksi halde atılacak kumanda ipuçlarında kareye bak.
+            // Menü şeridinin sekmeleri ("JASON & LUCIA   MAP   BRIEF") tek satır okunsa da ayrı ayrı çevrilir (#859).
+            var aspect = frame is not null ? (double)frame.Width / Math.Max(1, frame.Height) : 16.0 / 9.0;
+            marked = new Reading(marked.Lines.SelectMany(line => MenuPieces(line, aspect, frame)));
+        }
+        // Tam ekranda yalnız aksi halde atılacak kumanda ipuçlarında kareye bak. "Ekranı çevir": satır ucundaki kısa parça
+        // ("RECENTER 13", "EXIT O") okunmuş bir tuş simgesi olabilir; görüntüden doğrulanırsa simge olur, kutunun dışında
+        // kalır (#860).
         if (frame is not null)
-            marked = new Reading(marked.Lines.Select(line => line.Icons is not { Count: > 0 } && ButtonPrompts.IsPrompt(line.Text)
-                ? ButtonIcons.MarkFree(line, frame) : line));
+            marked = new Reading(marked.Lines.Select(line =>
+                line.Icons is { Count: > 0 } ? line
+                : ButtonPrompts.IsPrompt(line.Text) ? ButtonIcons.MarkFree(line, frame)
+                : wholeScreen && HasShortEdge(line) ? ButtonIcons.MarkFree(line, frame, monochrome: true) : line));
         var lines = marked.WithoutButtonPrompts().WithoutOcrNoise(keepIdentifiers).Lines
             .Where(line => line.Box is not null && IsWords(line.Text))
+            // Saat ve sayaç ("12:00 pm") çevrilmez.
+            .Where(line => !wholeScreen || !IsClock(line.Text))
             .OrderBy(line => line.Box!.Value.Top).ThenBy(line => line.Box!.Value.Left)
             .ToList();
         // "Ekranı çevir": haritanın görev kartı kendi parçalarına ayrılır (başlık, açıklama, ayrıntılar; MissionCard).
@@ -401,7 +414,8 @@ public static class ScreenTranslation
         // Telefonun satırları girmez: eğik telefonda kutuları bilerek üst üste.
         IReadOnlyList<Group> Plain(IReadOnlyList<TextLine> all)
         {
-            var kept = WithoutDuplicateLines([.. all.Select(WithoutEdgeMarks)]);
+            // "Ekranı çevir"de satırın başındaki/sonundaki kumanda simgesi kutunun dışında kalır, görünür (#860).
+            var kept = WithoutDuplicateLines([.. all.Select(WithoutEdgeMarks).Select(line => wholeScreen ? WithoutEdgeIcons(line) : line)]);
             return wholeScreen ? WithMissionCards(kept, menuRows, frame) : GroupsFromLines(kept, menuRows);
         }
         if (handset is null) return Plain(lines);
@@ -426,11 +440,263 @@ public static class ScreenTranslation
     {
         var cards = MissionCard.Find(lines)
             .Where(card => frame is null || MissionCard.OnPanel(frame, [.. card.All.Select(i => lines[i])])).ToList();
-        if (cards.Count == 0) return GroupsFromLines(lines, menuRows);
         var taken = cards.SelectMany(card => card.All).ToHashSet();
         var rest = Enumerable.Range(0, lines.Count).Where(i => !taken.Contains(i)).Select(i => lines[i]).ToList();
-        return [.. GroupsFromLines(rest, menuRows).Concat(cards.SelectMany(card => MissionCard.Groups(card, lines)))
+        return [.. LabelColumns(GroupsFromLines(rest, menuRows), rest).Concat(cards.SelectMany(card => MissionCard.Groups(card, lines)))
             .OrderBy(group => group.Box.Top)];
+    }
+
+    /// <summary>
+    /// Bütün satırları kısa BÜYÜK HARFLİ etiket olan grup (tuş ipuçları sütunu, menü listesi) satır satır gruptur: her
+    /// etiket kendi kutusunda, kendi yerinde çevrilir. Önceden sütun tek kutu oluyor, sağındaki tuş simgelerini de
+    /// örtüyordu (#860).
+    /// </summary>
+    internal static IReadOnlyList<Group> LabelColumns(IReadOnlyList<Group> groups, IReadOnlyList<TextLine> lines) =>
+        [.. groups.SelectMany(group =>
+        {
+            var own = lines.Where(line =>
+            {
+                var box = line.Box!.Value;
+                double x = (box.Left + box.Right) / 2, y = (box.Top + box.Bottom) / 2;
+                return x >= group.Box.Left - 1e-6 && x <= group.Box.Right + 1e-6 && y >= group.Box.Top - 1e-6 && y <= group.Box.Bottom + 1e-6;
+            }).ToList();
+            if (own.Count <= 1 || !own.All(line =>
+                {
+                    var plain = IconText.Plain(line.Text);
+                    return WordCount(plain) <= MenuLabelWords && plain.Any(char.IsLetter) && !plain.Any(char.IsLower);
+                }))
+                return (IEnumerable<Group>)[group];
+            return own.Select(line =>
+            {
+                var icons = ParagraphIcons([line]);
+                return new Group(Paragraphs([line]), line.Box!.Value, line.Box!.Value.Bottom - line.Box!.Value.Top,
+                                 icons.Any(list => list.Count > 0) ? icons : null);
+            });
+        })];
+
+    /// <summary>Saat ya da sayaç ("12:00 pm", "x3"): harflerinden çok rakamı var, fiyat değil. Çevrilmez.</summary>
+    internal static bool IsClock(string text) =>
+        ScreenTextNoise.IsNoise(text, menu: true)
+        && !text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(PriceText.IsMoney);
+
+    /// <summary>Satırın ilk ya da son parçası en çok iki harflik (okunmuş tuş simgesi olabilir: "13", "O", "®").</summary>
+    internal static bool HasShortEdge(TextLine line)
+    {
+        var parts = line.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 && (parts[^1].Length <= 2 || parts[0].Length <= 2);
+    }
+
+    // --- Menü şeridi, özel adlar, kenardaki tuş simgesi (#856, #859, #860) ---
+
+    /// <summary>
+    /// Menü şeridinde sekmelerin arası: satır yüksekliğinin bu katından geniş boşluk sözcük arası değildir (sözcük arası
+    /// yazı boyunun üçte biri kadardır). GTA 6 haritasının üst şeridi "JASON &amp; LUCIA   MAP   BRIEF   PROGRESS" tek satır
+    /// okunuyor, sekmeler tek cümle sanılıp "LUCIA HARİTASI KISA İLERLEME RAPORU" diye çevriliyordu.
+    /// </summary>
+    public const double MenuGap = 0.9;
+
+    /// <summary>
+    /// BÜYÜK HARFLİ satırdaki geniş boşluklar (<see cref="MenuGap"/>) ayrı sekmelerdir: her sekme kendi satırı, kutusu kendi
+    /// yazısı. Kare verilirse boşluklar görüntüden bulunur (<see cref="InkPieces"/>; yazı tanımanın sözcük kutuları boşluğu
+    /// da kapsıyor), yoksa sözcük yerlerinden. Satırda simge varsa ya da satır büyük harf değilse dokunulmaz.
+    /// <paramref name="aspect"/>: kutuların oranlandığı görüntünün genişlik/yükseklik oranı. İki harfi olmayan parça atılır.
+    /// </summary>
+    public static IReadOnlyList<TextLine> MenuPieces(TextLine line, double aspect = 16.0 / 9.0, Frame? frame = null)
+    {
+        if (line.Box is not { } box || line.Icons is { Count: > 0 } || !TextStyleSampler.IsUpper(line.Text) || WordCount(line.Text) < 2)
+            return [line];
+        var limit = (box.Bottom - box.Top) * MenuGap / Math.Max(0.1, aspect);
+        if (frame is not null) return InkPieces(line, frame, limit);
+        if (line.Words is not { Count: >= 2 } words) return [line];
+        var runs = new List<List<TextWord>> { new() { words[0] } };
+        foreach (var word in words.Skip(1))
+        {
+            if (word.Box.Left - runs[^1][^1].Box.Right > limit) runs.Add([]);
+            runs[^1].Add(word);
+        }
+        if (runs.Count == 1) return [line];
+        return [.. runs.Where(run => run.Sum(word => word.Text.Count(char.IsLetter)) >= 2).Select(run =>
+        {
+            var span = run.Select(word => word.Box).Aggregate((a, b) => a.Union(b));
+            return new TextLine(string.Join(' ', run.Select(word => word.Text)), new TextBox(span.Left, box.Top, span.Right, box.Bottom),
+                                line.Confidence, run);
+        })];
+    }
+
+    /// <summary>
+    /// Satırın yazı sütunları: kutudaki her sütunda zeminden (kutunun ortanca parlaklığı) belirgin ayrılan nokta var mı;
+    /// <paramref name="gap"/>'ten geniş boş aralıklar yazıyı parçalara böler. Parçalar kareye oranla [sol, sağ].
+    /// </summary>
+    internal static List<(double Left, double Right)> InkSpans(Frame frame, TextBox box, double gap)
+    {
+        double left = Math.Max(0, box.Left) * frame.Width, top = Math.Max(0, box.Top) * frame.Height;
+        double width = (Math.Min(1, box.Right) - Math.Max(0, box.Left)) * frame.Width;
+        double height = (Math.Min(1, box.Bottom) - Math.Max(0, box.Top)) * frame.Height;
+        if (width < 8 || height < 4) return [];
+        var columns = Math.Max(8, Math.Min(800, (int)Math.Round(width)));
+        const int rows = 12;
+        var luma = new int[columns * rows];
+        for (var y = 0; y < rows; y++)
+        {
+            var py = Math.Min(frame.Height - 1, (int)(top + (y + 0.5) * height / rows));
+            for (var x = 0; x < columns; x++)
+            {
+                var px = Math.Min(frame.Width - 1, (int)(left + (x + 0.5) * width / columns));
+                var p = py * frame.Stride + px * 4;
+                luma[y * columns + x] = (299 * frame.Pixels[p + 2] + 587 * frame.Pixels[p + 1] + 114 * frame.Pixels[p]) / 1000;
+            }
+        }
+        var median = luma.OrderBy(v => v).ElementAt(luma.Length / 2);
+        var ink = Enumerable.Range(0, columns)
+            .Select(x => Enumerable.Range(0, rows).Any(y => Math.Abs(luma[y * columns + x] - median) > 60)).ToArray();
+        var step = (box.Right - box.Left) / columns;
+        var blank = Math.Max(1, (int)Math.Ceiling(gap / Math.Max(1e-9, step)));
+        var spans = new List<(double, double)>();
+        var i = 0;
+        while (i < columns)
+        {
+            if (!ink[i]) { i++; continue; }
+            int end = i, run = 0;
+            for (var probe = i + 1; probe < columns; probe++)
+            {
+                if (ink[probe]) { end = probe; run = 0; }
+                else if (++run > blank) break;
+            }
+            spans.Add((box.Left + i * step, box.Left + (end + 1) * step));
+            i = end + 1;
+        }
+        return spans;
+    }
+
+    /// <summary>
+    /// Menü satırının sekmeleri: görüntüdeki geniş boşluklardan (<see cref="InkSpans"/>) bölünür. Sözcükler sırasıyla
+    /// parçalara dağıtılır: her parçanın harf sayısı payı genişlik payına en yakın olacak biçimde (yazı tanımanın sözcük
+    /// kutuları boşlukları da kapsadığı için yerlerine bakılmaz). Parça sayısı sözcüklerden çoksa dokunulmaz.
+    /// </summary>
+    internal static IReadOnlyList<TextLine> InkPieces(TextLine line, Frame frame, double gap)
+    {
+        if (line.Box is not { } box) return [line];
+        var spans = InkSpans(frame, box, gap);
+        var words = line.Text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (spans.Count < 2 || words.Length < spans.Count) return [line];
+        int k = spans.Count, n = words.Length;
+        var widths = spans.Select(span => span.Right - span.Left).ToArray();
+        var totalWidth = widths.Sum();
+        var sizes = words.Select(word => (double)word.Length).ToArray();
+        var totalSize = sizes.Sum() + (n - k);
+        // En iyi bölme: best[i, j] ilk i sözcük j parçada; parçanın payı sözcükleri ve aralarındaki boşluklar.
+        var best = new double[n + 1, k + 1];
+        var from = new int[n + 1, k + 1];
+        for (var a = 0; a <= n; a++)
+            for (var b = 0; b <= k; b++) best[a, b] = double.PositiveInfinity;
+        best[0, 0] = 0;
+        for (var i = 1; i <= n; i++)
+            for (var j = 1; j <= Math.Min(i, k); j++)
+                for (var start = j - 1; start < i; start++)
+                {
+                    if (double.IsPositiveInfinity(best[start, j - 1])) continue;
+                    var size = sizes[start..i].Sum() + (i - start - 1);
+                    var cost = best[start, j - 1] + Math.Abs(size / totalSize - widths[j - 1] / totalWidth);
+                    if (cost < best[i, j]) (best[i, j], from[i, j]) = (cost, start);
+                }
+        var bounds = new List<int>();
+        var at = n;
+        for (var j = k; j > 0; j--)
+        {
+            bounds.Insert(0, from[at, j]);
+            at = from[at, j];
+        }
+        bounds.Add(n);
+        var result = new List<TextLine>();
+        for (var j = 0; j < k; j++)
+        {
+            var text = string.Join(' ', words[bounds[j]..bounds[j + 1]]);
+            if (text.Count(char.IsLetter) < 2) continue;
+            result.Add(new TextLine(text, new TextBox(spans[j].Left, box.Top, spans[j].Right, box.Bottom), line.Confidence));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Yalnız özel adlardan oluşan yazı ("JASON &amp; LUCIA", "Bonnie &amp; Clyde"): "&amp;" ile bağlı, her biri bir iki
+    /// sözcüklük, büyük harfle başlayan adlar. Çevirmene gitmez; çevirisi aslıdır (kutusu çizilmez, özgün yazı görünür kalır).
+    /// </summary>
+    public static bool KeepsNames(string text)
+    {
+        var parts = IconText.Plain(text).Trim().Split(" & ");
+        if (parts.Length < 2) return false;
+        return parts.All(part =>
+        {
+            var words = part.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return words.Length is >= 1 and <= 2 && words.All(word =>
+                word.Count(char.IsLetter) >= 2 && word.All(c => char.IsLetter(c) || "'’-.".Contains(c))
+                && char.IsUpper(word[0]) && !SpeakerNameGuard.NotNames.Contains(word.ToLowerInvariant()));
+        });
+    }
+
+    private static readonly char[] IconBrackets = [' ', '(', ')', '[', ']'];
+
+    /// <summary>
+    /// Satırın başındaki ya da sonundaki kumanda simgesi (kareden tanınmış simge ya da okunmuş tuş adı: "RECENTER L3",
+    /// "EXIT (○)") çeviriye girmez; kutu yalnız yazının sözcüklerini kapsar, simge ekranda görünür kalır. Önceden çeviri
+    /// kutusu simgenin üstünü örtüyordu ("Ortala" L3'ü kapatıyordu, #860). Sözcük yerleri bilinmiyorsa harf sayısına göre
+    /// kestirilir. Geriye tuş adı olmayan iki harfli bir sözcük kalmayacaksa (yalnız tuştan oluşan satır) dokunulmaz.
+    /// </summary>
+    public static TextLine WithoutEdgeIcons(TextLine line)
+    {
+        if (line.Box is not { } box) return line;
+        var original = line.Text.Trim();
+        var text = original;
+        var icons = (line.Icons ?? []).ToList();
+        if (text.Count(c => c == ButtonIcons.Marker) != icons.Count) return line;
+        double left = box.Left, right = box.Right;
+        // Kareden tanınmış simgeler (yazıda imle).
+        while (icons.Count > 0 && text.Trim(IconBrackets) is { Length: > 0 } tail && tail[^1] == ButtonIcons.Marker)
+        {
+            text = tail[..^1].Trim(IconBrackets);
+            right = Math.Min(right, icons[^1].Box.Left);
+            icons.RemoveAt(icons.Count - 1);
+        }
+        while (icons.Count > 0 && text.Trim(IconBrackets) is { Length: > 0 } head && head[0] == ButtonIcons.Marker)
+        {
+            text = head[1..].Trim(IconBrackets);
+            left = Math.Max(left, icons[0].Box.Right);
+            icons.RemoveAt(0);
+        }
+        IReadOnlyList<TextWord>? words;
+        if (text == original)
+        {
+            // Okunmuş tuş adı ("L3", "(R3)").
+            if (text.Contains(ButtonIcons.Marker)) return line;
+            var measured = line.Words is { Count: > 0 } && string.Join(' ', line.Words.Select(word => word.Text)) == text;
+            var list = (measured ? line.Words! : ButtonIcons.Estimate(text, box)).ToList();
+            while (list.Count > 1 && ButtonIcons.IsButtonName(list[^1].Text))
+            {
+                right = Math.Min(right, list[^1].Box.Left);
+                list.RemoveAt(list.Count - 1);
+            }
+            while (list.Count > 1 && ButtonIcons.IsButtonName(list[0].Text))
+            {
+                left = Math.Max(left, list[0].Box.Right);
+                list.RemoveAt(0);
+            }
+            text = string.Join(' ', list.Select(word => word.Text));
+            words = measured ? list : null;
+        }
+        else
+        {
+            words = line.Words?.Where(word => word.Box.Left >= left - 1e-6 && word.Box.Right <= right + 1e-6).ToList();
+        }
+        if (text == original || right <= left
+            || !text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+                .Any(word => word.Count(char.IsLetter) >= 2 && !ButtonIcons.IsButtonName(word))) return line;
+        return line with
+        {
+            Text = text,
+            Icons = icons.Count > 0 ? icons : null,
+            Words = words is { Count: > 0 } ? words : null,
+            Box = new TextBox(left, box.Top, right, box.Bottom),
+        };
     }
 
 
@@ -490,7 +756,9 @@ public static class ScreenTranslation
     internal static bool IsPromptSeparator(string word)
     {
         var core = word.Trim('(', ')', '[', ']', '{', '}', '<', '>');
-        return ButtonIcons.IsButtonName(core) || PriceText.IsMoney(core) || !core.Any(char.IsLetter) || (core.Length == 1 && core != "a");
+        // "&" sekme adının parçasıdır ("JASON & LUCIA"), ayırıcı değil.
+        return ButtonIcons.IsButtonName(core) || PriceText.IsMoney(core) || (!core.Any(char.IsLetter) && core != "&")
+            || (core.Length == 1 && core != "a");
     }
 
     // Satırlar süzülmüş, kutulu ve yukarıdan aşağıya sıralıdır.

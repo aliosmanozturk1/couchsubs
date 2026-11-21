@@ -140,6 +140,8 @@ public enum ScreenTranslation {
     static func known(_ paragraph: String, in group: Group? = nil) -> String? {
         // Telefondaki kişi adı (sohbet başlığı, listedeki ad) çevrilmez: "Rose" "Gül", "May" "Mayıs" olmasın.
         if group?.phone?.role.keepsText == true { return paragraph }
+        // "JASON & LUCIA" gibi yalnız özel adlardan oluşan sekme/başlık çevrilmez (#859).
+        if keepsNames(paragraph) { return paragraph }
         guard !paragraph.contains(ButtonIcons.marker) else { return nil }
         return UiCommands.translateLabel(paragraph)
     }
@@ -354,22 +356,32 @@ public enum ScreenTranslation {
                       ButtonPrompts.isPrompt(line.text) || hasWideGap(line) else { return [line] }
                 return promptPieces(line)
             })
+            // Menü şeridinin sekmeleri ("JASON & LUCIA   MAP   BRIEF") tek satır okunsa da ayrı ayrı çevrilir (#859).
+            let aspect = frame.map { Double($0.width) / Double(max(1, $0.height)) } ?? 16.0 / 9.0
+            marked = Reading(lines: marked.lines.flatMap { menuPieces($0, aspect: aspect, frame: frame) })
         }
         // Tam ekranda yalnız aksi halde atılacak kısa ipuçlarında simgeyi görüntüden doğrula.
         if let frame {
             marked = Reading(lines: marked.lines.map { line in
-                (line.icons ?? []).isEmpty && ButtonPrompts.isPrompt(line.text) ? ButtonIcons.markFree(line, frame: frame) : line
+                guard (line.icons ?? []).isEmpty else { return line }
+                if ButtonPrompts.isPrompt(line.text) { return ButtonIcons.markFree(line, frame: frame) }
+                // "Ekranı çevir": satır ucundaki kısa parça ("RECENTER 13", "EXIT O") okunmuş bir tuş simgesi olabilir;
+                // görüntüden doğrulanırsa simge olur, kutunun dışında kalır (#860).
+                return wholeScreen && hasShortEdge(line) ? ButtonIcons.markFree(line, frame: frame, monochrome: true) : line
             })
         }
         let lines = marked.withoutButtonPrompts().withoutOcrNoise(keepIdentifiers: keepIdentifiers).lines
             .filter { $0.box != nil && isWords($0.text) }
+            // Saat ve sayaç ("12:00 pm") çevrilmez.
+            .filter { !wholeScreen || !isClock($0.text) }
             // Aynı satırdaki parçalar (tuş çubuğunun etiketleri) soldan sağa; sıralama kararlı değildir.
             .sorted { $0.box!.top != $1.box!.top ? $0.box!.top < $1.box!.top : $0.box!.left < $1.box!.left }
         // "Ekranı çevir": haritanın görev kartı kendi parçalarına ayrılır (başlık, açıklama, ayrıntılar; `MissionCard`).
         // Aynı yazının iki okunuşu tek satır kalır; satırın başındaki/sonundaki simge kutunun dışında kalır (#827).
         // Telefonun satırları girmez: eğik telefonda kutuları bilerek üst üste.
         let plain = { (all: [TextLine]) -> [Group] in
-            let lines = withoutDuplicateLines(all.map(withoutEdgeMarks))
+            // "Ekranı çevir"de satırın başındaki/sonundaki kumanda simgesi kutunun dışında kalır, görünür (#860).
+            let lines = withoutDuplicateLines(all.map(withoutEdgeMarks).map { wholeScreen ? withoutEdgeIcons($0) : $0 })
             return wholeScreen ? withMissionCards(lines, frame: frame) : groups(from: lines)
         }
         guard let handset else { return plain(lines) }
@@ -385,10 +397,226 @@ public enum ScreenTranslation {
     /// çevriliyordu.
     static func withMissionCards(_ lines: [TextLine], frame: CGImage?) -> [Group] {
         let cards = MissionCard.find(lines).filter { card in frame.map { MissionCard.onPanel($0, card.all.map { lines[$0] }) } ?? true }
-        guard !cards.isEmpty else { return groups(from: lines) }
         let taken = Set(cards.flatMap(\.all))
         let rest = lines.indices.filter { !taken.contains($0) }.map { lines[$0] }
-        return (groups(from: rest) + cards.flatMap { MissionCard.groups($0, lines) }).sorted { $0.box.top < $1.box.top }
+        return (labelColumns(groups(from: rest), rest) + cards.flatMap { MissionCard.groups($0, lines) })
+            .sorted { $0.box.top < $1.box.top }
+    }
+
+    /// Kısa etiket satırı: en çok bu kadar sözcük (otomatik ekran yazısıyla aynı, `RegionWatcher.labelWords`).
+    static let labelWords = 5
+
+    /// Bütün satırları kısa BÜYÜK HARFLİ etiket olan grup (tuş ipuçları sütunu, menü listesi) satır satır gruptur: her
+    /// etiket kendi kutusunda, kendi yerinde çevrilir. Önceden sütun tek kutu oluyor, sağındaki tuş simgelerini de
+    /// örtüyordu (#860).
+    static func labelColumns(_ groups: [Group], _ lines: [TextLine]) -> [Group] {
+        groups.flatMap { group -> [Group] in
+            let own = lines.filter { line in
+                let box = line.box!, x = (box.left + box.right) / 2, y = (box.top + box.bottom) / 2
+                return x >= group.box.left - 1e-6 && x <= group.box.right + 1e-6 && y >= group.box.top - 1e-6 && y <= group.box.bottom + 1e-6
+            }
+            guard own.count > 1, own.allSatisfy({ line in
+                let plain = IconText.plain(line.text)
+                return plain.split(whereSeparator: \.isWhitespace).count <= labelWords && plain.contains(where: \.isLetter)
+                    && !plain.contains(where: \.isLowercase)
+            }) else { return [group] }
+            return own.map { line in
+                let icons = paragraphIcons([line])
+                return Group(paragraphs: paragraphs([line]), box: line.box!, lineHeight: line.box!.bottom - line.box!.top,
+                             icons: icons.contains { !$0.isEmpty } ? icons : nil)
+            }
+        }
+    }
+
+    /// Saat ya da sayaç ("12:00 pm", "x3"): harflerinden çok rakamı var, fiyat değil. Çevrilmez.
+    static func isClock(_ text: String) -> Bool {
+        ScreenTextNoise.isNoise(text, menu: true)
+            && !text.split(whereSeparator: \.isWhitespace).contains { PriceText.isMoney(String($0)) }
+    }
+
+    /// Satırın ilk ya da son parçası en çok iki harflik (okunmuş tuş simgesi olabilir: "13", "O", "®").
+    static func hasShortEdge(_ line: TextLine) -> Bool {
+        let parts = line.text.split(whereSeparator: \.isWhitespace)
+        guard parts.count >= 2 else { return false }
+        return parts.last!.count <= 2 || parts.first!.count <= 2
+    }
+
+    // MARK: - Menü şeridi, özel adlar, kenardaki tuş simgesi (#856, #859, #860)
+
+    /// Menü şeridinde sekmelerin arası: satır yüksekliğinin bu katından geniş boşluk sözcük arası değildir (sözcük arası
+    /// yazı boyunun üçte biri kadardır). GTA 6 haritasının üst şeridi "JASON & LUCIA   MAP   BRIEF   PROGRESS" tek satır
+    /// okunuyor, sekmeler tek cümle sanılıp "LUCIA HARİTASI KISA İLERLEME RAPORU" diye çevriliyordu.
+    public static let menuGap = 0.9
+
+    /// BÜYÜK HARFLİ satırdaki geniş boşluklar (`menuGap`) ayrı sekmelerdir: her sekme kendi satırı, kutusu kendi yazısı.
+    /// Kare verilirse boşluklar görüntüden bulunur (`inkPieces`; yazı tanımanın sözcük kutuları boşluğu da kapsıyor),
+    /// yoksa sözcük yerlerinden. Satırda simge varsa ya da satır büyük harf değilse dokunulmaz. `aspect`: kutuların
+    /// oranlandığı görüntünün genişlik/yükseklik oranı. İki harfi olmayan parça atılır.
+    public static func menuPieces(_ line: TextLine, aspect: Double = 16.0 / 9.0, frame: CGImage? = nil) -> [TextLine] {
+        guard let box = line.box, (line.icons ?? []).isEmpty, TextStyleSampler.isUpper(line.text),
+              line.text.split(whereSeparator: \.isWhitespace).count >= 2 else { return [line] }
+        let limit = (box.bottom - box.top) * menuGap / max(0.1, aspect)
+        if let frame { return inkPieces(line, frame: frame, gap: limit) }
+        guard let words = line.words, words.count >= 2 else { return [line] }
+        var runs: [[TextWord]] = [[words[0]]]
+        for word in words.dropFirst() {
+            if word.box.left - runs[runs.count - 1].last!.box.right > limit { runs.append([]) }
+            runs[runs.count - 1].append(word)
+        }
+        guard runs.count > 1 else { return [line] }
+        return runs.filter { run in run.reduce(0) { $0 + $1.text.filter(\.isLetter).count } >= 2 }.map { run in
+            let span = run.dropFirst().reduce(run[0].box) { $0.union($1.box) }
+            return TextLine(run.map(\.text).joined(separator: " "),
+                            box: TextBox(left: span.left, top: box.top, right: span.right, bottom: box.bottom),
+                            confidence: line.confidence, words: run)
+        }
+    }
+
+    /// Satırın yazı sütunları: kutudaki her sütunda zeminden (kutunun ortanca parlaklığı) belirgin ayrılan nokta var mı;
+    /// `gap`'ten geniş boş aralıklar yazıyı parçalara böler. Parçalar kareye oranla [sol, sağ].
+    static func inkSpans(_ frame: CGImage, _ box: TextBox, gap: Double) -> [(left: Double, right: Double)] {
+        let fw = Double(frame.width), fh = Double(frame.height)
+        let rect = CGRect(x: max(0, box.left) * fw, y: max(0, box.top) * fh,
+                          width: (min(1, box.right) - max(0, box.left)) * fw, height: (min(1, box.bottom) - max(0, box.top)) * fh)
+        let columns = max(8, min(800, Int(rect.width.rounded())))
+        let rows = 12
+        guard rect.width >= 8, rect.height >= 4,
+              let grid = GamePhonePixels(frame, in: rect, width: columns, height: rows) else { return [] }
+        var luma = [Int](repeating: 0, count: columns * rows)
+        for i in 0..<(columns * rows) {
+            let p = i * 4
+            luma[i] = (299 * Int(grid.bytes[p]) + 587 * Int(grid.bytes[p + 1]) + 114 * Int(grid.bytes[p + 2])) / 1000
+        }
+        let median = luma.sorted()[luma.count / 2]
+        let ink = (0..<columns).map { x in (0..<rows).contains { y in abs(luma[y * columns + x] - median) > 60 } }
+        let step = (box.right - box.left) / Double(columns)
+        let blank = max(1, Int((gap / max(1e-9, step)).rounded(.up)))
+        var spans: [(left: Int, right: Int)] = []
+        var x = 0
+        while x < columns {
+            guard ink[x] else { x += 1; continue }
+            var end = x
+            var run = 0
+            var probe = x + 1
+            while probe < columns {
+                if ink[probe] { end = probe; run = 0 } else { run += 1; if run > blank { break } }
+                probe += 1
+            }
+            spans.append((x, end))
+            x = end + 1
+        }
+        return spans.map { (box.left + Double($0.left) * step, box.left + Double($0.right + 1) * step) }
+    }
+
+    /// Menü satırının sekmeleri: görüntüdeki geniş boşluklardan (`inkSpans`) bölünür. Sözcükler sırasıyla parçalara
+    /// dağıtılır: her parçanın harf sayısı payı genişlik payına en yakın olacak biçimde (yazı tanımanın sözcük kutuları
+    /// boşlukları da kapsadığı için yerlerine bakılmaz). Parça sayısı sözcüklerden çoksa dokunulmaz.
+    static func inkPieces(_ line: TextLine, frame: CGImage, gap: Double) -> [TextLine] {
+        guard let box = line.box else { return [line] }
+        let spans = inkSpans(frame, box, gap: gap)
+        let words = line.text.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard spans.count >= 2, words.count >= spans.count else { return [line] }
+        let k = spans.count, n = words.count
+        let widths = spans.map { $0.right - $0.left }
+        let totalWidth = widths.reduce(0, +)
+        let sizes = words.map { Double($0.count) }
+        let totalSize = sizes.reduce(0, +) + Double(n - k)
+        // En iyi bölme: best[i][j] ilk i sözcük j parçada; parçanın payı sözcükleri ve aralarındaki boşluklar.
+        var best = [[Double]](repeating: [Double](repeating: .infinity, count: k + 1), count: n + 1)
+        var from = [[Int]](repeating: [Int](repeating: 0, count: k + 1), count: n + 1)
+        best[0][0] = 0
+        for i in 1...n {
+            for j in 1...min(i, k) {
+                for start in (j - 1)..<i where best[start][j - 1] < .infinity {
+                    let size = sizes[start..<i].reduce(0, +) + Double(i - start - 1)
+                    let cost = best[start][j - 1] + abs(size / totalSize - widths[j - 1] / totalWidth)
+                    if cost < best[i][j] {
+                        best[i][j] = cost
+                        from[i][j] = start
+                    }
+                }
+            }
+        }
+        var bounds: [Int] = []
+        var i = n
+        for j in stride(from: k, to: 0, by: -1) {
+            bounds.insert(from[i][j], at: 0)
+            i = from[i][j]
+        }
+        bounds.append(n)
+        return (0..<k).compactMap { j -> TextLine? in
+            let text = words[bounds[j]..<bounds[j + 1]].joined(separator: " ")
+            guard text.filter(\.isLetter).count >= 2 else { return nil }
+            return TextLine(text, box: TextBox(left: spans[j].left, top: box.top, right: spans[j].right, bottom: box.bottom),
+                            confidence: line.confidence)
+        }
+    }
+
+    /// Yalnız özel adlardan oluşan yazı ("JASON & LUCIA", "Bonnie & Clyde"): "&" ile bağlı, her biri bir iki sözcüklük,
+    /// büyük harfle başlayan adlar. Çevirmene gitmez; çevirisi aslıdır (kutusu çizilmez, özgün yazı görünür kalır).
+    public static func keepsNames(_ text: String) -> Bool {
+        let plain = IconText.plain(text).trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = plain.components(separatedBy: " & ")
+        guard parts.count >= 2 else { return false }
+        return parts.allSatisfy { part in
+            let words = part.split(separator: " ")
+            return (1...2).contains(words.count) && words.allSatisfy { word in
+                word.filter(\.isLetter).count >= 2 && word.allSatisfy { $0.isLetter || "'’-.".contains($0) }
+                    && word.first?.isUppercase == true && !SpeakerNames.notNames.contains(word.lowercased())
+            }
+        }
+    }
+
+    private static let iconBrackets = CharacterSet(charactersIn: " ()[]")
+
+    /// Satırın başındaki ya da sonundaki kumanda simgesi (kareden tanınmış simge ya da okunmuş tuş adı: "RECENTER L3",
+    /// "EXIT (○)") çeviriye girmez; kutu yalnız yazının sözcüklerini kapsar, simge ekranda görünür kalır. Önceden çeviri
+    /// kutusu simgenin üstünü örtüyordu ("Ortala" L3'ü kapatıyordu, #860). Sözcük yerleri bilinmiyorsa harf sayısına göre
+    /// kestirilir. Geriye tuş adı olmayan iki harfli bir sözcük kalmayacaksa (yalnız tuştan oluşan satır) dokunulmaz.
+    public static func withoutEdgeIcons(_ line: TextLine) -> TextLine {
+        guard let box = line.box else { return line }
+        let original = line.text.trimmingCharacters(in: .whitespaces)
+        var text = original
+        var icons = line.icons ?? []
+        guard text.filter({ $0 == ButtonIcons.marker }).count == icons.count else { return line }
+        var left = box.left, right = box.right
+        // Kareden tanınmış simgeler (yazıda imle).
+        while let icon = icons.last, text.trimmingCharacters(in: iconBrackets).last == ButtonIcons.marker {
+            text = String(text.trimmingCharacters(in: iconBrackets).dropLast()).trimmingCharacters(in: iconBrackets)
+            icons.removeLast()
+            right = min(right, icon.box.left)
+        }
+        while let icon = icons.first, text.trimmingCharacters(in: iconBrackets).first == ButtonIcons.marker {
+            text = String(text.trimmingCharacters(in: iconBrackets).dropFirst()).trimmingCharacters(in: iconBrackets)
+            icons.removeFirst()
+            left = max(left, icon.box.right)
+        }
+        var words = line.words
+        if text == original {
+            // Okunmuş tuş adı ("L3", "(R3)").
+            guard !text.contains(ButtonIcons.marker) else { return line }
+            let measured = !(line.words ?? []).isEmpty && line.words!.map(\.text).joined(separator: " ") == text
+            var list = measured ? line.words! : ButtonIcons.estimate(text, box)
+            while list.count > 1, ButtonIcons.isButtonName(list[list.count - 1].text) {
+                right = min(right, list.removeLast().box.left)
+            }
+            while list.count > 1, ButtonIcons.isButtonName(list[0].text) {
+                left = max(left, list.removeFirst().box.right)
+            }
+            text = list.map(\.text).joined(separator: " ")
+            words = measured ? list : nil
+        } else {
+            words = line.words?.filter { $0.box.left >= left - 1e-6 && $0.box.right <= right + 1e-6 }
+        }
+        guard text != original, right > left,
+              text.split(whereSeparator: \.isWhitespace).contains(where: { word in
+                  word.filter(\.isLetter).count >= 2 && !ButtonIcons.isButtonName(String(word)) }) else { return line }
+        var trimmed = line
+        trimmed.text = text
+        trimmed.icons = icons.isEmpty ? nil : icons
+        trimmed.words = (words ?? []).isEmpty ? nil : words
+        trimmed.box = TextBox(left: left, top: box.top, right: right, bottom: box.bottom)
+        return trimmed
     }
 
     /// Satırın ve sözcüklerinin fiyat düzeltmesi (uzunluk değişmez).
@@ -441,7 +669,8 @@ public enum ScreenTranslation {
     /// Tuş çubuğunda çeviriye girmeyen parça: tuş adı/simgesi, tek harf (okunmuş simge), fiyat ya da harfsiz parça.
     static func isPromptSeparator(_ word: String) -> Bool {
         let core = word.trimmingCharacters(in: CharacterSet(charactersIn: "()[]{}<>"))
-        return ButtonIcons.isButtonName(core) || PriceText.isMoney(core) || !core.contains(where: \.isLetter)
+        // "&" sekme adının parçasıdır ("JASON & LUCIA"), ayırıcı değil.
+        return ButtonIcons.isButtonName(core) || PriceText.isMoney(core) || (!core.contains(where: \.isLetter) && core != "&")
             || (core.count == 1 && core != "a")
     }
 

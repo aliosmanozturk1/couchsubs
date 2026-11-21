@@ -381,6 +381,115 @@
       "note": "harita, seçili yerin kartı (başlık, açıklama, ayrıntı)"
     },
     {
+      "id": "gta6-menu-harita",
+      "file": "gta6-menu-harita.jpg",
+      "source": "sentetik: GitHub #856/#859/#860 (hv1911) TV fotoğraflarındaki GTA 6 harita menüsünün düzeni; görev portresi fotoğraftan kesildi",
+      "game": "GTA 6",
+      "mapCard": true,
+      "note": "üst menü sekmeleri ayrı çevrilir, JASON & LUCIA çevrilmez; görev başlığı ve açıklaması ayrı, portre örtülmez; sağ alttaki tuş ipuçlarında simge (L3, R3, □, ✕, ○) örtülmez (#860)",
+      "screen": {
+        "blocks": [
+          "JASON & LUCIA",
+          "MAP",
+          "BRIEF",
+          "PROGRESS",
+          "ISLAND DREAMS",
+          "Keep an eye on the bachelor party while searching Kenton's dive spot for treasure.",
+          "RECENTER",
+          "2D VIEW",
+          "ADD MARKER",
+          "SET DESTINATION",
+          "EXIT"
+        ],
+        "keep": [
+          "JASON & LUCIA"
+        ],
+        "clear": [
+          [
+            0.1469,
+            0.1815,
+            0.1844,
+            0.25
+          ],
+          [
+            0.9406,
+            0.7241,
+            0.9583,
+            0.7556
+          ],
+          [
+            0.9406,
+            0.7722,
+            0.9583,
+            0.8037
+          ],
+          [
+            0.9406,
+            0.8204,
+            0.9583,
+            0.8519
+          ],
+          [
+            0.9406,
+            0.8685,
+            0.9583,
+            0.9
+          ],
+          [
+            0.9406,
+            0.9167,
+            0.9583,
+            0.9481
+          ]
+        ]
+      }
+    },
+    {
+      "id": "gta6-menu-gorevler",
+      "file": "gta6-menu-gorevler.jpg",
+      "source": "sentetik: GitHub #856 (hv1911) görev listesi düzeni; görev fotoğrafları bu setin GTA 6 karelerinden kesildi",
+      "game": "GTA 6",
+      "mapCard": true,
+      "note": "görev listesi: her görevin başlığı ve açıklaması kendi yerinde, fotoğraflar örtülmez; sekmeler ayrı",
+      "screen": {
+        "blocks": [
+          "JASON & LUCIA",
+          "MAP",
+          "BRIEF",
+          "PROGRESS",
+          "ISLAND DREAMS",
+          "Keep an eye on the bachelor party while searching Kenton's dive spot for treasure.",
+          "HIGH TIDE",
+          "Meet Boobie at the marina and pick up the package before the coast guard arrives.",
+          "DOWN BY THE DOCKS",
+          "Follow the cargo truck to Port Gellhorn and find out who is buying the stolen goods."
+        ],
+        "keep": [
+          "JASON & LUCIA"
+        ],
+        "clear": [
+          [
+            0.1458,
+            0.1806,
+            0.2583,
+            0.2917
+          ],
+          [
+            0.1458,
+            0.3287,
+            0.2583,
+            0.4398
+          ],
+          [
+            0.1458,
+            0.4769,
+            0.2583,
+            0.588
+          ]
+        ]
+      }
+    },
+    {
       "id": "rdr2-01",
       "file": "rdr2-01.jpg",
       "source": "youtube.com/watch?v=AcOpiWppO3k&t=600s — Red Dead Redemption 2 Walkthrough (MKIceAndFire, no commentary)",

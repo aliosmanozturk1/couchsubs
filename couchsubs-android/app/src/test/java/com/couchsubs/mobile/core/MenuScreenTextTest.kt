@@ -199,13 +199,15 @@ class MenuScreenTextTest {
         // 20'den çok etiket tek toplu istekte.
         assertEquals(1, engine.requests)
         // Ayırıcıyla bölünen etiket parça parça; tuş adları ve sayaç dokunulmaz.
-        assertTrue(engine.texts.toString(), "AIM" in engine.texts && "(✕) JUMP" in engine.texts && "CLIMB" in engine.texts)
+        // Satır ucundaki tuş adı çeviriye ve kutuya girmez, ekranda görünür kalır (#860).
+        assertTrue(engine.texts.toString(), "AIM" in engine.texts && "JUMP" in engine.texts && "CLIMB" in engine.texts)
+        assertFalse(engine.texts.any { it.contains("(L1)") || it.contains("(✕)") })
         assertFalse(engine.texts.any { it.contains("5 / 9") || it == "5" })
         val items = recorder.blocks.last()!!
-        val holster = items.first { it.source == "HOLSTER (L1)" }
+        val holster = items.first { it.source == "HOLSTER" }
         assertEquals("right", holster.look!!.align)
-        assertTrue(holster.translation, holster.translation.contains("(L1)"))
-        assertEquals("TR AIM / TR INTERACT (L2)", items.first { it.source.startsWith("AIM") }.translation)
+        assertTrue(holster.box.right < 0.40)
+        assertEquals("TR AIM / ETKİLEŞİM", items.first { it.source.startsWith("AIM") }.translation)
         assertEquals("left", items.first { it.source.contains("JUMP") }.look!!.align)
         // Aynı ekrana dönüş: oturum terimleriyle istek gitmez.
         watcher.reset()

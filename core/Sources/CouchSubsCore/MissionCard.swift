@@ -27,6 +27,8 @@ enum MissionCard {
     static let maxWidth = 0.55
     /// Açıklama en az bu kadar sözcük.
     static let bodyWords = 6
+    /// Başlığın solundaki görev resmi en çok başlık yüksekliğinin bu katı genişliktedir; açıklama resmin altından başlar.
+    static let pictureWidth = 2.5
 
     /// Bulunan kart: satırların sırası (verilen dizide), yukarıdan aşağı.
     struct Card: Equatable {
@@ -64,14 +66,24 @@ enum MissionCard {
                 last = next
                 rest = rest.dropFirst()
             }
-            guard let first = rest.first, isSentence(lines[first].text), aligned(first, start, titleHeight),
+            // Başlığın solunda görev resmi (portre) olabilir: açıklama resmin altından, başlıktan daha solda başlar (#856).
+            func underTitle(_ i: Int) -> Bool {
+                aligned(i, start, titleHeight) || (boxes[i]!.left < boxes[start]!.left
+                    && boxes[start]!.left - boxes[i]!.left <= titleHeight * pictureWidth * 9 / 16)
+            }
+            guard let first = rest.first, isSentence(lines[first].text), underTitle(first),
                   boxes[first]!.top - boxes[last]!.bottom <= titleHeight * titleGap,
                   height(first) <= titleHeight * 1.1 else { continue }
             let line = height(first)
             body = [first]
             last = first
             rest = rest.dropFirst()
-            while let next = rest.first, aligned(next, first, line), abs(height(next) - line) <= line * 0.3 {
+            // Alt satır cümlenin devamı: yazı boyu benzer; küçük harfle başlayan kısa son satır ("treasure.") harfleri
+            // kısa diye daha alçak okunabilir. Sıradaki görevin BÜYÜK HARFLİ başlığı açıklamaya katılmaz (görev listesi).
+            while let next = rest.first, aligned(next, first, line), !isTitle(lines[next].text),
+                  abs(height(next) - line) <= line * 0.3
+                    || (lines[next].text.first?.isLowercase == true && height(next) <= line * 1.5
+                        && !SubtitleStabilizer.endsSentence(lines[last].text.trimmingCharacters(in: .whitespaces))) {
                 let gap = boxes[next]!.top - boxes[last]!.bottom
                 // Satır ya cümlenin devamı (dar boşluk) ya da yeni bir açıklama paragrafı: daha geniş boşluk, önceki satır
                 // cümleyi bitirmiş ve yeni satır ayrıntı satırından uzun bir cümle ("Distance 2.4 mi" ayrıntıdır).
@@ -83,7 +95,13 @@ enum MissionCard {
                 rest = rest.dropFirst()
             }
             let right = body.map { boxes[$0]!.right }.max()!
-            while let next = rest.first, words(lines[next].text) <= detailWords, height(next) <= line * 1.3,
+            // Altında cümle olan BÜYÜK HARFLİ satır ayrıntı değil, sıradaki görevin başlığıdır.
+            func nextTitle(_ i: Int) -> Bool {
+                guard isTitle(lines[i].text), let after = order.first(where: { boxes[$0]!.top > boxes[i]!.bottom - 1e-9 && $0 != i })
+                else { return false }
+                return isSentence(lines[after].text) && boxes[after]!.top - boxes[i]!.bottom <= height(i) * titleGap
+            }
+            while let next = rest.first, !nextTitle(next), words(lines[next].text) <= detailWords, height(next) <= line * 1.3,
                   boxes[next]!.top - boxes[last]!.bottom <= line * detailGap,
                   aligned(next, first, line) || abs(boxes[next]!.right - right) <= line * alignment * 9 / 16 {
                 details.append(next)
