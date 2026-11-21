@@ -100,6 +100,16 @@ extension Runner {
                                                                                  $0.region.right, $0.region.bottom) }.joined(separator: " "))
                 notes.append("otomatik çizilen: " + autoUnits.map(Self.describe).joined(separator: " | "))
                 notes.append("otomatik okunan: " + auto.calls.map(\.source).joined(separator: " | "))
+                for area in areas {
+                    let crop = RegionCropper.crop(image, to: area.region)
+                    let lines = ((try? reader.readLines(crop, deep: false)) ?? .empty).lines
+                    notes.append("ham okuma " + String(format: "[%.3f %.3f]", area.region.left, area.region.top) + ": "
+                        + lines.map { line in
+                            let b = line.box ?? TextBox(left: 0, top: 0, right: 0, bottom: 0)
+                            return String(format: "«%@» [%.3f %.3f %.3f %.3f] c=%.2f w=%d", line.text, b.left, b.top, b.right, b.bottom,
+                                          line.confidence ?? -1, line.words?.count ?? 0)
+                        }.joined(separator: " | "))
+                }
             }
         }
         // 3) Oyunun hazır alanları (GTA 6: sol üstte yardım kutusu, sağda mesaj kartı): alan yazının bir kısmını keser;
