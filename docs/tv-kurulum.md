@@ -246,7 +246,12 @@ PS tuşuyla TV kendi HDMI girişine geçince ses geri geliyor ama TV uygulaması
 2. PS5'te **Ayarlar › Ses › Ses Çıkışı › Ses Biçimi (Öncelik)**'yi **Linear PCM** yapın.
 3. Olmazsa TV'nin ses çıkışını **TV Hoparlörü** yapın.
 
-Bilgi panelindeki ikinci tanı satırının `snd` bölümü TV'nin ses çıkışını ve ses düzeyini gösterir; sorun sürerse bunun
+Altyazı hedefi "Bu telefonda" iken ses geliyor, TV uygulaması açılınca TV hoparlöründe de gidiyorsa önce 2. adımı
+deneyin: soundbar bağlıyken PS5 sesi sıkıştırılmış (Dolby/DTS) gönderebiliyor, TV uygulamasının içindeki görüntü yolunda
+bu sesin çalınmadığından şüpheleniyoruz (gerçek LG'de doğrulanmadı).
+
+Bilgi panelindeki ikinci tanı satırının `snd` bölümü TV'nin ses çıkışını (`out`), dijital ses çıkışını (`dig`), ses
+düzeyini (`tv`), ses odağını (`mf`) ve TV'nin kısılı sesinin açılıp açılmadığını (`tvmute`) gösterir; sorun sürerse bunun
 fotoğrafını paylaşın.
 
 #### Sesi PS5 mi kesiyor?

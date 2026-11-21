@@ -78,7 +78,87 @@
   // geçiriyor, uygulamanın içindeki oynatıcı yolunda geçirmiyor. Bunu sayfa değiştiremez; geçici yol TV'nin Dijital Ses
   // Çıkışı'nı Otomatik/PCM ya da PS5'in Ses Biçimi'ni Linear PCM yapmak. TV'nin ses çıkışı ve ses düzeyi bilgi paneline
   // yazılır (soundOutput: tv_speaker, external_arc, external_optical, bt_soundbar ...).
-  var sound = { output: '', volume: '', fixed: 0 };
+  //
+  // 0.9.48: X'te aynı model (55QNED86A6A, soundbar bağlı) "altyazı telefonda" seçilince (TV kendi girişinde) ses hem
+  // soundbarda hem TV hoparlöründe geliyor, TV uygulaması öne gelince ikisinde de gidiyor. LG'nin TV belgelerinde HDMI'yi
+  // uygulama içinde göstermenin resmi bir yolu yok (yol webosbrew'in belgelediği <video> + ext://hdmi). webOS OSE'nin
+  // Chromium kaynağında bu <video> uMediaServer oynatıcısıyla açılır: istekte option.needAudio "noaudio" yoksa true
+  // gider, ses çıkışı (audio sink) 'playing'de ses düzeyi yeniden verilerek bağlanır; yukarıdaki sesli istek bunu
+  // sağlam tutar. Aynı kaynakta öğenin bir de ses odağı özelliği var (webosMediaFocus, olay webosmediafocuschange):
+  // TV'de varsa odak açıkça istenir. Bağlanırken TV'nin sesi kısılı kalırsa (açılışta kısık değildi) LG'nin belgeli
+  // com.webos.audio/setMuted ile bir kez açılır. İkisi de görüntüye dokunmaz; özellik yoksa ya da izin verilmezse eski
+  // yol aynen sürer, sonuç tanı satırına yazılır (mf, tvmute). TV'nin dijital ses çıkışı (soundOutputDigital:
+  // passThrough/auto/pcm) da okunur: tahmin, sıkıştırılmış ses (Dolby/DTS) uygulama içindeki yolda hiç çalınmıyor; PS5
+  // Linear PCM'e alınınca düzeliyorsa bu doğrulanır. Gerçek LG'de denenmedi.
+  var FOCUS_MAX = 3;
+  var MUTE_CHECK_MS = 1500;
+  var sound = {
+    output: '', digital: '', volume: '', fixed: 0,
+    mutedBefore: null, tvMute: '', focus: '', focusAsks: 0
+  };
+
+  // getVolume yanıtındaki kısık bilgisi (yeni webOS volumeStatus.muteStatus, eskisi muted); yoksa null.
+  function mutedFrom(reply) {
+    var status = reply.volumeStatus || reply;
+    if (typeof status.muteStatus === 'boolean') return status.muteStatus;
+    if (typeof status.muted === 'boolean') return status.muted;
+    return null;
+  }
+
+  function readVolume(callback) {
+    try {
+      var volume = new PalmServiceBridge();
+      volume.onservicecallback = function (msg) {
+        try {
+          var reply = JSON.parse(msg) || {};
+          var status = reply.volumeStatus || reply;
+          var muted = mutedFrom(reply);
+          if (status.volume !== undefined) sound.volume = String(status.volume) + (muted ? ' muted' : '');
+          if (callback) callback(muted);
+        } catch (e) {}
+      };
+      volume.call('luna://com.webos.audio/getVolume', '{}');
+      window.__soundVolumeBridge = volume;
+    } catch (e) {}
+  }
+
+  // <video>'nun ses odağı (webOS Chromium'un webosMediaFocus özelliği). Özellik yoksa hiçbir şey yapılmaz.
+  function requestFocus(video) {
+    try {
+      if (!('webosMediaFocus' in video)) return;
+      if (!video.webosMediaFocus && sound.focusAsks < FOCUS_MAX) {
+        sound.focusAsks++;
+        video.webosMediaFocus = true;
+      }
+      sound.focus = video.webosMediaFocus ? '1' : '0';
+    } catch (e) {
+      sound.focus = 'err';
+    }
+  }
+
+  // Görüntü oynamaya başladıktan kısa süre sonra TV'nin sesi kısılmış mı bakılır; açılışta kısık değildiyse bir kez açılır.
+  function checkTvMute(video) {
+    setTimeout(function () {
+      if (hdmi.video !== video || sound.tvMute) return;
+      readVolume(function (muted) {
+        if (hdmi.video !== video || sound.tvMute || muted !== true || sound.mutedBefore !== false) return;
+        sound.tvMute = 'asked';
+        try {
+          var bridge = new PalmServiceBridge();
+          bridge.onservicecallback = function (msg) {
+            try {
+              var reply = JSON.parse(msg) || {};
+              sound.tvMute = reply.returnValue === false ? 'denied' : 'unmuted';
+            } catch (e) {}
+          };
+          bridge.call('luna://com.webos.audio/setMuted', JSON.stringify({ muted: false }));
+          window.__soundMuteBridge = bridge;
+        } catch (e) {
+          sound.tvMute = 'err';
+        }
+      });
+    }, MUTE_CHECK_MS);
+  }
 
   function unmute(video) {
     try {
@@ -109,40 +189,40 @@
       }
     } catch (e) {}
     if (sound.fixed) text += ' fixed ' + sound.fixed;
+    if (sound.focus) text += ' mf ' + sound.focus;
     if (sound.output) text += ' out ' + sound.output;
+    if (sound.digital) text += ' dig ' + sound.digital;
     if (sound.volume) text += ' tv ' + sound.volume;
+    if (sound.tvMute) text += ' tvmute ' + sound.tvMute;
     return text;
   }
 
+  // settingsservice'ten sesin tek bir anahtarı; okunamazsa 'denied' (izin yok) ya da boş.
+  function readSoundKey(key, store, name) {
+    try {
+      var bridge = new PalmServiceBridge();
+      bridge.onservicecallback = function (msg) {
+        try {
+          var reply = JSON.parse(msg) || {};
+          var value = reply.settings && reply.settings[key];
+          sound[store] = value ? String(value).slice(0, 24) : (reply.returnValue === false ? 'denied' : '');
+        } catch (e) {}
+      };
+      bridge.call('luna://com.webos.settingsservice/getSystemSettings',
+        JSON.stringify({ category: 'sound', keys: [key] }));
+      window[name] = bridge;
+    } catch (e) {}
+  }
+
   // TV'nin ses çıkışı ve ses düzeyi (yalnız tanı için; hizmet yoksa ya da izin verilmezse yazılmaz).
+  // Anahtarlar ayrı sorulur: TV'nin tanımadığı bir anahtar ötekinin yanıtını bozmasın. Kısık bilgisi görüntü açılmadan
+  // önceki durumdur (checkTvMute bununla karşılaştırır).
   function readSoundSettings() {
-    try {
-      var output = new PalmServiceBridge();
-      output.onservicecallback = function (msg) {
-        try {
-          var reply = JSON.parse(msg) || {};
-          var value = reply.settings && reply.settings.soundOutput;
-          sound.output = value ? String(value).slice(0, 24) : (reply.returnValue === false ? 'denied' : '');
-        } catch (e) {}
-      };
-      output.call('luna://com.webos.settingsservice/getSystemSettings',
-        JSON.stringify({ category: 'sound', keys: ['soundOutput'] }));
-      window.__soundOutputBridge = output;
-    } catch (e) {}
-    try {
-      var volume = new PalmServiceBridge();
-      volume.onservicecallback = function (msg) {
-        try {
-          var reply = JSON.parse(msg) || {};
-          var status = reply.volumeStatus || reply;
-          if (status.volume !== undefined) {
-            sound.volume = String(status.volume) + (status.muteStatus || status.muted ? ' muted' : '');
-          }
-        } catch (e) {}
-      };
-      volume.call('luna://com.webos.audio/getVolume', '{}');
-      window.__soundVolumeBridge = volume;
-    } catch (e) {}
+    sound.mutedBefore = null;
+    sound.tvMute = '';
+    readSoundKey('soundOutput', 'output', '__soundOutputBridge');
+    readSoundKey('soundOutputDigital', 'digital', '__soundDigitalBridge');
+    readVolume(function (muted) { if (sound.mutedBefore === null) sound.mutedBefore = muted; });
   }
 
   function buildVideo() {
@@ -162,6 +242,7 @@
     hdmi.advances = 0;
     hdmi.playTried = false;
     hdmi.sawUnpaused = false;
+    sound.focusAsks = 0;
 
     function current() { return hdmi.video === video; }
     function picture(kind) {
@@ -179,10 +260,17 @@
         checkSoon(1500, false);
       };
     }
-    var sounding = function () { if (current()) unmute(video); };
+    var sounding = function () {
+      if (!current()) return;
+      unmute(video);
+      requestFocus(video);
+    };
     video.addEventListener('loadedmetadata', sounding);
     video.addEventListener('loadeddata', sounding);
     video.addEventListener('playing', sounding);
+    video.addEventListener('playing', function () { if (current()) checkTvMute(video); });
+    // Odak başka bir oynatıcıya geçtiyse (sınırlı sayıda) yeniden istenir.
+    video.addEventListener('webosmediafocuschange', function () { if (current()) requestFocus(video); });
     video.addEventListener('loadeddata', picture('ready'));
     video.addEventListener('playing', picture('playing'));
     video.addEventListener('error', function () {

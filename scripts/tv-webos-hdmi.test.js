@@ -37,6 +37,8 @@ function startTv(options = {}) {
         this.error = null;
         this.plays = 0;
         this.loads = 0;
+        // options.mediaFocus: TV'nin Chromium'u ses odağı özelliğini (webosMediaFocus) veriyor.
+        if (options.mediaFocus) this.webosMediaFocus = false;
         videos.push(this);
       }
     }
@@ -80,9 +82,11 @@ function startTv(options = {}) {
   class FakeDate { getTime() { return clock; } }
   // options.luna(uri, params): Luna hizmetinin yanıtı (nesne); verilmezse PalmServiceBridge yok.
   const calls = [];
+  const sent = [];
   class PalmServiceBridge {
     call(uri, params) {
       calls.push(uri);
+      sent.push({ uri, params: JSON.parse(params) });
       const reply = options.luna(uri, JSON.parse(params));
       if (reply) this.onservicecallback(JSON.stringify(reply));
     }
@@ -99,7 +103,7 @@ function startTv(options = {}) {
   const host = new Element('div');
 
   const tv = {
-    platform, document, videos, statuses, host, calls,
+    platform, document, videos, statuses, host, calls, sent,
     get video() { return videos[videos.length - 1]; },
     show(port) { platform.showHdmi(port || 3, host, (kind) => statuses.push(kind)); },
     // Saati ilerletir; her adımda (varsa) canlı görüntünün sayacı da ilerler.
@@ -339,6 +343,89 @@ test('webOS HDMI: ses ayarları okunamazsa (izin yok) panelde yazar, görüntü 
   const tv = startTv({ luna: () => ({ returnValue: false, errorText: 'denied' }) });
   tv.show(1);
   tv.video.start();
-  assert.match(tv.platform.diagnostics(), /^hdmi playing .* · snd on out denied · webOS/);
+  assert.match(tv.platform.diagnostics(), /^hdmi playing .* · snd on out denied dig denied · webOS/);
   assert.deepStrictEqual(tv.statuses.slice(-1), ['playing']);
+});
+
+// 0.9.48: aynı model soundbarla; TV kendi girişindeyken ses var, uygulama öne gelince TV hoparlöründe de yok.
+function soundTv(state, extra = {}) {
+  return startTv({
+    ...extra,
+    luna: (uri, params) => {
+      if (uri.indexOf('settingsservice') >= 0) {
+        const all = { soundOutput: 'external_arc', soundOutputDigital: 'passThrough' };
+        return { returnValue: true, settings: { [params.keys[0]]: all[params.keys[0]] } };
+      }
+      if (uri.endsWith('/setMuted')) {
+        if (state.deny) return { returnValue: false, errorText: 'denied' };
+        state.muted = params.muted;
+        return { returnValue: true };
+      }
+      return { returnValue: true, volumeStatus: { volume: 20, muteStatus: state.muted } };
+    }
+  });
+}
+
+function setMutedCalls(tv) { return tv.sent.filter((c) => c.uri.endsWith('/setMuted')); }
+
+test('webOS HDMI: görüntü açılınca TV sesi kısılı kalırsa bir kez açılır; dijital çıkış panelde', () => {
+  const state = { muted: false };
+  const tv = soundTv(state);
+  tv.show(2);
+  // Bağlanırken TV'nin sesi kısıldı ve kısık kaldı.
+  state.muted = true;
+  tv.video.start();
+  tv.advance(1000);
+  assert.strictEqual(setMutedCalls(tv).length, 0, 'hemen değil');
+  tv.advance(1000);
+  assert.deepStrictEqual(setMutedCalls(tv).map((c) => c.params), [{ muted: false }]);
+  assert.strictEqual(state.muted, false);
+  assert.match(tv.platform.diagnostics(), / · snd on out external_arc dig passThrough tv 20 muted tvmute unmuted · webOS/);
+  // Bir daha istenmez.
+  state.muted = true;
+  tv.video.fire('playing');
+  tv.advance(5000, ticking(tv));
+  assert.strictEqual(setMutedCalls(tv).length, 1);
+});
+
+test('webOS HDMI: TV sesi açılışta zaten kısıksa (kullanıcı kısmış) dokunulmaz; izin yoksa panelde yazar', () => {
+  const userMuted = { muted: true };
+  const tv = soundTv(userMuted);
+  tv.show(2);
+  tv.video.start();
+  tv.advance(5000, ticking(tv));
+  assert.strictEqual(setMutedCalls(tv).length, 0);
+  assert.doesNotMatch(tv.platform.diagnostics(), /tvmute/);
+
+  const denied = { muted: false, deny: true };
+  const other = soundTv(denied);
+  other.show(2);
+  denied.muted = true;
+  other.video.start();
+  other.advance(5000, ticking(other));
+  assert.match(other.platform.diagnostics(), /tvmute denied/);
+  assert.strictEqual(other.videos.length, 1, 'görüntüye dokunulmaz');
+  assert.deepStrictEqual(other.statuses.slice(-1), ['playing']);
+});
+
+test('webOS HDMI: TV ses odağı özelliğini veriyorsa odak istenir, kaybolunca sınırlı sayıda yeniden istenir', () => {
+  const tv = startTv({ mediaFocus: true });
+  tv.show(3);
+  const video = tv.video;
+  assert.strictEqual(video.webosMediaFocus, false, 'görüntü gelmeden istenmez');
+  video.start();
+  assert.strictEqual(video.webosMediaFocus, true);
+  assert.match(tv.platform.diagnostics(), / · snd on mf 1 · webOS/);
+  for (let i = 0; i < 5; i++) {
+    video.webosMediaFocus = false;
+    video.fire('webosmediafocuschange');
+  }
+  assert.match(tv.platform.diagnostics(), / mf 0 · webOS/, 'en çok üç kez istenir, sonra bırakılır');
+
+  // Özellik yoksa (eski LG) hiçbir şey yazılmaz, görüntü aynı.
+  const old = startTv();
+  old.show(3);
+  old.video.start();
+  assert.strictEqual('webosMediaFocus' in old.video, false);
+  assert.doesNotMatch(old.platform.diagnostics(), / mf /);
 });

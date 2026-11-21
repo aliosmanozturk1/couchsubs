@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.47';
+  var APP_VERSION = '0.9.48';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -83,7 +83,9 @@
     var text = '';
     try { text = typeof platform.diagnostics === 'function' ? String(platform.diagnostics() || '') : ''; } catch (e) { text = ''; }
     var page = 'reg ' + diag.regions + ' · big ' + diag.big + ' · ' + coverageText() +
-      (diag.speechWeb || diag.speechElement ? ' · tts w' + diag.speechWeb + ' a' + diag.speechElement : '');
+      (diag.speechWeb || diag.speechElement ? ' · tts w' + diag.speechWeb + ' a' + diag.speechElement : '') +
+      // Dublaj çalarken açık Web Audio bağlamı (dublaj hiç çalmadıysa bağlam yoktur, HDMI sesine karışamaz).
+      (audioContext ? ' ac ' + audioContext.state : '');
     el.textContent = (text ? text + ' · ' : '') + page;
     $('row-platform').style.display = '';
   }
