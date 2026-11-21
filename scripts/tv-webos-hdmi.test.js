@@ -77,7 +77,9 @@ function startTv(options = {}) {
   const window = {
     navigator: { userAgent: 'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 Chrome/79.0.3945.79 Safari/537.36' },
     PalmSystem: { deviceInfo: JSON.stringify({ platformVersion: '7.4.0', modelName: '55NANO756PA' }) },
-    addEventListener: (name, fn) => { (windowListeners[name] = windowListeners[name] || []).push(fn); }
+    addEventListener: (name, fn) => { (windowListeners[name] = windowListeners[name] || []).push(fn); },
+    // options.steps: varsayılan kapalı ses adımları (odak, TV sesini açma) açılır.
+    ...(options.steps ? { COUCHSUBS_SOUND_STEPS: options.steps } : {})
   };
   class FakeDate { getTime() { return clock; } }
   // options.luna(uri, params): Luna hizmetinin yanıtı (nesne); verilmezse PalmServiceBridge yok.
@@ -141,7 +143,7 @@ test('webOS HDMI: sağlam görüntüye dokunulmaz (sayaç ilerlese de ilerlemese
     assert.strictEqual(tv.videos.length, 1, moving ? 'sayaç ilerlerken' : 'sayaç hiç ilerlemezken');
     assert.strictEqual(tv.video.attributes.src, undefined);
     assert.strictEqual(tv.video.children[0].attributes.src, 'ext://hdmi:3');
-    assert.match(tv.platform.diagnostics(), /^hdmi playing rs4 1920x1080 t[+=] · snd on · webOS 7\.4\.0 55NANO756PA cr79$/);
+    assert.match(tv.platform.diagnostics(), /^hdmi playing rs4 1920x1080 t[+=] · snd on sx on · webOS 7\.4\.0 55NANO756PA cr79$/);
   }
 });
 
@@ -313,119 +315,153 @@ test('webOS HDMI: aynı giriş yeniden seçilince boru hattı bırakılıp başt
   assert.strictEqual(tv.videos.length, 3, 'çıkıştan sonra yeniden kurulmaz');
 });
 
-// X'teki LG 55QNED86A6A: çeviri varken ses yok, PS tuşuyla TV'nin kendi girişine geçince ses geliyor.
-test('webOS HDMI: <video> sesli istenir; kapalı ses parçası açılır, kısılmış ses açılır; durum panelde', () => {
-  const tv = startTv({ luna: (uri) => (uri.indexOf('settingsservice') >= 0
-    ? { returnValue: true, settings: { soundOutput: 'bt_soundbar' } }
-    : { returnValue: true, volumeStatus: { volume: 14, muteStatus: false } }) });
-  tv.show(2);
-  const video = tv.video;
-  assert.strictEqual(video.muted, false);
-  assert.strictEqual(video.defaultMuted, false);
-  // TV sesi kısılmış ve parçası kapalı verir.
-  video.muted = true;
-  video.volume = 0.2;
-  video.audioTracks = [{ enabled: false }, { enabled: false }];
-  video.fire('loadedmetadata');
-  assert.strictEqual(video.muted, false);
-  assert.strictEqual(video.volume, 1);
-  assert.deepStrictEqual(video.audioTracks.map((t) => t.enabled), [true, false]);
-  video.start();
-  assert.match(tv.platform.diagnostics(), / · snd on v100 tr1\/2 fixed 2 out bt_soundbar tv 14 · webOS/);
-  // Açık parça varsa dokunulmaz.
-  video.audioTracks = [{ enabled: false }, { enabled: true }];
-  video.fire('playing');
-  assert.deepStrictEqual(video.audioTracks.map((t) => t.enabled), [false, true]);
-  assert.ok(tv.calls.includes('luna://com.webos.settingsservice/getSystemSettings'));
-});
-
-test('webOS HDMI: ses ayarları okunamazsa (izin yok) panelde yazar, görüntü etkilenmez', () => {
-  const tv = startTv({ luna: () => ({ returnValue: false, errorText: 'denied' }) });
-  tv.show(1);
-  tv.video.start();
-  assert.match(tv.platform.diagnostics(), /^hdmi playing .* · snd on out denied dig denied · webOS/);
-  assert.deepStrictEqual(tv.statuses.slice(-1), ['playing']);
-});
-
-// 0.9.48: aynı model soundbarla; TV kendi girişindeyken ses var, uygulama öne gelince TV hoparlöründe de yok.
-function soundTv(state, extra = {}) {
-  return startTv({
-    ...extra,
-    luna: (uri, params) => {
-      if (uri.indexOf('settingsservice') >= 0) {
-        const all = { soundOutput: 'external_arc', soundOutputDigital: 'passThrough' };
-        return { returnValue: true, settings: { [params.keys[0]]: all[params.keys[0]] } };
+// <video>'ya yazılan ses özelliklerini kaydeder; kill verilirse yazıldığı an görüntüyü düşürür (webOS'un boru hattını
+// askıya aldığı TV taklidi). throws: yazmak hata fırlatır.
+function watchSound(video, { kill = [], throws = [] } = {}) {
+  const touched = [];
+  const values = { muted: false, defaultMuted: false, volume: 1, webosMediaFocus: false };
+  const track = { on: false };
+  for (const name of Object.keys(values)) {
+    if (name === 'webosMediaFocus' && !('webosMediaFocus' in video)) continue;
+    Object.defineProperty(video, name, {
+      configurable: true,
+      get: () => values[name],
+      set: (value) => {
+        touched.push(name);
+        if (throws.includes(name)) throw new Error('not allowed');
+        values[name] = value;
+        if (kill.includes(name)) { video.readyState = 0; video.videoWidth = 0; }
       }
-      if (uri.endsWith('/setMuted')) {
-        if (state.deny) return { returnValue: false, errorText: 'denied' };
-        state.muted = params.muted;
-        return { returnValue: true };
-      }
-      return { returnValue: true, volumeStatus: { volume: 20, muteStatus: state.muted } };
+    });
+  }
+  const tracks = [{}];
+  Object.defineProperty(tracks[0], 'enabled', {
+    get: () => track.on,
+    set: (value) => {
+      touched.push('track');
+      if (throws.includes('track')) throw new Error('not allowed');
+      track.on = value;
+      if (kill.includes('track')) { video.readyState = 0; video.videoWidth = 0; }
     }
   });
+  video.audioTracks = tracks;
+  return touched;
 }
 
-function setMutedCalls(tv) { return tv.sent.filter((c) => c.uri.endsWith('/setMuted')); }
+function lunaCalls(tv, part) { return tv.sent.filter((c) => c.uri.indexOf(part) >= 0); }
 
-test('webOS HDMI: görüntü açılınca TV sesi kısılı kalırsa bir kez açılır; dijital çıkış panelde', () => {
-  const state = { muted: false };
-  const tv = soundTv(state);
+// 0.9.53, X'te LG OLED: güncellemeden sonra çeviriyi başlatınca ekran siyah. Ses adımları görüntü gelmeden yapılıyordu.
+test('webOS HDMI: görüntü gelmeden ses adımı, ses ayarı okuma, odak yapılmaz (0.9.46 yolu)', () => {
+  const tv = startTv({ mediaFocus: true, steps: { focus: true, tvUnmute: true },
+    luna: () => ({ returnValue: true, volumeStatus: { volume: 10, muteStatus: false } }) });
   tv.show(2);
-  // Bağlanırken TV'nin sesi kısıldı ve kısık kaldı.
-  state.muted = true;
-  tv.video.start();
-  tv.advance(1000);
-  assert.strictEqual(setMutedCalls(tv).length, 0, 'hemen değil');
-  tv.advance(1000);
-  assert.deepStrictEqual(setMutedCalls(tv).map((c) => c.params), [{ muted: false }]);
-  assert.strictEqual(state.muted, false);
-  assert.match(tv.platform.diagnostics(), / · snd on out external_arc dig passThrough tv 20 muted tvmute unmuted · webOS/);
-  // Bir daha istenmez.
-  state.muted = true;
-  tv.video.fire('playing');
-  tv.advance(5000, ticking(tv));
-  assert.strictEqual(setMutedCalls(tv).length, 1);
-});
-
-test('webOS HDMI: TV sesi açılışta zaten kısıksa (kullanıcı kısmış) dokunulmaz; izin yoksa panelde yazar', () => {
-  const userMuted = { muted: true };
-  const tv = soundTv(userMuted);
-  tv.show(2);
-  tv.video.start();
-  tv.advance(5000, ticking(tv));
-  assert.strictEqual(setMutedCalls(tv).length, 0);
-  assert.doesNotMatch(tv.platform.diagnostics(), /tvmute/);
-
-  const denied = { muted: false, deny: true };
-  const other = soundTv(denied);
-  other.show(2);
-  denied.muted = true;
-  other.video.start();
-  other.advance(5000, ticking(other));
-  assert.match(other.platform.diagnostics(), /tvmute denied/);
-  assert.strictEqual(other.videos.length, 1, 'görüntüye dokunulmaz');
-  assert.deepStrictEqual(other.statuses.slice(-1), ['playing']);
-});
-
-test('webOS HDMI: TV ses odağı özelliğini veriyorsa odak istenir, kaybolunca sınırlı sayıda yeniden istenir', () => {
-  const tv = startTv({ mediaFocus: true });
-  tv.show(3);
   const video = tv.video;
-  assert.strictEqual(video.webosMediaFocus, false, 'görüntü gelmeden istenmez');
+  const touched = watchSound(video);
+  video.fire('loadedmetadata');
+  video.fire('canplay');
+  tv.advance(7000);
+  assert.deepStrictEqual(touched, [], 'görüntü yokken <video>\'ya dokunulmaz');
+  assert.strictEqual(lunaCalls(tv, 'com.webos.audio').length + lunaCalls(tv, 'settingsservice').length, 0);
+  assert.match(tv.platform.diagnostics(), / sx wait · webOS/);
+  assert.strictEqual(video.children[0].attributes.src, 'ext://hdmi:2');
+  assert.strictEqual(video.autoplay, true);
+});
+
+test('webOS HDMI: ses adımları görüntü 3 sn geldikten sonra bir kez; odak ve TV sesini açma varsayılan kapalı', () => {
+  const tv = startTv({ mediaFocus: true, luna: (uri) => (uri.indexOf('settingsservice') >= 0
+    ? { returnValue: true, settings: { soundOutput: 'external_arc' } }
+    : { returnValue: true, volumeStatus: { volume: 14, muteStatus: true } }) });
+  tv.show(2);
+  const video = tv.video;
+  const touched = watchSound(video);
   video.start();
+  tv.advance(2900, ticking(tv));
+  assert.deepStrictEqual(touched, [], 'hemen değil');
+  tv.advance(200, ticking(tv));
+  assert.deepStrictEqual(touched, ['muted', 'defaultMuted', 'track'], 'kapalı ses parçası açılır; odak istenmez');
+  assert.strictEqual(video.webosMediaFocus, false);
+  tv.advance(60000, ticking(tv));
+  assert.strictEqual(lunaCalls(tv, '/setMuted').length, 0, 'TV sesi açılmaz (varsayılan kapalı)');
+  assert.strictEqual(touched.length, 3, 'bir kez');
+  assert.strictEqual(tv.videos.length, 1);
+  assert.match(tv.platform.diagnostics(), / · snd on v100 tr1\/1 fixed 1 out external_arc tv 14 muted sx on · webOS/);
+});
+
+test('webOS HDMI: ses adımı görüntüyü düşürürse adımlar kapanır, <video> eski yolla kurulur ve bir daha dokunulmaz', () => {
+  const tv = startTv({ luna: () => ({ returnValue: true }) });
+  tv.show(3);
+  const first = tv.video;
+  watchSound(first, { kill: ['track'] });
+  first.start();
+  tv.advance(3500);
+  assert.strictEqual(first.readyState, 0, 'taklit: ses parçasını açmak görüntüyü düşürdü');
+  tv.advance(20000);
+  assert.ok(tv.videos.length >= 2, 'gözcü yeniden kurdu');
+  assert.match(tv.platform.diagnostics(), / sx off drop lost/);
+  const second = tv.video;
+  const touched = watchSound(second, { kill: ['track'] });
+  second.start();
+  tv.advance(10 * 60000, ticking(tv));
+  assert.deepStrictEqual(touched, [], 'eski yol: ses adımı yok');
+  assert.strictEqual(tv.videos.length, 2);
+  assert.strictEqual(tv.statuses[tv.statuses.length - 1], 'playing');
+});
+
+test('webOS HDMI: siyah ekranda kullanıcı girişi yeniden seçerse ses adımları kapanır', () => {
+  const tv = startTv();
+  tv.show(3);
+  watchSound(tv.video);
+  tv.video.start();
+  tv.advance(4000);
+  tv.show(3);
+  const touched = watchSound(tv.video);
+  tv.video.start();
+  tv.advance(60000, ticking(tv));
+  assert.deepStrictEqual(touched, []);
+  assert.match(tv.platform.diagnostics(), / sx off reselect/);
+});
+
+test('webOS HDMI: görüntü hiç gelmezse adımlar kapanır (eski yol); hata fırlatan ses özelliği görüntüyü etkilemez', () => {
+  const none = startTv();
+  none.show(1);
+  none.advance(20000);
+  assert.ok(none.videos.length >= 2);
+  assert.match(none.platform.diagnostics(), / sx off nopic/);
+
+  const strict = startTv({ mediaFocus: true, steps: { focus: true } });
+  strict.show(2);
+  const touched = watchSound(strict.video, { throws: ['muted', 'track', 'webosMediaFocus'] });
+  strict.video.start();
+  strict.advance(60000, ticking(strict));
+  assert.ok(touched.includes('webosMediaFocus'), 'açıkça istenince odak denenir');
+  assert.strictEqual(strict.videos.length, 1);
+  assert.match(strict.platform.diagnostics(), /^hdmi playing .* mf err sx on · webOS/);
+});
+
+test('webOS HDMI: açıkça istenirse odak sınırlı sayıda, TV sesi kısık kalırsa bir kez açılır; yeniden açılış sayılır', () => {
+  const state = { muted: false };
+  const tv = startTv({ mediaFocus: true, steps: { focus: true, tvUnmute: true }, luna: (uri, params) => {
+    if (uri.endsWith('/setMuted')) { state.muted = params.muted; return { returnValue: true }; }
+    if (uri.indexOf('settingsservice') >= 0) return { returnValue: true, settings: {} };
+    return { returnValue: true, volumeStatus: { volume: 20, muteStatus: state.muted } };
+  } });
+  tv.show(2);
+  const video = tv.video;
+  video.start();
+  tv.advance(3100, ticking(tv));
   assert.strictEqual(video.webosMediaFocus, true);
-  assert.match(tv.platform.diagnostics(), / · snd on mf 1 · webOS/);
+  state.muted = true;
+  tv.advance(2000, ticking(tv));
+  assert.deepStrictEqual(lunaCalls(tv, '/setMuted').map((c) => c.params), [{ muted: false }]);
   for (let i = 0; i < 5; i++) {
     video.webosMediaFocus = false;
     video.fire('webosmediafocuschange');
   }
-  assert.match(tv.platform.diagnostics(), / mf 0 · webOS/, 'en çok üç kez istenir, sonra bırakılır');
-
-  // Özellik yoksa (eski LG) hiçbir şey yazılmaz, görüntü aynı.
-  const old = startTv();
-  old.show(3);
-  old.video.start();
-  assert.strictEqual('webosMediaFocus' in old.video, false);
-  assert.doesNotMatch(old.platform.diagnostics(), / mf /);
+  assert.match(tv.platform.diagnostics(), / mf 0 .*tvmute unmuted sx on/);
+  tv.document.fire('webOSRelaunch');
+  tv.document.fire('webOSRelaunch');
+  tv.advance(4000, ticking(tv));
+  assert.match(tv.platform.diagnostics(), / · rl 2 · snd/);
+  assert.strictEqual(tv.videos.length, 1);
 });
+

@@ -90,12 +90,74 @@
   // yol aynen sürer, sonuç tanı satırına yazılır (mf, tvmute). TV'nin dijital ses çıkışı (soundOutputDigital:
   // passThrough/auto/pcm) da okunur: tahmin, sıkıştırılmış ses (Dolby/DTS) uygulama içindeki yolda hiç çalınmıyor; PS5
   // Linear PCM'e alınınca düzeliyorsa bu doğrulanır. Gerçek LG'de denenmedi.
+  //
+  // 0.9.53: X'te LG OLED: "güncellemeden sonra çeviriyi başlatınca ekran siyah, oyun gelmiyor; önceden sorun yoktu".
+  // 0.9.46'dan sonra HDMI yoluna yalnız bu ses adımları girdi; ses odağı ve ses parçası 'loadedmetadata'da, yani
+  // görüntü daha gelmeden isteniyordu. Tahmin (gerçek TV'de doğrulanmadı): bazı webOS sürümlerinde bu istek <video>'nun
+  // HDMI boru hattını askıya alıyor ya da yeniden kurduruyor. Artık:
+  // - Görüntü gelene kadar <video> 0.9.46'daki gibi kurulur; ses adımı, ses ayarı okuma, odak hiçbiri yapılmaz.
+  // - Adımlar görüntü SOUND_AFTER_MS kesintisiz geldikten sonra bir kez denenir, her biri hatası yutularak.
+  // - Adımlardan sonra SOUND_WATCH_MS içinde görüntü düşerse (gözcü yeniden kurar ya da kullanıcı girişi yeniden seçer)
+  //   ya da görüntü hiç gelmezse adımlar bu oturumda kapanır, <video> eski yolla kurulur.
+  // - Ses odağı (webosMediaFocus) ve TV sesini açma (setMuted) varsayılan kapalıdır (COUCHSUBS_SOUND_STEPS ile açılır).
+  // Tanı satırında "sx": wait (görüntü bekleniyor), on (adımlar yapıldı), off <neden> (kapatıldı); "rl": bilgisayarın ya
+  // da telefonun uygulamayı yeniden açma sayısı (bekçi).
   var FOCUS_MAX = 3;
   var MUTE_CHECK_MS = 1500;
+  var SOUND_AFTER_MS = 3000;
+  var SOUND_WATCH_MS = 30000;
   var sound = {
     output: '', digital: '', volume: '', fixed: 0,
-    mutedBefore: null, tvMute: '', focus: '', focusAsks: 0
+    mutedBefore: null, tvMute: '', focus: '', focusAsks: 0,
+    steps: 'wait', why: '', doneFor: null, doneAt: 0, timer: null
   };
+  var relaunches = 0;
+
+  // Görüntü SOUND_WATCH_MS içinde ses adımlarından sonra düştü ya da hiç gelmedi: adımlar bu oturumda kapanır.
+  function soundOff(why) {
+    if (sound.steps === 'off') return;
+    sound.steps = 'off';
+    sound.why = why;
+    clearTimeout(sound.timer);
+    sound.timer = null;
+  }
+
+  // Bu <video>'da ses adımları yapıldı ve görüntü o zamandan beri kısa süre oldu.
+  function soundSuspect(video) {
+    return !!video && sound.doneFor === video && nowMs() - sound.doneAt < SOUND_WATCH_MS;
+  }
+
+  function hasFrames(video) {
+    return !video.error && (video.readyState >= 2 || video.videoWidth > 0);
+  }
+
+  // Görüntü geldi: adımlar kısa süre sonra, görüntü hâlâ varsa denenir.
+  function soundSoon(video) {
+    if (sound.steps === 'off' || sound.timer !== null || sound.doneFor === video) return;
+    sound.timer = setTimeout(function () {
+      sound.timer = null;
+      if (hdmi.video !== video || sound.steps === 'off' || sound.doneFor === video || !hasFrames(video)) return;
+      applySound(video);
+    }, SOUND_AFTER_MS);
+  }
+
+  function applySound(video) {
+    var extra = window.COUCHSUBS_SOUND_STEPS || {};
+    sound.doneFor = video;
+    sound.doneAt = nowMs();
+    sound.steps = 'on';
+    try { readSoundSettings(); } catch (e) {}
+    try { unmute(video); } catch (e2) {}
+    if (extra.focus) {
+      requestFocus(video);
+      try {
+        video.addEventListener('webosmediafocuschange', function () {
+          if (hdmi.video === video && sound.steps !== 'off') requestFocus(video);
+        });
+      } catch (e3) {}
+    }
+    if (extra.tvUnmute) checkTvMute(video);
+  }
 
   // getVolume yanıtındaki kısık bilgisi (yeni webOS volumeStatus.muteStatus, eskisi muted); yoksa null.
   function mutedFrom(reply) {
@@ -194,6 +256,7 @@
     if (sound.digital) text += ' dig ' + sound.digital;
     if (sound.volume) text += ' tv ' + sound.volume;
     if (sound.tvMute) text += ' tvmute ' + sound.tvMute;
+    text += ' sx ' + sound.steps + (sound.why ? ' ' + sound.why : '');
     return text;
   }
 
@@ -226,9 +289,9 @@
   }
 
   function buildVideo() {
+    // Görüntü gelene kadar 0.9.46'daki kurulumun aynısı (ses adımları: soundSoon).
     var video = document.createElement('video');
     video.autoplay = true;
-    unmute(video);
     var source = document.createElement('source');
     source.setAttribute('type', 'service/webos-external');
     source.setAttribute('src', 'ext://hdmi:' + hdmi.port);
@@ -251,6 +314,7 @@
         hdmi.played = true;
         hdmi.everPlayed = true;
         hdmi.onStatus(kind);
+        soundSoon(video);
       };
     }
     function suspect(name) {
@@ -260,17 +324,6 @@
         checkSoon(1500, false);
       };
     }
-    var sounding = function () {
-      if (!current()) return;
-      unmute(video);
-      requestFocus(video);
-    };
-    video.addEventListener('loadedmetadata', sounding);
-    video.addEventListener('loadeddata', sounding);
-    video.addEventListener('playing', sounding);
-    video.addEventListener('playing', function () { if (current()) checkTvMute(video); });
-    // Odak başka bir oynatıcıya geçtiyse (sınırlı sayıda) yeniden istenir.
-    video.addEventListener('webosmediafocuschange', function () { if (current()) requestFocus(video); });
     video.addEventListener('loadeddata', picture('ready'));
     video.addEventListener('playing', picture('playing'));
     video.addEventListener('error', function () {
@@ -336,6 +389,11 @@
     hdmi.recent.push(nowMs());
     hdmi.reason = reason;
     var old = hdmi.video;
+    // Görüntü ses adımlarından kısa süre sonra düştü ya da bu girişte hiç gelmedi: eski yola dönülür.
+    if (soundSuspect(old)) soundOff('drop ' + reason);
+    else if (!hdmi.played) soundOff('nopic');
+    clearTimeout(sound.timer);
+    sound.timer = null;
     hdmi.video = null;
     releaseVideo(old, true);
     hdmi.onStatus('loading');
@@ -416,7 +474,7 @@
   if (document.addEventListener) {
     document.addEventListener('visibilitychange', onVisibility);
     document.addEventListener('webkitvisibilitychange', onVisibility);
-    document.addEventListener('webOSRelaunch', function () { checkSoon(1500, false); });
+    document.addEventListener('webOSRelaunch', function () { relaunches++; checkSoon(1500, false); });
   }
   if (window.addEventListener) window.addEventListener('focus', function () { checkSoon(1500, false); });
 
@@ -447,6 +505,7 @@
     if (hdmi.rebuilds) text += ' · rebuilt ' + hdmi.rebuilds + ' (' + hdmi.reason + ')';
     if (hdmi.lastError) text += ' · last error ' + hdmi.lastError;
     if (hdmi.lastEvent) text += ' · ev ' + hdmi.lastEvent;
+    if (relaunches) text += ' · rl ' + relaunches;
     if (video) text += ' · ' + audioText(video);
     return text;
   }
@@ -587,7 +646,13 @@
       hdmi.building = null;
       // Aynı giriş yeniden istendi (kullanıcı kumandada o girişin numarasına bastı): görüntü takıldıysa boru hattı da
       // bırakılıp baştan kurulur. Başka girişe geçerken eskisi gibi yalnız sayfadan çıkarılır.
-      if (hdmi.video && port === hdmi.port && host === hdmi.host) releaseVideo(hdmi.video, true);
+      if (hdmi.video && port === hdmi.port && host === hdmi.host) {
+        // Kullanıcı ses adımlarından hemen sonra girişi yeniden seçti (görüntü siyah): eski yola dönülür.
+        if (soundSuspect(hdmi.video)) soundOff('reselect');
+        releaseVideo(hdmi.video, true);
+      }
+      clearTimeout(sound.timer);
+      sound.timer = null;
       hdmi.video = null;
       host.innerHTML = '';
 
@@ -599,7 +664,6 @@
       hdmi.sincePort = 0;
 
       onStatus('loading');
-      readSoundSettings();
       buildVideo();
       if (hdmi.checkTimer === null) hdmi.checkTimer = setTimeout(tick, CHECK_MS);
     },
