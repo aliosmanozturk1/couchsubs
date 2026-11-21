@@ -199,7 +199,10 @@ final class FakeStream: StreamControlling {
     var started = false
     func start() { started = true }
     func stop() { started = false }
-    func reconnectNow() {}
+    var reconnects = 0
+    func reconnectNow() { reconnects += 1 }
+    /// Oturum yeniden denemeyi bıraktı (PS5'te Uzaktan Oynatma çöktü, Xbox denemeleri bitti).
+    var hasGivenUp = false
 }
 
 final class FakeKeeper: KeeperControlling {
@@ -841,6 +844,80 @@ final class AppModelRunTests: XCTestCase {
         XCTAssertEqual(services.keepers.count, 1)
         XCTAssertTrue(model.isRunning)
         model.stop()
+    }
+
+    /// Bağlantı kopunca uygulamayı kapatıp açmak gerekmiyor: "Yeniden bağlan" süren denemelerde 45 sn sonra görünür,
+    /// konsol oturumu yeniden kurulur, çeviri sürer; kapatılan eski oturumun geç gelen durumu yenisini ezmez (iPhone,
+    /// Android ve Windows ile aynı).
+    func testReconnectOfferAndReconnectKeepTranslating() async throws {
+        let services = FakeServices()
+        let model = readyModel(services)
+        await model.start()
+        defer { model.stop() }
+        let first = try XCTUnwrap(services.streams.first)
+        first.onState?(.streaming)
+        for _ in 0..<50 where model.sessionState != .streaming { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(model.offersReconnect(now: Date().addingTimeInterval(600)))
+        let dropped = Date()
+        first.onState?(.disconnected(.network))
+        for _ in 0..<50 where model.sessionState == .streaming { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(model.offersReconnect(now: dropped.addingTimeInterval(30)))
+        XCTAssertTrue(model.offersReconnect(now: dropped.addingTimeInterval(ReconnectOffer.after + 1)))
+
+        let keeperReconnects = services.keepers.map(\.reconnects).reduce(0, +)
+        model.reconnect()
+        XCTAssertEqual(services.streams.count, 2)
+        let second = services.streams[1]
+        XCTAssertFalse(first.started)
+        XCTAssertTrue(second.started)
+        XCTAssertTrue(model.isRunning)
+        XCTAssertEqual(model.sessionState, .connecting)
+        XCTAssertFalse(model.offersReconnect(now: Date().addingTimeInterval(30)))
+        XCTAssertEqual(services.keepers.map(\.reconnects).reduce(0, +), keeperReconnects + 1)
+
+        first.onState?(.disconnected(.stopped))
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(model.sessionState, .connecting, "eski oturumun geç gelen durumu yenisini ezmez")
+        second.onState?(.streaming)
+        for _ in 0..<50 where model.sessionState != .streaming { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(model.sessionState, .streaming)
+    }
+
+    /// Oturum yeniden denemeyi bıraktıysa düğme hemen görünür; uykudan uyanınca yeni oturum açılır (kayıt ya da giriş
+    /// şifresi sorununda açılmaz).
+    func testGivenUpSessionOffersReconnectAndWakeReopensIt() async throws {
+        let services = FakeServices()
+        let model = readyModel(services)
+        await model.start()
+        defer { model.stop() }
+        let stream = try XCTUnwrap(services.streams.first)
+        model.systemWoke()
+        XCTAssertEqual(services.streams.count, 1)
+        XCTAssertEqual(stream.reconnects, 1)
+
+        stream.hasGivenUp = true
+        stream.onState?(.disconnected(.loginPasscodeIncorrect))
+        for _ in 0..<50 where model.sessionState == .connecting || model.sessionState == .disconnected(.stopped) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(model.offersReconnect())
+        model.systemWoke()
+        XCTAssertEqual(services.streams.count, 1, "yanlış şifre yeniden gönderilmez")
+
+        stream.onState?(.disconnected(.consoleRemotePlayCrashed))
+        for _ in 0..<50 where model.sessionState != .disconnected(.consoleRemotePlayCrashed) { try await Task.sleep(for: .milliseconds(10)) }
+        model.systemWoke()
+        XCTAssertEqual(services.streams.count, 2)
+    }
+
+    func testReconnectsOnReturnUnlessRetryingEndsTheSameWay() {
+        for reason in [DisconnectReason.registrationInvalid, .loginPasscode, .loginPasscodeIncorrect, .stopped] {
+            XCTAssertFalse(AppModel.reconnectsOnReturn(after: .disconnected(reason)), "\(reason)")
+        }
+        for reason in [DisconnectReason.consoleRemotePlayCrashed, .noPicture, .network] {
+            XCTAssertTrue(AppModel.reconnectsOnReturn(after: .disconnected(reason)), "\(reason)")
+        }
+        XCTAssertTrue(AppModel.reconnectsOnReturn(after: .connecting))
     }
 
     /// #40: bekçinin bağlantısında TV yeni jeton verirse saklanır; sonraki açılışta TV yeniden izin sormaz.

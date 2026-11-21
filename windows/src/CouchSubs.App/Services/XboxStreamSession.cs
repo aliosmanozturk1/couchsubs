@@ -52,8 +52,27 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
     {
         if (started) return;
         started = true;
-        _ = RunAsync();
+        // Köprü tektir: "Yeniden bağlan" ile kapatılan eski oturumun kapanışı (köprüye "stop") yeni oturumun "start"ından
+        // sonra gidip onu kesmesin; yeni oturum eskisinin döngüsü bitince başlar (arayüz iş parçacığında, sırayla).
+        var previous = lastRun;
+        lastRun = RunAfterAsync(previous);
     }
+
+    /// <summary>Son açılan oturumun döngüsü (bkz. <see cref="Start"/>).</summary>
+    private static Task lastRun = Task.CompletedTask;
+
+    private async Task RunAfterAsync(Task previous)
+    {
+        // Eski döngü köprüden yanıt beklerken takılırsa yeni oturum sonsuza dek beklemez.
+        try { await previous.WaitAsync(TimeSpan.FromSeconds(10)); } catch { /* Eski oturumun hatası ya da gecikmesi yenisini durdurmaz. */ }
+        if (cancel.IsCancellationRequested) return;
+        await RunAsync();
+    }
+
+    /// <summary>Yeniden denemeler bitti ya da konsol yayını reddetti; yayın kendiliğinden durdu (kullanıcı durdurmadı).
+    /// <see cref="ReconnectNow"/> bundan sonra bir şey yapmaz, uygulama yeni oturum açar (Mac/iPhone XboxStreamSession ile aynı).</summary>
+    public bool HasGivenUp => Volatile.Read(ref gaveUp);
+    private bool gaveUp;
 
     /// <summary>
     /// Ardışık yeniden denemelerin bekleme süreleri. Konsol "oyun başka yerde açıldı" deyip yayını keserse eskiden her
@@ -150,6 +169,7 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
             if (permanent || failures > RetryDelaysMs.Length)
             {
                 Log(permanent ? "kalıcı hata: yeniden denenmiyor, yayın durdu" : $"{RetryDelaysMs.Length} deneme bitti: yeniden denenmiyor, yayın durdu");
+                Volatile.Write(ref gaveUp, true);
                 StateChanged?.Invoke(SessionState.Disconnected(DisconnectKind.Refused, XboxStop.Message(Localizer.Current, reason)));
                 break;
             }

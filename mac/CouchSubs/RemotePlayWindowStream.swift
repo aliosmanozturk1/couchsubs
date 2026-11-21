@@ -144,6 +144,9 @@ final class RemotePlayWindowStream: NSObject, StreamControlling, SCStreamOutput,
         startSearch(current)
     }
 
+    /// Pencere yakalama yeniden denemeyi bırakmaz (pencere aranır, bulununca okunur).
+    var hasGivenUp: Bool { false }
+
     func isCurrent(_ number: Int) -> Bool {
         lock.withLock { running && generation == number }
     }

@@ -1721,8 +1721,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             else if (IsXbox)
             {
                 RemotePlayLog.Note($"Çeviri başladı; {ConsoleTitle} bağlantısı açılıyor.");
-                stream = (services.Xbox ?? throw new InvalidOperationException(text["Xbox streaming isn't available in this version."]))
-                    .MakeStream(xboxConsole!, xboxToken!, settings.XboxLegacyFrameRate, settings.XboxAudioOnComputer);
+                stream = MakeConsoleStream();
                 xboxNameChecked = false;
             }
             else if (readsWindow)
@@ -1739,13 +1738,14 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             else
             {
                 RemotePlayLog.Note($"Çeviri başladı; PS5'e bağlanılıyor: {console!.Name} {console.Host}");
-                stream = services.MakeStream(console, accountId!, store.Load<string>(StoreKeys.LoginPasscode));
+                stream = MakeConsoleStream();
             }
-            stream.StateChanged += state => post(() => SessionStateChanged(state));
-            stream.ConsoleMoved += moved => post(() => ConsoleMoved(moved));
-            stream.FrameReceived += HandleFrame;
-            stream.Start();
+            sessionIsConsole = !demoMode && !readsWindow && !readsCapture;
+            Attach(stream);
+            // Oturum başlamadan atanır: bağlanır bağlanmaz gelen durum "eski oturumun" sayılıp atılmasın (bkz. Attach).
             session = stream;
+            stream.Start();
+            reconnectOffer.Reset(Clock());
 
             server.Pairing.SetSession(true);
             StartKeeper();
@@ -1992,6 +1992,9 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (isRunning) sleep.End();
         IsRunning = false;
         SessionState = SessionState.Disconnected(DisconnectKind.Stopped);
+        reconnectOffer.Reset();
+        sessionIsConsole = false;
+        UpdateReconnectOffer();
         UpdateTroubleClocks();
         firewallRuleSeen = false;
         ClearFirewallPrompt();
@@ -2003,9 +2006,109 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Bilgisayar uykudan uyanınca bağlantıları hemen yenile.</summary>
     public void SystemResumed()
     {
-        session?.ReconnectNow();
+        if (session?.HasGivenUp == true)
+        {
+            // Oturum yeniden denemeyi bırakmıştı: ReconnectNow bir şey yapmaz; yeni oturum açılır (Mac ve iPhone ile aynı).
+            // Kayıt ya da giriş şifresi sorununda açılmaz (aynı yere çıkar; "Yeniden bağlan" düğmesi görünür).
+            if (ReconnectsOnReturn(sessionState))
+            {
+                Reconnect("uykudan uyanış; oturum yeniden denemeyi bırakmıştı");
+                return;
+            }
+        }
+        else session?.ReconnectNow();
         keeper?.Reconnect();
     }
+
+    /// <summary>Konsola (PS5 ya da Xbox) bağlanan oturumu kurar; başlatmaz. "Çeviriyi başlat" ve "Yeniden bağlan" kullanır.</summary>
+    private IStreamSession MakeConsoleStream() => IsXbox
+        ? (services.Xbox ?? throw new InvalidOperationException(text["Xbox streaming isn't available in this version."]))
+            .MakeStream(xboxConsole!, xboxToken!, settings.XboxLegacyFrameRate, settings.XboxAudioOnComputer)
+        : services.MakeStream(console!, accountId!, store.Load<string>(StoreKeys.LoginPasscode));
+
+    /// <summary>
+    /// Oturumun olayları denetçiye bağlanır. Yeniden bağlanırken kapatılan eski oturumun geç gelen olayı (Xbox'ta "durdu",
+    /// PS5'te kapanış) yeni oturumun durumunu ezmez, eski oturumun karesi okunmaz.
+    /// </summary>
+    private void Attach(IStreamSession stream)
+    {
+        stream.StateChanged += state => post(() =>
+        {
+            if (ReferenceEquals(session, stream)) SessionStateChanged(state);
+        });
+        stream.ConsoleMoved += moved => post(() => ConsoleMoved(moved));
+        stream.FrameReceived += frame =>
+        {
+            if (ReferenceEquals(session, stream)) HandleFrame(frame);
+        };
+    }
+
+    /// <summary>
+    /// "Yeniden bağlan" (ve oturumun bıraktığı bağlantıda uykudan uyanış): konsol oturumu kapatılıp yenisi açılır, TV
+    /// bağlantısı yoklanır. Çeviri sürer (geçmiş, oyun seçimi, süre korunur). Eskiden oturum yeniden denemeyi bırakınca
+    /// (PS5'te Uzaktan Oynatma çöktü, Xbox denemeleri bitti) ya da uzun süre bağlanamayınca tek çare uygulamayı kapatıp
+    /// açmaktı (Mac, iPhone ve Android ile aynı).
+    /// </summary>
+    public void Reconnect(string reason = "kullanıcı")
+    {
+        if (!isRunning || isStarting || demoMode || !sessionIsConsole) return;
+        RemotePlayLog.Note($"Yeniden bağlanılıyor ({reason}); son durum: {sessionState.Phase} ({DisconnectLogName(sessionState.Reason)})");
+        SubtitleLog.Write($"bağlantı yeniden kuruluyor ({reason})");
+        var old = session;
+        session = null;
+        old?.Stop();
+        old?.Dispose();
+        frameGate.Reset();
+        framesSince = null;
+        IStreamSession stream;
+        try
+        {
+            stream = MakeConsoleStream();
+        }
+        catch (Exception error)
+        {
+            RemotePlayLog.Note($"Yeniden bağlanılamadı: {error.GetType().Name}: {error.Message}");
+            SessionState = SessionState.Disconnected(DisconnectKind.Other, error.Message);
+            UpdateReconnectOffer();
+            return;
+        }
+        Attach(stream);
+        session = stream;
+        if (IsXbox) xboxNameChecked = false;
+        SessionState = SessionState.Connecting;
+        stream.Start();
+        reconnectOffer.Reset(Clock());
+        UpdateReconnectOffer();
+        UpdateSubtitleOffTip();
+        UpdateTroubleClocks();
+        if (keeper is null) StartKeeper();
+        else keeper.Reconnect();
+    }
+
+    /// <summary>
+    /// Oturum yeniden denemeyi bıraktıysa uykudan uyanınca kendiliğinden yeniden bağlanılır mı. Kayıt ya da giriş şifresi
+    /// sorununda hayır: aynı yere çıkar (yanlış şifre yeniden gönderilmez); kullanıcı düzeltip düğmeye basar (iPhone
+    /// PhoneModel.reconnectsOnReturn ile aynı kural).
+    /// </summary>
+    public static bool ReconnectsOnReturn(SessionState state) =>
+        state.Phase != SessionPhase.Disconnected || state.Reason?.Kind is not
+            (DisconnectKind.RegistrationInvalid or DisconnectKind.LoginPasscode or DisconnectKind.LoginPasscodeIncorrect
+             or DisconnectKind.Stopped);
+
+    /// <summary>
+    /// Ana ekrandaki "Yeniden bağlan" düğmesi: oturum yeniden denemeyi bıraktıysa hemen, süren denemelerde 45 sn sonra
+    /// (bkz. <see cref="ReconnectOffer"/>; Mac, iPhone ve Android ile aynı kural). Yalnız konsola doğrudan bağlanırken
+    /// (pencereden okurken ya da deneme modunda yok).
+    /// </summary>
+    public bool OffersReconnect { get => offersReconnect; private set => Set(ref offersReconnect, value); }
+    private bool offersReconnect;
+    private readonly ReconnectOffer reconnectOffer = new();
+    /// <summary>Bu çeviri PS5'e ya da Xbox'a doğrudan bağlanıyor (Remote Play ya da seçilen pencereden okumuyor).</summary>
+    private bool sessionIsConsole;
+
+    private void UpdateReconnectOffer() =>
+        OffersReconnect = isRunning && !demoMode && sessionIsConsole && session is not null
+                          && reconnectOffer.Shows(session.HasGivenUp, Clock());
 
     /// <summary>Çeviri başlamamışken bağlı olmamak bir sorun değildir; nokta gri kalır.</summary>
     public static StatusTone Ps5ToneFor(SessionState state, bool running) =>
@@ -3077,6 +3180,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (state.Reason?.Kind == DisconnectKind.ConsoleRemotePlayCrashed && SessionState.Reason?.Kind != DisconnectKind.ConsoleRemotePlayCrashed)
             SubtitleLog.Write("PS5: Uzaktan Oynatma PS5'te çöktü (Remote Play on Console has crashed); PS5 tamamen kapatılıp açılmalı");
         SessionState = state;
+        reconnectOffer.Update(live: state.Phase == SessionPhase.Streaming, Clock());
+        UpdateReconnectOffer();
         // Bağlantı kopunca görüntü süresi baştan sayılır.
         if (state.Phase != SessionPhase.Streaming) framesSince = null;
         UpdateSubtitleOffTip();
@@ -3256,6 +3361,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public async Task CheckConnectionsAsync()
     {
         UpdateTroubleClocks();
+        UpdateReconnectOffer();
         if (!isRunning || services.Firewall is not { } firewall) return;
         if (ps5TroubleSince is null && tvWaitingSince is null)
         {

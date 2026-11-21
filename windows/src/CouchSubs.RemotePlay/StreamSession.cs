@@ -450,6 +450,7 @@ public sealed class StreamSession : IStreamSession
     /// bloklar (yeniden deneme, eski oturumun kapanma olayı) kendini iptal eder.</summary>
     private readonly Lock stateLock = new();
     private bool running;
+    private bool gaveUp;
     private int generation;
     private bool disposed;
 
@@ -523,8 +524,27 @@ public sealed class StreamSession : IStreamSession
         lock (stateLock)
         {
             this.running = running;
+            gaveUp = false;
             return ++generation;
         }
+    }
+
+    /// <summary>Yeniden deneme bırakılır (<see cref="Stop"/>tan farkı: kullanıcı durdurmadı; bkz. <see cref="HasGivenUp"/>).</summary>
+    private void GiveUp()
+    {
+        lock (stateLock)
+        {
+            running = false;
+            gaveUp = true;
+            ++generation;
+        }
+    }
+
+    /// <summary>Oturum yeniden denemeyi kendisi bıraktı mı (kayıt ya da giriş şifresi geçersiz, PS5'te Uzaktan Oynatma
+    /// çöktü). <see cref="ReconnectNow"/> o zaman bir şey yapmaz; uygulama yeni oturum açar (Mac StreamSession ile aynı).</summary>
+    public bool HasGivenUp
+    {
+        get { lock (stateLock) return gaveUp; }
     }
 
     private bool IsCurrent(int value)
@@ -665,7 +685,7 @@ public sealed class StreamSession : IStreamSession
                         return;
                     }
                     // Şifre yok ya da yanlış: yeniden denemek aynı yere çıkar.
-                    Bump(running: false);
+                    GiveUp();
                     CloseBox();
                     Emit(SessionState.Disconnected(stop ?? DisconnectKind.LoginPasscode));
                 });
@@ -687,7 +707,7 @@ public sealed class StreamSession : IStreamSession
                     if (reason.Kind == DisconnectKind.RegistrationInvalid)
                     {
                         // Kayıt geçersiz: yeniden denemek aynı yere çıkar (eskiden sonsuza kadar "Yeniden bağlanılıyor…").
-                        Bump(running: false);
+                        GiveUp();
                         Emit(new SessionState(SessionPhase.Disconnected, reason));
                         return;
                     }
@@ -699,7 +719,7 @@ public sealed class StreamSession : IStreamSession
                         if (!retry)
                         {
                             // PS5 kapatılıp açılmadan her deneme aynı yanıtı alır (eskiden sonsuz "Yeniden bağlanılıyor…").
-                            Bump(running: false);
+                            GiveUp();
                             Emit(new SessionState(SessionPhase.Disconnected, reason));
                             return;
                         }

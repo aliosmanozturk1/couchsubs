@@ -155,4 +155,10 @@ public interface IStreamSession : IDisposable
     void Stop();
     /// <summary>Bilgisayar uykudan uyandığında ya da ağ değiştiğinde çağrılır.</summary>
     void ReconnectNow();
+    /// <summary>
+    /// Oturum yeniden denemeyi kendisi bıraktı (kullanıcı durdurmadı): PS5'te Uzaktan Oynatma çöktü, kayıt ya da giriş şifresi
+    /// geçersiz, Xbox denemeleri bitti. <see cref="ReconnectNow"/> artık bir şey yapmaz; uygulama yeni oturum açmalıdır
+    /// (ana ekrandaki "Yeniden bağlan"; Mac, iPhone ve Android ile aynı).
+    /// </summary>
+    bool HasGivenUp => false;
 }

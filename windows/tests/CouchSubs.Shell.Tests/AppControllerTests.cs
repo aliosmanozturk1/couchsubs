@@ -48,6 +48,9 @@ internal sealed class FakeStream : IStreamSession
     public void Stop() => Started = false;
     public int Reconnects { get; private set; }
     public void ReconnectNow() => Reconnects++;
+    /// <summary>Oturum yeniden denemeyi bıraktı (PS5'te Uzaktan Oynatma çöktü, Xbox denemeleri bitti).</summary>
+    public bool GaveUp { get; set; }
+    public bool HasGivenUp => GaveUp;
     public void Dispose() { }
     public void Emit(SessionState state) => StateChanged?.Invoke(state);
     public void Emit(Frame frame) => FrameReceived?.Invoke(frame);

@@ -168,6 +168,8 @@ protocol StreamControlling: AnyObject {
     func start()
     func stop()
     func reconnectNow()
+    /// Oturum yeniden denemeyi kendisi bıraktı (kullanıcı durdurmadı); `reconnectNow` artık bir şey yapmaz.
+    var hasGivenUp: Bool { get }
 }
 
 /// TV uygulamasını açık tutan görevli (gerçekte `TVKeeper`).
@@ -198,6 +200,8 @@ final class DemoStream: StreamControlling {
     func stop() { source.stop() }
 
     func reconnectNow() {}
+
+    var hasGivenUp: Bool { false }
 }
 
 final class LiveServices: AppServices {
@@ -711,6 +715,10 @@ final class AppModel: ObservableObject {
     /// Sunucunun gerçekten dinlediği port (8787 doluysa rastgele bir port).
     @Published private(set) var serverPort: UInt16 = AppIdentity.serverPort
     private var session: StreamControlling?
+    /// Bağlantının ne zamandan beri gittiği: "Yeniden bağlan" düğmesi için (bkz. `offersReconnect`).
+    @Published private(set) var reconnectOffer = ReconnectOffer()
+    /// Bu çeviri PS5'e ya da Xbox'a doğrudan bağlanıyor (Remote Play ya da seçilen pencereden okumuyor).
+    private var sessionIsConsole = false
     private var keeper: KeeperControlling?
     @Published private var sleepActivity: NSObjectProtocol?
     private var pipeline: SubtitlePipeline?
@@ -1902,23 +1910,21 @@ final class AppModel: ObservableObject {
             session = services.makeCaptureWindowStream(target: captureTarget)
         } else if let xbox {
             RemotePlayLog.write("Çeviri başladı; Xbox'a bağlanılıyor (Beta): \(xbox.name)")
-            session = services.makeXboxStream(auth: xboxAuth, console: xbox, playAudio: settings.xboxAudioOnDevice)
-        } else if let console, let accountId {
-            RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)")
-            session = services.makeStream(console: console, accountId: accountId,
-                                          loginPasscode: store.load(String.self, for: StoreKey.loginPasscode))
+            guard let made = makeConsoleSession(xbox: xbox) else { return }
+            session = made
+        } else if console != nil, accountId != nil {
+            if let console { RemotePlayLog.write("Çeviri başladı; PS5'e bağlanılıyor: \(console.name) \(console.host)") }
+            guard let made = makeConsoleSession(xbox: nil) else { return }
+            session = made
         } else {
             return
         }
-        session.onState = { [weak self] state in Task { @MainActor in self?.sessionStateChanged(state) } }
-        session.onConsoleMoved = { [weak self] moved in Task { @MainActor in self?.consoleMoved(moved) } }
-        session.onFrame = { [weak self] frame in
-            // Karenin geldiği an: canlı altyazı alanındaki gecikme buradan TV'ye gidene kadar ölçülür.
-            let capturedAt = SubtitleStabilizer.uptimeMs()
-            Task { @MainActor in await self?.handle(frame, capturedAt: capturedAt) }
-        }
-        session.start()
+        sessionIsConsole = !demoMode && !readsWindow && captureTarget == nil
+        attach(session)
+        // Oturum başlamadan atanır: hemen gelen durum "eski oturumun" sayılıp atılmasın (bkz. `attach`).
         self.session = session
+        session.start()
+        reconnectOffer.reset(now: Date())
 
         startKeeper()
         // Deneme karelerinde oyun yoktur: oyun sorulmaz, oyuna göre alan uygulanmaz.
@@ -1934,10 +1940,7 @@ final class AppModel: ObservableObject {
 
         // Mac uykudan uyanınca bağlantıları hemen yenile.
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in
-                self?.session?.reconnectNow()
-                self?.keeper?.reconnect()
-            }
+            Task { @MainActor in self?.systemWoke() }
         }
         keepAwake()
         server.pairing.setSession(true)
@@ -1952,6 +1955,88 @@ final class AppModel: ObservableObject {
         if screenHotkey == nil { screenHotkey = GlobalHotkey(.translateScreen) { [weak self] in self?.translateScreen() } }
         screenHotkey?.enabled = true
         updateClickThroughHotkey()
+    }
+
+    /// Konsola (PS5 ya da Xbox) bağlanan oturumu kurar; başlatmaz. "Çeviriyi başlat" ve "Yeniden bağlan" kullanır.
+    private func makeConsoleSession(xbox: XboxConsole?) -> StreamControlling? {
+        if let xbox { return services.makeXboxStream(auth: xboxAuth, console: xbox, playAudio: settings.xboxAudioOnDevice) }
+        guard let console, let accountId else { return nil }
+        return services.makeStream(console: console, accountId: accountId,
+                                   loginPasscode: store.load(String.self, for: StoreKey.loginPasscode))
+    }
+
+    /// Oturumun olayları modele bağlanır. Yeniden bağlanırken kapatılan eski oturumun geç gelen olayı (Xbox'ta "durdu")
+    /// yeni oturumun durumunu ezmez, eski oturumun karesi okunmaz (iPhone ile aynı).
+    private func attach(_ session: StreamControlling) {
+        session.onState = { [weak self, weak session] state in
+            Task { @MainActor in
+                guard let self, let session, self.session === session else { return }
+                self.sessionStateChanged(state)
+            }
+        }
+        session.onConsoleMoved = { [weak self] moved in Task { @MainActor in self?.consoleMoved(moved) } }
+        session.onFrame = { [weak self, weak session] frame in
+            // Karenin geldiği an: canlı altyazı alanındaki gecikme buradan TV'ye gidene kadar ölçülür.
+            let capturedAt = SubtitleStabilizer.uptimeMs()
+            Task { @MainActor in
+                guard let self, let session, self.session === session else { return }
+                await self.handle(frame, capturedAt: capturedAt)
+            }
+        }
+    }
+
+    /// "Yeniden bağlan" (ve oturumun bıraktığı bağlantıda uykudan uyanış): konsol oturumu kapatılıp yenisi açılır, TV
+    /// bağlantısı yoklanır. Çeviri sürer (geçmiş, oyun seçimi, süre korunur). Eskiden oturum yeniden denemeyi bırakınca
+    /// (görüntü gelmiyor, PS5'te Uzaktan Oynatma çöktü, Xbox denemeleri bitti) ya da uzun süre bağlanamayınca tek çare
+    /// uygulamayı kapatıp açmaktı (iPhone, Android ve Windows ile aynı).
+    func reconnect(reason: String = "kullanıcı") {
+        guard isRunning, !isStarting, !demoMode, sessionIsConsole else { return }
+        let xbox = isXbox && xboxSignedIn ? xboxConsole : nil
+        guard isXbox ? xbox != nil : (console != nil && accountId != nil) else { return }
+        RemotePlayLog.write("Yeniden bağlanılıyor (\(reason)); son durum: \(sessionState)")
+        SubtitleLog.write("bağlantı yeniden kuruluyor (\(reason))")
+        session?.stop()
+        session = nil
+        frameGate.reset()
+        guard let session = makeConsoleSession(xbox: xbox) else { return }
+        attach(session)
+        self.session = session
+        sessionState = .connecting
+        session.start()
+        reconnectOffer.reset(now: Date())
+        if keeper == nil { startKeeper() } else { keeper?.reconnect() }
+    }
+
+    /// Ana ekrandaki "Yeniden bağlan" düğmesi görünsün mü (bkz. `ReconnectOffer`). Yalnız konsola doğrudan bağlanırken
+    /// (pencereden okurken ya da deneme modunda yok).
+    func offersReconnect(now: Date = Date()) -> Bool {
+        guard isRunning, !demoMode, sessionIsConsole else { return false }
+        return reconnectOffer.shows(gaveUp: session?.hasGivenUp ?? false, now: now)
+    }
+
+    /// Oturum yeniden denemeyi bıraktıysa uykudan uyanınca kendiliğinden yeniden bağlanılır mı. Kayıt ya da giriş şifresi
+    /// sorununda hayır: aynı yere çıkar (yanlış şifre yeniden gönderilmez); kullanıcı düzeltip düğmeye basar (iPhone
+    /// `PhoneModel.reconnectsOnReturn` ile aynı kural).
+    static func reconnectsOnReturn(after state: SessionState) -> Bool {
+        guard case .disconnected(let reason) = state else { return true }
+        switch reason {
+        case .registrationInvalid, .loginPasscode, .loginPasscodeIncorrect, .stopped: return false
+        default: return true
+        }
+    }
+
+    /// Mac uykudan uyandı: bağlantılar hemen yenilenir. Oturum yeniden denemeyi bırakmışsa `reconnectNow` bir şey yapmaz;
+    /// yeni oturum açılır (kayıt ya da giriş şifresi sorununda açılmaz, düğme görünür).
+    func systemWoke() {
+        guard isRunning else { return }
+        if session?.hasGivenUp == true {
+            if Self.reconnectsOnReturn(after: sessionState) {
+                return reconnect(reason: "uykudan uyanış; oturum yeniden denemeyi bırakmıştı")
+            }
+        } else {
+            session?.reconnectNow()
+        }
+        keeper?.reconnect()
     }
 
     /// Çeviri başlatılabilir mi: görüntü kaynağı hazır (PS5 kurulu ya da PS Remote Play penceresi seçili) ve altyazının
@@ -2459,6 +2544,8 @@ final class AppModel: ObservableObject {
         isRunning = false
         onlineIssue = nil
         sessionState = .disconnected(.stopped)
+        reconnectOffer.reset()
+        sessionIsConsole = false
         subtitleOffTip.reset()
         updateSubtitleOffTip()
         updateClickThroughHotkey()
@@ -2497,6 +2584,7 @@ final class AppModel: ObservableObject {
             }
         }
         sessionState = state
+        reconnectOffer.update(live: state == .streaming)
         subtitleOffTip.connectionChanged(streaming: state == .streaming)
         updateSubtitleOffTip()
         updateGameProbe(connected: state == .streaming)

@@ -145,11 +145,14 @@ struct MainControls: View {
                             Button(model.xboxSignedIn ? "Choose your Xbox" : "Sign in with Microsoft") { model.linkXbox() }
                                 .buttonStyle(.secondary)
                         }
+                        ReconnectButton()
                     }
                 } else {
                     StatusTile(symbol: "gamecontroller", title: model.settings.frameSource == .captureWindow ? "Selected window" : "PS5",
                                value: model.ps5StatusText,
-                               tone: AppModel.ps5Tone(model.sessionState, running: model.isRunning))
+                               tone: AppModel.ps5Tone(model.sessionState, running: model.isRunning)) {
+                        ReconnectButton()
+                    }
                 }
                 // Altyazı yalnız bilgisayar ekranındaysa TV durumu gösterilmez.
                 if model.settings.output.showsOnTV { TVStatusTile() }
@@ -184,6 +187,23 @@ struct MainControls: View {
     private var engineName: String {
         let engine = model.settings.translationEngine
         return engine == .free ? String(localized: "Free") : engine.displayName
+    }
+}
+
+/// Konsol karosunda: oturum yeniden denemeyi bıraktıysa hemen, süren denemelerde 45 sn sonra. Uygulamayı kapatıp açmadan
+/// konsol bağlantısı baştan kurulur, çeviri sürer (ReconnectOffer; iPhone, Android ve Windows ile aynı).
+private struct ReconnectButton: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        if model.isRunning && model.sessionState != .streaming {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                if model.offersReconnect(now: context.date) {
+                    Button { model.reconnect() } label: { Label("Reconnect", systemImage: "arrow.clockwise") }
+                        .buttonStyle(.secondary)
+                }
+            }
+        }
     }
 }
 
