@@ -232,7 +232,9 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         } else if case .failed = phase, !XboxSessionMachine.fatal.contains(kind) {
             // Denemeler bitti ya da konsol yayını reddetti: yayın durur, yeniden denenmez.
             log("yeniden denenmiyor, yayın durdu")
-            onState?(.disconnected(.other(stopText(XboxStop.classify(detail, kind: kind), XboxStop.shorten(detail, fallback: kind.rawValue)))))
+            // Ham neden (Xbox'ın JSON hata nesnesi) yukarıda günlüğe yazıldı; ekranda yalnız anlaşılır metin ve kod (#871).
+            let stop = XboxStop.classify(detail, kind: kind)
+            onState?(.disconnected(.other(stopText(stop, XboxStop.displayReason(detail, stop, fallback: kind.rawValue)))))
             return
         }
         onState?(.disconnected(.other(describe(kind))))

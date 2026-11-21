@@ -27,7 +27,9 @@ public struct XboxKeepalive {
 /// Yayının neden durduğu (kullanıcıya gösterilen metni seçer).
 public enum XboxStopKind: Equatable, Sendable {
     /// `noPicture`: son bağlantılarda Xbox tek kare göndermedi (Windows XboxStopKind.NoPicture, Android NO_PICTURE).
-    case busy, consoleUnavailable, noPicture, other
+    /// `serviceNotReady`: Xbox uzaktan oynatma hizmetini başlatamadı ("Timed out waiting for Cloud Streaming Service to be
+    /// ready", 0x8007139F); `startFailed`: Xbox bilinmeyen bir hata koduyla yayını reddetti (#871).
+    case busy, consoleUnavailable, noPicture, serviceNotReady, startFailed, other
 }
 
 /// Xbox yayını durunca günlük satırı ve kullanıcıya gösterilen metnin türü.
@@ -42,8 +44,64 @@ public enum XboxStop {
         let text = reason ?? ""
         func has(_ word: String) -> Bool { text.range(of: word, options: .caseInsensitive) != nil }
         if kind == .busy || has("InUse") || has("Busy") || has("AlreadyStreaming") { return .busy }
+        let code = errorCode(text)
+        if has("Cloud Streaming Service") || code == serviceNotReadyCode { return .serviceNotReady }
         if has("Offline") || has("NotFound") || has("Unavailable") || has("PowerOff") || has("StreamingDisabled") { return .consoleUnavailable }
-        return .other
+        return code == nil ? .other : .startFailed
+    }
+
+    /// "Timed out waiting for Cloud Streaming Service to be ready" hatasının kodu: Xbox'ın verdiği -2147019873, HRESULT
+    /// 0x8007139F (Win32 5023, ERROR_INVALID_STATE).
+    public static let serviceNotReadyCode = "0x8007139F"
+
+    /// Bu neden yeniden denenmez: Xbox kendi hizmetini başlatamıyor, yeniden denemek yalnız Xbox'ta "uzaktan oynatma
+    /// başlatıldı / durduruldu" bildirimini tekrarlar; Xbox'ı kullanıcının yeniden başlatması gerekir.
+    public static func isPermanent(_ reason: String?) -> Bool { classify(reason) == .serviceNotReady }
+
+    /// Xbox hizmetinin hata nesnesindeki (errorDetails ya da HTTP gövdesi) kod. `Agent : -2147019873 : …` ve 0x… biçimi
+    /// HRESULT olarak (0x8007139F), yoksa `"code"` alanı olduğu gibi; bulunamazsa nil.
+    public static func errorCode(_ reason: String?) -> String? {
+        guard let text = reason, !text.isEmpty else { return nil }
+        if let agent = firstGroup(#"Agent\s*:\s*(-?\d+)"#, text) { return hresult(agent) }
+        if let hex = firstGroup(#"\b0[xX]([0-9A-Fa-f]{8})\b"#, text) { return "0x" + hex.uppercased() }
+        if let code = firstGroup(#""(?:code|errorCode|hresult)"\s*:\s*"?(-?[A-Za-z0-9_.]+)"#, text), code != "null" {
+            return hresult(code)
+        }
+        return nil
+    }
+
+    /// Hata nesnesindeki `"message"` metni (JSON kaçışları açılmış); yoksa nil.
+    public static func errorMessage(_ reason: String?) -> String? {
+        guard let text = reason, let raw = firstGroup(#""(?:message|errorMessage)"\s*:\s*"((?:[^"\\]|\\.)*)""#, text) else { return nil }
+        let message = raw.replacingOccurrences(of: #"\\(.)"#, with: "$1", options: .regularExpression)
+        return message.trimmingCharacters(in: .whitespaces).isEmpty ? nil : message
+    }
+
+    /// Ekrandaki metne giren neden: `startFailed`te yalnız kod, `other`da JSON'suz kısa metin; ham neden yalnız günlüğe yazılır.
+    public static func displayReason(_ reason: String?, _ kind: XboxStopKind, fallback: String = "?") -> String {
+        switch kind {
+        case .startFailed: return errorCode(reason) ?? fallback
+        case .other:
+            guard let text = reason, let brace = text.firstIndex(of: "{") else { return shorten(reason, fallback: fallback) }
+            if let message = errorMessage(text) { return shorten(message, fallback: fallback) }
+            return shorten(String(text[..<brace]).trimmingCharacters(in: CharacterSet(charactersIn: " :")), fallback: fallback)
+        default: return shorten(reason, fallback: fallback)
+        }
+    }
+
+    /// Ondalık HRESULT (-2147019873 ya da 2147947423) 0x8007139F biçimine çevrilir; başka değer olduğu gibi kalır.
+    static func hresult(_ value: String) -> String {
+        guard let number = Int64(value) else { return value }
+        if number < 0, number >= Int64(Int32.min) { return String(format: "0x%08X", UInt32(bitPattern: Int32(number))) }
+        if number >= 0x8000_0000, number <= 0xFFFF_FFFF { return String(format: "0x%08X", UInt32(number)) }
+        return value
+    }
+
+    private static func firstGroup(_ pattern: String, _ text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let range = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[range])
     }
 
     /// Ham nedeni tek satıra indirir ve `limit` karakterde keser; boşsa `fallback`.

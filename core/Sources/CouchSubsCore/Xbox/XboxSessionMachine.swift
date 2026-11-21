@@ -112,7 +112,8 @@ public struct XboxSessionMachine {
         streamingSince = 0
         failures += 1
         if kind == .noFirstFrame { noPictureConnections += 1 }
-        let retry = !permanent && !Self.fatal.contains(kind) && failures <= retryDelaysMs.count
+        // Xbox uzaktan oynatma hizmetini başlatamadı (HTTP hatası olarak gelse de): yeniden denemek işe yaramaz (#871).
+        let retry = !permanent && !XboxStop.isPermanent(message) && !Self.fatal.contains(kind) && failures <= retryDelaysMs.count
             && noPictureConnections < Self.maxNoPictureAttempts
         phase = .failed(kind, message: message, willRetry: retry, attempt: retry ? failures : 0)
         return .retry(delayMs: retry ? retryDelaysMs[failures - 1] : nil)

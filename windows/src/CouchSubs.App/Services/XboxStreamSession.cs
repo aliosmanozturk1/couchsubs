@@ -165,7 +165,7 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
             if (cancel.IsCancellationRequested) break;
             var since = Interlocked.Exchange(ref streamingSince, 0);
             endReason = null;
-            var delay = retries.Failed(permanent, noFirstFrame, since == 0 ? null : Environment.TickCount64 - since);
+            var delay = retries.Failed(permanent, noFirstFrame, since == 0 ? null : Environment.TickCount64 - since, reason);
             if (noFirstFrame)
                 Log($"Xbox görüntü göndermedi: bağlantı kuruldu ama tek kare gelmedi ({retries.Failures}. bağlantı; neden: {XboxStop.Shorten(reason)}). " +
                     "Xbox'ta Ayarlar › Cihazlar ve bağlantılar › Uzak özellikler açık mı, Xbox kablolu mu? Tanı satırlarında video bayt 0 ise Xbox hiç görüntü kodlamıyor");
