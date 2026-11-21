@@ -151,7 +151,16 @@ fun List<ExtraArea>.watched(preset: AreaPreset): List<ExtraArea> = if (preset ==
 object ScreenText {
     /** En az iki harfi ve iki harfli bir sözcüğü olan satır yazıdır; geri kalanı sayı ve simgedir. */
     fun isWords(text: String): Boolean =
-        text.count { it.isLetter() } >= 2 && text.split(Regex("\\s+")).any { word -> word.count { it.isLetter() } >= 2 }
+        text.count { it.isLetter() } >= 2 && text.split(Regex("\\s+")).any { word -> word.count { it.isLetter() } >= 2 } &&
+            !isDistance(text)
+
+    private val distance = Regex("""^\s*\d[\d.,]*\s?(ft|m|mi|km|yd|yds)\s*$""", RegexOption.IGNORE_CASE)
+
+    /**
+     * Yalnız sayı ve uzaklık birimi: "124 ft", "4 ft", "2.4 mi", "300m", "1,2 km", "50 yd". Haritada kartın yanındaki
+     * uzaklık göstergedir, çevrilmez (Mac/iPhone ve Windows ile aynı).
+     */
+    fun isDistance(text: String): Boolean = distance.matches(text)
 
     /**
      * Önceki parça cümleyi bitirdiyse ya da kısa bir başlık/menü satırıysa (en çok üç sözcük, virgülsüz) ve yeni satır

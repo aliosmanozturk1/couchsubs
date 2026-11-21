@@ -784,9 +784,16 @@ public enum ScreenTranslation {
         return line.first?.isUppercase == true && wordCount(previous) <= 3 && !previous.hasSuffix(",")
     }
 
-    /// En az iki harfi ve iki harfli bir sözcüğü olan satır yazıdır; geri kalanı sayı ve simgedir.
+    /// En az iki harfi ve iki harfli bir sözcüğü olan satır yazıdır; geri kalanı sayı ve simgedir. Yalnız uzaklık
+    /// ("124 ft", "2.4 mi", "300 m") da göstergedir: haritada kartın yanındaki uzaklık çevrilip kutuyla örtülüyordu.
     static func isWords(_ text: String) -> Bool {
         text.filter(\.isLetter).count >= 2 && text.split(whereSeparator: \.isWhitespace).contains { $0.filter(\.isLetter).count >= 2 }
+            && !isDistance(text)
+    }
+
+    /// Yalnız sayı ve uzaklık birimi: "124 ft", "4 ft", "2.4 mi", "300m", "1,2 km", "50 yd".
+    static func isDistance(_ text: String) -> Bool {
+        text.range(of: #"^\s*\d[\d.,]*\s?(ft|m|mi|km|yd|yds)\s*$"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     private static func wordCount(_ text: String) -> Int { text.split(whereSeparator: \.isWhitespace).count }

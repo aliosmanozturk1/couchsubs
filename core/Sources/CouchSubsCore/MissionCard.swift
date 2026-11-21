@@ -50,7 +50,23 @@ enum MissionCard {
         func aligned(_ i: Int, _ j: Int, _ h: Double) -> Bool { abs(boxes[i]!.left - boxes[j]!.left) <= h * alignment * 9 / 16 }
         for (position, start) in order.enumerated() where !used.contains(start) && isTitle(lines[start].text) {
             var title = [start], subtitles: [Int] = [], body: [Int] = [], details: [Int] = []
-            var rest = order[(position + 1)...].filter { !used.contains($0) }[...]
+            // Kartın sütunu: başlığın sol kenarının tümüyle solunda biten ya da kart genişliğinden sağda başlayan satır
+            // (haritada kartın yanındaki uzaklık "124 ft", simge kırıntısı, yan menü) karta ait değildir; kartın satırları
+            // arasına girip kartı bölüyordu (X: chiaki, harita kartı tanınmıyor, çevirisi sola kayıyordu).
+            func inColumn(_ i: Int) -> Bool {
+                boxes[i]!.right > boxes[start]!.left && boxes[i]!.left < boxes[start]!.left + maxWidth
+            }
+            var rest = order[(position + 1)...].filter { !used.contains($0) && inColumn($0) }[...]
+            // Açıklamanın ilk satırı: cümle satırı ya da sözcükleri cümle gibi yazılmış kısa satır ("Nautical-themed
+            // souvenir") ki altında küçük harfle süren cümle satırı var; böyle satır alt başlık değildir.
+            func opensBody(_ i: Int, _ after: ArraySlice<Int>) -> Bool {
+                if isSentence(lines[i].text) { return true }
+                guard sentenceCased(lines[i].text, words: 2), let next = after.first, aligned(next, i, height(i)),
+                      lines[next].text.first?.isLowercase == true, isSentence(lines[next].text),
+                      abs(height(next) - height(i)) <= height(i) * 0.3,
+                      boxes[next]!.top - boxes[i]!.bottom <= height(i) * lineGap else { return false }
+                return true
+            }
             // Başlık iki satıra sarılmış olabilir.
             if let next = rest.first, isTitle(lines[next].text), aligned(next, start, height(start)),
                boxes[next]!.top - boxes[start]!.bottom <= height(start) * 0.6 {
@@ -59,7 +75,7 @@ enum MissionCard {
             }
             var last = title.last!
             let titleHeight = height(start)
-            while let next = rest.first, !isSentence(lines[next].text), words(lines[next].text) <= detailWords,
+            while let next = rest.first, !opensBody(next, rest.dropFirst()), words(lines[next].text) <= detailWords,
                   !isTitle(lines[next].text), aligned(next, start, titleHeight),
                   boxes[next]!.top - boxes[last]!.bottom <= titleHeight * titleGap {
                 subtitles.append(next)
@@ -71,7 +87,7 @@ enum MissionCard {
                 aligned(i, start, titleHeight) || (boxes[i]!.left < boxes[start]!.left
                     && boxes[start]!.left - boxes[i]!.left <= titleHeight * pictureWidth * 9 / 16)
             }
-            guard let first = rest.first, isSentence(lines[first].text), underTitle(first),
+            guard let first = rest.first, opensBody(first, rest.dropFirst()), underTitle(first),
                   boxes[first]!.top - boxes[last]!.bottom <= titleHeight * titleGap,
                   height(first) <= titleHeight * 1.1 else { continue }
             let line = height(first)
@@ -127,10 +143,13 @@ enum MissionCard {
 
     /// Cümle satırı: en az üç sözcük, harflerinin en az %40'ı küçük ve ilkinden sonra küçük harfle başlayan bir sözcüğü
     /// var (her sözcüğü büyük harfle başlayan "Lucia · Story Mission" alt başlıktır).
-    static func isSentence(_ text: String) -> Bool {
+    static func isSentence(_ text: String) -> Bool { sentenceCased(text, words: 3) }
+
+    /// En az `words` sözcük, harflerin en az %40'ı küçük, ilkinden sonra küçük harfle başlayan sözcük var.
+    static func sentenceCased(_ text: String, words: Int) -> Bool {
         let letters = text.filter(\.isLetter)
         let parts = text.split(whereSeparator: \.isWhitespace)
-        return parts.count >= 3 && !letters.isEmpty && Double(letters.filter(\.isLowercase).count) >= 0.4 * Double(letters.count)
+        return parts.count >= words && !letters.isEmpty && Double(letters.filter(\.isLowercase).count) >= 0.4 * Double(letters.count)
             && parts.dropFirst().contains { $0.first?.isLowercase == true }
     }
 
@@ -139,12 +158,19 @@ enum MissionCard {
     /// Kartın kutusu yardım kutularının durduğu sol üst köşede mi (oradaki başlıklı kutu bir ipucudur, görev kartı değil).
     static func inHelpCorner(_ box: TextBox) -> Bool { box.left < 0.25 && box.top < 0.3 }
 
+    /// Kart paneli düz zemin sayılırken izin verilen sapma, düz zemin eşiğinin bu katı.
+    static let panelSlack = 1.5
+
     /// Kartın yazıları düz bir panelin üstünde mi (harita ya da oyun dünyasının dokulu zemininde duran yazı kart değildir).
+    /// Harita kartı yarı saydamdır: arkadaki harita zemini satırdan satıra biraz değiştirir, sıkıştırılmış görüntüde harf
+    /// kenarları da zemine karışır; kart bu yüzden düz zemin eşiğinin `panelSlack` katına kadar paneldir (X: chiaki,
+    /// harita kartı tanınmıyordu). Dokulu dünya zemini bu sınırın çok üstündedir.
     static func onPanel(_ frame: CGImage, _ lines: [TextLine]) -> Bool {
         let boxes = lines.compactMap(\.box)
         guard let first = boxes.first else { return false }
         let box = boxes.dropFirst().reduce(first) { $0.union($1) }
-        return TextStyleSampler.sample(frame, box: box, lines: lines, source: lines.map(\.text).joined(separator: " ")).look.flat
+        return TextStyleSampler.sample(frame, box: box, lines: lines, source: lines.map(\.text).joined(separator: " "),
+                                       flatLimit: TextStyleSampler.flatDeviation * panelSlack).look.flat
     }
 
     /// Kartın çeviri grupları: başlık (sarılmışsa tek parça), alt başlıklar ve ayrıntılar tek tek, açıklama paragraflarıyla.

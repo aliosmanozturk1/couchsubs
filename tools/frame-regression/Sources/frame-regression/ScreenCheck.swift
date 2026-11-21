@@ -10,12 +10,15 @@ import Foundation
 ///   kutu iki bloğu birleştirmemeli; çevrilen her blok kendi kutusunda bulunmalı.
 /// - `keep`: çevrilmeyen özel adlar ("JASON & LUCIA"): çevirmene gitmemeli, kutusu çizilmemeli.
 /// - `clear`: örtülmemesi gereken yerler (görev fotoğrafı), kareye oranla [sol, üst, sağ, alt].
+/// - `within`: yalnız ortası bu alanda olan kutular denetlenir (harita kartı karesinde kartın çevresi; karenin geri
+///   kalanı başka karelerin konusu), kareye oranla [sol, üst, sağ, alt].
 /// Ayrıca kutular birbirine binmemeli ve her kutunun zemini özgün yazının zeminine yakın olmalı (siyah kutu değil).
 /// Koşucu eski etiketin çekirdeğine karşı da derlendiği için yalnız eski çekirdekte de olan API kullanılır.
 struct ScreenExpectation: Decodable {
     var blocks: [String]
     var keep: [String]?
     var clear: [[Double]]?
+    var within: [Double]?
 }
 
 /// Çizilen bir çeviri kutusu: kaynağı (okunan İngilizce), çevirisi, yeri ve zemin rengi.
@@ -148,13 +151,14 @@ extension Runner {
                unit.text.replacingOccurrences(of: "\n", with: " / "))
     }
 
-    private static func tokens(_ text: String) -> [String] {
-        text.lowercased().split { !$0.isLetter && !$0.isNumber && $0 != "&" }.map(String.init)
+    private static func tokens(_ text: String, exact: Bool = false) -> [String] {
+        (exact ? text : text.lowercased()).split { !$0.isLetter && !$0.isNumber && $0 != "&" }.map(String.init)
     }
 
-    /// `needle`'ın sözcükleri `haystack`'te art arda geçiyor mu.
-    private static func contains(_ haystack: String, _ needle: String) -> Bool {
-        let hay = tokens(haystack), want = tokens(needle)
+    /// `needle`'ın sözcükleri `haystack`'te art arda geçiyor mu. `exact`: büyük/küçük harf de aynı ("SOUVENIR" ayrıntısı
+    /// açıklamadaki "souvenir" sözcüğü değildir).
+    private static func contains(_ haystack: String, _ needle: String, exact: Bool = false) -> Bool {
+        let hay = tokens(haystack, exact: exact), want = tokens(needle, exact: exact)
         guard !want.isEmpty, hay.count >= want.count else { return false }
         return (0...(hay.count - want.count)).contains { Array(hay[$0..<($0 + want.count)]) == want }
     }
@@ -163,9 +167,16 @@ extension Runner {
                       requireAll: Bool = true, read: [String]? = nil) -> [String] {
         var notes: [String] = []
         let keep = expected.keep ?? []
+        var units = units
+        if let area = box(expected.within) {
+            units = units.filter { unit in
+                let x = (unit.box.left + unit.box.right) / 2, y = (unit.box.top + unit.box.bottom) / 2
+                return x >= area.left && x <= area.right && y >= area.top && y <= area.bottom
+            }
+        }
         // Birleşen bloklar: bir kutu iki beklenen yazıyı taşıyor.
         for unit in units {
-            let inside = Set(expected.blocks + keep).filter { contains(unit.source, $0) }.sorted()
+            let inside = Set(expected.blocks + keep).filter { contains(unit.source, $0, exact: $0 == $0.uppercased()) }.sorted()
             if inside.count >= 2 { notes.append("birleşti: \(inside.map { "\"\($0)\"" }.joined(separator: " + "))") }
         }
         // Her blok kendi kutusunda çevrilmiş. Yazı tanımanın hiç okumadığı blok (CI makinesindeki Vision sürümü seçili pembe

@@ -35,6 +35,8 @@ object TextStyleSampler {
         edges: List<Pair<Double, Double>> = emptyList(),
         /** Aynı karenin (x, y) noktasının rengi (0xRRGGBB); verilirse kümelerin rengi gerçek renktir, yoksa gri ton. */
         color: ((Int, Int) -> Int)? = null,
+        /** Düz zemin sayılan en büyük sapma (yarı saydam kart paneli için daha geniş). */
+        flatLimit: Double = FLAT_DEVIATION,
     ): Style? {
         val l = left.coerceIn(0, frame.width)
         val r = right.coerceIn(0, frame.width)
@@ -100,7 +102,7 @@ object TextStyleSampler {
         val longest = source.split('\n').maxOfOrNull { it.trim().length } ?: 0
         val condensed = longest > 0 && lineHeight > 0 && (r - l).toDouble() / longest / lineHeight < CONDENSED
         return Style(
-            TextSurface(groundHex, inkHex, deviation < FLAT_DEVIATION),
+            TextSurface(groundHex, inkHex, deviation < flatLimit),
             TextLook(bold = ratio >= BOLD_INK, condensed = condensed, align = align(edges), upper = isUpper(source)),
         )
     }

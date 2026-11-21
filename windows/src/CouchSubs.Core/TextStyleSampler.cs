@@ -33,7 +33,8 @@ public static class TextStyleSampler
     /// <paramref name="frame"/>: okunan alanın görüntüsü; <paramref name="box"/> ve <paramref name="lines"/> ona oranla.
     /// <paramref name="lines"/>: bloğun satırları (metni ve kutusu); boşsa yalnız blok kutusu örneklenir.
     /// </summary>
-    public static (PhoneTextStyle Surface, TextLook Look) Sample(Frame frame, TextBox box, IReadOnlyList<TextLine> lines, string source)
+    public static (PhoneTextStyle Surface, TextLook Look) Sample(Frame frame, TextBox box, IReadOnlyList<TextLine> lines, string source,
+                                                                 double flatLimit = FlatDeviation)
     {
         var boxes = lines.Where(line => line.Box is not null).Select(line => line.Box!.Value).ToList();
         if (boxes.Count == 0) boxes = [box];
@@ -64,7 +65,7 @@ public static class TextStyleSampler
         var bold = (double)ink.Count / pixels.Count >= BoldInk;
         var background = Mean(ground);
         var foreground = Mean(ink);
-        var flat = Deviation(ground) < FlatDeviation;
+        var flat = Deviation(ground) < flatLimit;
         if (DesignTokens.Contrast(background, foreground) < 3)
             foreground = ground.Average(pixel => pixel.Luma) < 128 ? "#FFFFFF" : "#000000";
         return (new PhoneTextStyle(background, foreground), new TextLook(bold, condensed, align, upper, flat));

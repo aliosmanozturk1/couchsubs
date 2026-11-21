@@ -142,7 +142,12 @@ struct Main {
             print("telefon: yok")
         }
         let lines = reading.lines.filter { $0.box != nil }
-        let cards = MissionCard.find(lines).filter { MissionCard.onPanel(image, $0.all.map { lines[$0] }) }
+        let found = MissionCard.find(lines)
+        // Satırlardan tanınan ama panelde sayılmayan kart da yazılır (kart mı tanınmadı, zemin mi düz sayılmadı).
+        for card in found where !MissionCard.onPanel(image, card.all.map { lines[$0] }) {
+            print("kart adayı (panel değil): \(card.all.map { lines[$0].text }.joined(separator: " / "))")
+        }
+        let cards = found.filter { MissionCard.onPanel(image, $0.all.map { lines[$0] }) }
         print("harita kartı: \(cards.isEmpty ? "yok" : cards.map { $0.title.map { lines[$0].text }.joined(separator: " ") }.joined(separator: ", "))")
     }
 }

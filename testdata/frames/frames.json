@@ -378,7 +378,18 @@
       "source": "youtube.com/watch?v=V2n5XU2lsiM&t=214s — GTA 6 phone features video (anlatıcı yazıları bulanıklaştırıldı)",
       "game": "GTA 6",
       "mapCard": true,
-      "note": "harita, seçili yerin kartı (başlık, açıklama, ayrıntı)"
+      "note": "harita, seçili yerin kartı (başlık, açıklama, ayrıntı): kartın parçaları kartın kendi yerinde ayrı çevrilir; kartın solundaki harita yazıları (124 ft, simge) karta katılmaz, kart çevirisi sola kayıp onları örtmez (X: chiaki)",
+      "screen": {
+        "blocks": [
+          "LEROY'S",
+          "Nautical-themed souvenir store selling accessories and summer wear.",
+          "STYLE",
+          "SOUVENIR"
+        ],
+        "keep": ["JASON & LUCIA"],
+        "within": [0.45, 0.35, 0.85, 0.7],
+        "clear": [[0.474, 0.509, 0.536, 0.571], [0.483, 0.43, 0.531, 0.505]]
+      }
     },
     {
       "id": "gta6-menu-harita",

@@ -167,16 +167,20 @@ class ScreenFramesTest {
             if (notes.isNotEmpty()) failures.add("$id: " + notes.joinToString("; "))
             checked++
         }
-        assertEquals("ekran yazısı denetimli kare sayısı", 2, checked)
+        assertEquals("ekran yazısı denetimli kare sayısı", 3, checked)
         assertTrue(failures.joinToString("\n"), failures.isEmpty())
     }
 
-    private fun tokens(text: String) = text.lowercase().split(Regex("[^\\p{L}\\p{N}&]+")).filter { it.isNotEmpty() }
+    private fun tokens(text: String, exact: Boolean = false) =
+        (if (exact) text else text.lowercase()).split(Regex("[^\\p{L}\\p{N}&]+")).filter { it.isNotEmpty() }
 
-    /** [needle]'ın sözcükleri [haystack]'te art arda geçiyor mu. */
-    private fun contains(haystack: String, needle: String): Boolean {
-        val hay = tokens(haystack)
-        val want = tokens(needle)
+    /**
+     * [needle]'ın sözcükleri [haystack]'te art arda geçiyor mu. [exact]: büyük/küçük harf de aynı ("SOUVENIR" ayrıntısı
+     * açıklamadaki "souvenir" sözcüğü değildir).
+     */
+    private fun contains(haystack: String, needle: String, exact: Boolean = false): Boolean {
+        val hay = tokens(haystack, exact)
+        val want = tokens(needle, exact)
         if (want.isEmpty() || hay.size < want.size) return false
         return (0..hay.size - want.size).any { hay.subList(it, it + want.size) == want }
     }
@@ -243,15 +247,24 @@ class ScreenFramesTest {
     private fun short(text: String, length: Int) = text.replace("\n", " / ").take(length)
 
     private fun judge(
-        units: List<Unit>, translator: Dictionary, expected: JSONObject, image: Picture, requireAll: Boolean = true, read: List<String>? = null,
+        all: List<Unit>, translator: Dictionary, expected: JSONObject, image: Picture, requireAll: Boolean = true, read: List<String>? = null,
     ): List<String> {
         val notes = mutableListOf<String>()
+        // Yalnız ortası `within` alanında olan kutular denetlenir (harita kartı karesinde kartın çevresi).
+        val units = expected.optJSONArray("within")?.let { values ->
+            val area = box(values)
+            all.filter { unit ->
+                val x = (unit.box.left + unit.box.right) / 2
+                val y = (unit.box.top + unit.box.bottom) / 2
+                x >= area.left && x <= area.right && y >= area.top && y <= area.bottom
+            }
+        } ?: all
         val blocks = strings(expected.optJSONArray("blocks"))
         val keep = strings(expected.optJSONArray("keep"))
         val calls = translator.calls.map { it.first }
         // Birleşen bloklar: bir kutu iki beklenen yazıyı taşıyor.
         for (unit in units) {
-            val inside = (blocks + keep).toSet().filter { contains(unit.source, it) }.sorted()
+            val inside = (blocks + keep).toSet().filter { contains(unit.source, it, exact = it == it.uppercase()) }.sorted()
             if (inside.size >= 2) notes.add("birleşti: " + inside.joinToString(" + ") { "\"$it\"" })
         }
         // Her blok kendi kutusunda çevrilmiş; yazı tanımanın hiç okumadığı blok aranmaz.

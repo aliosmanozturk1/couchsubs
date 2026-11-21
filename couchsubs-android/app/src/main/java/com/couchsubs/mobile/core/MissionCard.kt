@@ -55,7 +55,19 @@ object MissionCard {
             val title = mutableListOf(start)
             val subtitles = mutableListOf<Int>()
             val details = mutableListOf<Int>()
-            val rest = ArrayDeque(order.drop(position + 1).filter { it !in used })
+            // Kartın sütunu: başlığın sol kenarının tümüyle solunda biten ya da kart genişliğinden sağda başlayan satır
+            // (haritada kartın yanındaki uzaklık "124 ft", simge kırıntısı, yan menü) karta ait değildir; kartın satırları
+            // arasına girip kartı bölüyordu (X: chiaki, harita kartı tanınmıyor, çevirisi sola kayıyordu).
+            fun inColumn(i: Int) = boxes[i]!!.right > boxes[start]!!.left && boxes[i]!!.left < boxes[start]!!.left + MAX_WIDTH
+            val rest = ArrayDeque(order.drop(position + 1).filter { it !in used && inColumn(it) })
+            // Açıklamanın ilk satırı: cümle satırı ya da sözcükleri cümle gibi yazılmış kısa satır ("Nautical-themed
+            // souvenir") ki altında küçük harfle süren cümle satırı var; böyle satır alt başlık değildir.
+            fun opensBody(i: Int, next: Int?): Boolean {
+                if (isSentence(lines[i].text)) return true
+                return sentenceCased(lines[i].text, 2) && next != null && aligned(next, i, height(i)) &&
+                    lines[next].text.firstOrNull()?.isLowerCase() == true && isSentence(lines[next].text) &&
+                    abs(height(next) - height(i)) <= height(i) * 0.3 && boxes[next]!!.top - boxes[i]!!.bottom <= height(i) * LINE_GAP
+            }
             // Başlık iki satıra sarılmış olabilir.
             rest.firstOrNull()?.let { next ->
                 if (isTitle(lines[next].text) && aligned(next, start, height(start)) &&
@@ -68,7 +80,7 @@ object MissionCard {
             val titleHeight = height(start)
             while (true) {
                 val next = rest.firstOrNull() ?: break
-                if (isSentence(lines[next].text) || words(lines[next].text) > DETAIL_WORDS || isTitle(lines[next].text) ||
+                if (opensBody(next, rest.getOrNull(1)) || words(lines[next].text) > DETAIL_WORDS || isTitle(lines[next].text) ||
                     !aligned(next, start, titleHeight) || boxes[next]!!.top - boxes[last]!!.bottom > titleHeight * TITLE_GAP) break
                 subtitles.add(next)
                 last = next
@@ -78,7 +90,7 @@ object MissionCard {
             fun underTitle(i: Int) = aligned(i, start, titleHeight) || (boxes[i]!!.left < boxes[start]!!.left &&
                 boxes[start]!!.left - boxes[i]!!.left <= titleHeight * PICTURE_WIDTH * 9 / 16)
             val first = rest.firstOrNull() ?: continue
-            if (!isSentence(lines[first].text) || !underTitle(first) ||
+            if (!opensBody(first, rest.getOrNull(1)) || !underTitle(first) ||
                 boxes[first]!!.top - boxes[last]!!.bottom > titleHeight * TITLE_GAP || height(first) > titleHeight * 1.1) continue
             val line = height(first)
             val body = mutableListOf(first)
@@ -138,10 +150,13 @@ object MissionCard {
      * Cümle satırı: en az üç sözcük, harflerinin en az %40'ı küçük ve ilkinden sonra küçük harfle başlayan bir sözcüğü
      * var (her sözcüğü büyük harfle başlayan "Lucia · Story Mission" alt başlıktır).
      */
-    fun isSentence(text: String): Boolean {
+    fun isSentence(text: String): Boolean = sentenceCased(text, 3)
+
+    /** En az [words] sözcük, harflerin en az %40'ı küçük, ilkinden sonra küçük harfle başlayan sözcük var. */
+    fun sentenceCased(text: String, words: Int): Boolean {
         val letters = text.filter { it.isLetter() }
         val parts = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
-        return parts.size >= 3 && letters.isNotEmpty() && letters.count { it.isLowerCase() } >= 0.4 * letters.length &&
+        return parts.size >= words && letters.isNotEmpty() && letters.count { it.isLowerCase() } >= 0.4 * letters.length &&
             parts.drop(1).any { it.first().isLowerCase() }
     }
 
@@ -150,7 +165,15 @@ object MissionCard {
     /** Kartın kutusu yardım kutularının durduğu sol üst köşede mi (oradaki başlıklı kutu bir ipucudur, görev kartı değil). */
     fun inHelpCorner(box: TextBox): Boolean = box.left < 0.25 && box.top < 0.3
 
-    /** Kartın yazıları düz bir panelin üstünde mi (harita ya da oyun dünyasının dokulu zemininde duran yazı kart değildir). */
+    /** Kart paneli düz zemin sayılırken izin verilen sapma, düz zemin eşiğinin bu katı. */
+    const val PANEL_SLACK = 1.5
+
+    /**
+     * Kartın yazıları düz bir panelin üstünde mi (harita ya da oyun dünyasının dokulu zemininde duran yazı kart değildir).
+     * Harita kartı yarı saydamdır: arkadaki harita zemini satırdan satıra biraz değiştirir, sıkıştırılmış görüntüde harf
+     * kenarları da zemine karışır; kart bu yüzden düz zemin eşiğinin [PANEL_SLACK] katına kadar paneldir (X: chiaki,
+     * harita kartı tanınmıyordu). Dokulu dünya zemini bu sınırın çok üstündedir.
+     */
     fun onPanel(frame: GrayFrame, lines: List<TextLine>): Boolean {
         val boxes = lines.mapNotNull { it.box }
         if (boxes.isEmpty()) return false
@@ -160,7 +183,7 @@ object MissionCard {
             frame, (box.left * frame.width).toInt(), (box.top * frame.height).toInt(),
             kotlin.math.ceil(box.right * frame.width).toInt(), kotlin.math.ceil(box.bottom * frame.height).toInt(),
             heights[heights.size / 2] * frame.height, lines.joinToString(" ") { it.text },
-            boxes.map { it.left to it.right },
+            boxes.map { it.left to it.right }, flatLimit = TextStyleSampler.FLAT_DEVIATION * PANEL_SLACK,
         ) ?: return false
         return style.surface.flat
     }

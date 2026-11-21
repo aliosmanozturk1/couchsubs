@@ -507,6 +507,142 @@
      "helpCorner": false
     }
    ]
+  },
+  {
+   "name": "X chiaki: yarı saydam harita kartının solunda uzaklık, simge kırıntısı ve yan menü harfi (kartın satır arasına giriyor); kısa ilk açıklama satırı",
+   "lines": [
+    {
+     "text": "JASON & LUCIA",
+     "box": [
+      0.356,
+      0.033,
+      0.451,
+      0.062
+     ]
+    },
+    {
+     "text": "2:38 pm",
+     "box": [
+      0.015,
+      0.041,
+      0.085,
+      0.072
+     ]
+    },
+    {
+     "text": "LEROY'S",
+     "box": [
+      0.545,
+      0.393,
+      0.606,
+      0.429
+     ]
+    },
+    {
+     "text": "F",
+     "box": [
+      0.02,
+      0.426,
+      0.038,
+      0.463
+     ]
+    },
+    {
+     "text": "Nautical-themed souvenir",
+     "box": [
+      0.547,
+      0.447,
+      0.762,
+      0.475
+     ]
+    },
+    {
+     "text": "1F))",
+     "box": [
+      0.496,
+      0.452,
+      0.536,
+      0.506
+     ]
+    },
+    {
+     "text": "store selling accessories and",
+     "box": [
+      0.545,
+      0.491,
+      0.789,
+      0.522
+     ]
+    },
+    {
+     "text": "124 ft",
+     "box": [
+      0.474,
+      0.509,
+      0.542,
+      0.571
+     ]
+    },
+    {
+     "text": "summer wear.",
+     "box": [
+      0.547,
+      0.535,
+      0.667,
+      0.561
+     ]
+    },
+    {
+     "text": "SOUVENIR",
+     "box": [
+      0.737,
+      0.5806,
+      0.802,
+      0.61
+     ]
+    },
+    {
+     "text": "STYLE",
+     "box": [
+      0.545,
+      0.5812,
+      0.586,
+      0.61
+     ]
+    },
+    {
+     "text": "RECENTER",
+     "box": [
+      0.882,
+      0.703,
+      0.954,
+      0.732
+     ]
+    },
+    {
+     "text": "Sunbelt Hwy",
+     "box": [
+      0.043,
+      0.938,
+      0.147,
+      0.97
+     ]
+    }
+   ],
+   "cards": [
+    {
+     "title": "LEROY'S",
+     "subtitles": [],
+     "body": [
+      "Nautical-themed souvenir store selling accessories and summer wear."
+     ],
+     "details": [
+      "SOUVENIR",
+      "STYLE"
+     ],
+     "helpCorner": false
+    }
+   ]
   }
  ]
 }

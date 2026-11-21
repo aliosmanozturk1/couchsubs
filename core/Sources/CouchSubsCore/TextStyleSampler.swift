@@ -44,8 +44,9 @@ public enum TextStyleSampler {
     private struct Pixel { var luma: Int, r: Int, g: Int, b: Int; var edge = false }
 
     /// `frame`: okunan alanın görüntüsü; `box` ve `lines` ona oranla. `lines`: bloğun satırları (metni ve kutusu); boşsa
-    /// yalnız blok kutusu örneklenir.
-    public static func sample(_ frame: CGImage, box: TextBox, lines: [TextLine], source: String) -> (surface: PhoneTextStyle, look: TextLook) {
+    /// yalnız blok kutusu örneklenir. `flatLimit`: düz zemin sayılan en büyük sapma (yarı saydam kart paneli için daha geniş).
+    public static func sample(_ frame: CGImage, box: TextBox, lines: [TextLine], source: String,
+                              flatLimit: Double = flatDeviation) -> (surface: PhoneTextStyle, look: TextLook) {
         var boxes = lines.compactMap(\.box)
         if boxes.isEmpty { boxes = [box] }
         var pixels: [Pixel] = []
@@ -78,7 +79,7 @@ public enum TextStyleSampler {
         let bold = Double(ink.count) / Double(pixels.count) >= boldInk
         let background = mean(ground)
         var foreground = mean(ink)
-        let flat = deviation(ground) < flatDeviation
+        let flat = deviation(ground) < flatLimit
         if contrast(background, foreground) < 3 {
             let shade = Double(ground.map(\.luma).reduce(0, +)) / Double(ground.count)
             foreground = shade < 128 ? "#FFFFFF" : "#000000"

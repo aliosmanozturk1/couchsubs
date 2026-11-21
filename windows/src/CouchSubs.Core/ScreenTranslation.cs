@@ -903,7 +903,16 @@ public static class ScreenTranslation
     /// <summary>En az iki harfi ve iki harfli bir sözcüğü olan satır yazıdır; geri kalanı sayı ve simgedir.</summary>
     internal static bool IsWords(string text) =>
         text.Count(char.IsLetter) >= 2 &&
-        text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(word => word.Count(char.IsLetter) >= 2);
+        text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Any(word => word.Count(char.IsLetter) >= 2)
+        && !IsDistance(text);
+
+    /// <summary>
+    /// Yalnız sayı ve uzaklık birimi: "124 ft", "4 ft", "2.4 mi", "300m", "1,2 km", "50 yd". Haritada kartın yanındaki uzaklık
+    /// göstergedir, çevrilmez (Mac/iPhone ve Android ile aynı).
+    /// </summary>
+    internal static bool IsDistance(string text) =>
+        System.Text.RegularExpressions.Regex.IsMatch(text, @"^\s*\d[\d.,]*\s?(ft|m|mi|km|yd|yds)\s*$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     private static int WordCount(string text) => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
 
