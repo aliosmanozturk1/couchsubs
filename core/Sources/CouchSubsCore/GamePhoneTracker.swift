@@ -20,11 +20,29 @@ public final class GamePhoneTracker {
         // eşleşme) kabul edilmez; TV'de büyük opak telefon kutusu oyun görüntüsünü kapatırdı (Windows ile aynı).
         var found = locate(image)
         if let pose = found, !Self.plausible(pose.bounds, width: image.width, height: image.height) { found = nil }
-        if let found, let previous, found.bounds.isClose(to: previous.bounds, tolerance: 0.035) { shown = found }
-        else { shown = nil }
+        if let found, let previous, found.bounds.isClose(to: previous.bounds, tolerance: 0.035) {
+            shown = found
+            misses = 0
+        } else if let current = shown, let found, found.bounds.isClose(to: current.bounds, tolerance: 0.035) {
+            // Açık telefonun yakınında tek bir gözlem: aynı telefon, yeri güncellenir.
+            shown = found
+            misses = 0
+        } else if shown != nil, misses < Self.missGrace {
+            // Açık telefon tek bir karede bulunamadı ya da el titredi: hemen kapanmaz. Önceden tek ıska paneli kapatıyor,
+            // yeniden açılış iki gözlem bekleyip bütün sayfayı yeniden çeviriyordu; çeviriler gidip geliyordu (X'teki
+            // bildirim). Telefon gerçekten indirilince `missGrace` tur sonra kapanır.
+            misses += 1
+        } else {
+            shown = nil
+            misses = 0
+        }
         previous = found
         return (true, shown)
     }
+
+    /// Açık telefon art arda bu kadar örnekte bulunamazsa kapanır (330 ms aralıkla ~0,7 sn; Windows ve Android ile aynı).
+    static let missGrace = 2
+    private var misses = 0
 
     /// Telefon kutusunun alanı (kareye oranla) bu aralıkta olmalı.
     static let minArea = 0.04, maxArea = 0.35
@@ -47,6 +65,7 @@ public final class GamePhoneTracker {
         lastTime = nil
         previous = nil
         shown = nil
+        misses = 0
     }
 }
 

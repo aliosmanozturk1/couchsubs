@@ -7,7 +7,7 @@ namespace CouchSubs.Core.Tests;
 public class GamePhoneTrackerTests
 {
     [Fact]
-    public void NeedsTwoAlignedSamplesAndClosesOnFirstMissingPhone()
+    public void NeedsTwoAlignedSamplesAndClosesAfterMissGrace()
     {
         var frame = Frame.Blank(2, 2);
         CropRegion? candidate = new(0.15, 0.83, 0.32, 0.58);
@@ -19,14 +19,28 @@ public class GamePhoneTrackerTests
         Assert.Equal(1, calls);
         Assert.True(tracker.TrySample(frame, 430, out var opened));
         Assert.Equal(candidate, opened);
+        // Açık telefon tek karede bulunamayınca kapanmaz (çeviriler gidip gelmesin); yakınında yeniden bulununca sürer,
+        // art arda MissGrace + 1 ıskada kapanır. Yeniden açılış yine iki gözlem ister (Mac ve Android ile aynı).
+        var open = candidate;
         candidate = null;
-        Assert.True(tracker.TrySample(frame, 760, out var closed));
+        Assert.True(tracker.TrySample(frame, 760, out var kept));
+        Assert.Equal(open, kept);
+        candidate = new(0.14, 0.82, 0.31, 0.57);
+        Assert.True(tracker.TrySample(frame, 1090, out var followed));
+        Assert.Equal(candidate, followed);
+        candidate = null;
+        for (var i = 0; i < GamePhoneTracker.MissGrace; i++)
+        {
+            Assert.True(tracker.TrySample(frame, 1420 + 330 * i, out var still));
+            Assert.NotNull(still);
+        }
+        Assert.True(tracker.TrySample(frame, 1420 + 330 * GamePhoneTracker.MissGrace, out var closed));
         Assert.Null(closed);
         candidate = new(0.14, 0.8, 0.31, 0.56);
-        Assert.True(tracker.TrySample(frame, 1090, out var reopening));
+        Assert.True(tracker.TrySample(frame, 3000, out var reopening));
         Assert.Null(reopening);
         tracker.Reset();
-        Assert.True(tracker.TrySample(frame, 1091, out var reset));
+        Assert.True(tracker.TrySample(frame, 3001, out var reset));
         Assert.Null(reset);
     }
 

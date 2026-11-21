@@ -56,16 +56,17 @@ public sealed partial class RegionWatcher
         if (Volatile.Read(ref session) != started || area.PanelLifetime is { IsCancellationRequested: true }) return;
         // Yerinde duran iki komşu arasından düşen balon veya uzun mesajdaki birkaç bozuk harf tek okumada silinmesin.
         // Sonraki olağan tur mutlaka yeniden okur; aynı görünen gerçek bir değişiklik de bu turda ilerler.
-        if (state.Held is null && !moved && state.RenderedKey == state.Shown && state.Shown != candidate.Key
+        if (state.Holds < PhoneSteady.HoldTurns && !moved && state.RenderedKey == state.Shown && state.Shown != candidate.Key
             && !string.IsNullOrEmpty(state.RenderedText)
             && (MissingInteriorPhoneBubble(state, candidate)
                 || (SamePhoneLayout(state, candidate, frame) && GamePhoneText.HasAdjacentOcrEdits(state.Shown, candidate.Key))))
         {
             state.Held = candidate.Key;
+            state.Holds++;
             state.Signature = null;
             return;
         }
-        state.Held = null;
+        (state.Held, state.Holds) = (null, 0);
         state.ReadRegion = area.Region;
         state.ReadPhonePage = candidate.PhonePage;
         // Telefonun açılışı iki geometri örneğiyle doğrulandı. Okunan sayfayı çevirmeye hemen başla;
@@ -104,7 +105,7 @@ public sealed partial class RegionWatcher
     // değiştiyse balonun tamamı özgün dilinde kalır; başka bir balonun çevirisini engellemez.
     private static string?[]? MatchingPhoneBlocks(Candidate fresh, Dictionary<string, string> translations)
     {
-        var matched = fresh.Paragraphs.Select(translations.GetValueOrDefault).ToArray();
+        var matched = fresh.Paragraphs.Select(paragraph => PhoneSteady.Translation(paragraph, translations)).ToArray();
         if (matched.Length == 0) return null;
         if (Array.IndexOf(matched, null) < 0) return matched;
         if (fresh.Blocks is null) return null;
@@ -161,7 +162,8 @@ public sealed partial class RegionWatcher
                 || Math.Abs(block.Box.Right - prior.Box.Right) > 0.012 || Math.Abs(block.Box.Top - prior.Box.Top) > 0.012
                 || Math.Abs(block.Box.Bottom - prior.Box.Bottom) > 0.012) return false;
         }
-        return missing;
+        // Kalanlar yerinde, yalnız en alttaki balon düştü: yeni mesaj eklenir, silinmez; bu da bir OCR atlamasıdır.
+        return missing || state.RenderedBlocks?.Any(b => b.Group == previous.Count - 1) == true;
     }
 
     private static bool SamePhoneLayout(State state, Candidate candidate, Frame frame)
@@ -241,7 +243,7 @@ public sealed partial class RegionWatcher
         var fromPack = result.Count(text => text is not null);
         if (state.PhoneTranslations is { } known)
             for (var i = 0; i < result.Length; i++)
-                if (result[i] is null && known.TryGetValue(candidate.Paragraphs[i], out var cached)) result[i] = cached;
+                if (result[i] is null && PhoneSteady.Translation(candidate.Paragraphs[i], known) is { } cached) result[i] = cached;
         // Zaten Türkçe olan parça çevrilmez: aslı kalır, tümü öyleyse kutu gösterilmez.
         for (var i = 0; i < result.Length; i++)
             if (result[i] is null && SkipsTurkish && TurkishText.IsSure(candidate.Paragraphs[i])) result[i] = candidate.Paragraphs[i];
@@ -306,9 +308,10 @@ public sealed partial class RegionWatcher
                 var latestFrame = LatestPhone(area);
                 if (latestFrame is { } observed && PhoneMissing(observed.Frame, observed.Area))
                 {
-                    if (!string.IsNullOrEmpty(state.RenderedText)) SendCurrent(area, state, started, "", null);
-                    state.RenderedText = null;
-                    state.Shown = "";
+                    // Telefon son karede bulunamadı: tek karelik ıska olabilir. Ekrandaki çeviri silinmez (önceden silinip
+                    // sonraki turda geri geliyordu); çeviriler hafızada, sonraki tur yeniden dener. Telefon gerçekten
+                    // kapanınca izleyici paneli kaldırır (GamePhoneTracker.MissGrace).
+                    state.Shown = previousShown;
                     state.Candidate = null;
                     state.Signature = null;
                     return;
@@ -330,7 +333,14 @@ public sealed partial class RegionWatcher
                     {
                         state.LastRead = fresh?.Key;
                         state.Candidate = fresh;
-                        if (fresh is null || state.PhoneTranslations is not { } confirmed || MatchingPhoneBlocks(fresh, confirmed) is not { } matched)
+                        if (fresh is null)
+                        {
+                            // Yeni kare okunamadı: eski çeviriyi ne doğrular ne yalanlar. Ekran kalır, sonraki tur yeniden okur.
+                            state.Shown = previousShown;
+                            state.Signature = null;
+                            return;
+                        }
+                        if (state.PhoneTranslations is not { } confirmed || MatchingPhoneBlocks(fresh, confirmed) is not { } matched)
                         {
                             if (!string.IsNullOrEmpty(state.RenderedText)) SendCurrent(area, state, started, "", null);
                             state.Shown = "";

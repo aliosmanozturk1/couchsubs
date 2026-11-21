@@ -48,8 +48,10 @@ final class PhoneRegionSession {
     private let retry = GamePhoneRetry()
     /// Son tam yayımlanan okuma: tek turluk OCR atlamasını gerçek değişiklikten ayırmak için.
     private var shownPage: Page?
-    /// Bu okuma bir tur bekletildi; sonraki okuma her durumda ilerler.
-    private var held = false
+    /// Bu okuma kaç turdur bekletiliyor (en çok `PhoneSteady.holdTurns`); sonra okuma her durumda ilerler.
+    private var holds = 0
+    /// Telefonun art arda bulunamadığı tur sayısı (`missed`).
+    private var absences = 0
     /// Telefonun boyu (bölgenin yüksekliği): gerçek yakınlaşmada balonların görünüşü hemen yenilenir.
     private var scale = 0.0
     /// Kare boyu (piksel): yarım piksellik kutu oynaması yeniden gönderilmez.
@@ -74,6 +76,7 @@ final class PhoneRegionSession {
     func close() {
         latest = nil
         shownPage = nil
+        absences = 0
         task?.cancel()
         publish([])
     }
@@ -109,7 +112,8 @@ final class PhoneRegionSession {
     }
 
     private func update(packLookup: ((String) -> PackMatch?)?, skipsTurkish: Bool, english: Bool) async {
-        guard let start = latest, start.isPresent() else { clearMissing(); return }
+        guard let start = latest, start.isPresent() else { missed(); return }
+        absences = 0
         frameSize = (start.frame.width, start.frame.height)
         let signature = RegionCropper.signature(of: RegionCropper.crop(start.frame, to: start.region))
         let changed = page.map {
@@ -126,21 +130,21 @@ final class PhoneRegionSession {
         guard !Task.isCancelled, var current = page, var verified = latest else { return }
         // Okuma sürerken farklı bir sayfa gelmişse eski sayfadan yeni çeviri isteği çıkarma.
         if start.frame !== verified.frame, !matches(current, verified) {
-            guard let fresh = await reread(verified) else { clearMissing(); return }
+            guard let fresh = await reread(verified) else { missed(); return }
             current = fresh
         }
         guard latest != nil, !Task.isCancelled else { return }
         // Yerinde duran iki komşu arasından düşen balon ya da uzun mesajdaki yan yana birkaç bozuk harf tek okumada
         // ekrandan silinmesin, yeniden çevrilmesin: okuma bir tur bekletilir, sonraki tur mutlaka yeniden okur. Aynı
         // görünen gerçek değişiklik o turda ilerler (Windows ile aynı).
-        if fresh, !held, let shown = shownPage, !rendered.isEmpty,
+        if fresh, holds < PhoneSteady.holdTurns, let shown = shownPage, !rendered.isEmpty,
            Self.missingInteriorBubble(shown, current)
             || (Self.sameLayout(shown, current, frameSize) && GamePhoneText.hasAdjacentOcrEdits(Self.text(shown), Self.text(current))) {
-            held = true
+            holds += 1
             page = nil
             return
         }
-        held = false
+        holds = 0
         if current.bubbles.isEmpty {
             // Boş okuma aynı karede bir kez daha okunur: ilk okumada kaçan mesaj gizlenmesin.
             if emptyOnce {
@@ -195,7 +199,7 @@ final class PhoneRegionSession {
         guard let latest else { return }
         if latest.frame !== verified.frame, !matches(current, latest) {
             verified = latest
-            guard let fresh = await reread(verified) else { clearMissing(); return }
+            guard let fresh = await reread(verified) else { missed(); return }
             current = fresh
             available = availableTranslations(current.bubbles.flatMap { $0.group.paragraphs },
                                                 packLookup: packLookup, skipsTurkish: skipsTurkish)
@@ -228,7 +232,8 @@ final class PhoneRegionSession {
             if abs(a.left - b.left) > 0.012 || abs(a.right - b.right) > 0.012 || abs(a.top - b.top) > 0.012
                 || abs(a.bottom - b.bottom) > 0.012 { return false }
         }
-        return missing
+        // Kalanlar yerinde, yalnız en alttaki balon düştü: yeni mesaj eklenir, silinmez; bu da bir OCR atlamasıdır.
+        return true
     }
 
     private static func missingInteriorBubble(_ shown: Page, _ current: Page) -> Bool {
@@ -306,7 +311,16 @@ final class PhoneRegionSession {
         return fresh
     }
 
+    /// Telefon bu turda bulunamadı ya da okuma doğrulanamadı. Çeviriler hemen silinmez: tek karelik ıska çevirileri
+    /// kaldırıp geri getiriyor, ekranda gidip geliyordu. Art arda `PhoneSteady.missTurns` turdan sonra silinir
+    /// (telefon gerçekten kapanınca izleyici oturumu zaten kapatır).
+    private func missed() {
+        absences += 1
+        if absences >= PhoneSteady.missTurns { clearMissing() }
+    }
+
     private func clearMissing() {
+        absences = 0
         page = nil
         shownPage = nil
         emptyOnce = false
@@ -326,7 +340,7 @@ final class PhoneRegionSession {
                                        skipsTurkish: Bool) -> [String: String] {
         var result: [String: String] = [:]
         for text in paragraphs {
-            let known = packLookup?(IconText.plain(text))?.text ?? translations[text]
+            let known = packLookup?(IconText.plain(text))?.text ?? PhoneSteady.translation(of: text, in: translations)
             result[text] = known ?? ((skipsTurkish && TurkishText.isSure(text)) ? text : nil)
         }
         return result

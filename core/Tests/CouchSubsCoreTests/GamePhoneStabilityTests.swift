@@ -104,6 +104,26 @@ final class GamePhoneStabilityTests: XCTestCase {
         XCTAssertFalse(PhoneRegionSession.missingInteriorBubble(shown, Array(shown.dropFirst())))
         XCTAssertFalse(PhoneRegionSession.missingInteriorBubble(shown, [shown[0], shown[1], bubble("See you.", 0.8)]))
         XCTAssertFalse(PhoneRegionSession.missingInteriorBubble(shown, [shown[0], shown[2]]))
+        // En alttaki balon düşüp kalanlar yerinde duruyorsa o da OCR atlamasıdır (yeni mesaj eklenir, silinmez).
+        XCTAssertTrue(PhoneRegionSession.missingInteriorBubble(shown, [shown[0], shown[1], shown[2]]))
+    }
+
+    /// Aynı mesajın OCR'la bir iki harfi farklı okunuşu yeni mesaj sayılmaz: bilinen çevirisi kullanılır, çeviri gidip
+    /// gelmez. Sayı ya da olumsuzluk değiştiren okuma ve kısa satır aynı mesaj sayılmaz (Windows ve Android'de aynı deneme).
+    func testSameMessageReadSlightlyDifferentlyKeepsItsTranslation() {
+        let known = ["Did you hear back from the guy at the marina?": "Marinadaki adamdan haber aldın mı?",
+                     "Meet me at 5 by the docks": "Benimle 5'te rıhtımda buluş",
+                     "I can do that tonight": "Bunu bu gece yapabilirim",
+                     "Ok": "Tamam"]
+        XCTAssertEqual(PhoneSteady.translation(of: "Did you hear back from the guy at the rnarina?", in: known),
+                       "Marinadaki adamdan haber aldın mı?")
+        XCTAssertEqual(PhoneSteady.translation(of: "Did you hear back frorn the guy at the marina", in: known),
+                       "Marinadaki adamdan haber aldın mı?")
+        XCTAssertNil(PhoneSteady.translation(of: "Meet me at 6 by the docks", in: known))
+        XCTAssertNil(PhoneSteady.translation(of: "I can't do that tonight", in: known))
+        XCTAssertNil(PhoneSteady.translation(of: "On", in: known))
+        XCTAssertNil(PhoneSteady.translation(of: "Where are you going tonight?", in: known))
+        XCTAssertEqual(PhoneSteady.translation(of: "Ok", in: known), "Tamam")
     }
 
     private func item(_ source: String, _ translation: String, _ box: TextBox, _ line: Double, _ style: PhoneTextStyle?) -> ScreenTranslation.Item {

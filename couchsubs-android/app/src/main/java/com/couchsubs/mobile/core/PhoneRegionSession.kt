@@ -112,8 +112,10 @@ internal class PhoneRegionSession(
     private val rescue = TailRescue()
     /** Çevirisi tam gösterilen son sayfa: tek okumalık OCR sapmasını gerçek değişiklikten ayırmak için. */
     private var shownPage: Page? = null
-    /** Son okuma bir kez bekletildi; sonraki tur mutlaka yeniden okur ve sonucu kabul eder. */
-    private var held = false
+    /** Son okuma kaç turdur bekletiliyor (en çok [PhoneSteady.HOLD_TURNS]); sonra okuma her durumda ilerler. */
+    private var holds = 0
+    /** Okumanın art arda doğrulanamadığı tur sayısı ([missed]). */
+    private var absences = 0
     private var recheck = false
     /** Son gönderilen bloklar ve o anki telefon boyu ([steady]). */
     private var sent: List<ScreenTranslation.Item> = emptyList()
@@ -172,14 +174,14 @@ internal class PhoneRegionSession(
             // Yerinde duran iki komşu arasından düşen balon ya da uzun mesajdaki birkaç bozuk harf tek okumada ekrandan
             // silinmez, çeviri yenilenmez: sonraki tur mutlaka yeniden okur; aynı görünen gerçek değişiklik o turda ilerler.
             val previous = shownPage
-            if (!held && previous != null && previous.region.isClose(fresh.region, 0.01) &&
+            if (holds < PhoneSteady.HOLD_TURNS && previous != null && previous.region.isClose(fresh.region, 0.01) &&
                 (missingInteriorBubble(previous, fresh) ||
                     (sameLayout(previous, fresh, start.image) && GamePhoneText.hasAdjacentOcrEdits(text(previous), text(fresh))))) {
-                held = true
+                holds++
                 recheck = true
                 return
             }
-            held = false
+            holds = 0
             page = fresh
         } else if (!needsWork) {
             return
@@ -189,8 +191,9 @@ internal class PhoneRegionSession(
         var verified = latest ?: return
         // Okuma sürerken farklı bir sayfa gelmişse eski sayfadan yeni çeviri isteği çıkarma.
         if (start.image !== verified.image && !matches(current, verified)) {
-            current = reread(verified) ?: run { clearMissing(); return }
+            current = reread(verified) ?: run { missed(); return }
         }
+        absences = 0
         if (closed) return
         if (current.bubbles.isEmpty()) {
             if (emptyOnce || rendered.isEmpty()) {
@@ -250,7 +253,7 @@ internal class PhoneRegionSession(
         val last = latest ?: return
         if (last.image !== verified.image && !matches(current, last)) {
             verified = last
-            current = reread(verified) ?: run { clearMissing(); return }
+            current = reread(verified) ?: run { missed(); return }
             available = availableTranslations(current.bubbles.flatMap { it.group.paragraphs }, packLookup, skipsTurkish)
         }
         if (closed) return
@@ -282,7 +285,8 @@ internal class PhoneRegionSession(
             if (abs(block.box.left - prior.box.left) > 0.012 || abs(block.box.right - prior.box.right) > 0.012 ||
                 abs(block.box.top - prior.box.top) > 0.012 || abs(block.box.bottom - prior.box.bottom) > 0.012) return false
         }
-        return missing
+        // Kalanlar yerinde, yalnız en alttaki balon düştü: yeni mesaj eklenir, silinmez; bu da bir OCR atlamasıdır.
+        return missing || before.last().group.paragraphs.none { translations[it] == null }
     }
 
     /** Aynı yerleşim: balon sayısı ve sınırları aynı, kutular iki pikselden az oynamış, zemin/yazı rengi yakın. */
@@ -315,10 +319,21 @@ internal class PhoneRegionSession(
         return fresh
     }
 
+    /**
+     * Okuma bu turda doğrulanamadı (telefon kaydı, kare değişti). Çeviriler hemen silinmez: tek turluk ıska çevirileri
+     * kaldırıp geri getiriyor, ekranda gidip geliyordu. Art arda [PhoneSteady.MISS_TURNS] turdan sonra silinir (telefon
+     * gerçekten kapanınca izleyici oturumu zaten kapatır).
+     */
+    private fun missed() {
+        absences++
+        if (absences >= PhoneSteady.MISS_TURNS) clearMissing()
+    }
+
     private fun clearMissing() {
+        absences = 0
         page = null
         shownPage = null
-        held = false
+        holds = 0
         recheck = false
         emptyOnce = false
         needsWork = false
@@ -338,7 +353,7 @@ internal class PhoneRegionSession(
     ): MutableMap<String, String> {
         val result = HashMap<String, String>()
         for (text in paragraphs) {
-            val known = packLookup?.invoke(IconText.plain(text))?.text ?: translations[text]
+            val known = packLookup?.invoke(IconText.plain(text))?.text ?: PhoneSteady.translation(text, translations)
                 ?: if (skipsTurkish && TurkishText.isSure(text)) text else null
             if (known != null) result[text] = known else result.remove(text)
         }

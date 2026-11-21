@@ -60,20 +60,40 @@ class GamePhoneTracker(private val locate: (PhoneImage) -> GamePhoneGeometry.Pos
         var found = locate(image)
         if (found != null && !plausible(found.bounds, image.width, image.height)) found = null
         val before = previous
-        shown = if (found != null && before != null && found.bounds.isClose(before.bounds, 0.035)) found else null
+        val current = shown
+        if (found != null && ((before != null && found.bounds.isClose(before.bounds, 0.035)) ||
+                (current != null && found.bounds.isClose(current.bounds, 0.035)))) {
+            // İki uyumlu gözlem ya da açık telefonun yakınında tek gözlem: aynı telefon, yeri güncellenir.
+            shown = found
+            misses = 0
+        } else if (current != null && misses < MISS_GRACE) {
+            // Açık telefon tek bir karede bulunamadı ya da el titredi: hemen kapanmaz. Önceden tek ıska paneli kapatıyor,
+            // yeniden açılış iki gözlem bekleyip bütün sayfayı yeniden çeviriyordu; çeviriler gidip geliyordu (X'teki
+            // bildirim). Telefon gerçekten indirilince [MISS_GRACE] tur sonra kapanır.
+            misses++
+        } else {
+            shown = null
+            misses = 0
+        }
         previous = found
         return Sample(true, shown)
     }
+
+    private var misses = 0
 
     @Synchronized
     fun reset() {
         lastTime = null
         previous = null
         shown = null
+        misses = 0
     }
 
     companion object {
         const val INTERVAL_MS = 330L
+
+        /** Açık telefon art arda bu kadar örnekte bulunamazsa kapanır (330 ms aralıkla ~0,7 sn; Mac ve Windows ile aynı). */
+        const val MISS_GRACE = 2
 
         /** Telefon kutusunun alanı (kareye oranla) bu aralıkta olmalı. */
         const val MIN_AREA = 0.04

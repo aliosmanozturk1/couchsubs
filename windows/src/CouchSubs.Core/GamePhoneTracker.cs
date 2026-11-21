@@ -33,15 +33,37 @@ public sealed class GamePhoneTracker
         // Akıl sınırı: telefon ekranın küçük, dikey bir parçasıdır. Dışındaki bir aday (ör. menüde ya da koyu ekranda
         // yanlış eşleşme) kabul edilmez; TV'de büyük opak telefon kutusu oyun görüntüsünü kapatırdı.
         if (candidate is not null && !Plausible(candidate, frame)) candidate = null;
-        shown = candidate is not null && previous is not null && candidate.IsClose(previous, 0.035)
-            ? candidate : null;
-        shownPose = shown is null ? null : pose;
+        if (candidate is not null && ((previous is not null && candidate.IsClose(previous, 0.035))
+                                      || (shown is not null && candidate.IsClose(shown, 0.035))))
+        {
+            // İki uyumlu gözlem ya da açık telefonun yakınında tek gözlem: aynı telefon, yeri güncellenir.
+            shown = candidate;
+            shownPose = pose;
+            misses = 0;
+        }
+        else if (shown is not null && misses < MissGrace)
+        {
+            // Açık telefon tek bir karede bulunamadı ya da el titredi: hemen kapanmaz. Önceden tek ıska paneli kapatıyor,
+            // yeniden açılış iki gözlem bekleyip bütün sayfayı yeniden çeviriyordu; çeviriler gidip geliyordu (X'teki
+            // bildirim). Telefon gerçekten indirilince MissGrace tur sonra kapanır.
+            misses++;
+        }
+        else
+        {
+            shown = null;
+            shownPose = null;
+            misses = 0;
+        }
         previous = candidate;
         visible = shown;
         return true;
     }
 
     public WatchedArea WithPose(WatchedArea area) => area with { PhonePose = shownPose };
+
+    /// <summary>Açık telefon art arda bu kadar örnekte bulunamazsa kapanır (330 ms aralıkla ~0,7 sn; Mac ve Android ile aynı).</summary>
+    internal const int MissGrace = 2;
+    private int misses;
 
     /// <summary>Telefon kutusunun alanı (kareye oranla) bu aralıkta olmalı.</summary>
     internal const double MinArea = 0.04, MaxArea = 0.35;
@@ -67,6 +89,7 @@ public sealed class GamePhoneTracker
     {
         lastTime = null;
         previous = shown = null;
+        misses = 0;
         shownPose = null;
     }
 }

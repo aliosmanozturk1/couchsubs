@@ -53,11 +53,18 @@ class GamePhoneTrackerTest {
         assertNull(tracker.sample(image, 0).pose)
         assertFalse(tracker.sample(image, 250).sampled)
         assertNotNull(tracker.sample(image, 330).pose)
-        assertNull(tracker.sample(TestPhoneImage.phone(camera = false), 660).pose)
-        assertNull(tracker.sample(image, 1000).pose)
-        assertNotNull(tracker.sample(image, 1330).pose)
+        // Açık telefon tek karede bulunamayınca kapanmaz (çeviriler gidip gelmesin); art arda üçüncü ıskada kapanır.
+        val missing = TestPhoneImage.phone(camera = false)
+        assertNotNull(tracker.sample(missing, 660).pose)
+        assertNotNull(tracker.sample(image, 990).pose)
+        assertNotNull(tracker.sample(missing, 1320).pose)
+        assertNotNull(tracker.sample(missing, 1650).pose)
+        assertNull(tracker.sample(missing, 1980).pose)
+        // Kapandıktan sonra yeniden açılış yine iki gözlem ister.
+        assertNull(tracker.sample(image, 2310).pose)
+        assertNotNull(tracker.sample(image, 2640).pose)
         tracker.reset()
-        assertNull(tracker.sample(image, 1331).pose)
+        assertNull(tracker.sample(image, 2641).pose)
     }
 
     @Test
@@ -485,7 +492,11 @@ class PhoneRegionSessionTest {
         assertEquals(passes, watcher.passes)
     }
 
-    /** Uzun mesajda yan yana iki sözcükteki OCR sapması bir kez daha okunur; ikinci okumada da varsa gerçek değişikliktir. */
+    /**
+     * Uzun mesajda yan yana iki sözcükteki OCR sapması bekletilir; ikinci okumada da sürse aynı mesajın OCR'la biraz farklı
+     * okunuşudur ([PhoneSteady]): yeniden çevrilmez, ekrandaki çeviri değişmez. Önceden yeniden çevriliyor, çeviri gidip
+     * geliyordu (Mac ve Windows ile aynı).
+     */
     private fun adjacentTypo(realChange: Boolean) {
         val original = "Cool. I'll check it out. Would be nice to clear my head for a second."
         val alternate = "Cool. I'll check ct ocut. Would be nice to clear my head for a second."
@@ -515,17 +526,17 @@ class PhoneRegionSessionTest {
         watcher.offer()
         wait { !watcher.isBusy }
         assertEquals(3, reader.count.get())
-        assertEquals(if (realChange) 2 else 1, translator.calls.size)
-        assertEquals(if (realChange) "Çevrildi: $alternate" else "Çevrildi: $original", server.sent.last().text)
+        assertEquals(1, translator.calls.size)
+        assertEquals("Çevrildi: $original", server.sent.last().text)
     }
 
     @Test
     fun longMessageConfirmsAdjacentOcrTyposOnce() = adjacentTypo(realChange = false)
 
     @Test
-    fun longMessageRealChangeIsShownOnTheSecondRead() = adjacentTypo(realChange = true)
+    fun longMessageOcrVariantKeepsItsTranslation() = adjacentTypo(realChange = true)
 
-    /** İki komşusu yerinde dururken tek okumada düşen balon ekrandan silinmez; ikinci okumada da yoksa silinir. */
+    /** İki komşusu yerinde dururken düşen balon ekrandan hemen silinmez ([PhoneSteady.HOLD_TURNS] tur); sonra da yoksa silinir. */
     private fun missingBubble(stillMissing: Boolean) {
         val reader = Reader()
         val translator = Translator()
@@ -553,6 +564,11 @@ class PhoneRegionSessionTest {
         watcher.observePhone(PhoneCapture(b, pose))
         watcher.offer()
         wait { !watcher.isBusy }
+        assertEquals(3, server.sent.last().items.size)
+        clock = 1350
+        watcher.observePhone(PhoneCapture(b, pose))
+        watcher.offer()
+        wait { !watcher.isBusy }
         assertEquals(if (stillMissing) 2 else 3, server.sent.last().items.size)
         assertTrue(stillMissing || server.sent.none { it.items.size == 2 })
     }
@@ -561,5 +577,27 @@ class PhoneRegionSessionTest {
     fun omittedInteriorBubbleWaitsForASecondRead() = missingBubble(stillMissing = false)
 
     @Test
-    fun interiorBubbleStillMissingOnTheSecondReadIsRemoved() = missingBubble(stillMissing = true)
+    fun interiorBubbleStillMissingAfterTheHoldIsRemoved() = missingBubble(stillMissing = true)
+}
+
+/** Mac GamePhoneStabilityTests ve Windows PhoneSteadyTests ile aynı deneme. */
+class PhoneSteadyTest {
+    private val known = mapOf(
+        "Did you hear back from the guy at the marina?" to "Marinadaki adamdan haber aldın mı?",
+        "Meet me at 5 by the docks" to "Benimle 5'te rıhtımda buluş",
+        "I can do that tonight" to "Bunu bu gece yapabilirim",
+        "Ok" to "Tamam",
+    )
+
+    /** Aynı mesajın OCR'la biraz farklı okunuşu bilinen çevirisini alır; sayı/olumsuzluk değişen okuma ve kısa satır almaz. */
+    @Test
+    fun sameMessageReadSlightlyDifferentlyKeepsItsTranslation() {
+        assertEquals("Marinadaki adamdan haber aldın mı?", PhoneSteady.translation("Did you hear back from the guy at the rnarina?", known))
+        assertEquals("Marinadaki adamdan haber aldın mı?", PhoneSteady.translation("Did you hear back frorn the guy at the marina", known))
+        assertNull(PhoneSteady.translation("Meet me at 6 by the docks", known))
+        assertNull(PhoneSteady.translation("I can't do that tonight", known))
+        assertNull(PhoneSteady.translation("On", known))
+        assertNull(PhoneSteady.translation("Where are you going tonight?", known))
+        assertEquals("Tamam", PhoneSteady.translation("Ok", known))
+    }
 }

@@ -141,9 +141,10 @@ public partial class RegionWatcherTests
         reader.Lines = [Line(realChange ? alternate : original)];
         await watcher.PassAsync(next, [phone]);
         await watcher.PassAsync(next, [phone]);
-        Assert.Equal(3, reader.ScreenReads);
-        Assert.Equal(realChange ? 2 : 1, translator.Calls.Count);
-        Assert.Equal(realChange ? "Değişen mesaj." : "Gidip bakarım.", server.Sent[^1].Text);
+        // Aynı okuma sürse de aynı mesajın OCR'la biraz farklı okunuşudur (PhoneSteady): yeniden çevrilmez, ekrandaki
+        // çeviri değişmez. Önceden ikinci okumada yeniden çevriliyor, çeviri gidip geliyordu.
+        Assert.Single(translator.Calls);
+        Assert.Equal("Gidip bakarım.", server.Sent[^1].Text);
     }
 
     [Theory]
@@ -167,6 +168,9 @@ public partial class RegionWatcherTests
         Assert.Equal(sends, server.Sent.Count);
         if (!stillMissing) reader.Lines = full;
 
+        await watcher.PassAsync(Shade(170), [phone]);
+        // Düşen balon PhoneSteady.HoldTurns tur bekletilir; sonra da yoksa silinir.
+        Assert.Equal(3, server.Blocks[^1]?.Count);
         await watcher.PassAsync(Shade(170), [phone]);
         Assert.Equal(stillMissing ? 2 : 3, server.Blocks[^1]?.Count);
         Assert.DoesNotContain(server.Blocks, blocks => blocks?.Count == 2 && !stillMissing);
