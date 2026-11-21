@@ -263,15 +263,23 @@ public sealed partial class SamsungTvInstaller(string host, string profilesDirec
                         WgtSigner.SignInPlace(lean, profile.AuthorP12, profile.DistributorP12, profile.Password, WgtDigest.Sha256);
                         Log.Write($"Tizen {platform}: yalın paket hazırlandı ({LegacyTizenPackage.LeanRemoved} de çıkarıldı), imza SHA-256.");
                         return "yalın paket";
-                    });
+                    }, keepExisting: legacy && (onTv is not null || !lastListRead));
                 if (legacy) Log.Write($"Tizen {platform}: {(packages.Count > 1 ? "yalın paket" : "tam paket")} SHA-256 imzayla kuruldu.");
             }
-            catch (SamsungInstallException error) when (error.Error is SamsungInstallError.CertificateRejected)
+            catch (SamsungInstallException error)
             {
-                // TV bu sertifikayı kabul etmiyor; bir sonraki denemede Samsung'dan yenisi istensin.
-                SigningProfile.Discard(directory);
-                Log.Write("Kayıtlı sertifika bırakıldı; bir sonraki denemede yenisi alınacak.");
-                throw;
+                if (error.Error is SamsungInstallError.CertificateRejected)
+                {
+                    // TV bu sertifikayı kabul etmiyor; bir sonraki denemede Samsung'dan yenisi istensin.
+                    SigningProfile.Discard(directory);
+                    Log.Write("Kayıtlı sertifika bırakıldı; bir sonraki denemede yenisi alınacak.");
+                }
+                if (!legacy || onTv is null) throw;
+                // Tizen 2.x: TV'deki kopya (ör. Tizen Studio ile elle kurulmuş) yerinde; yeni paket kurulamadı diye
+                // çalışan uygulama "kurulamadı" gösterilmez, o açılır (#638).
+                Log.Write($"Tizen {platform}: yeni paket kurulamadı ({error.Error}); TV'deki CouchSubs {onTv} korunuyor ve açılıyor.");
+                await LaunchAsync(device, cancellationToken);
+                return (onTv, false);
             }
         }
         finally
@@ -287,12 +295,17 @@ public sealed partial class SamsungTvInstaller(string host, string profilesDirec
         return (after ?? version ?? "", true);
     }
 
+    /// <summary>Son <c>vd_applist</c> okunabildi mi ("CouchSubs yok" ile "bilinmiyor" ayrılsın).</summary>
+    private bool lastListRead;
+
     /// <summary>TV'deki CouchSubs sürümü; uygulama yoksa ya da liste okunamazsa null.</summary>
     private async Task<string?> ReadInstalledVersionAsync(SdbTcpDevice device, CancellationToken cancellationToken)
     {
+        lastListRead = false;
         try
         {
             var listing = await device.ShellCommandAsync("0 vd_applist", cancellationToken);
+            lastListRead = true;
             var found = InstalledVersion(listing);
             Log.Write($"vd_applist: {(found is null ? "CouchSubs yok" : $"CouchSubs {found}")} ({listing.Length} karakter)");
             return found;
@@ -348,14 +361,32 @@ public sealed partial class SamsungTvInstaller(string host, string profilesDirec
     /// İki deneme de sebepsiz (yalın <c>[118]</c>) başarısız olursa çağrılır: başka biçimde hazırlanmış paketi sıraya
     /// koyup adını döner (yoksa null); o paketle üçüncü kez denenir.
     /// </param>
+    /// <param name="keepExisting">
+    /// TV'deki kopyaya dokunulmaz (<c>vd_appuninstall</c> yok): Tizen 2.x'te TV'de CouchSubs varsa ya da liste
+    /// okunamadıysa. 2016 TV'de Tizen Studio ile elle kurulmuş, çalışan kopya kurtarma adımında silinmesin
+    /// (docs/tv-samsung.md, #638). Sebepsiz <c>[118]</c>'de <paramref name="alternative"/> yine bir kez denenir.
+    /// </param>
     internal static async Task InstallWithRecoveryAsync(ISamsungTvShell tv, Action<string>? progress, InstallLog log,
-        CancellationToken cancellationToken, Func<string?>? alternative = null)
+        CancellationToken cancellationToken, Func<string?>? alternative = null, bool keepExisting = false)
     {
         var output = await tv.InstallAsync(cancellationToken);
         log.Write($"vd_appinstall çıktısı:\n{output.Trim()}");
         var problem = SamsungInstallDiagnostics.Classify(output);
         if (problem == InstallProblem.None) return;
         log.Write($"Kurulum başarısız: {problem}");
+        if (keepExisting && SamsungInstallDiagnostics.RemovingOldCopyMayHelp(problem))
+        {
+            log.Write("TV'de CouchSubs var ya da liste okunamadı (elle kurulmuş olabilir); eski kopya kaldırılmıyor.");
+            if (problem == InstallProblem.Other && alternative?.Invoke() is { } kept)
+            {
+                var second = await tv.InstallAsync(cancellationToken);
+                log.Write($"İkinci deneme ({kept}) vd_appinstall çıktısı:\n{second.Trim()}");
+                var secondProblem = SamsungInstallDiagnostics.Classify(second);
+                if (secondProblem == InstallProblem.None) return;
+                throw new SamsungInstallException(SamsungInstallDiagnostics.ToError(secondProblem), SamsungInstallDiagnostics.Summary(second));
+            }
+            throw new SamsungInstallException(SamsungInstallDiagnostics.ToError(problem), SamsungInstallDiagnostics.Summary(output));
+        }
         if (!SamsungInstallDiagnostics.RemovingOldCopyMayHelp(problem))
             throw new SamsungInstallException(SamsungInstallDiagnostics.ToError(problem), SamsungInstallDiagnostics.Summary(output));
 

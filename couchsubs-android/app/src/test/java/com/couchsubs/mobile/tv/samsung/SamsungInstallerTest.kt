@@ -186,12 +186,38 @@ class SamsungInstallerTest {
     fun bareFailureTwiceTriesTheAlternativePackageOnce() {
         val tv = FakeTv(bare118, bare118, success)
         var prepared = 0
-        SamsungInstaller.installWithRecovery(tv, {}, InstallLog(null)) {
+        SamsungInstaller.installWithRecovery(tv, {}, InstallLog(null), alternative = {
             prepared++
             "yalın paket"
-        }
+        })
         assertEquals(3, tv.installs)
         assertEquals(1, prepared)
+    }
+
+    /** Tizen 2.x'te TV'de (elle kurulmuş) kopya varsa ya da liste okunamadıysa kopya kaldırılmaz (#638). */
+    @Test
+    fun keepExistingNeverRemovesTheCopyOnTheTv() {
+        val tv = FakeTv(bare118, bare118)
+        val log = tempLog()
+        var prepared = 0
+        val error = runCatching {
+            SamsungInstaller.installWithRecovery(tv, {}, log, { prepared++; "yalın paket" }, keepExisting = true)
+        }.exceptionOrNull()
+        assertTrue(error is SamsungInstallException)
+        assertEquals(2, tv.installs)
+        assertEquals(1, prepared)
+        assertTrue(tv.commands.isEmpty())
+        assertTrue(log.file!!.readText().contains("eski kopya kaldırılmıyor"))
+
+        val lean = FakeTv(bare118, success)
+        SamsungInstaller.installWithRecovery(lean, {}, InstallLog(null), { "yalın paket" }, keepExisting = true)
+        assertEquals(2, lean.installs)
+        assertTrue(lean.commands.isEmpty())
+
+        val stuck = FakeTv(authorMismatch, success)
+        assertTrue(runCatching { SamsungInstaller.installWithRecovery(stuck, {}, InstallLog(null), keepExisting = true) }.exceptionOrNull() is SamsungInstallException)
+        assertEquals(1, stuck.installs)
+        assertTrue(stuck.commands.isEmpty())
     }
 
     @Test

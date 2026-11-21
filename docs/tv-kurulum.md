@@ -199,6 +199,9 @@ tizen package -t wgt -s SERTIFIKA_PROFILI -- KLASOR
 tizen install -n KLASOR/CouchSubs.wgt -t TV_ADI
 ```
 
+2016 modellerde (Tizen 2.4) Samsung sertifikası `install failed[118]` alabilir; orada **Tizen** türünde sertifikayla
+kurulum için: [2016 modellerde elle kurulum](tv-samsung.md#2016-modellerde-elle-kurulum-tizen-studio).
+
 ## Android TV / Google TV
 
 Gerçek TV'de denendi. Bazı TV'ler HDMI görüntüsünü başka uygulamaya vermeyebilir; böyle bir durumda altyazılar

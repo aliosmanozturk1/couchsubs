@@ -192,6 +192,37 @@ public class SamsungInstallTests
         Assert.Contains("Üçüncü deneme (yalın paket) vd_appinstall çıktısı", File.ReadAllText(log.Path!));
     }
 
+    /// <summary>Tizen 2.x'te TV'de (elle kurulmuş) kopya varsa ya da liste okunamadıysa kopya kaldırılmaz (#638).</summary>
+    [Fact]
+    public async Task KeepExistingNeverRemovesTheCopyOnTheTv()
+    {
+        var tv = new FakeTv(Bare118, Bare118);
+        var log = TempLog();
+        var prepared = 0;
+        await Assert.ThrowsAsync<SamsungInstallException>(() =>
+            SamsungTvInstaller.InstallWithRecoveryAsync(tv, null, log, CancellationToken.None, () =>
+            {
+                prepared++;
+                return "yalın paket";
+            }, keepExisting: true));
+        Assert.Equal(2, tv.Installs);
+        Assert.Equal(1, prepared);
+        Assert.Empty(tv.Commands);
+        Assert.Contains("eski kopya kaldırılmıyor", File.ReadAllText(log.Path!));
+
+        var lean = new FakeTv(Bare118, Success);
+        await SamsungTvInstaller.InstallWithRecoveryAsync(lean, null, new InstallLog(null), CancellationToken.None, () => "yalın paket",
+            keepExisting: true);
+        Assert.Equal(2, lean.Installs);
+        Assert.Empty(lean.Commands);
+
+        var mismatch = new FakeTv(AuthorMismatch, Success);
+        await Assert.ThrowsAsync<SamsungInstallException>(() =>
+            SamsungTvInstaller.InstallWithRecoveryAsync(mismatch, null, new InstallLog(null), CancellationToken.None, keepExisting: true));
+        Assert.Equal(1, mismatch.Installs);
+        Assert.Empty(mismatch.Commands);
+    }
+
     [Fact]
     public async Task AlternativeThatAlsoFailsIsReportedWithTheTvsWords()
     {

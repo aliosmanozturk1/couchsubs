@@ -569,6 +569,8 @@ final class SamsungInstaller {
     private let signIn: (() throws -> SamsungAccount)?
     private let progress: (InstallStep) -> Void
     private let log: InstallLog
+    /// Son `vd_applist` okunabildi mi ("CouchSubs yok" ile "bilinmiyor" ayrılsın).
+    private var lastListRead = false
 
     init(host: String, profiles: URL = TVPaths.directory("samsung"), adbKey: @escaping () throws -> AdbKey = { try AdbKey.loadOrCreate(TVPaths.directory("sdb").appendingPathComponent("adbkey")) },
          signIn: (() throws -> SamsungAccount)?, progress: @escaping (InstallStep) -> Void = { _ in }, log: InstallLog = .shared) {
@@ -635,6 +637,8 @@ final class SamsungInstaller {
         if !platform.isEmpty, Versions.isNewer("5.0", than: platform) { log.write("Tizen \(platform): 2016–2018 TV si, destek deneysel.") }
 
         let onTv = readInstalledVersion(device)
+        // "CouchSubs yok" ile "liste okunamadı" ayrılsın (Tizen 2.x'te okunamayan listede kopya kaldırılmaz).
+        let listRead = lastListRead
         if let version, let onTv, !Versions.isNewer(version, than: onTv) {
             launch(device)
             return Result(version: onTv, installed: false)
@@ -682,14 +686,19 @@ final class SamsungInstaller {
                 lean = true
                 self.log.write("Tizen \(platform): yalın paket hazırlandı (\(LegacyTizenPackage.leanRemovedNames) de çıkarıldı), imza SHA-256.")
                 return ("yalın paket", package)
-            })
+            }, keepExisting: legacy && (onTv != nil || !listRead))
             if legacy { log.write("Tizen \(platform): \(lean ? "yalın paket" : "tam paket") SHA-256 imzayla kuruldu.") }
         } catch let failure as SamsungInstallFailure {
             if failure.error == .certificateRejected {
                 profile.discard()
                 log.write("Kayıtlı sertifika bırakıldı; bir sonraki denemede yenisi alınacak.")
             }
-            throw failure
+            guard legacy, let onTv else { throw failure }
+            // Tizen 2.x: TV'deki kopya (ör. Tizen Studio ile elle kurulmuş) yerinde; yeni paket kurulamadı diye
+            // çalışan uygulama "kurulamadı" gösterilmez, o açılır (#638).
+            log.write("Tizen \(platform): yeni paket kurulamadı (\(failure.error)); TV'deki CouchSubs \(onTv) korunuyor ve açılıyor.")
+            launch(device)
+            return Result(version: onTv, installed: false)
         }
         let after = readInstalledVersion(device)
         if let version, let after, Versions.isNewer(version, than: after) {
@@ -714,13 +723,29 @@ final class SamsungInstaller {
 
     /// - Parameter alternative: İki deneme de sebepsiz (yalın `[118]`) başarısız olursa çağrılır: başka biçimde hazırlanmış
     ///   paketi adıyla döner; o paketle üçüncü kez denenir.
+    /// - Parameter keepExisting: TV'deki kopyaya dokunulmaz (`vd_appuninstall` yok): Tizen 2.x'te TV'de CouchSubs varsa
+    ///   ya da liste okunamadıysa. 2016 TV'de Tizen Studio ile elle kurulmuş, çalışan kopya kurtarma adımında silinmesin
+    ///   (docs/tv-samsung.md, #638). Sebepsiz `[118]`'de `alternative` yine bir kez denenir.
     private func installWithRecovery(_ device: SdbConnection, _ signed: [UInt8], _ toolPath: String,
-                                     alternative: (() throws -> (label: String, package: [UInt8]))? = nil) throws {
+                                     alternative: (() throws -> (label: String, package: [UInt8]))? = nil,
+                                     keepExisting: Bool = false) throws {
         let output = install(device, signed, toolPath)
         log.write("vd_appinstall çıktısı:\n\(output.trimmingCharacters(in: .whitespacesAndNewlines))")
         let problem = SamsungDiagnostics.classify(output)
         if problem == .none { return }
         log.write("Kurulum başarısız: \(problem)")
+        if keepExisting, SamsungDiagnostics.removingOldCopyMayHelp(problem) {
+            log.write("TV'de CouchSubs var ya da liste okunamadı (elle kurulmuş olabilir); eski kopya kaldırılmıyor.")
+            if problem == .other, let alternative {
+                let (label, package) = try alternative()
+                let second = install(device, package, toolPath)
+                log.write("İkinci deneme (\(label)) vd_appinstall çıktısı:\n\(second.trimmingCharacters(in: .whitespacesAndNewlines))")
+                let secondProblem = SamsungDiagnostics.classify(second)
+                if secondProblem == .none { return }
+                throw SamsungInstallFailure(error: SamsungDiagnostics.toError(secondProblem), detail: SamsungDiagnostics.summary(second))
+            }
+            throw SamsungInstallFailure(error: SamsungDiagnostics.toError(problem), detail: SamsungDiagnostics.summary(output))
+        }
         guard SamsungDiagnostics.removingOldCopyMayHelp(problem) else {
             throw SamsungInstallFailure(error: SamsungDiagnostics.toError(problem), detail: SamsungDiagnostics.summary(output))
         }
@@ -751,10 +776,12 @@ final class SamsungInstaller {
     }
 
     private func readInstalledVersion(_ device: SdbConnection) -> String? {
+        lastListRead = false
         guard let listing = try? device.shell("0 vd_applist") else {
             log.write("vd_applist okunamadı")
             return nil
         }
+        lastListRead = true
         let version = SamsungDiagnostics.installedVersion(listing)
         log.write("vd_applist: \(version.map { "CouchSubs \($0)" } ?? "CouchSubs yok") (\(listing.count) karakter)")
         return version

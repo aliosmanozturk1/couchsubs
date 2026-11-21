@@ -77,13 +77,29 @@ class SamsungInstaller(
          *
          * @param alternative İki deneme de sebepsiz (yalın `[118]`) başarısız olursa çağrılır: başka biçimde hazırlanmış
          * paketi sıraya koyup adını döner (yoksa null); o paketle üçüncü kez denenir.
+         * @param keepExisting TV'deki kopyaya dokunulmaz (`vd_appuninstall` yok): Tizen 2.x'te TV'de CouchSubs varsa ya da
+         * liste okunamadıysa. 2016 TV'de Tizen Studio ile elle kurulmuş, çalışan kopya kurtarma adımında silinmesin
+         * (docs/tv-samsung.md, #638). Sebepsiz `[118]`'de [alternative] yine bir kez denenir.
          */
-        fun installWithRecovery(tv: SamsungTvShell, progress: (InstallStep) -> Unit, log: InstallLog, alternative: (() -> String?)? = null) {
+        fun installWithRecovery(tv: SamsungTvShell, progress: (InstallStep) -> Unit, log: InstallLog, alternative: (() -> String?)? = null,
+                                keepExisting: Boolean = false) {
             val output = tv.install()
             log.write("vd_appinstall çıktısı:\n${output.trim()}")
             val problem = SamsungDiagnostics.classify(output)
             if (problem == InstallProblem.NONE) return
             log.write("Kurulum başarısız: $problem")
+            if (keepExisting && SamsungDiagnostics.removingOldCopyMayHelp(problem)) {
+                log.write("TV'de CouchSubs var ya da liste okunamadı (elle kurulmuş olabilir); eski kopya kaldırılmıyor.")
+                val kept = if (problem == InstallProblem.OTHER) alternative?.invoke() else null
+                if (kept != null) {
+                    val second = tv.install()
+                    log.write("İkinci deneme ($kept) vd_appinstall çıktısı:\n${second.trim()}")
+                    val secondProblem = SamsungDiagnostics.classify(second)
+                    if (secondProblem == InstallProblem.NONE) return
+                    throw SamsungInstallException(SamsungDiagnostics.toError(secondProblem), SamsungDiagnostics.summary(second))
+                }
+                throw SamsungInstallException(SamsungDiagnostics.toError(problem), SamsungDiagnostics.summary(output))
+            }
             if (!SamsungDiagnostics.removingOldCopyMayHelp(problem))
                 throw SamsungInstallException(SamsungDiagnostics.toError(problem), SamsungDiagnostics.summary(output))
             progress(InstallStep.UNINSTALLING)
@@ -160,6 +176,8 @@ class SamsungInstaller(
             if (platform.isNotEmpty() && SamsungDiagnostics.isNewer("5.0", platform)) log.write("Tizen $platform: 2016–2018 TV si, destek deneysel.")
 
             val onTv = readInstalledVersion(device)
+            // "CouchSubs yok" ile "liste okunamadı" ayrılsın (Tizen 2.x'te okunamayan listede kopya kaldırılmaz).
+            val listRead = lastListRead
             if (version != null && onTv != null && !SamsungDiagnostics.isNewer(version, onTv)) {
                 launch(device)
                 return Result(onTv, false)
@@ -211,7 +229,7 @@ class SamsungInstaller(
                         "yalın paket"
                     }
                 }
-                installWithRecovery(shell, progress, log, alternative)
+                installWithRecovery(shell, progress, log, alternative, keepExisting = legacy && (onTv != null || !listRead))
                 if (legacy) log.write("Tizen $platform: ${if (lean) "yalın paket" else "tam paket"} SHA-256 imzayla kuruldu.")
             } catch (error: SamsungInstallException) {
                 if (error.error == SamsungInstallError.CERTIFICATE_REJECTED) {
@@ -219,7 +237,12 @@ class SamsungInstaller(
                     profile.discard()
                     log.write("Kayıtlı sertifika bırakıldı; bir sonraki denemede yenisi alınacak.")
                 }
-                throw error
+                if (!legacy || onTv == null) throw error
+                // Tizen 2.x: TV'deki kopya (ör. Tizen Studio ile elle kurulmuş) yerinde; yeni paket kurulamadı diye
+                // çalışan uygulama "kurulamadı" gösterilmez, o açılır (#638).
+                log.write("Tizen $platform: yeni paket kurulamadı (${error.error}); TV'deki CouchSubs $onTv korunuyor ve açılıyor.")
+                launch(device)
+                return Result(onTv, false)
             }
             val after = readInstalledVersion(device)
             if (version != null && after != null && SamsungDiagnostics.isNewer(version, after))
@@ -230,8 +253,13 @@ class SamsungInstaller(
         }
     }
 
+    /** Son `vd_applist` okunabildi mi. */
+    private var lastListRead = false
+
     private fun readInstalledVersion(device: SdbConnection): String? = try {
+        lastListRead = false
         val listing = device.shell("0 vd_applist")
+        lastListRead = true
         SamsungDiagnostics.installedVersion(listing).also {
             log.write("vd_applist: ${if (it == null) "CouchSubs yok" else "CouchSubs $it"} (${listing.length} karakter)")
         }
