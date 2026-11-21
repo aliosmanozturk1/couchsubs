@@ -201,7 +201,23 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     /// Altyazının son okunan satırları ve alanı; ekran yazısı okuyucuları bunlarla altyazıyı dışlar (bkz.
     /// <see cref="SubtitleEcho"/>). Uygulama (AppController) hatla ek alan okuyucusuna aynı örneği verir.
     /// </summary>
-    public SubtitleEcho? Echo { get; init; }
+    public SubtitleEcho? Echo
+    {
+        get => echo;
+        init
+        {
+            echo = value;
+            if (value is not null) value.Own = Own;
+        }
+    }
+    private readonly SubtitleEcho? echo;
+    /// <summary>
+    /// Gösterilen çeviriler: karede okunan kendi altyazımız (OBS Program projektörü) yeni satır sayılmaz (bkz.
+    /// <see cref="OwnSubtitles"/>). Ekran yazısı okuyucuları da <see cref="Echo"/> üstünden bunu kullanır.
+    /// </summary>
+    public OwnSubtitles Own { get; } = new(clock ?? DefaultClock);
+    /// <summary>Günlüğe yazılmış son kendi altyazısı (her karede yeniden yazılmasın).</summary>
+    private string? loggedOwn;
     /// <summary>Doğruysa bu karede okunan blok kaydedilmez (ekranda menü var, altyazı gönderilmiyor).</summary>
     public Func<bool>? EchoPaused { get; init; }
     /// <summary>Son gösterilen çevirinin nereden geldiği: "paket" ya da "motor" (günlük ve sayım için).</summary>
@@ -313,7 +329,22 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         // Alandaki menü ve köşe göstergeleri de altyazı değildir; yalnız altyazı bloğu çevrilir ve kutusu ona göre olur.
         var area = new TextBox(region.Left, region.Top, region.Right, region.Bottom);
         // Konuşma değişirken sabit duran görev/HUD satırı ("Get in the sea plane", GTA 6) altyazı bloğuna katılmaz.
-        var cleaned = raw.WithoutButtonPrompts().WithoutOcrNoise();
+        // Karede kendi altyazımız (OBS Program projektörü, CouchSubs'ın OBS katmanı) varsa okunmaz (bkz. OwnSubtitles).
+        var (seen, ownLines) = Own.Split(raw, area);
+        if (ownLines.Count > 0)
+        {
+            var ownText = string.Join(' ', ownLines.Select(line => line.Text));
+            bool fresh;
+            lock (gate)
+            {
+                fresh = ownLines[0].Text != loggedOwn;
+                loggedOwn = ownLines[0].Text;
+            }
+            if (fresh)
+                Write($"kendi altyazısı: {SubtitleLog.Excerpt(ownText)} karede okundu, yok sayıldı (görüntü kaynağı "
+                      + "CouchSubs'ın OBS katmanını da içeriyor; OBS'te Kaynak projektörünü seçin)");
+        }
+        var cleaned = seen.WithoutButtonPrompts().WithoutOcrNoise();
         // GTA ekran yazısı (silah adı, plaka, tabela, menü) altyazı değildir; konuşmaya yapışsa da çevrilmez.
         if (DropsScreenText?.Invoke() == true) cleaned = cleaned.WithoutScreenText();
         var rows = cleaned.JoiningRows();
@@ -366,7 +397,9 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             }
             currentRead = new ReadInfo(captured, ocrMs, reading.Confidence);
             // Bölge izi ve satırın yeri: okuma boş dönse de satırın yeri değişmediyse satır silinmez (parlak zemin).
-            var action = stabilizer.Feed(reading.Text, signature, reading.Box);
+            // Altyazının yerinde yalnız kendi çevirimiz okunduysa (örtme ya da üst üste binen katman) satır kalkmış sayılmaz.
+            var ownOnly = ownLines.Count > 0 && reading.Lines.Count == 0 && OwnSubtitles.CoversLine(ownLines, LastBox);
+            var action = ownOnly ? StabilizerAction.None : stabilizer.Feed(reading.Text, signature, reading.Box);
             // Ekranda duran kötü yeniden okuma her karede not edilir; günlüğe bir kez yazılır.
             if (stabilizer.Note is { } note && note != lastNote)
             {
@@ -483,7 +516,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 case StabilizerKind.Clear:
                     lastClearAt = now();
                     LineLeft();
-                    sender.Clear();
+                    ClearScreen();
                     Write("kalktı: bölge boş okundu, ekran temizlendi");
                     break;
                 case StabilizerKind.Translate:
@@ -809,7 +842,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         }
         Write(request, $"{SubtitleLog.Excerpt(source)} → {pack}");
         lastShown = request.Number;
-        sender.SendSubtitle(translated, 15000, request.Box, replaces: RevisesShown(source));
+        Send(translated, source, 15000, request.Box, replaces: RevisesShown(source));
         LastPair = (source, translated);
         LastBox = request.Box;
         LastOrigin = "paket";
@@ -849,7 +882,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                     Write($"#{number} geri geldi (yarım okuması): {SubtitleLog.Excerpt(source)}");
                     if (translation is not null)
                     {
-                        sender.SendSubtitle(translation, 15000, box, replaces: true);
+                        Send(translation, last.Source, 15000, box, replaces: true);
                         LastPair = (last.Source, translation);
                         LastBox = box;
                     }
@@ -864,7 +897,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             lineOnScreen = number;
             Write($"#{number} geri geldi: {SubtitleLog.Excerpt(source)}");
             if (translation is null) return null;
-            sender.SendSubtitle(translation, 15000, box, replaces: RevisesShown(source));
+            Send(translation, source, 15000, box, replaces: RevisesShown(source));
             LastPair = (source, translation);
             LastBox = box;
             return null;
@@ -1008,7 +1041,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             Write(request, $"{result}, gösterildi{(onScreen ? "" : " (satır kalkmıştı)")}{PartialNote(request)}");
             lastShown = request.Number;
             // Satır hâlâ ekrandaysa kalkınca silinir; kalktıysa okunacak kadar gösterilir.
-            sender.SendSubtitle(translated, onScreen ? 15000 : ReadingTime(translated), request.Box, replaces: RevisesShown(source));
+            Send(translated, source, onScreen ? 15000 : ReadingTime(translated), request.Box, replaces: RevisesShown(source));
             LastPair = (source, translated);
             LastBox = request.Box;
             LastOrigin = "motor";
@@ -1061,7 +1094,22 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             mission.Reset();
             notices.Reset();
             Echo?.Reset();
-            if (stabilizer.Reset() == StabilizerAction.Clear) sender.Clear();
+            loggedOwn = null;
+            if (stabilizer.Reset() == StabilizerAction.Clear) ClearScreen();
+            Own.Reset();
         }
+    }
+
+    /// <summary>Çeviri ekrana gider; kendi altyazısı süzgeci onu hatırlar.</summary>
+    private void Send(string translation, string source, int durationMs, TextBox? box, bool replaces)
+    {
+        Own.Record(translation, source, durationMs);
+        sender.SendSubtitle(translation, durationMs, box, replaces: replaces);
+    }
+
+    private void ClearScreen()
+    {
+        Own.Cleared();
+        sender.Clear();
     }
 }

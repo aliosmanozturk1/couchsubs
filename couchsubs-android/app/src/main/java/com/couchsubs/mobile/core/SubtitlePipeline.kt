@@ -105,6 +105,15 @@ class SubtitlePipeline(
 
     private val lock = Any()
     private val now: () -> Long = clock ?: monotonicClock
+    /**
+     * Gösterilen çeviriler: karede okunan kendi altyazımız (OBS Program projektörü) yeni satır sayılmaz (bkz.
+     * [OwnSubtitles]). Telefonda OBS yolu yoktur; süzgeç Mac/Windows ile aynı kalsın diye burada da çalışır.
+     */
+    val own = OwnSubtitles(now)
+    /** Günlüğe yazılmış son kendi altyazısı (her karede yeniden yazılmasın). */
+    private var loggedOwn: String? = null
+    /** Son gönderilen çevirinin İngilizce satırının yeri. */
+    private var lastSentBox: TextBox? = null
     private val stabilizer = SubtitleStabilizer(clock = now)
     /** Konuşma değişirken sabit duran görev/HUD satırları (GTA 6). */
     private val stickyRows = StickyRows()
@@ -144,6 +153,10 @@ class SubtitlePipeline(
      * Uygulama [SubtitleEcho.shared] verir.
      */
     @Volatile var echo: SubtitleEcho? = null
+        set(value) {
+            field = value
+            value?.own = own
+        }
     private var lastRequested = 0
     private var lastShown = 0
     private var inFlight: Request? = null
@@ -209,7 +222,15 @@ class SubtitlePipeline(
         frameOcrMs = ocrMs
         // Kumanda ipuçları ve yazı tanıma çöpleri çevrilmez; yalnız altyazı bloğu çevrilir.
         // Konuşma değişirken sabit duran görev/HUD satırı ("Get in the sea plane", GTA 6) altyazı bloğuna katılmaz.
-        val rows = raw.withoutButtonPrompts().withoutOcrNoise().joiningRows()
+        // Karede kendi altyazımız (OBS Program projektörü, CouchSubs'ın OBS katmanı) varsa okunmaz (bkz. [OwnSubtitles]).
+        val (seen, ownLines) = own.split(raw, area)
+        if (ownLines.isNotEmpty()) {
+            val fresh = synchronized(lock) { (ownLines[0].text != loggedOwn).also { loggedOwn = ownLines[0].text } }
+            val excerpt = ownLines.joinToString(" ") { it.text }.let { if (it.length > 120) it.take(120) + "…" else it }
+            if (fresh) onLog?.invoke("kendi altyazısı: \"$excerpt\" karede okundu, " +
+                "yok sayıldı (görüntü kaynağı CouchSubs'ın OBS katmanını da içeriyor; OBS'te Kaynak projektörünü seçin)")
+        }
+        val rows = seen.withoutButtonPrompts().withoutOcrNoise().joiningRows()
         var missionChanged = false
         var missionRegion: CropRegion? = null
         var noticesChanged = false
@@ -242,7 +263,9 @@ class SubtitlePipeline(
         if (missionChanged) onMissionChanged?.invoke(missionRegion)
         var flushed: (() -> Unit)? = null
         val after: (() -> Unit)? = synchronized(lock) {
-            var action = stabilizer.feed(reading.text, signature, reading.box)
+            // Altyazının yerinde yalnız kendi çevirimiz okunduysa (örtme ya da üst üste binen katman) satır kalkmış sayılmaz.
+            val ownOnly = ownLines.isNotEmpty() && reading.lines.isEmpty() && OwnSubtitles.coversLine(ownLines, lastSentBox)
+            var action = if (ownOnly) StabilizerAction.None else stabilizer.feed(reading.text, signature, reading.box)
             val box = reading.box?.placedIn(area)?.centeredOnScreen()
             var fromHold: (() -> Unit)? = null
             held?.let { waiting ->
@@ -302,7 +325,7 @@ class SubtitlePipeline(
                 StabilizerKind.CLEAR -> {
                     lastClearAt = now()
                     lineLeft()
-                    sender.clear()
+                    clearScreen()
                     null
                 }
                 StabilizerKind.TRANSLATE -> {
@@ -474,7 +497,7 @@ class SubtitlePipeline(
         remember(request.number, source, if (shouldSend) translated else null)
         if (!shouldSend) return null
         lastShown = request.number
-        sender.sendSubtitle(translated, 15000, request.box, revisesShown(source))
+        send(translated, source, 15000, request.box, revisesShown(source))
         lastShownSource = source
         val shown = onPairShown
         val total = totalMs(request)
@@ -488,7 +511,7 @@ class SubtitlePipeline(
             val pair = pairs[index]
             lineOnScreen = pair.number
             pair.translation?.let {
-                sender.sendSubtitle(it, 15000, box, revisesShown(source))
+                send(it, source, 15000, box, revisesShown(source))
                 lastShownSource = source
             }
             return null
@@ -568,7 +591,7 @@ class SubtitlePipeline(
             // Satır ekrandan çoktan kalktıysa çevirisi sonraki sahnenin üstüne düşmesin.
             if (!onScreen && left != null && now() - left > LATE_RESULT_MS) return
             lastShown = request.number
-            sender.sendSubtitle(translated, if (onScreen) 15000 else readingTime(translated), request.box, revisesShown(source))
+            send(translated, source, if (onScreen) 15000 else readingTime(translated), request.box, revisesShown(source))
             lastShownSource = source
             total = totalMs(request)
         }
@@ -597,7 +620,22 @@ class SubtitlePipeline(
         mission.reset()
         notices.reset()
         echo?.reset()
-        if (stabilizer.reset() == StabilizerAction.Clear) sender.clear()
+        loggedOwn = null
+        if (stabilizer.reset() == StabilizerAction.Clear) clearScreen()
+        own.reset()
+        lastSentBox = null
+    }
+
+    /** Çeviri ekrana gider; kendi altyazısı süzgeci onu hatırlar. */
+    private fun send(translation: String, source: String, durationMs: Int, box: TextBox?, replaces: Boolean) {
+        own.record(translation, source, durationMs)
+        lastSentBox = box
+        sender.sendSubtitle(translation, durationMs, box, replaces)
+    }
+
+    private fun clearScreen() {
+        own.cleared()
+        sender.clear()
     }
 
     fun shutdown() {

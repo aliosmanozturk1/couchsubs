@@ -172,6 +172,23 @@ final class WindowCaptureTests: XCTestCase {
         black[4 * 997 + 1] = 40
         XCTAssertFalse(black.withUnsafeBytes(BlackFrameWatch.isBlack(bgra:)))
     }
+
+    /// OBS'in Program/Önizleme projektörü (ve ana penceresi) CouchSubs'ın OBS katmanını da içerir: Kaynak projektörü
+    /// önerilir. Kaynak projektörü ve OBS olmayan pencere için ipucu yok (Windows: ObsProjectorTests).
+    func testSourceProjectorHintForObsProgramProjector() {
+        func hint(_ process: String, _ title: String) -> Bool {
+            CaptureWindows.needsSourceProjectorHint(WindowCaptureTarget(processName: process, title: title))
+        }
+        XCTAssertTrue(hint("OBS", "Projector - Program"))
+        XCTAssertTrue(hint("obs64", "Windowed Projector (Preview)"))
+        XCTAssertTrue(hint("OBS Studio", "OBS 31.1.2 - Profil: Yayın - Sahneler: GTA"))
+        XCTAssertFalse(hint("OBS", "Projector - Source: Capture Card"))
+        XCTAssertFalse(hint("obs64", "Projektör - Kaynak: Yakalama kartı"))
+        XCTAssertFalse(hint("obs64", "Windowed Projector (Source) - Elgato"))
+        XCTAssertFalse(hint("RemotePlay", "PS Remote Play"))
+        XCTAssertFalse(hint("Jobs Viewer", "Program"))
+        XCTAssertFalse(CaptureWindows.needsSourceProjectorHint(nil))
+    }
 }
 
 /// Seçilen pencereden kare gelmiyorsa nedeni altyazi.log'a yazılır (#566). Windows'taki `WindowCaptureWatchTests` ile

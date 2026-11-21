@@ -109,6 +109,19 @@ public enum CaptureWindows {
         return options
     }
 
+    /// Seçilen pencere OBS'in ve Kaynak projektörü değil (Program/Önizleme projektörü ya da OBS'in ana penceresi): bu
+    /// görüntüde CouchSubs'ın OBS katmanı (tarayıcı kaynağı) da vardır, kendi altyazısını okur (bkz. `OwnSubtitles`).
+    /// Ayarlar Kaynak projektörünü önerir. Kaynak projektörünün başlığı "Projector - Source: <ad>" (Türkçe OBS'te
+    /// "Projektör - Kaynak: <ad>"), eski OBS'te "Windowed Projector (Source) - <ad>". Windows (`ObsProjector`) aynı kural.
+    public static func needsSourceProjectorHint(_ target: WindowCaptureTarget?) -> Bool {
+        guard let target else { return false }
+        let process = target.processName.lowercased()
+        guard process == "obs" || process.hasPrefix("obs ") || process.hasPrefix("obs64") || process.hasPrefix("obs32")
+            || process.contains("obs studio") || process == "obs-studio" else { return false }
+        let title = target.title.lowercased()
+        return !["source:", "kaynak:", "(source)", "(kaynak)"].contains { title.contains($0) }
+    }
+
     /// Listede görünen ad: "Başlık (Uygulama)"; açık değilse sonuna `notOpen` eklenir.
     public static func label(_ option: Option, notOpen: String) -> String {
         let name = "\(option.target.title) (\(option.target.processName))"

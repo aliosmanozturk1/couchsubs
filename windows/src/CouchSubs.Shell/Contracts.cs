@@ -218,6 +218,25 @@ public enum FrameSource { Ps5, RemotePlayWindow, CaptureWindow }
 /// </summary>
 public sealed record WindowCaptureTarget(string ProcessName, string Title);
 
+/// <summary>
+/// Seçilen pencere OBS'in ve Kaynak projektörü değil (Program/Önizleme projektörü ya da OBS'in ana penceresi): bu
+/// görüntüde CouchSubs'ın OBS katmanı (tarayıcı kaynağı) da vardır, kendi altyazısını okur (bkz. <c>OwnSubtitles</c>).
+/// Ayarlar Kaynak projektörünü önerir. Kaynak projektörünün başlığı "Projector - Source: &lt;ad&gt;" (Türkçe OBS'te
+/// "Projektör - Kaynak: &lt;ad&gt;"), eski OBS'te "Windowed Projector (Source) - &lt;ad&gt;". Mac: CaptureWindows.needsSourceProjectorHint.
+/// </summary>
+public static class ObsProjector
+{
+    public static bool NeedsSourceProjectorHint(WindowCaptureTarget? target)
+    {
+        if (target is null) return false;
+        var process = target.ProcessName.ToLowerInvariant();
+        if (!(process == "obs" || process.StartsWith("obs ") || process.StartsWith("obs64") || process.StartsWith("obs32")
+              || process.Contains("obs studio") || process == "obs-studio")) return false;
+        var title = target.Title.ToLowerInvariant();
+        return !new[] { "source:", "kaynak:", "(source)", "(kaynak)" }.Any(title.Contains);
+    }
+}
+
 /// <summary>Pencereden okunurken hangi Remote Play uygulaması: hangisi açıksa, yalnız Sony'ninki ya da yalnız chiaki-ng.</summary>
 public enum RemotePlayApp { Automatic, Sony, Chiaki }
 

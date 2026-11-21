@@ -837,6 +837,47 @@
         0.551,
         0.9249
       ]
+    },
+    {
+      "id": "obs-program-1-ingilizce",
+      "file": "gta6-01-lucia.jpg",
+      "source": "youtube.com/watch?v=YDNs_sPEcJc — GTA 6 Walkthrough Part 1 (MKIceAndFire, no commentary) — OBS Program projektörü senaryosu, 1: katman henüz boş",
+      "game": "GTA 6",
+      "session": "obs-program",
+      "subtitle": "Lucia: Could I have another ice water, please?",
+      "subtitleBox": [
+        0.303,
+        0.88,
+        0.697,
+        0.924
+      ]
+    },
+    {
+      "id": "obs-program-2-onceki-ceviri",
+      "file": "obs-program-2-onceki-ceviri.jpg",
+      "source": "youtube.com/watch?v=YDNs_sPEcJc — GTA 6 Walkthrough Part 1 (MKIceAndFire, no commentary) — OBS Program projektörü senaryosu, 2: CouchSubs OBS katmanı önceki satırın çevirisini yukarıda (alttan %20) gösteriyor (sentetik, obs-overlay.html biçemi)",
+      "game": "GTA 6",
+      "session": "obs-program",
+      "subtitle": "Yolanda: You can look out there all day, girl.",
+      "note": "kendi altyazısı (Türkçe) İngilizce bloğa katılmamalı",
+      "signs": [
+        "buzlu",
+        "alabilir"
+      ],
+      "subtitleBox": [
+        0.313,
+        0.879,
+        0.689,
+        0.924
+      ]
+    },
+    {
+      "id": "obs-program-3-ortme",
+      "file": "obs-program-3-ortme.jpg",
+      "source": "youtube.com/watch?v=YDNs_sPEcJc — GTA 6 Walkthrough Part 1 (MKIceAndFire, no commentary) — OBS Program projektörü senaryosu, 3: CouchSubs OBS katmanı çeviriyi İngilizce satırın üstüne örtmüş (sentetik, obs-overlay.html biçemi)",
+      "game": "GTA 6",
+      "session": "obs-program",
+      "note": "karede yalnız kendi altyazımız var: yeniden çevrilmemeli, hiçbir şey gönderilmemeli"
     }
   ],
   "phoneScenarios": [

@@ -722,6 +722,9 @@
                                 </DockPanel>
                                 <TextBlock x:Name="CaptureWindowEmpty" Style="{StaticResource HintText}" Margin="0,8,0,0"
                                            Text="{t:T 'No suitable windows found. Open OBS or the game first, then refresh.'}" />
+                                <!-- OBS'in Program/Önizleme projektörü CouchSubs'ın OBS katmanını da içerir (OwnSubtitles). -->
+                                <TextBlock x:Name="SourceProjectorHint" Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Visibility="Collapsed" Text="{t:T 'If you use the CouchSubs OBS overlay, select the Source Projector of your capture card source as the video source: in OBS, right-click the source › Open Source Projector › New window. The Program and Preview projectors also contain CouchSubs\' own subtitles.'}" />
                             </StackPanel>
                             <!-- Kurulu olanlar "Kurulu", olmayanlar resmi indirme sayfasına giden düğmeyle (ikisi de denenebilir). -->
                             <Grid x:Name="SonyInstallRow" Margin="0,12,0,0">

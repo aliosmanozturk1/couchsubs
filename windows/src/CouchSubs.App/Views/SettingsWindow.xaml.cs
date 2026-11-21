@@ -273,6 +273,7 @@ public partial class SettingsWindow : Window
             }
             CaptureWindowChoice.SelectedItem = selected;
             CaptureWindowEmpty.Visibility = windows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            UpdateSourceProjectorHint(saved);
         }
         finally { refreshingCaptureWindows = false; }
     }
@@ -283,8 +284,15 @@ public partial class SettingsWindow : Window
     {
         if (loading || refreshingCaptureWindows) return;
         if (CaptureWindowChoice.SelectedItem is ComboBoxItem { Tag: WindowCaptureTarget target })
+        {
             Update(s => s with { CaptureWindow = target });
+            UpdateSourceProjectorHint(target);
+        }
     }
+
+    /// <summary>OBS'in Program/Önizleme projektörü seçiliyse Kaynak projektörü önerilir (görüntüde CouchSubs'ın katmanı da var).</summary>
+    private void UpdateSourceProjectorHint(WindowCaptureTarget? target) =>
+        SourceProjectorHint.Visibility = ObsProjector.NeedsSourceProjectorHint(target) ? Visibility.Visible : Visibility.Collapsed;
 
     private void OnAppearance(object sender, SelectionChangedEventArgs e)
     {

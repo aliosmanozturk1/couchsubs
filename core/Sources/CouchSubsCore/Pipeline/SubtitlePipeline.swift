@@ -129,7 +129,14 @@ public final class SubtitlePipeline {
     public var onNoticesChanged: (([ExtraArea]) -> Void)?
     /// Altyazının son okunan satırları ve alanı; ekran yazısı okuyucuları bunlarla altyazıyı dışlar (bkz. `SubtitleEcho`).
     /// Uygulama `SubtitleEcho.shared` verir.
-    public var echo: SubtitleEcho?
+    public var echo: SubtitleEcho? {
+        didSet { echo?.own = own }
+    }
+    /// Gösterilen çeviriler: karede okunan kendi altyazımız (OBS Program projektörü) yeni satır sayılmaz (bkz.
+    /// `OwnSubtitles`). Ekran yazısı okuyucuları da `echo` üstünden bunu kullanır.
+    public let own: OwnSubtitles
+    /// Günlüğe yazılmış son kendi altyazısı (her karede yeniden yazılmasın).
+    private var loggedOwn: String?
     /// Son yazı tanımanın süresi (ms); kare değişmeyip okuma yeniden kullanılınca da o okumanın süresi geçerlidir.
     private var lastReadMs: Int?
     /// İşlenen karenin okunması (satır kararlı olunca isteğe geçer).
@@ -189,7 +196,19 @@ public final class SubtitlePipeline {
         self.scheduler = scheduler
         self.now = clock
         self.stabilizer = SubtitleStabilizer(clock: clock)
+        self.own = OwnSubtitles(clock: clock)
         sessionStart = clock()
+    }
+
+    /// Çeviri ekrana gider; kendi altyazısı süzgeci onu hatırlar.
+    private func send(_ translation: String, source: String, durationMs: Int, box: TextBox?, replaces: Bool) {
+        own.record(translation, source: source, durationMs: durationMs)
+        server.sendSubtitle(translation, durationMs: durationMs, box: box, replaces: replaces)
+    }
+
+    private func clearScreen() {
+        own.cleared()
+        server.clear()
     }
 
     private func log(_ message: @autoclosure () -> String) {
@@ -267,7 +286,14 @@ public final class SubtitlePipeline {
         // Alandaki menü ve köşe göstergeleri de altyazı değildir; yalnız altyazı bloğu çevrilir ve kutusu ona göre olur.
         let place = TextBox(left: region.left, top: region.top, right: region.right, bottom: region.bottom)
         // Konuşma değişirken sabit duran görev/HUD satırı ("Get in the sea plane", GTA 6) altyazı bloğuna katılmaz.
-        let rows = stickyRows.filter(visible.withoutButtonPrompts().withoutOcrNoise().joiningRows(), at: now())
+        // Karede kendi altyazımız (OBS Program projektörü, CouchSubs'ın OBS katmanı) varsa okunmaz (bkz. `OwnSubtitles`).
+        let (seen, ownLines) = own.split(visible, place: place)
+        if let first = ownLines.first, first.text != loggedOwn {
+            loggedOwn = first.text
+            log("kendi altyazısı: \(SubtitleLog.excerpt(ownLines.map(\.text).joined(separator: " "))) karede okundu, yok "
+                + "sayıldı (görüntü kaynağı CouchSubs'ın OBS katmanını da içeriyor; OBS'te Kaynak projektörünü seçin)")
+        }
+        let rows = stickyRows.filter(seen.withoutButtonPrompts().withoutOcrNoise().joiningRows(), at: now())
         for row in stickyRows.newlySticky { log("sabit satır: \(SubtitleLog.excerpt(row)) görev/HUD yazısı sayıldı, çevrilmiyor") }
         if mission.observe(stickyRows.removed, area: place, at: now()) {
             log(mission.region == nil ? "görev satırı kalktı" : "görev satırı kendi yerinde gösteriliyor")
@@ -292,7 +318,10 @@ public final class SubtitlePipeline {
             log("ilk yazı: oturum başından \(now() - sessionStart) ms sonra \(SubtitleLog.excerpt(reading.text))")
         }
         // Bölge izi ve satırın yeri: okuma boş dönse de satırın yeri değişmediyse satır silinmez (parlak zemin).
-        var action = stabilizer.feed(reading.text, signature: panelLeft ? nil : signature, box: reading.box)
+        // Altyazının yerinde yalnız kendi çevirimiz okunduysa (örtme ya da üst üste binen katman) satır kalkmış sayılmaz.
+        let ownOnly = !ownLines.isEmpty && reading.lines.isEmpty && OwnSubtitles.coversLine(ownLines, line: lastBox)
+        var action: StabilizerAction = ownOnly ? .none
+            : stabilizer.feed(reading.text, signature: panelLeft ? nil : signature, box: reading.box)
         // Ekranda duran kötü yeniden okuma her karede not edilir; günlüğe bir kez yazılır.
         if let note = stabilizer.note, note != lastNote {
             lastNote = note
@@ -371,7 +400,7 @@ public final class SubtitlePipeline {
         case .clear:
             lastClearAt = now()
             lineLeft()
-            server.clear()
+            clearScreen()
             log("kalktı: bölge boş okundu, ekran temizlendi")
         case .translate(let source):
             translateOrHold(source, box: box)
@@ -567,7 +596,7 @@ public final class SubtitlePipeline {
         let metrics = measure(request, translation: nil, origin: .pack)
         log(request, "\(SubtitleLog.excerpt(source)) → \(pack)")
         lastShown = request.number
-        server.sendSubtitle(translated, durationMs: 15000, box: request.box, replaces: revisesShown(source))
+        send(translated, source: source, durationMs: 15000, box: request.box, replaces: revisesShown(source))
         lastPair = (source, translated)
         lastBox = request.box
         lastOrigin = "paket"
@@ -584,7 +613,7 @@ public final class SubtitlePipeline {
             lineOnScreen = pair.number
             log("#\(pair.number) geri geldi: \(SubtitleLog.excerpt(source))")
             guard let translation = pair.translation else { return }
-            server.sendSubtitle(translation, durationMs: 15000, box: box, replaces: revisesShown(source))
+            send(translation, source: source, durationMs: 15000, box: box, replaces: revisesShown(source))
             lastPair = (source, translation)
             lastBox = box
             return
@@ -667,8 +696,8 @@ public final class SubtitlePipeline {
             log(request, "\(result), gösterildi\(onScreen ? "" : " (satır kalkmıştı)")")
             lastShown = request.number
             // Satır hâlâ ekrandaysa kalkınca silinir; kalktıysa okunacak kadar gösterilir.
-            server.sendSubtitle(translated, durationMs: onScreen ? 15000 : Self.readingTime(for: translated), box: request.box,
-                                replaces: revisesShown(source))
+            send(translated, source: source, durationMs: onScreen ? 15000 : Self.readingTime(for: translated), box: request.box,
+                 replaces: revisesShown(source))
             lastPair = (source, translated)
             lastBox = request.box
             lastOrigin = "motor"
@@ -754,7 +783,9 @@ public final class SubtitlePipeline {
         mission.reset()
         notices.reset()
         echo?.reset()
-        if stabilizer.reset() == .clear { server.clear() }
+        loggedOwn = nil
+        if stabilizer.reset() == .clear { clearScreen() }
+        own.reset()
     }
 }
 
