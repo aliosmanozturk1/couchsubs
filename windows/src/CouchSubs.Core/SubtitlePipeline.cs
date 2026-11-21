@@ -219,6 +219,18 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     public OwnSubtitles Own { get; } = new(clock ?? DefaultClock);
     /// <summary>Günlüğe yazılmış son kendi altyazısı (her karede yeniden yazılmasın).</summary>
     private string? loggedOwn;
+    /// <summary>
+    /// Karede açık GTA 6 telefonunun ekranındaki satırlar altyazı sayılmaz (<see cref="ScreenPhoneCard.Holds"/>); telefonun
+    /// çevirisi kendi yerindedir (telefon okuyucusu, "Ekranı çevir"). Kullanıcı bildirimleri (X, beta.79, üç kişi):
+    /// telefonun alt kısmındaki mesajlar (telefon ortaya yakın tutulunca bütün sohbet) altyazı sanılıp ekranın ortasında tek
+    /// uzun satır olarak çevriliyor, telefonun çevirisi de altyazının altında kalıyordu. Varsayılan açık (Mac, iPhone ve
+    /// Android ile aynı).
+    /// </summary>
+    public bool FindsPhone { get; set; } = true;
+    private ScreenPhoneCard.Handset? phone;
+    private long? phoneLookedAt;
+    /// <summary>Günlüğe yazılmış son telefon yazısı (her karede yeniden yazılmasın).</summary>
+    private string? loggedPhone;
     /// <summary>Doğruysa bu karede okunan blok kaydedilmez (ekranda menü var, altyazı gönderilmiyor).</summary>
     public Func<bool>? EchoPaused { get; init; }
     /// <summary>Son gösterilen çevirinin nereden geldiği: "paket" ya da "motor" (günlük ve sayım için).</summary>
@@ -265,9 +277,24 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 Write($"ilk kare: oturum başından {now() - sessionStart} ms sonra");
             }
         }
+        // Karede GTA 6 telefonu açıksa ekranındaki satırlar altyazı değildir (FindsPhone); telefon seyrek aranır
+        // (GamePhoneTracker.IntervalMs), bulunan yer sonraki karelere de geçerlidir.
+        bool looksForPhone;
+        lock (gate)
+        {
+            looksForPhone = FindsPhone && (phoneLookedAt is not { } looked || captured < looked
+                                           || captured - looked >= GamePhoneTracker.IntervalMs);
+            if (looksForPhone) phoneLookedAt = captured;
+        }
         // Yazı tanıma uzun sürebilir; çağıranı (arayüzü) bekletmemek için iş parçacığı havuzunda yapılır.
         var (raw, ocrMs, signature) = await Task.Run(() =>
         {
+            if (looksForPhone)
+            {
+                ScreenPhoneCard.Handset? found = null;
+                try { found = ScreenPhoneCard.Phone(frame); } catch { }
+                lock (gate) phone = found;
+            }
             byte[]? signature = null;
             try
             {
@@ -332,6 +359,24 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         // Konuşma değişirken sabit duran görev/HUD satırı ("Get in the sea plane", GTA 6) altyazı bloğuna katılmaz.
         // Karede kendi altyazımız (OBS Program projektörü, CouchSubs'ın OBS katmanı) varsa okunmaz (bkz. OwnSubtitles).
         var (seen, ownLines) = Own.Split(raw, area);
+        ScreenPhoneCard.Handset? handset;
+        lock (gate) handset = FindsPhone ? phone : null;
+        if (handset is not null)
+        {
+            var kept = seen.Lines.Where(line => line.Box is not { } box || !ScreenPhoneCard.Holds(box.PlacedIn(area), handset)).ToList();
+            if (kept.Count < seen.Lines.Count)
+            {
+                var phoneText = string.Join(' ', seen.Lines.Where(line => !kept.Contains(line)).Select(line => line.Text));
+                bool fresh;
+                lock (gate)
+                {
+                    fresh = phoneText != loggedPhone;
+                    loggedPhone = phoneText;
+                }
+                if (fresh) Write($"telefon yazısı: {SubtitleLog.Excerpt(phoneText)} telefonun ekranında, altyazı sayılmadı");
+                seen = new Reading(kept);
+            }
+        }
         if (ownLines.Count > 0)
         {
             var ownText = string.Join(' ', ownLines.Select(line => line.Text));
@@ -1148,6 +1193,9 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             notices.Reset();
             Echo?.Reset();
             loggedOwn = null;
+            phone = null;
+            phoneLookedAt = null;
+            loggedPhone = null;
             if (stabilizer.Reset() == StabilizerAction.Clear) ClearScreen();
             Own.Reset();
         }

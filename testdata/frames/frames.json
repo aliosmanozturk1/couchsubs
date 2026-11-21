@@ -357,6 +357,24 @@
       "note": "telefon açık, uzun mesaj"
     },
     {
+      "id": "gta6-telefon-sohbet-1-tam",
+      "file": "gta6-telefon-sohbet-1.jpg",
+      "source": "youtube.com/watch?v=V2n5XU2lsiM&t=106s — GTA 6 phone features video (anlatıcı yazıları bulanıklaştırıldı)",
+      "game": "GTA 6",
+      "region": [0, 0, 1, 1],
+      "phone": "chat",
+      "note": "telefon açık, altyazı alanı Tam ekran: telefonun mesajları altyazı sayılmamalı (X, beta.79: bütün sohbet ekranın ortasında tek uzun satır)"
+    },
+    {
+      "id": "gta6-telefon-sohbet-2-tam",
+      "file": "gta6-telefon-sohbet-2.jpg",
+      "source": "youtube.com/watch?v=V2n5XU2lsiM&t=202s — GTA 6 phone features video (anlatıcı yazıları bulanıklaştırıldı)",
+      "game": "GTA 6",
+      "region": [0, 0, 1, 1],
+      "phone": "chat",
+      "note": "telefon açık, altyazı alanı Tam ekran: telefonun mesajları altyazı sayılmamalı (X, beta.79: bütün sohbet ekranın ortasında tek uzun satır)"
+    },
+    {
       "id": "gta6-telefon-ana-1",
       "file": "gta6-telefon-ana-1.jpg",
       "source": "youtube.com/watch?v=V2n5XU2lsiM&t=46s — GTA 6 phone features video (anlatıcı yazıları bulanıklaştırıldı)",

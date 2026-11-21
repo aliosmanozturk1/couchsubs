@@ -414,6 +414,9 @@ class TranslationService : Service() {
      * okunmaz (Mac ve Windows ile aynı).
      */
     private val phoneTracker = com.couchsubs.mobile.core.GamePhoneTracker()
+    /** Altyazı okumasının gördüğü telefon (ekranındaki satırlar altyazı sayılmaz) ve en son ne zaman arandığı. */
+    @Volatile private var subtitlePhone: com.couchsubs.mobile.core.ScreenPhoneCard.Handset? = null
+    private var subtitlePhoneAt = Long.MIN_VALUE / 2
     @Volatile private var playsGta6 = false
     @Volatile private var phoneTracking = false
     @Volatile private var phoneOpen = false
@@ -824,10 +827,21 @@ class TranslationService : Service() {
                 val area = region
                 // Karenin geldiği an: gecikme buradan TV'ye gidene kadar ölçülür (hattın saatiyle).
                 val capturedAt = com.couchsubs.mobile.core.monotonicClock()
+                // Karede GTA 6 telefonu açıksa ekranındaki satırlar altyazı değildir; telefon seyrek aranır, bulunan yer
+                // sonraki okumalara da geçerlidir (Mac, Windows: SubtitlePipeline.findsPhone).
+                if (now - subtitlePhoneAt >= com.couchsubs.mobile.core.GamePhoneTracker.INTERVAL_MS || now < subtitlePhoneAt) {
+                    subtitlePhoneAt = now
+                    subtitlePhone = try {
+                        com.couchsubs.mobile.core.ScreenPhoneCard.phone(com.couchsubs.mobile.ocr.LivePhoneImage(frame))
+                    } catch (error: Exception) {
+                        null
+                    }
+                }
+                val phone = subtitlePhone
                 SubtitleReader.copyRegion(frame, area)?.let { pixels ->
                     lastRead = now
                     reading.set(true)
-                    ocr.execute { read(pixels, area, capturedAt) }
+                    ocr.execute { read(pixels, area, capturedAt, phone) }
                 }
             }
             offerGamePhone(frame)
@@ -1221,7 +1235,8 @@ class TranslationService : Service() {
         server?.sendSubtitle(message, 6000)
     }
 
-    private fun read(pixels: RegionPixels, area: CropRegion, capturedAt: Long) {
+    private fun read(pixels: RegionPixels, area: CropRegion, capturedAt: Long,
+                     phone: com.couchsubs.mobile.core.ScreenPhoneCard.Handset? = null) {
         try {
             // Bölge değişmediyse (aynı altyazı duruyor) yeniden okunmaz; son okuma hattı yine besler (kararlılık ve
             // silme saate bağlıdır, Windows'taki ReadScheduler gibi). Aynı okuma en çok 20 kare (hızlı okumada 2) kullanılır.
@@ -1250,7 +1265,7 @@ class TranslationService : Service() {
             // Zemin kalktıysa bu boşluk bir OCR kaçağı değildir: bölge izi verilmez, satır hemen silinir.
             current.process(visible, area.box,
                 if (step?.panelLeft == true) null else com.couchsubs.mobile.core.RegionSignature.of(pixels.nv21, pixels.width, pixels.height),
-                capturedAt, ocrMs)
+                capturedAt, ocrMs, phone)
         } catch (error: java.util.concurrent.TimeoutException) {
             // Okuma süresinde bitmedi: takılan tanıyıcı bırakılır, sonraki kare yenisiyle okunur (yoksa yeni okuma da
             // aynı tanıyıcının arkasında beklerdi; #679).

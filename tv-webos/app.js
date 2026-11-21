@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.69';
+  var APP_VERSION = '0.9.70';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -1388,7 +1388,7 @@
   function regionParts() {
     var parts = [];
     for (var id in regionBoxes) {
-      // Oyun telefonu bilerek altyazının altında kalır; kaydırılmaz.
+      // Oyun telefonu kaydırılmaz; altyazı telefonun üstüne binmez, kendisi kayar (avoidPhone).
       if (!Object.prototype.hasOwnProperty.call(regionBoxes, id) || id === 'game-phone') continue;
       var host = regionBoxes[id];
       var list = host.className === 'region-blocks' ? host.children : [host];
@@ -1400,6 +1400,7 @@
   function avoidRegions() {
     var parts = regionParts();
     for (var i = 0; i < parts.length; i++) setShift(parts[i], 0);
+    avoidPhone();
     var el = $('subtitle');
     if (!el || !$('subtitle-text') || el.className === 'hidden' || !parts.length) return;
     var sub = $('subtitle-text').getBoundingClientRect();
@@ -1417,6 +1418,65 @@
       if (r.top + dy < 0 || r.bottom + dy > height) dy = above ? down : up;
       setShift(parts[j], dy);
     }
+  }
+
+  // --- Altyazı telefonun üstüne binmez ---
+  // Oyun telefonunun çevirisi (game-phone) mesaj balonlarının üstünde, yerinde durur. Altyazı telefonla üst üste
+  // binerse telefonun çevirisi okunmuyordu (X, beta.79: "telefon çevirisi altyazının altında kalıyor"). Altyazı telefonun
+  // yanına (yazının sığdığı, daha geniş boş yana), sığmazsa telefonun üstüne ya da altına kayar; telefon kalkınca yerine
+  // döner. Telefon kutusu balonların toplamıdır.
+  var PHONE_GAP = 0.01;
+
+  function phoneRect() {
+    var host = regionBoxes['game-phone'];
+    if (!host) return null;
+    var list = host.className === 'region-blocks' ? host.children : [host];
+    var rect = null;
+    for (var i = 0; i < list.length; i++) {
+      var r = list[i].getBoundingClientRect();
+      if (!(r.width > 0) || !(r.height > 0)) continue;
+      rect = rect ? { left: Math.min(rect.left, r.left), top: Math.min(rect.top, r.top),
+        right: Math.max(rect.right, r.right), bottom: Math.max(rect.bottom, r.bottom) }
+        : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    }
+    return rect;
+  }
+
+  function setSubtitleShift(dx, dy) {
+    var el = $('subtitle');
+    var value = dx || dy ? 'translate(' + Math.round(dx || 0) + 'px, ' + Math.round(dy || 0) + 'px)' : '';
+    el.style.webkitTransform = value;
+    el.style.transform = value;
+  }
+
+  function avoidPhone() {
+    var el = $('subtitle');
+    if (!el || !$('subtitle-text')) return;
+    setSubtitleShift(0, 0);
+    var phone = el.className === 'hidden' ? null : phoneRect();
+    if (!phone) return;
+    var sub = $('subtitle-text').getBoundingClientRect();
+    if (!(sub.width > 0) || !(sub.height > 0)) return;
+    var width = (document.documentElement.clientWidth || window.innerWidth || 1920) / (window.COUCHSUBS_ZOOM || 1);
+    var height = (document.documentElement.clientHeight || window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1);
+    var gap = Math.max(4, Math.round(width * PHONE_GAP));
+    if (sub.right + gap <= phone.left || sub.left - gap >= phone.right ||
+        sub.bottom + gap <= phone.top || sub.top - gap >= phone.bottom) return;
+    var margin = Math.round(width * SIDE_MIN);
+    var roomLeft = phone.left - gap - margin;
+    var roomRight = width - margin - phone.right - gap;
+    var fitsLeft = sub.width <= roomLeft;
+    var fitsRight = sub.width <= roomRight;
+    if (fitsLeft || fitsRight) {
+      var left = fitsLeft && (!fitsRight || roomLeft >= roomRight);
+      setSubtitleShift(left ? phone.left - gap - sub.right : phone.right + gap - sub.left, 0);
+      return;
+    }
+    // Yanda yer yok: telefonun üstüne, olmazsa altına; ikisi de ekran dışındaysa yerinde kalır.
+    var up = phone.top - gap - sub.bottom;
+    var down = phone.bottom + gap - sub.top;
+    if (sub.top + up >= 0) setSubtitleShift(0, up);
+    else if (sub.bottom + down <= height) setSubtitleShift(0, down);
   }
 
   function hideRegions() {

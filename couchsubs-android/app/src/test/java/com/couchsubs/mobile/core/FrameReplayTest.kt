@@ -44,8 +44,14 @@ class FrameReplayTest {
             val fixture = JSONObject(File(directory, "ocr/$id.json").readText())
             val area = box(fixture.getJSONArray("region"))
             val band = bands.getOrPut(frame.optString("session", id).ifEmpty { id }) { SubtitleBand() }
-            val block = reading(fixture.getJSONArray("lines")).withoutButtonPrompts().withoutOcrNoise().joiningRows()
-                .subtitleBlock(area, band)
+            var lines = reading(fixture.getJSONArray("lines"))
+            fixture.optJSONArray("phone")?.let { p ->
+                // Altyazı hattı gibi: telefonun ekranındaki satırlar okunmaz (SubtitlePipeline.process phone).
+                val handset = ScreenPhoneCard.Handset(
+                    GamePhoneGeometry.Pose(p.getDouble(0), p.getDouble(1), p.getDouble(2), p.getDouble(3)), p.getDouble(4))
+                lines = Reading(lines.lines.filter { line -> line.box?.let { !ScreenPhoneCard.holds(it.placedIn(area), handset) } ?: true })
+            }
+            val block = lines.withoutButtonPrompts().withoutOcrNoise().joiningRows().subtitleBlock(area, band)
             band.record(block, area)
             assertEquals(id, expected.getString(id), block.text)
         }

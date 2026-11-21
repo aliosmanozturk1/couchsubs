@@ -432,13 +432,42 @@
 
   // Ekran yazısı (görev satırı, ek alan) ile altyazı üst üste binmesin. Altyazının yeri kullanıcının seçimidir, değişmez:
   // çakışan ekran yazısı kutusu yalnız gerektiği kadar (küçük boşlukla) altyazıdan uzağa kayar (TV: avoidRegions).
-  // Oyun telefonu bilerek altyazının altında kalır, kaydırılmaz.
+  // Oyun telefonu kaydırılmaz; altyazı telefonun üstüne binmez, kendisi telefonun yanına (sığmazsa üstüne/altına) kayar
+  // (avoidPhone; TV ile aynı).
   var setApart = true;
   function shiftBox(el, dy) {
     var base = el.dataset.baseTransform !== undefined ? el.dataset.baseTransform : (el.dataset.baseTransform = el.style.transform || '');
     el.style.transform = dy ? (base + ' translateY(' + Math.round(dy) + 'px)').trim() : base;
   }
+  function avoidPhone() {
+    wrap.style.transform = '';
+    var phone = regions['game-phone'];
+    if (!phone || !line.classList.contains('on')) return;
+    var rect = null;
+    Array.prototype.forEach.call(phone.className === 'phone-blocks' ? phone.children : [phone], function (el) {
+      var r = el.getBoundingClientRect();
+      if (!(r.width > 0) || !(r.height > 0)) return;
+      rect = rect ? { left: Math.min(rect.left, r.left), top: Math.min(rect.top, r.top), right: Math.max(rect.right, r.right),
+        bottom: Math.max(rect.bottom, r.bottom) } : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    });
+    var sub = line.getBoundingClientRect();
+    if (!rect || !(sub.width > 0) || !(sub.height > 0)) return;
+    var w = window.innerWidth || 1920, h = window.innerHeight || 1080, gap = Math.max(4, Math.round(w * 0.01));
+    if (sub.right + gap <= rect.left || sub.left - gap >= rect.right || sub.bottom + gap <= rect.top || sub.top - gap >= rect.bottom) return;
+    var margin = Math.round(w * 0.02), roomLeft = rect.left - gap - margin, roomRight = w - margin - rect.right - gap;
+    var fitsLeft = sub.width <= roomLeft, fitsRight = sub.width <= roomRight, dx = 0, dy = 0;
+    if (fitsLeft || fitsRight) {
+      dx = fitsLeft && (!fitsRight || roomLeft >= roomRight) ? rect.left - gap - sub.right : rect.right + gap - sub.left;
+    } else if (sub.top + rect.top - gap - sub.bottom >= 0) {
+      dy = rect.top - gap - sub.bottom;
+    } else if (sub.bottom + rect.bottom + gap - sub.top <= h) {
+      dy = rect.bottom + gap - sub.top;
+    }
+    if (dx || dy) wrap.style.transform = 'translate(' + Math.round(dx) + 'px, ' + Math.round(dy) + 'px)';
+  }
+
   function avoidRegions() {
+    avoidPhone();
     var parts = Array.prototype.slice.call(regionsBox.querySelectorAll('.region:not(#phone-region), .phone.auto'));
     parts.forEach(function (el) { shiftBox(el, 0); });
     if (!line.classList.contains('on') || !parts.length) return;

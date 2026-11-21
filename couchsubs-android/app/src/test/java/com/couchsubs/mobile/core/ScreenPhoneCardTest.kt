@@ -344,4 +344,16 @@ class ScreenPhoneCardTest {
         assertTrue(ScreenTranslation.isSameScreen("", ""))
         assertFalse(ScreenTranslation.isSameScreen("", donnie))
     }
+
+    /** Telefonun ekranındaki satırlar altyazı hattına girmez; telefonun önünden/altından geçen geniş altyazı girer (Mac ile aynı). */
+    @Test
+    fun holdsOnlyTheLinesOnThePhoneScreen() {
+        val phone = handset(listOf(0.50375, 0.12444, 0.46125, 0.68444))
+        assertTrue(ScreenPhoneCard.holds(TextBox(0.39415, 0.47436, 0.54888, 0.52616), phone))
+        assertTrue(ScreenPhoneCard.holds(TextBox(0.47965, 0.17571, 0.5218, 0.19897), phone))
+        assertTrue(ScreenPhoneCard.holds(TextBox(0.3974, 0.74924, 0.4632, 0.79995), phone))
+        assertFalse(ScreenPhoneCard.holds(TextBox(0.30, 0.86, 0.70, 0.91), phone))
+        assertFalse(ScreenPhoneCard.holds(TextBox(0.46, 0.90, 0.54, 0.94), phone))
+        assertFalse(ScreenPhoneCard.holds(TextBox(0.949, 0.93197, 0.99577, 0.95692), phone))
+    }
 }

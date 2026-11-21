@@ -114,6 +114,8 @@ class SubtitlePipeline(
     val own = OwnSubtitles(now)
     /** Günlüğe yazılmış son kendi altyazısı (her karede yeniden yazılmasın). */
     private var loggedOwn: String? = null
+    /** Günlüğe yazılmış son telefon yazısı (her karede yeniden yazılmasın). */
+    private var loggedPhone: String? = null
     /** Son gönderilen çevirinin İngilizce satırının yeri. */
     private var lastSentBox: TextBox? = null
     private val stabilizer = SubtitleStabilizer(clock = now)
@@ -219,13 +221,27 @@ class SubtitlePipeline(
      * Bir karenin okuması ve okunan alanın karedeki yeri. [signature]: bölgenin izi ([RegionSignature.of]); okuma boş
      * dönse de satırın yeri değişmediyse satır silinmez (parlak zemin).
      */
-    fun process(raw: Reading, area: TextBox, signature: ByteArray? = null, capturedAt: Long? = null, ocrMs: Int? = null) {
+    fun process(raw: Reading, area: TextBox, signature: ByteArray? = null, capturedAt: Long? = null, ocrMs: Int? = null,
+                phone: ScreenPhoneCard.Handset? = null) {
         frameAt = capturedAt
         frameOcrMs = ocrMs
         // Kumanda ipuçları ve yazı tanıma çöpleri çevrilmez; yalnız altyazı bloğu çevrilir.
         // Konuşma değişirken sabit duran görev/HUD satırı ("Get in the sea plane", GTA 6) altyazı bloğuna katılmaz.
         // Karede kendi altyazımız (OBS Program projektörü, CouchSubs'ın OBS katmanı) varsa okunmaz (bkz. [OwnSubtitles]).
-        val (seen, ownLines) = own.split(raw, area)
+        var (seen, ownLines) = own.split(raw, area)
+        // Karede açık GTA 6 telefonunun ekranındaki satırlar altyazı değildir ([ScreenPhoneCard.holds]); telefonun çevirisi
+        // kendi yerindedir. Kullanıcı bildirimleri (X, beta.79): telefonun alt kısmındaki mesajlar (telefon ortaya yakın
+        // tutulunca bütün sohbet) altyazı sanılıp ekranın ortasında tek uzun satır olarak çevriliyordu (Mac, Windows ile aynı).
+        if (phone != null) {
+            val kept = seen.lines.filter { line -> line.box?.let { !ScreenPhoneCard.holds(it.placedIn(area), phone) } ?: true }
+            if (kept.size < seen.lines.size) {
+                val text = seen.lines.filter { it !in kept }.joinToString(" ") { it.text }
+                val fresh = synchronized(lock) { (text != loggedPhone).also { loggedPhone = text } }
+                val excerpt = if (text.length > 120) text.take(120) + "…" else text
+                if (fresh) onLog?.invoke("telefon yazısı: \"$excerpt\" telefonun ekranında, altyazı sayılmadı")
+                seen = Reading(kept)
+            }
+        }
         if (ownLines.isNotEmpty()) {
             val fresh = synchronized(lock) { (ownLines[0].text != loggedOwn).also { loggedOwn = ownLines[0].text } }
             val excerpt = ownLines.joinToString(" ") { it.text }.let { if (it.length > 120) it.take(120) + "…" else it }
@@ -660,6 +676,7 @@ class SubtitlePipeline(
         notices.reset()
         echo?.reset()
         loggedOwn = null
+        loggedPhone = null
         if (stabilizer.reset() == StabilizerAction.Clear) clearScreen()
         own.reset()
         lastSentBox = null

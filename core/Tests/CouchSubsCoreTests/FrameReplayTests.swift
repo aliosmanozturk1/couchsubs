@@ -21,6 +21,8 @@ final class FrameReplayTests: XCTestCase {
         let id: String
         let region: [Double]
         let lines: [Line]
+        /// Karedeki GTA 6 telefonu [üstX, üstY, altX, altY, kare eni/boyu]; ekranındaki satırlar altyazı hattına girmez.
+        let phone: [Double]?
     }
 
     static var directory: URL {
@@ -40,10 +42,17 @@ final class FrameReplayTests: XCTestCase {
             let url = directory.appendingPathComponent("ocr/\(frame.id).json")
             let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
             let area = box(fixture.region)
-            let reading = Reading(lines: fixture.lines.map { line in
+            var reading = Reading(lines: fixture.lines.map { line in
                 TextLine(line.text, box: line.box.map(box), confidence: line.confidence,
                          words: line.words?.map { TextWord($0.text, box: box($0.box)) })
             })
+            if let p = fixture.phone, p.count == 5 {
+                // Altyazı hattı gibi: telefonun ekranındaki satırlar okunmaz (`SubtitlePipeline.findsPhone`).
+                let handset = ScreenPhoneCard.Handset(pose: GamePhoneGeometry.Pose(topX: p[0], topY: p[1], bottomX: p[2], bottomY: p[3]), aspect: p[4])
+                reading = Reading(lines: reading.lines.filter { line in
+                    line.box.map { !ScreenPhoneCard.holds($0.placed(in: area), handset: handset) } ?? true
+                })
+            }
             let key = frame.session ?? frame.id
             var band = bands[key] ?? SubtitleBand()
             let block = reading.withoutButtonPrompts().withoutOcrNoise().joiningRows().subtitleBlock(in: area, band: band)

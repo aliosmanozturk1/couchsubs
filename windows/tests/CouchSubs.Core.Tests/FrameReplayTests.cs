@@ -50,8 +50,15 @@ public class FrameReplayTests
             var area = Box(fixture.RootElement.GetProperty("region"));
             var key = frame.TryGetProperty("session", out var session) ? session.GetString()! : id;
             if (!bands.TryGetValue(key, out var band)) bands[key] = band = new SubtitleBand();
-            var block = Lines(fixture.RootElement.GetProperty("lines")).WithoutButtonPrompts().WithoutOcrNoise().JoiningRows()
-                .SubtitleBlock(area, band);
+            var reading = Lines(fixture.RootElement.GetProperty("lines"));
+            if (fixture.RootElement.TryGetProperty("phone", out var phone))
+            {
+                // Altyazı hattı gibi: telefonun ekranındaki satırlar okunmaz (SubtitlePipeline.FindsPhone).
+                var p = phone.EnumerateArray().Select(v => v.GetDouble()).ToArray();
+                var handset = new ScreenPhoneCard.Handset(new GamePhoneGeometry.Pose(p[0], p[1], p[2], p[3]), p[4]);
+                reading = new Reading(reading.Lines.Where(line => line.Box is not { } b || !ScreenPhoneCard.Holds(b.PlacedIn(area), handset)));
+            }
+            var block = reading.WithoutButtonPrompts().WithoutOcrNoise().JoiningRows().SubtitleBlock(area, band);
             band.Record(block, area);
             var expected = golden.RootElement.GetProperty(id).GetString();
             Assert.True(expected == block.Text, $"{id}: Mac \"{expected}\", Windows \"{block.Text}\"");

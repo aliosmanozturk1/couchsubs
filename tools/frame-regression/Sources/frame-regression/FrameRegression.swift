@@ -73,8 +73,14 @@ struct Main {
             guard let image = Images.load(directory.appendingPathComponent(frame.file)) else { continue }
             let region = frame.cropRegion
             let reading = try reader.readLines(RegionCropper.crop(image, to: region), deep: false)
-            let fixture = OcrFixture(id: frame.id, region: [region.left, region.top, region.right, region.bottom],
+            var fixture = OcrFixture(id: frame.id, region: [region.left, region.top, region.right, region.bottom],
                                      lines: reading.lines.map(OcrFixture.Line.init))
+            // Karede GTA 6 telefonu: ekranındaki satırlar altyazı hattına girmez (`ScreenPhoneCard.holds`).
+            if let pose = GamePhoneGeometry.locate(image),
+               GamePhoneTracker.plausible(pose.bounds, width: image.width, height: image.height) {
+                fixture.phone = [pose.topX, pose.topY, pose.bottomX, pose.bottomY, Double(image.width) / Double(image.height)]
+                    .map(OcrFixture.round)
+            }
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             try encoder.encode(fixture).write(to: out.appendingPathComponent("\(frame.id).json"))
@@ -135,6 +141,14 @@ struct Main {
             print(String(format: "[%.3f %.3f %.3f %.3f] c=%.2f  %@", b.left, b.top, b.right, b.bottom, line.confidence ?? -1, line.text))
         }
         if let handset = ScreenPhoneCard.phone(in: image) {
+            let b = handset.bounds
+            print(String(format: "telefon kutusu: [%.3f %.3f %.3f %.3f]", b.left, b.top, b.right, b.bottom))
+            for line in reading.lines {
+                guard let box = line.box else { continue }
+                let f = handset.flat(box)
+                // Düz ekranda yeri (0–1 telefonun ekranı); önceki etiketin çekirdeğiyle de derlenir.
+                print(String(format: "  düz [%.2f %.2f %.2f %.2f]  %@", f.left, f.top, f.right, f.bottom, line.text))
+            }
             let groups = ScreenTranslation.groups(reading, frame: image, wholeScreen: true, handset: handset)
             print("telefon: " + groups.compactMap { group in group.phone.map { "\($0.role.rawValue)=\(group.paragraphs.joined(separator: " / "))" } }
                 .joined(separator: " | "))
@@ -204,6 +218,8 @@ struct OcrFixture: Encodable {
     var id: String
     var region: [Double]
     var lines: [Line]
+    /// Karedeki GTA 6 telefonu [üstX, üstY, altX, altY, kare eni/boyu] (`GamePhoneGeometry.Pose`); yoksa yazılmaz.
+    var phone: [Double]?
 
     static func rounded(_ box: TextBox) -> [Double] {
         [box.left, box.top, box.right, box.bottom].map(round)

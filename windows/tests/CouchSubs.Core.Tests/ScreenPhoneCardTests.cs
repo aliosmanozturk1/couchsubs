@@ -434,6 +434,22 @@ public class ScreenPhoneCardTests
         }
     }
 
+    /// <summary>
+    /// Telefonun ekranındaki satırlar altyazı hattına girmez; telefonun önünden/altından geçen geniş altyazı girer
+    /// (gerçek kare gta6-telefon-sohbet-2'nin telefonu; Mac ile aynı).
+    /// </summary>
+    [Fact]
+    public void HoldsOnlyTheLinesOnThePhoneScreen()
+    {
+        var phone = Handset([0.50375, 0.12444, 0.46125, 0.68444]);
+        Assert.True(ScreenPhoneCard.Holds(Box([0.39415, 0.47436, 0.54888, 0.52616]), phone));
+        Assert.True(ScreenPhoneCard.Holds(Box([0.47965, 0.17571, 0.5218, 0.19897]), phone));
+        Assert.True(ScreenPhoneCard.Holds(Box([0.3974, 0.74924, 0.4632, 0.79995]), phone));
+        Assert.False(ScreenPhoneCard.Holds(Box([0.30, 0.86, 0.70, 0.91]), phone));
+        Assert.False(ScreenPhoneCard.Holds(Box([0.46, 0.90, 0.54, 0.94]), phone));
+        Assert.False(ScreenPhoneCard.Holds(Box([0.949, 0.93197, 0.99577, 0.95692]), phone));
+    }
+
     private sealed class Fixed(string text) : ITextTranslator
     {
         public Task<string> TranslateAsync(string source, CancellationToken cancellationToken = default) => Task.FromResult(text);

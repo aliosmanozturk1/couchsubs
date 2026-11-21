@@ -138,6 +138,15 @@ public final class SubtitlePipeline {
     public let own: OwnSubtitles
     /// Günlüğe yazılmış son kendi altyazısı (her karede yeniden yazılmasın).
     private var loggedOwn: String?
+    /// Günlüğe yazılmış son telefon yazısı (her karede yeniden yazılmasın).
+    private var loggedPhone: String?
+    /// Karede açık GTA 6 telefonunun ekranındaki satırlar altyazı sayılmaz (`ScreenPhoneCard.holds`); telefonun çevirisi
+    /// kendi yerindedir (telefon okuyucusu, "Ekranı çevir"). Kullanıcı bildirimleri (X, beta.79, üç kişi): telefonun alt
+    /// kısmındaki mesajlar (telefon ortaya yakın tutulunca bütün sohbet) altyazı sanılıp ekranın ortasında tek uzun satır
+    /// olarak çevriliyor, telefonun çevirisi de altyazının altında kalıyordu. Varsayılan açık (Windows ve Android ile aynı).
+    public var findsPhone = true
+    private var phone: ScreenPhoneCard.Handset?
+    private var phoneLookedAt: Int?
     /// Son yazı tanımanın süresi (ms); kare değişmeyip okuma yeniden kullanılınca da o okumanın süresi geçerlidir.
     private var lastReadMs: Int?
     /// İşlenen karenin okunması (satır kararlı olunca isteğe geçer).
@@ -234,10 +243,16 @@ public final class SubtitlePipeline {
         // Yazı tanıma uzun sürebilir; arayüz takılmasın diye ana iş parçacığının dışında yapılır.
         let reader = self.reader
         let watchSubtitleBackground = self.watchSubtitleBackground
-        let (area, signature) = await Task.detached(priority: .userInitiated) {
+        // Karede GTA 6 telefonu açıksa ekranındaki satırlar altyazı değildir (`findsPhone`); telefon seyrek aranır
+        // (`GamePhoneTracker.intervalMs`), bulunan yer sonraki karelere de geçerlidir.
+        let looks = findsPhone && phoneLookedAt.map { captured < $0 || captured - $0 >= GamePhoneTracker.intervalMs } ?? findsPhone
+        if looks { phoneLookedAt = captured }
+        let (area, signature, found) = await Task.detached(priority: .userInitiated) {
             let area = RegionCropper.crop(frame, to: region)
-            return (area, RegionCropper.signature(of: area))
+            return (area, RegionCropper.signature(of: area), looks ? ScreenPhoneCard.phone(in: frame) : nil)
         }.value
+        if looks { phone = found }
+        let handset = findsPhone ? phone : nil
         guard session == startedSession else { return }
         var visible = lastOcrReading
         var panelLeft = false
@@ -288,7 +303,18 @@ public final class SubtitlePipeline {
         let place = TextBox(left: region.left, top: region.top, right: region.right, bottom: region.bottom)
         // Konuşma değişirken sabit duran görev/HUD satırı ("Get in the sea plane", GTA 6) altyazı bloğuna katılmaz.
         // Karede kendi altyazımız (OBS Program projektörü, CouchSubs'ın OBS katmanı) varsa okunmaz (bkz. `OwnSubtitles`).
-        let (seen, ownLines) = own.split(visible, place: place)
+        var (seen, ownLines) = own.split(visible, place: place)
+        if let phone = handset {
+            let kept = seen.lines.filter { line in line.box.map { !ScreenPhoneCard.holds($0.placed(in: place), handset: phone) } ?? true }
+            if kept.count < seen.lines.count {
+                let text = seen.lines.filter { !kept.contains($0) }.map(\.text).joined(separator: " ")
+                if text != loggedPhone {
+                    loggedPhone = text
+                    log("telefon yazısı: \(SubtitleLog.excerpt(text)) telefonun ekranında, altyazı sayılmadı")
+                }
+                seen = Reading(lines: kept)
+            }
+        }
         if let first = ownLines.first, first.text != loggedOwn {
             loggedOwn = first.text
             log("kendi altyazısı: \(SubtitleLog.excerpt(ownLines.map(\.text).joined(separator: " "))) karede okundu, yok "
@@ -807,6 +833,9 @@ public final class SubtitlePipeline {
         sawFrame = false
         sawText = false
         lastNote = nil
+        phone = nil
+        phoneLookedAt = nil
+        loggedPhone = nil
         session += 1
         lineOnScreen = nil
         held = nil
