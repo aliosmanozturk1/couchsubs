@@ -471,6 +471,26 @@ class XboxSessionMachineTest {
             XboxSessionMachine.stopKind(XboxError.CONSOLE_UNAVAILABLE, "Xbox'tan 20 sn içinde görüntü gelmedi"))
     }
 
+    @Test fun connectionsWithoutPictureStopAfterTwoAttempts() {
+        // Eskiden görüntüsüz her bağlantı ~60 sn sürüp dört kez açılıp kapanıyordu (Xbox'ta "uzaktan oynatma başlatıldı / durduruldu").
+        val m = XboxSessionMachine()
+        assertEquals(XboxSessionMachine.Action.Retry(5000), m.fail(XboxError.NO_FIRST_FRAME, "Xbox'tan 30 sn içinde görüntü gelmedi"))
+        assertEquals(XboxSessionMachine.Action.Retry(null), m.fail(XboxError.NO_FIRST_FRAME, "Xbox WebRTC bağlantısı kesildi (CLOSED)"))
+        assertFalse((m.phase as XboxSessionMachine.Phase.Failed).willRetry)
+        assertEquals(XboxSessionMachine.StopKind.NO_PICTURE,
+            XboxSessionMachine.stopKind(XboxError.NO_FIRST_FRAME, "Xbox WebRTC bağlantısı kesildi (CLOSED)"))
+    }
+
+    @Test fun pictureResetsTheNoPictureStreak() {
+        val m = XboxSessionMachine()
+        assertEquals(XboxSessionMachine.Action.Retry(5000), m.fail(XboxError.NO_FIRST_FRAME, "görüntü yok"))
+        m.start(); m.played(); m.status("Provisioned", null); m.streaming()
+        assertEquals(XboxSessionMachine.Action.Retry(15000), m.fail(XboxError.NO_PICTURE, "kesildi"))
+        m.start(); m.played(); m.status("Provisioned", null)
+        assertEquals(XboxSessionMachine.Action.Retry(45000), m.fail(XboxError.NO_FIRST_FRAME, "görüntü yok"))
+        assertEquals(30_000L, XboxFirstFrameWatch.FIRST_FRAME_LIMIT_MS)
+    }
+
     @Test fun shortReasonIsOneLineAndBounded() {
         assertEquals("NETWORK", XboxSessionMachine.shortReason("  ", "NETWORK"))
         assertEquals("a b", XboxSessionMachine.shortReason("a\n  b", "x"))

@@ -1272,6 +1272,7 @@ class TranslationService : Service() {
         XboxError.NETWORK -> R.string.xbox_error_network
         XboxError.SERVICE -> R.string.xbox_error_service
         XboxError.NO_PICTURE -> R.string.xbox_error_no_picture
+        XboxError.NO_FIRST_FRAME -> R.string.xbox_error_no_first_frame
     })
 
     private fun describe(state: SessionState): String =

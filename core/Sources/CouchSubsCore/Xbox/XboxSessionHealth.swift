@@ -26,7 +26,8 @@ public struct XboxKeepalive {
 
 /// Yayının neden durduğu (kullanıcıya gösterilen metni seçer).
 public enum XboxStopKind: Equatable, Sendable {
-    case busy, consoleUnavailable, other
+    /// `noPicture`: son bağlantılarda Xbox tek kare göndermedi (Windows XboxStopKind.NoPicture, Android NO_PICTURE).
+    case busy, consoleUnavailable, noPicture, other
 }
 
 /// Xbox yayını durunca günlük satırı ve kullanıcıya gösterilen metnin türü.
@@ -37,6 +38,7 @@ public enum XboxStop {
     /// Ham nedene bakılır: ilk kare gelmeyince de hata türü `consoleUnavailable` olur ama o durumda "Xbox'a ulaşılamadı"
     /// yanlış olur (Android'deki `stopKind` ile aynı).
     public static func classify(_ reason: String?, kind: XboxErrorKind? = nil) -> XboxStopKind {
+        if kind == .noFirstFrame { return .noPicture }
         let text = reason ?? ""
         func has(_ word: String) -> Bool { text.range(of: word, options: .caseInsensitive) != nil }
         if kind == .busy || has("InUse") || has("Busy") || has("AlreadyStreaming") { return .busy }
@@ -76,6 +78,9 @@ public struct XboxWatchStep: Equatable, Sendable {
 /// istenir (xbox-xcloud-player Channel/Control.ts `requestKeyframeRequest`) ve bağlantıdan 10 sn sonra, sonra 10 sn'de
 /// bir tanı satırı yazılır.
 public struct XboxFirstFrameWatch {
+    /// Bağlantıdan sonra ilk kare için beklenen en uzun süre; dolunca bağlantı `.noFirstFrame` ile kapatılır, Xbox'ın
+    /// kendisi kapatması (~60 sn) beklenmez (Windows ve Android'de de 30 sn).
+    public static let firstFrameLimitMs = 30_000
     public static let keyframeIntervalMs = 2500
     /// Bu süreden sonra anahtar kare istenmez; tanı satırları sürer.
     public static let keyframeWindowMs = 20_000
@@ -198,7 +203,8 @@ public struct XboxStat {
 
 /// WebRTC getStats özetini tek günlük satırına çevirir; Windows'taki XboxStreamStats ile aynı biçim.
 public enum XboxStreamStats {
-    public static let types: Set<String> = ["inbound-rtp", "candidate-pair", "local-candidate", "remote-candidate", "transport"]
+    /// `codec`: anlaşılan görüntü kodeği tanı satırına girer.
+    public static let types: Set<String> = ["inbound-rtp", "candidate-pair", "local-candidate", "remote-candidate", "transport", "codec"]
 
     /// Telefonda ve Mac'te video öğesi yok: görüntü parçasının durumu (LIVE, ENDED).
     public static func picture(trackState: String) -> String { "görüntü parça \(trackState)" }
@@ -208,7 +214,11 @@ public enum XboxStreamStats {
         if let video = stats.first(where: { $0.type == "inbound-rtp" && (text($0, "kind") ?? text($0, "mediaType")) == "video" }) {
             line += "video paket \(number(video, "packetsReceived")), bayt \(number(video, "bytesReceived")), kayıp \(number(video, "packetsLost")), "
             line += "çözülen \(number(video, "framesDecoded")), düşen \(number(video, "framesDropped")), anahtar kare \(number(video, "keyFramesDecoded")), "
-            line += "PLI \(number(video, "pliCount")), çözücü \(text(video, "decoderImplementation") ?? "?"); "
+            line += "PLI \(number(video, "pliCount")), çözücü \(text(video, "decoderImplementation") ?? "?")"
+            if let codec = byId(stats, text(video, "codecId")) {
+                line += ", kodek \(text(codec, "mimeType") ?? "?") \(text(codec, "sdpFmtpLine") ?? "")".trimmingCharacters(in: .whitespaces)
+            }
+            line += "; "
         } else {
             line += "video yok; "
         }

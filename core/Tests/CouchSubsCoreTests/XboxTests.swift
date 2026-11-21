@@ -325,6 +325,24 @@ final class XboxSessionMachineTests: XCTestCase {
         XCTAssertEqual(m.fail(.network, "kopma"), .retry(delayMs: 15000))
     }
 
+    /// Eskiden görüntüsüz her bağlantı ~60 sn sürüp dört kez açılıp kapanıyordu (Xbox'ta "uzaktan oynatma başlatıldı / durduruldu").
+    func testConnectionsWithoutPictureStopAfterTwoAttempts() {
+        var m = XboxSessionMachine()
+        XCTAssertEqual(m.fail(.noFirstFrame, "görüntü yok"), .retry(delayMs: 5000))
+        XCTAssertEqual(m.fail(.noFirstFrame, "görüntü yok"), .retry(delayMs: nil))
+        if case let .failed(kind, _, willRetry, _) = m.phase { XCTAssertEqual(kind, .noFirstFrame); XCTAssertFalse(willRetry) } else { XCTFail() }
+        XCTAssertEqual(XboxStop.classify("Xbox WebRTC bağlantısı kesildi", kind: .noFirstFrame), .noPicture)
+    }
+
+    func testPictureResetsTheNoPictureStreak() {
+        var m = XboxSessionMachine()
+        XCTAssertEqual(m.fail(.noFirstFrame, "görüntü yok"), .retry(delayMs: 5000))
+        _ = m.start(); _ = m.played(); _ = m.status("Provisioned", errorDetails: nil); _ = m.streaming()
+        XCTAssertEqual(m.fail(.noPicture, "kesildi"), .retry(delayMs: 15000))
+        _ = m.start(); _ = m.played(); _ = m.status("Provisioned", errorDetails: nil)
+        XCTAssertEqual(m.fail(.noFirstFrame, "görüntü yok"), .retry(delayMs: 45000))
+    }
+
     func testOutOfOrderIgnored() {
         var m = XboxSessionMachine()
         XCTAssertEqual(m.played(), .nothing)

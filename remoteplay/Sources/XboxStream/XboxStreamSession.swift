@@ -28,7 +28,8 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
 
     private static let iceGatherMs = 5000
     private static let keepaliveSeconds: UInt64 = 30
-    private static let firstFrameSeconds: TimeInterval = 20
+    private static let firstFrameSeconds = TimeInterval(XboxFirstFrameWatch.firstFrameLimitMs / 1000)
+    private static let reconnectReason = "Yeniden bağlanılıyor"
     /// Okuma saniyede birkaç kez yapılır; her kareyi CGImage'a çevirmeye gerek yok.
     private static let frameInterval: TimeInterval = 0.066
     /// Kare onayları oynatıcıdaki gibi 16 ms'de bir paketlenir (Input.ts `_inputInterval`).
@@ -140,7 +141,7 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
 
     /// Uygulama öne gelince: süren el sıkışma ya da bağlantı kapatılıp baştan açılır.
     public func reconnectNow() {
-        locked { if endReason == nil { endReason = "Yeniden bağlanılıyor" } }
+        locked { if endReason == nil { endReason = Self.reconnectReason } }
     }
 
     private var stopped: Bool { locked { machine.phase == .stopped } }
@@ -181,7 +182,11 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
                         break loop
                     }
                 }
-                if !Task.isCancelled && !stopped { throw XboxError(.network, locked { endReason } ?? "Xbox görüntü bağlantısı kapandı") }
+                if !Task.isCancelled && !stopped {
+                    let (reason, noFirstFrame) = locked { (endReason, connectedAt > 0 && framesReceived == 0 && endReason != Self.reconnectReason) }
+                    // Bağlantı kuruldu ama Xbox tek kare göndermeden kapattı: "görüntü gelmedi" sayılır (iki bağlantıda durulur).
+                    throw XboxError(noFirstFrame ? .noFirstFrame : .network, reason ?? "Xbox görüntü bağlantısı kapandı")
+                }
             } catch is CancellationError {
             } catch let error as XboxError {
                 action = decided ?? locked { machine.fail(error.kind, error.message) }
@@ -217,6 +222,10 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         locked { lastError = "\(kind.rawValue): \(detail)" }
         guard !stopped else { return }
         log("kopma (\(kind.rawValue)): \(detail)")
+        if kind == .noFirstFrame {
+            log("Xbox görüntü göndermedi: bağlantı kuruldu ama tek kare gelmedi. Xbox'ta Ayarlar › Cihazlar ve bağlantılar › "
+                + "Uzak özellikler açık mı, Xbox kablolu mu? Tanı satırlarında video bayt 0 ise Xbox hiç görüntü kodlamıyor")
+        }
         let (phase, delays) = locked { (machine.phase, machine.retryDelaysMs) }
         if case let .failed(_, _, true, attempt) = phase, attempt > 0 {
             log("yeniden deneme \(attempt)/\(delays.count): \(delays[attempt - 1] / 1000) sn sonra")
@@ -343,7 +352,7 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         while !Task.isCancelled && !stopped {
             if locked({ endReason }) != nil { return }
             if locked({ framesReceived }) == 0 && Date().timeIntervalSince(negotiatedAt) > Self.firstFrameSeconds {
-                throw XboxError(.consoleUnavailable, "Xbox'tan \(Int(Self.firstFrameSeconds)) sn içinde görüntü gelmedi")
+                throw XboxError(.noFirstFrame, "Xbox'tan \(Int(Self.firstFrameSeconds)) sn içinde görüntü gelmedi")
             }
             try checkPicture()
             try await Task.sleep(nanoseconds: 1_000_000_000)

@@ -57,8 +57,8 @@ class XboxStreamSession(
         const val TAG = "CouchSubsXbox"
         const val ICE_GATHER_MS = 5000L
         const val KEEPALIVE_MS = 30_000L
-        /** El sıkışmadan sonra bu sürede kare gelmezse oturum yeniden açılır. */
-        const val FIRST_FRAME_MS = 20_000L
+        /** El sıkışmadan sonra bu sürede kare gelmezse bağlantı "görüntü gelmedi" nedeniyle kapatılır. */
+        const val FIRST_FRAME_MS = XboxFirstFrameWatch.FIRST_FRAME_LIMIT_MS
         /** OCR saniyede beş kez okur; her kareyi I420'ye çevirmeye gerek yok. */
         const val FRAME_INTERVAL_MS = 66L
         /** Kare onayları oynatıcıdaki gibi 16 ms'de bir paketlenir (Input.ts `_inputInterval`). */
@@ -169,7 +169,11 @@ class XboxStreamSession(
                         else -> break@loop
                     }
                 }
-                if (!stopped.get()) throw XboxException(XboxError.NETWORK, endReason ?: "Xbox görüntü bağlantısı kapandı")
+                if (!stopped.get()) {
+                    // Bağlantı kuruldu ama Xbox tek kare göndermeden kapattı: "görüntü gelmedi" sayılır (iki bağlantıda durulur).
+                    val noFirstFrame = connectedAt > 0 && frameSession?.let { frameCounter.framesInSession(it) } == 0L
+                    throw XboxException(if (noFirstFrame) XboxError.NO_FIRST_FRAME else XboxError.NETWORK, endReason ?: "Xbox görüntü bağlantısı kapandı")
+                }
             } catch (error: InterruptedException) {
                 if (stopped.get()) break
             } catch (error: XboxException) {
@@ -214,6 +218,10 @@ class XboxStreamSession(
         lastError = "$kind: $detail"
         if (stopped.get()) return
         log("kopma ($kind): $detail")
+        if (kind == XboxError.NO_FIRST_FRAME) {
+            log("Xbox görüntü göndermedi: bağlantı kuruldu ama tek kare gelmedi. Xbox'ta Ayarlar › Cihazlar ve bağlantılar › " +
+                "Uzak özellikler açık mı, Xbox kablolu mu? Tanı satırlarında video bayt 0 ise Xbox hiç görüntü kodlamıyor")
+        }
         val failed = machine.phase as? XboxSessionMachine.Phase.Failed
         when {
             failed == null || failed.willRetry -> {
@@ -228,6 +236,7 @@ class XboxStreamSession(
                 val text = when (XboxSessionMachine.stopKind(kind, detail)) {
                     XboxSessionMachine.StopKind.BUSY -> appContext.getString(R.string.xbox_stopped_busy)
                     XboxSessionMachine.StopKind.CONSOLE_UNAVAILABLE -> appContext.getString(R.string.xbox_stopped_console)
+                    XboxSessionMachine.StopKind.NO_PICTURE -> appContext.getString(R.string.xbox_stopped_no_picture)
                     XboxSessionMachine.StopKind.OTHER ->
                         appContext.getString(R.string.xbox_connection_lost, XboxSessionMachine.shortReason(detail, kind.name))
                 }
@@ -309,6 +318,7 @@ class XboxStreamSession(
         endReason = null
         lastError = null
         firstFrameAt = 0L
+        connectedAt = 0L
         acking = false
         acks.clear()
         ackSequence = 0
@@ -398,7 +408,7 @@ class XboxStreamSession(
             if (done.await(1, TimeUnit.SECONDS)) break
             if (frameCounter.framesInSession(negotiatedFrames) == 0L && SystemClock.elapsedRealtime() - negotiatedAt > FIRST_FRAME_MS) {
                 endReason = "Xbox'tan ${FIRST_FRAME_MS / 1000} sn içinde görüntü gelmedi"
-                throw XboxException(XboxError.CONSOLE_UNAVAILABLE, endReason!!)
+                throw XboxException(XboxError.NO_FIRST_FRAME, endReason!!)
             }
             checkPicture(watchPicture)
         }

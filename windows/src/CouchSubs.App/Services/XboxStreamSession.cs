@@ -75,12 +75,12 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
     private bool gaveUp;
 
     /// <summary>
-    /// Ardışık yeniden denemelerin bekleme süreleri. Konsol "oyun başka yerde açıldı" deyip yayını keserse eskiden her
-    /// 5 sn'de bir yeniden açılıyor, konsol uyarıyı yeniden veriyor ve oyun düşüyordu; üç denemeden sonra durulur.
+    /// Yeniden deneme kuralları (bkz. <see cref="XboxRetryPlan"/>). Konsol "oyun başka yerde açıldı" deyip yayını keserse
+    /// eskiden her 5 sn'de bir yeniden açılıyor, konsol uyarıyı yeniden veriyor ve oyun düşüyordu; üç denemeden sonra
+    /// durulur. Xbox'tan hiç görüntü gelmezse iki bağlantıdan sonra durulur.
     /// </summary>
-    private static readonly int[] RetryDelaysMs = [5000, 15000, 45000];
-    /// <summary>Yayın bu kadar ayakta kaldıysa sonraki kopma yeni bir dizi deneme başlatır.</summary>
-    private const long HealthyStreamMs = 60_000;
+    private readonly XboxRetryPlan retries = new();
+    /// <summary>İlk karenin anı (yayın ne kadar sağlıklı sürdü).</summary>
     private long streamingSince;
     private string? endReason;
 
@@ -105,11 +105,12 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
     private async Task RunAsync()
     {
         Log($"konsol: id {console.Id}, ad {console.Name}, model {console.Model}");
-        var failures = 0;
         while (!cancel.IsCancellationRequested)
         {
             string? reason = null;
             var permanent = false;
+            // WebRTC bağlandı ama Xbox'tan tek kare gelmeden bitti (Xbox kapattı ya da ilk kare sınırı doldu).
+            var noFirstFrame = false;
             try
             {
                 StateChanged?.Invoke(SessionState.Connecting);
@@ -154,6 +155,7 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                 if (browserEnded is not null)
                 {
                     var first = Interlocked.Exchange(ref firstFrameAt, 0);
+                    noFirstFrame = connectedAt != 0 && first == 0 && !cancel.IsCancellationRequested;
                     Log(XboxStop.Summary(cancel.IsCancellationRequested ? null : reason ?? endReason, Interlocked.Exchange(ref connectionFrames, 0),
                         first == 0 ? null : TimeSpan.FromMilliseconds(Environment.TickCount64 - first)));
                 }
@@ -161,22 +163,24 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                 try { await bridge.CallAsync("stop"); } catch { /* A lost connection has no session to stop. */ }
             }
             if (cancel.IsCancellationRequested) break;
-            // Yayın en az bir dakika sürdüyse bu kopma yeni bir dizinin ilkidir.
             var since = Interlocked.Exchange(ref streamingSince, 0);
-            if (since != 0 && Environment.TickCount64 - since >= HealthyStreamMs) failures = 0;
             endReason = null;
-            failures++;
-            if (permanent || failures > RetryDelaysMs.Length)
+            var delay = retries.Failed(permanent, noFirstFrame, since == 0 ? null : Environment.TickCount64 - since);
+            if (noFirstFrame)
+                Log($"Xbox görüntü göndermedi: bağlantı kuruldu ama tek kare gelmedi ({retries.Failures}. bağlantı; neden: {XboxStop.Shorten(reason)}). " +
+                    "Xbox'ta Ayarlar › Cihazlar ve bağlantılar › Uzak özellikler açık mı, Xbox kablolu mu? Tanı satırlarında video bayt 0 ise Xbox hiç görüntü kodlamıyor");
+            if (delay is null)
             {
-                Log(permanent ? "kalıcı hata: yeniden denenmiyor, yayın durdu" : $"{RetryDelaysMs.Length} deneme bitti: yeniden denenmiyor, yayın durdu");
+                Log(permanent ? "kalıcı hata: yeniden denenmiyor, yayın durdu"
+                    : noFirstFrame ? $"{XboxRetryPlan.MaxNoPictureAttempts} bağlantıda da görüntü gelmedi: yeniden denenmiyor, yayın durdu"
+                    : $"{XboxRetryPlan.DelaysMs.Length} deneme bitti: yeniden denenmiyor, yayın durdu");
                 Volatile.Write(ref gaveUp, true);
-                StateChanged?.Invoke(SessionState.Disconnected(DisconnectKind.Refused, XboxStop.Message(Localizer.Current, reason)));
+                StateChanged?.Invoke(SessionState.Disconnected(DisconnectKind.Refused, XboxStop.Message(Localizer.Current, reason, noFirstFrame)));
                 break;
             }
-            var delay = RetryDelaysMs[failures - 1];
-            Log($"yeniden deneme {failures}/{RetryDelaysMs.Length}: {delay / 1000} sn sonra");
-            StateChanged?.Invoke(SessionState.Disconnected(DisconnectKind.Other, reason));
-            try { await Task.Delay(delay, cancel.Token); }
+            Log($"yeniden deneme {retries.Failures}/{XboxRetryPlan.DelaysMs.Length}: {delay / 1000} sn sonra");
+            StateChanged?.Invoke(SessionState.Disconnected(DisconnectKind.Other, noFirstFrame ? Localizer.Current[XboxStop.NoPictureRetrying] : reason));
+            try { await Task.Delay(delay.Value, cancel.Token); }
             catch (OperationCanceledException) { break; }
         }
     }
@@ -249,9 +253,10 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                     }
                     else if (state == "connected")
                     {
-                        Log("WebRTC bağlandı");
-                        Interlocked.CompareExchange(ref streamingSince, Environment.TickCount64, 0);
-                        StateChanged?.Invoke(SessionState.Streaming);
+                        // Ana ekran "bağlı" demez: görüntü gelene kadar "bağlanıyor" kalır (Android, iPhone ve Mac'teki gibi
+                        // ilk karede). Eskiden burada "bağlandı" deniyor, Xbox görüntü göndermeyince ekran bir dakika
+                        // "bağlı" görünüp altyazı hiç gelmiyordu.
+                        Log("WebRTC bağlandı; ilk kare bekleniyor");
                         StartWatch();
                         StartKeepalive();
                     }
@@ -276,7 +281,12 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                     Log("oynatıcı: " + XboxStop.Shorten(message.TryGetProperty("text", out var logText) ? logText.GetString() : null, 300));
                     break;
                 case "firstFrame":
-                    Interlocked.CompareExchange(ref firstFrameAt, Environment.TickCount64, 0);
+                    if (Interlocked.CompareExchange(ref firstFrameAt, Environment.TickCount64, 0) == 0)
+                    {
+                        Interlocked.CompareExchange(ref streamingSince, Environment.TickCount64, 0);
+                        retries.PictureArrived();
+                        StateChanged?.Invoke(SessionState.Streaming);
+                    }
                     if (watch is { FrameSeen: false } seen)
                     {
                         seen.FrameArrived();
@@ -355,6 +365,17 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                 if (step.LogStats) view.CoreWebView2.PostWebMessageAsJson("{\"kind\":\"stats\"}");
             }
             catch { /* Oynatıcı bu arada kapandı. */ }
+            if (step.NoPicture)
+            {
+                // Xbox ~60 sn sonra kendisi kapatır; beklemeden kapatılır, neden günlükte ve ekranda net olur.
+                // Gerekçe yalnız günlüğe girer; ekranda XboxStop.NoPictureRetrying / NoPictureStopped görünür.
+                var limit = $"Xbox'tan {(long)XboxFirstFrameWatch.FirstFrameLimit.TotalSeconds} sn içinde görüntü gelmedi";
+                Log($"ilk kare sınırı: {limit}; bağlantı kapatılıyor");
+                endReason ??= limit;
+                StopWatch();
+                browserEnded?.TrySetResult(true);
+                return;
+            }
             if (watch.FrameSeen) StopWatch();
         };
         watchTimer.Start();

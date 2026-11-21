@@ -44,7 +44,7 @@ class XboxSessionMachine(
     }
 
     /** Yayın durunca kullanıcıya gösterilen metnin türü (Windows'taki XboxStop.Classify ile aynı kurallar). */
-    enum class StopKind { BUSY, CONSOLE_UNAVAILABLE, OTHER }
+    enum class StopKind { BUSY, CONSOLE_UNAVAILABLE, NO_PICTURE, OTHER }
 
     @Volatile var phase: Phase = Phase.Idle
         private set
@@ -52,6 +52,8 @@ class XboxSessionMachine(
     /** Ardışık başarısız deneme sayısı. */
     private var failures = 0
     private var streamingSince = 0L
+    /** Ardışık, Xbox'tan tek kare gelmeden biten bağlantılar. */
+    private var noPictureConnections = 0
 
     fun start(): Action {
         if (phase == Phase.Stopped) return Action.Nothing
@@ -102,17 +104,24 @@ class XboxSessionMachine(
         if (phase != Phase.Negotiating) return false
         phase = Phase.Streaming
         streamingSince = clock()
+        noPictureConnections = 0
         return true
     }
 
-    /** [permanent]: konsol yayını reddetti (`Failed` ya da `errorDetails`); yeniden denenmez. */
+    /**
+     * [permanent]: konsol yayını reddetti (`Failed` ya da `errorDetails`); yeniden denenmez. [XboxError.NO_FIRST_FRAME]
+     * (bağlantı kuruldu, Xbox tek kare göndermedi) ayrıca sayılır: [MAX_NO_PICTURE_ATTEMPTS] ardışık bağlantıda görüntü
+     * gelmezse durulur. Eskiden her biri ~60 sn sürüp Xbox'ta "uzaktan oynatma başlatıldı / durduruldu" bildirimiyle
+     * dört kez açılıp kapanıyordu (Windows'taki XboxRetryPlan ile aynı).
+     */
     fun fail(kind: XboxError, message: String, permanent: Boolean = false): Action {
         if (phase == Phase.Stopped) return Action.Nothing
         // Yayın en az [healthyStreamMs] sürdüyse bu kopma yeni bir dizinin ilkidir.
         if (streamingSince > 0 && clock() - streamingSince >= healthyStreamMs) failures = 0
         streamingSince = 0
         failures++
-        val retry = !permanent && kind !in FATAL && failures <= retryDelaysMs.size
+        if (kind == XboxError.NO_FIRST_FRAME) noPictureConnections++
+        val retry = !permanent && kind !in FATAL && failures <= retryDelaysMs.size && noPictureConnections < MAX_NO_PICTURE_ATTEMPTS
         phase = Phase.Failed(kind, message, retry, if (retry) failures else 0)
         return Action.Retry(if (retry) retryDelaysMs[failures - 1] else null)
     }
@@ -124,6 +133,9 @@ class XboxSessionMachine(
     companion object {
         /** Yeniden denemenin işe yaramadığı hatalar: kullanıcı bir şey yapmalı. */
         val FATAL = setOf(XboxError.SIGN_IN_REQUIRED, XboxError.NO_XBOX_ACCOUNT)
+
+        /** Xbox'tan hiç görüntü gelmeyen bu kadar ardışık bağlantıdan sonra yeniden denenmez. */
+        const val MAX_NO_PICTURE_ATTEMPTS = 2
 
         /** `errorDetails` gerçek bir hata mı (boş nesne ya da tüm alanları null olan nesne sayılmaz). */
         fun hasErrorDetails(details: String?): Boolean {
@@ -142,6 +154,7 @@ class XboxSessionMachine(
         fun stopKind(kind: XboxError, detail: String?): StopKind {
             val text = detail.orEmpty()
             return when {
+                kind == XboxError.NO_FIRST_FRAME -> StopKind.NO_PICTURE
                 kind == XboxError.BUSY || text.contains("InUse", true) || text.contains("Busy", true) ||
                     text.contains("AlreadyStreaming", true) -> StopKind.BUSY
                 text.contains("Offline", true) || text.contains("NotFound", true) || text.contains("Unavailable", true) ||

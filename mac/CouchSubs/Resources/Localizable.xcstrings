@@ -1130,6 +1130,38 @@
         }
       }
     },
+    "No picture came from the Xbox. Trying once more…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No picture came from the Xbox. Trying once more…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox'tan görüntü gelmedi. Bir kez daha deneniyor…"
+          }
+        }
+      }
+    },
+    "No picture came from the Xbox, so translation stopped. On the Xbox, check that remote play is on in Settings › Devices & connections › Remote features, connect the Xbox with a network cable if you can (or restart it), then start translation again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No picture came from the Xbox, so translation stopped. On the Xbox, check that remote play is on in Settings › Devices & connections › Remote features, connect the Xbox with a network cable if you can (or restart it), then start translation again."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox'tan görüntü gelmedi, çeviri durdu. Xbox'ta Ayarlar › Cihazlar ve bağlantılar › Uzak özellikler'de uzaktan oynatmanın açık olduğunu denetleyin, olabiliyorsa Xbox'u ağa kabloyla bağlayın (ya da yeniden başlatın), sonra çeviriyi yeniden başlatın."
+          }
+        }
+      }
+    },
     "The Xbox service sent an unexpected reply. Retrying…": {
       "localizations": {
         "en": {

@@ -57,6 +57,56 @@ public class XboxSessionHealthTests
     }
 
     [Fact]
+    public void NoPictureMessageNamesTheXboxSettingAndCable()
+    {
+        // #403 / X: Xbox görüntü göndermeyince ekranda yalnız "WebRTC bağlantısı kesildi" görünüyordu.
+        var tr = XboxStop.Message(Localizer.ForLanguage("tr"), "Xbox WebRTC bağlantısı kesildi", noFirstFrame: true);
+        Assert.Contains("görüntü gelmedi", tr);
+        Assert.Contains("Ayarlar › Cihazlar ve bağlantılar › Uzak özellikler", tr);
+        Assert.Contains("kablo", tr);
+        Assert.DoesNotContain("WebRTC", tr);
+        var en = XboxStop.Message(Localizer.ForLanguage("en"), null, noFirstFrame: true);
+        Assert.Contains("Settings › Devices & connections › Remote features", en);
+        Assert.Equal("Xbox'tan görüntü gelmedi. Bir kez daha deneniyor…", Localizer.ForLanguage("tr")[XboxStop.NoPictureRetrying]);
+        Assert.Equal(XboxStopKind.NoPicture, XboxStop.Classify("ServerInUse", noFirstFrame: true));
+    }
+
+    [Fact]
+    public void ConnectionsWithoutPictureStopAfterTwoAttempts()
+    {
+        // Eskiden görüntüsüz her bağlantı ~60 sn sürüp dört kez açılıp kapanıyordu (Xbox'ta "uzaktan oynatma başlatıldı / durduruldu").
+        var plan = new XboxRetryPlan();
+        Assert.Equal(5000, plan.Failed(permanent: false, noFirstFrame: true, streamedMs: null));
+        Assert.Null(plan.Failed(permanent: false, noFirstFrame: true, streamedMs: null));
+    }
+
+    [Fact]
+    public void PictureResetsTheNoPictureStreakButNotOtherFailures()
+    {
+        var plan = new XboxRetryPlan();
+        Assert.Equal(5000, plan.Failed(false, noFirstFrame: true, streamedMs: null));
+        plan.PictureArrived();
+        // Görüntü geldi, 10 sn sonra kesildi: sıradan kopma, ikinci deneme.
+        Assert.Equal(15000, plan.Failed(false, noFirstFrame: false, streamedMs: 10_000));
+        Assert.Equal(45000, plan.Failed(false, noFirstFrame: true, streamedMs: null));
+        Assert.Null(plan.Failed(false, noFirstFrame: false, streamedMs: null));
+    }
+
+    [Fact]
+    public void OtherFailuresKeepThreeRetriesAndHealthyStreamResets()
+    {
+        var plan = new XboxRetryPlan();
+        Assert.Equal(5000, plan.Failed(false, false, null));
+        Assert.Equal(15000, plan.Failed(false, false, null));
+        // Bir dakikadan uzun süren yayın: yeni dizi.
+        Assert.Equal(5000, plan.Failed(false, false, XboxRetryPlan.HealthyStreamMs));
+        Assert.Equal(15000, plan.Failed(false, false, null));
+        Assert.Equal(45000, plan.Failed(false, false, null));
+        Assert.Null(plan.Failed(false, false, null));
+        Assert.Null(new XboxRetryPlan().Failed(permanent: true, noFirstFrame: false, streamedMs: null));
+    }
+
+    [Fact]
     public void SummarySeparatesNoPictureFromPictureThenDrop()
     {
         Assert.Equal("bağlantı bitti: WebRTC failed; kare 0, ilk kareden sonra ilk kare yok", XboxStop.Summary("WebRTC failed", 0, null));
