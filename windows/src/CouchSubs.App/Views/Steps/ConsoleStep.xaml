@@ -21,6 +21,19 @@
                     <StackPanel x:Name="Consoles" />
                 </StackPanel>
             </c:Card>
+            <!-- PS5 bulunamadı: denetimler kendiliğinden yapılır; okunamayan madde "Bilinmiyor" (tuval 04). -->
+            <c:Card x:Name="ChecksCard" Margin="0,24,0,0" Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock Text="{t:T 'COULDN\'T CONNECT TO THE PS5'}" Style="{StaticResource SectionLabel}" Foreground="{DynamicResource liveBrush}" />
+                    <TextBlock Text="{t:T 'Here\'s What We Checked'}" Style="{StaticResource HeadlineText}" Margin="0,4,0,0" />
+                    <TextBlock Style="{StaticResource HintText}" Margin="0,4,0,16"
+                               Text="{t:T 'Fix the item with a problem and press Try Again. Things we couldn\'t read are shown as &quot;Unknown&quot;.'}" />
+                    <StackPanel x:Name="ChecksRows" />
+                    <Button x:Name="TryAgain" Content="{t:T 'Try Again'}" Style="{StaticResource PrimaryButton}" Margin="0,16,0,0" Click="OnSearch" />
+                    <TextBlock Text="{t:T 'Do You Know the PS5\'s Address?'}" Style="{StaticResource RowTitle}" Margin="0,24,0,0" />
+                    <TextBlock Text="{t:T 'On the PS5, the IP address is shown in Settings › Network › Connection Status.'}" Style="{StaticResource HintText}" Margin="0,4,0,0" />
+                </StackPanel>
+            </c:Card>
             <TextBlock Text="{t:T '8-digit code'}" Style="{StaticResource HintText}" Margin="0,20,0,6" />
             <!-- Enter bağlanır (eskiden kapalı "Devam"a gidip hiçbir şey yapmıyordu); boşluk ve tire için uzunluk payı var. -->
             <TextBox x:Name="Pin" Width="240" HorizontalAlignment="Left" FontSize="{DynamicResource codeFontSize}" FontWeight="SemiBold"

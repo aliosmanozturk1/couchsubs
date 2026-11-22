@@ -16018,7 +16018,8 @@
     "Choose Dark under Subtitle Appearance to fully hide the English subtitle in the game. A full-width band also covers the sides.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Choose Dark under Subtitle Appearance to fully hide the English subtitle in the game. A full-width band also covers the sides."}}, "tr": {"stringUnit": {"state": "translated", "value": "Oyundaki İngilizce altyazıyı tamamen gizlemek için Altyazı Görünümü'nde Koyu'yu seçin. Tam genişlik bant yanları da örter."}}}},
     "Xbox · Beta": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Xbox · Beta"}}, "tr": {"stringUnit": {"state": "translated", "value": "Xbox · Beta"}}}},
     "Beta": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Beta"}}, "tr": {"stringUnit": {"state": "translated", "value": "Beta"}}}},
-    "Copy All": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Copy All"}}, "tr": {"stringUnit": {"state": "translated", "value": "Tümünü Kopyala"}}}}
+    "Copy All": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Copy All"}}, "tr": {"stringUnit": {"state": "translated", "value": "Tümünü Kopyala"}}}},
+    "Open the Page on This Computer": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Open the Page on This Computer"}},"tr":{"stringUnit":{"state":"translated","value":"Sayfayı Bu Bilgisayarda Aç"}}}}
   },
   "version": "1.0"
 }

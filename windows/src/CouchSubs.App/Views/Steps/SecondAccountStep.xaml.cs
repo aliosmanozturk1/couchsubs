@@ -12,6 +12,7 @@ public partial class SecondAccountStep : UserControl
     public SecondAccountStep()
     {
         InitializeComponent();
+        SignUpCode.Source = Qr(CouchSubs.Core.SecondScreen.QrModules(SignUpPage));
         // PS Remote Play ya da chiaki-ng kurulu değilse indirme düğmeleri görünür.
         Loaded += (_, _) => DownloadPanel.Visibility =
             Controller.RemotePlayInstalled(RemotePlayApp.Automatic) ? Visibility.Collapsed : Visibility.Visible;
@@ -28,4 +29,22 @@ public partial class SecondAccountStep : UserControl
     private void OnDownloadChiaki(object sender, RoutedEventArgs e) => Open(AppController.ChiakiDownload);
 
     private static void Open(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
+
+    /// <summary>Sony'nin ücretsiz PlayStation hesabı açma sayfası (QR ve düğme aynı adrese gider).</summary>
+    private const string SignUpPage = "https://id.sonyentertainmentnetwork.com/create_account/";
+
+    private void OnOpenSignUp(object sender, RoutedEventArgs e) =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(SignUpPage) { UseShellExecute = true });
+
+    private static System.Windows.Media.Imaging.BitmapSource Qr(bool[][] modules)
+    {
+        var size = modules.Length;
+        var pixels = new byte[size * size];
+        for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+                pixels[y * size + x] = modules[y][x] ? (byte)0 : (byte)255;
+        var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(size, size, 96, 96, System.Windows.Media.PixelFormats.Gray8, null, pixels, size);
+        bitmap.Freeze();
+        return bitmap;
+    }
 }

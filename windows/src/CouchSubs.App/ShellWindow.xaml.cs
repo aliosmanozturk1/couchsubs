@@ -109,7 +109,12 @@ public partial class ShellWindow : Window
 
     private void OnChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(AppController.Step) or nameof(AppController.DemoMode)) ShowScreen();
+        if (e.PropertyName is nameof(AppController.Step) or nameof(AppController.DemoMode))
+        {
+            // Ana ekrandan kuruluma dönülünce (TV Bağla, Yeniden Kur) erteleme biter, sihirbaz açılır.
+            if (e.PropertyName is nameof(AppController.Step) && setupDeferred && controller.Step != OnboardingStep.Done) setupDeferred = false;
+            ShowScreen();
+        }
         if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.IsStarting) or nameof(AppController.DemoMode)
             or nameof(AppController.Step) or nameof(AppController.Ps5Tone) or nameof(AppController.TvTone) or nameof(AppController.SessionState)
             or nameof(AppController.Settings))
@@ -144,7 +149,7 @@ public partial class ShellWindow : Window
     private void ShowScreen(bool force = false)
     {
         // Deneme modunda kurulum bitmemiş olsa da ana ekran gösterilir; çıkınca kalınan adıma dönülür.
-        var main = controller.Step == OnboardingStep.Done || controller.DemoMode;
+        var main = controller.Step == OnboardingStep.Done || controller.DemoMode || setupDeferred;
         ShowStatus();
         if (!force && main == showingMain) return;
         showingMain = main;
@@ -162,6 +167,17 @@ public partial class ShellWindow : Window
         tab = ShellTab.Home;
         Show(home);
         SelectTab(ShellTab.Home, null);
+    }
+
+    /// <summary>Kurulum "Sonra Ayarlarım" ile bırakıldı (bu oturumda): ana ekran "Kurulum Eksik" durumuyla gösterilir.</summary>
+    private bool setupDeferred;
+
+    /// <summary>Kurulum sihirbazındaki "Sonra Ayarlarım".</summary>
+    public static void DeferSetup()
+    {
+        if (current is not { } window) return;
+        window.setupDeferred = true;
+        window.ShowScreen();
     }
 
     /// <summary>Başka bir yerden sekme açar (ana ekrandaki "Ayarlar › Çeviri" satırı, menüler, kısayollar).</summary>

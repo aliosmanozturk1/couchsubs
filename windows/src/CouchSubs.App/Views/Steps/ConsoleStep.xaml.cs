@@ -51,6 +51,67 @@ public partial class ConsoleStep : UserControl
         var none = found.Count == 0;
         NotFound.Visibility = ManualHost.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
         Search.IsEnabled = true;
+        if (none) await ShowChecksAsync(found.Count > 0);
+        else ChecksCard.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>"Neyin Eksik Olduğuna Baktık": aynı ağ, PS5'in yanıtı, Uzaktan Oynama, dinlenme modunda internet, 5 GHz, VPN.</summary>
+    private async Task ShowChecksAsync(bool found)
+    {
+        var text = Localizer.Current;
+        ChecksCard.Visibility = Visibility.Visible;
+        TryAgain.IsEnabled = false;
+        TryAgain.Content = text["Checking…"];
+        var results = await Services.NetworkChecks.RunAsync(found);
+        ChecksRows.Children.Clear();
+        Row(text["Same Network"], results.SameNetwork, "This Mac and the PS5 appear to be on the same network.",
+            "This Mac isn't connected to a local network. Connect it to the same Wi-Fi as the PS5.");
+        Row(text["PS5 Responds"], results.Ps5Responds, "The PS5 was found.", "The PS5 didn't answer the search. The PS5 must be on or in rest mode.");
+        Row(text["Remote Play On"], results.RemotePlay, null, "On the second user, Settings › System › Remote Play › Enable Remote Play must be on.");
+        Row(text["Internet in Rest Mode"], results.RestModeInternet, null,
+            "Staying connected to the internet in rest mode must be on; otherwise the PS5 can't be woken up.");
+        Row(text["Wi-Fi 5 GHz"], results.Wifi5Ghz, "You're on a 5 GHz network.", "This Mac is on a 2.4 GHz network. A 5 GHz network works more smoothly and reliably.",
+            "This Mac is connected by cable or the Wi-Fi band couldn't be read.");
+        Row(text["VPN Off"], results.VpnOff, "No active VPN was found.", "A VPN is on. Turn it off while playing; it can hide the PS5.");
+        TryAgain.IsEnabled = true;
+        TryAgain.Content = text["Try Again"];
+    }
+
+    /// <summary>Denetim satırı: solda rozet (Geçti / Sorunlu / Bilinmiyor), başlık ve duruma göre açıklama.</summary>
+    private void Row(string title, Services.CheckResult result, string? passed, string problem, string? unknown = null)
+    {
+        var text = Localizer.Current;
+        var badge = new Controls.Badge
+        {
+            Content = text[result switch { Services.CheckResult.Passed => "Passed", Services.CheckResult.Problem => "Problem", _ => "Unknown" }],
+            Tone = result switch { Services.CheckResult.Passed => Controls.PillTone.Success, Services.CheckResult.Problem => Controls.PillTone.Live, _ => Controls.PillTone.Idle },
+            MinWidth = 88, Margin = new Thickness(0, 0, 16, 0),
+        };
+        var detail = result switch
+        {
+            Services.CheckResult.Passed => passed,
+            Services.CheckResult.Problem => problem,
+            _ => unknown ?? problem,
+        };
+        var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var heading = new TextBlock { Text = title };
+        heading.SetResourceReference(StyleProperty, "RowTitle");
+        texts.Children.Add(heading);
+        if (detail is not null)
+        {
+            // Mac metni "Bu Mac" der; Windows'ta "bu bilgisayar".
+            var hint = new TextBlock { Text = text[detail].Replace("Mac", text.Language == "tr" ? "bilgisayar" : "computer"), Margin = new Thickness(0, 4, 0, 0) };
+            hint.SetResourceReference(StyleProperty, "HintText");
+            texts.Children.Add(hint);
+        }
+        var line = new DockPanel();
+        DockPanel.SetDock(badge, Dock.Left);
+        line.Children.Add(badge);
+        line.Children.Add(texts);
+        var row = new Border { Child = line, Padding = new Thickness(0, 12, 0, 12) };
+        row.SetResourceReference(StyleProperty, "SettingRow");
+        ChecksRows.Children.Add(row);
+        Theme.Motion.EnterFrom(row, 8, Theme.Motion.Medium, TimeSpan.FromMilliseconds(60 * ChecksRows.Children.Count));
     }
 
     private async void OnSearch(object sender, RoutedEventArgs e) => await SearchAsync();

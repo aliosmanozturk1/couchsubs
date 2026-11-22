@@ -7,10 +7,32 @@
     <c:StepLayout Title="{t:T 'A second PSN account'}"
                   Message="{t:T 'CouchSubs watches the game through Remote Play. If it used your own account, the PS5 would turn off your controller. With a second account you keep playing undisturbed.'}">
         <StackPanel>
-            <c:NumberedRow Number="1" Text="{t:T 'Create a free account at playstation.com with a different email address.'}" />
-            <c:NumberedRow Number="2" Text="{t:T 'On the PS5, choose Add User and sign in once with the new account.'}" />
-            <c:NumberedRow Number="3" Text="{t:T 'Still as the new user, go to Settings › System › Remote Play and turn on Enable Remote Play.'}" />
-            <c:NumberedRow Number="4" Text="{t:T 'Switch back to your own user. You only do this once.'}" />
+            <!-- Solda bir kez yapılacak dört adım, sağda Sony'nin ücretsiz hesap açma sayfasının QR kodu (yerel üretilir). -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="280" />
+                </Grid.ColumnDefinitions>
+                <c:Card Title="{t:T 'DONE ONCE'}">
+                    <StackPanel>
+                        <c:NumberedRow Number="1" Text="{t:T 'Create a free account at playstation.com with a different email address.'}" />
+                        <c:NumberedRow Number="2" Text="{t:T 'On the PS5, choose Add User and sign in once with the new account.'}" />
+                        <c:NumberedRow Number="3" Text="{t:T 'Still as the new user, go to Settings › System › Remote Play and turn on Enable Remote Play.'}" />
+                        <c:NumberedRow Number="4" Text="{t:T 'Switch back to your own user. You only do this once.'}" />
+                    </StackPanel>
+                </c:Card>
+                <c:Card Grid.Column="2">
+                    <StackPanel HorizontalAlignment="Center">
+                        <Border Background="White" CornerRadius="16" Padding="12" HorizontalAlignment="Center">
+                            <Image x:Name="SignUpCode" Width="168" Height="168" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                        </Border>
+                        <TextBlock Text="{t:T 'Scan with Your Phone'}" Style="{StaticResource RowTitle}" HorizontalAlignment="Center" Margin="0,16,0,0" />
+                        <TextBlock Text="{t:T 'The code opens Sony\'s free account sign-up page.'}" Style="{StaticResource HintText}" TextAlignment="Center" Margin="0,4,0,0" />
+                        <Button Content="{t:T 'Open the Page on This Computer'}" Style="{StaticResource SmallSecondaryButton}" HorizontalAlignment="Center" Margin="0,16,0,0" Click="OnOpenSignUp" />
+                    </StackPanel>
+                </c:Card>
+            </Grid>
             <!-- Kol ikinci hesaba atanırsa ana hesapla açılan oyun onu kendi kolu saymaz (GitHub #231). -->
             <TextBlock Style="{StaticResource HintText}" Margin="0,8,0,0" TextWrapping="Wrap"
                        Text="{t:T 'When you turn on the controller to play, choose your MAIN account on the PS5. Don\'t play with the second account CouchSubs signs in with, or the controller will turn off by itself or won\'t work in the game.'}" />

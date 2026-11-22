@@ -24,6 +24,30 @@ public partial class OnboardingView : UserControl
         controller.PropertyChanged += OnChanged;
         Unloaded += (_, _) => controller.PropertyChanged -= OnChanged;
         ShowStep();
+        ShowIntro();
+    }
+
+    /// <summary>Açılış bu oturumda gösterildi (yalnız ilk kurulumun karşılama adımında, bir kez).</summary>
+    private static bool introShown;
+
+    /// <summary>İlk kurulumun karşılama adımında açılış sihirbazın üstünde oynar; "Hadi Başlayalım" ya da "Atla" ile söner.</summary>
+    private void ShowIntro()
+    {
+        if (introShown || controller.Step != OnboardingStep.Welcome || controller.DemoMode) return;
+        introShown = true;
+        var wizard = (UIElement)Content;
+        Content = null;
+        var stage = new Grid();
+        stage.Children.Add(wizard);
+        IntroView? intro = null;
+        intro = new IntroView(() =>
+        {
+            var fade = Theme.Motion.To(0, Theme.Motion.Page, exit: true);
+            fade.Completed += (_, _) => stage.Children.Remove(intro);
+            intro!.BeginAnimation(OpacityProperty, fade);
+        });
+        stage.Children.Add(intro);
+        Content = stage;
     }
 
     private void OnChanged(object? sender, PropertyChangedEventArgs e)
@@ -31,8 +55,6 @@ public partial class OnboardingView : UserControl
         if (e.PropertyName == nameof(AppController.Step)) ShowStep();
         else if (e.PropertyName == nameof(AppController.ConsoleKind))
         {
-            Counter.Text = Localizer.Current.Format("Step %lld of %lld", controller.StepNumber, controller.StepCount);
-            Progress.Value = (double)controller.StepNumber / controller.StepCount;
             ShowSteps();
         }
         else if (e.PropertyName == nameof(AppController.UsesFreeGemini)) ShowContinue();
@@ -45,8 +67,8 @@ public partial class OnboardingView : UserControl
     private void ShowContinue()
     {
         var skip = controller.Step == OnboardingStep.BetterTranslation && !controller.UsesFreeGemini;
-        ContinueButton.Content = Localizer.Current[skip ? "Skip for now" : "Continue"];
-        ContinueButton.Style = (Style)FindResource(skip ? "SecondaryButton" : "PrimaryButton");
+        ContinueButton.Content = Localizer.Current[skip ? "Skip for Now" : "Continue"];
+        ContinueButton.Style = (Style)FindResource(skip ? "SecondaryButton" : "WidePrimaryButton");
         // Anahtar alanında Enter adımı geçmesin.
         ContinueButton.IsDefault = !skip;
     }
@@ -64,64 +86,38 @@ public partial class OnboardingView : UserControl
             OnboardingStep.Test => new TestStep(),
             _ => new BetterTranslationStep(),
         };
-        Counter.Text = Localizer.Current.Format("Step %lld of %lld", controller.StepNumber, controller.StepCount);
-        Progress.Value = (double)controller.StepNumber / controller.StepCount;
         ShowSteps();
+        // Adım 8 px aşağıdan kayarak gelir (hareket azaltılmışsa yalnız solma).
+        if (StepHost.Content is FrameworkElement page) Theme.Motion.EnterFrom(page, 12, Theme.Motion.Page);
         BackButton.Visibility = controller.Step == OnboardingStep.Welcome ? Visibility.Collapsed : Visibility.Visible;
         ContinueButton.Visibility = controller.Step == OnboardingStep.Test ? Visibility.Hidden : Visibility.Visible;
         ShowContinue();
     }
 
-    /// <summary>Adımların adları: her adımın kendi başlığı.</summary>
-    private string StepTitle(OnboardingStep step) => step switch
-    {
-        OnboardingStep.Welcome => "Welcome to CouchSubs",
-        OnboardingStep.SecondAccount => "A second PSN account",
-        OnboardingStep.PsnLogin => controller.IsXbox ? "Sign in to Xbox" : "Sign in with the second account",
-        OnboardingStep.Console => controller.IsXbox ? "Choose your Xbox" : "Connect your PS5",
-        OnboardingStep.Tv => "Connect your TV",
-        OnboardingStep.Translation => "Download the translation model",
-        OnboardingStep.Test => "Let's test it",
-        _ => "Better translation (free)",
-    };
-
-    /// <summary>Soldaki adım listesi: tamamlananlar yeşil ✓, şimdiki sarı daire ve nötr zemin, sıradakiler numaralı ve soluk.</summary>
+    /// <summary>
+    /// Adım etiketi ("ADIM 2 / 8") ve üstteki ilerleme noktaları: şimdiki adım 24 genişlikte amber hap, geçilenler amber,
+    /// sıradakiler çerçeve renginde nokta.
+    /// </summary>
     private void ShowSteps()
     {
-        StepList.Children.Clear();
-        var current = (int)controller.Step;
-        foreach (var step in Enum.GetValues<OnboardingStep>().Where(s => s != OnboardingStep.Done && !(controller.IsXbox && s == OnboardingStep.SecondAccount)))
+        var text = Localizer.Current;
+        Counter.Text = text.Format("STEP %lld / %lld", controller.StepNumber, controller.StepCount);
+        Dots.Children.Clear();
+        for (var number = 1; number <= controller.StepCount; number++)
         {
-            var index = (int)step;
-            var position = index + 1 - (controller.IsXbox && step > OnboardingStep.SecondAccount ? 1 : 0);
-            var (done, now) = (index < current, index == current);
-            var mark = new TextBlock
+            var dot = new Border
             {
-                Text = done ? Glyphs.Check : position.ToString(), FontWeight = FontWeights.SemiBold,
-                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap,
+                Width = number == controller.StepNumber ? 24 : 8, Height = 8, CornerRadius = new CornerRadius(4),
+                Margin = new Thickness(number == 1 ? 0 : 8, 0, 0, 0),
             };
-            if (done) mark.Style = (Style)FindResource("GlyphText");
-            mark.SetResourceReference(TextBlock.FontSizeProperty, "captionFontSize");
-            mark.SetResourceReference(TextBlock.ForegroundProperty, done || now ? "onAccentBrush" : "textSecondaryBrush");
-            var dot = new Border { Width = 28, Height = 28, CornerRadius = new CornerRadius(14), Child = mark, VerticalAlignment = VerticalAlignment.Center };
-            dot.SetResourceReference(Border.BackgroundProperty, done ? "successBrush" : now ? "accentBrush" : "borderBrush");
-            var label = new TextBlock { Text = Localizer.Current[StepTitle(step)], Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-            label.SetResourceReference(TextBlock.ForegroundProperty, done || now ? "textPrimaryBrush" : "textSecondaryBrush");
-            if (now) label.FontWeight = FontWeights.SemiBold;
-            var content = new DockPanel();
-            DockPanel.SetDock(dot, Dock.Left);
-            content.Children.Add(dot);
-            content.Children.Add(label);
-            var row = new Border
-            {
-                Child = content, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 0, 0, 4), MinHeight = 44,
-            };
-            row.SetResourceReference(Border.CornerRadiusProperty, "radius.control");
-            if (now) row.SetResourceReference(Border.BackgroundProperty, "surface2Brush");
-            System.Windows.Automation.AutomationProperties.SetName(row, $"{position}. {label.Text}");
-            StepList.Children.Add(row);
+            dot.SetResourceReference(Border.BackgroundProperty, number <= controller.StepNumber ? "accentBrush" : "borderBrush");
+            Dots.Children.Add(dot);
         }
+        System.Windows.Automation.AutomationProperties.SetName(Dots, Counter.Text);
     }
+
+    /// <summary>"Sonra Ayarlarım": kurulum yarıda bırakılır, ana ekran "Kurulum Eksik" durumuyla açılır.</summary>
+    private void OnLater(object sender, RoutedEventArgs e) => ShellWindow.DeferSetup();
 
     private void OnBack(object sender, RoutedEventArgs e) => controller.Back();
 
