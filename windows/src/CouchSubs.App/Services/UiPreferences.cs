@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+using System.IO;
+using System.Text.Json;
+
+namespace CouchSubs.App.Services;
+
+/// <summary>
+/// Arayüz tercihleri (Ayarlar › Temel › Açılış Sesi ve Geçiş Animasyonları). Ortak ayar kaydına (UserSettings,
+/// design/yeni-arayuz/METINLER.md: startupSound, transitionAnimations) alanlar eklenene dek bu bilgisayarda ayrı dosyada
+/// tutulur; eklenince oraya taşınır. Dosya okunamazsa varsayılanlar (ikisi de açık) kullanılır.
+/// </summary>
+public static class UiPreferences
+{
+    public sealed record Values(bool StartupSound = true, bool TransitionAnimations = true);
+
+    private static readonly string FilePath = Path.Combine(AppPaths.Data, "ui.json");
+    private static Values? current;
+
+    public static Values Current => current ??= Load();
+
+    public static event Action? Changed;
+
+    public static void Save(Values values)
+    {
+        current = values;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+            File.WriteAllText(FilePath, JsonSerializer.Serialize(values));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        Changed?.Invoke();
+    }
+
+    private static Values Load()
+    {
+        try { return File.Exists(FilePath) ? JsonSerializer.Deserialize<Values>(File.ReadAllText(FilePath)) ?? new() : new(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return new(); }
+    }
+}

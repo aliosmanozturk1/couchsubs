@@ -1317,6 +1317,30 @@
         </Setter>
     </Style>
 
+    <!-- Ayarlar sayfaları: sekme başlıkları görünmez (gezinme soldaki kartta), seçili sayfa kendi içinde kayar. -->
+    <Style x:Key="PageTabs" TargetType="TabControl">
+        <Setter Property="Foreground" Value="{DynamicResource textPrimaryBrush}" />
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="TabItem">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                </Style>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabControl">
+                    <Grid>
+                        <StackPanel IsItemsHost="True" Visibility="Collapsed" />
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                            <ContentPresenter ContentSource="SelectedContent" Margin="0,0,8,0" />
+                        </ScrollViewer>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Eski ayarlar penceresinin kenar çubuğu (yeni Ayarlar sayfası gelene dek): satırlar NavItem görünümünde. -->
     <Style x:Key="SidebarTab" TargetType="TabItem">
         <Setter Property="FontFamily" Value="{StaticResource TextFont}" />

@@ -678,14 +678,20 @@ public sealed record AreaSet(CropRegion Region, AreaPreset AreaPreset, IReadOnly
 /// <param name="Target">Kısayolla bir kez okununca sonucun gösterildiği yer.</param>
 public sealed record ExtraArea(string Id, string Name, CropRegion Region, bool Enabled = true, ResultTarget Target = ResultTarget.Tv)
 {
-    /// <summary>En çok bu kadar ek alan tanımlanır (her biri saniyede bir okunur; kısayolları Num 1-3).</summary>
-    public const int MaxCount = 3;
+    /// <summary>
+    /// Ek alan sınırı yok (yeni arayüz, METINLER.md › 20): her alan saniyede bir okunur. Yalnız ilk
+    /// <see cref="ShortcutCount"/> alanın kısayolu vardır (Num 1-3 / Ctrl+Shift+1-3); sonrakiler kısayolsuzdur.
+    /// </summary>
+    public const int MaxCount = int.MaxValue;
+
+    /// <summary>Kısayolu olan ilk ek alanların sayısı.</summary>
+    public const int ShortcutCount = 3;
 
     /// <summary>Hazır seçimle yeni alan (yeni kimlik).</summary>
     public static ExtraArea Create(string name, CropRegion region) => new(Guid.NewGuid().ToString(), name, region);
 
     /// <summary>Ekranda ve günlükte görünen ad: verilen ad, yoksa "Alan 1".</summary>
-    public string DisplayName(int number) => string.IsNullOrWhiteSpace(Name) ? Localizer.Current[$"Area {number}"] : Name;
+    public string DisplayName(int number) => string.IsNullOrWhiteSpace(Name) ? Localizer.Current.Format("Area %lld", number) : Name;
 
     /// <summary>Elle değiştirilmiş ya da bozuk kayıt: eksik kimlik/ad/bölge tamamlanır, yinelenen kimlik ve fazlası atılır.</summary>
     internal static IReadOnlyList<ExtraArea> Sanitize(IReadOnlyList<ExtraArea>? areas)

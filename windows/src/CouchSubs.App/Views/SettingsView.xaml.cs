@@ -119,7 +119,12 @@ public partial class SettingsView : UserControl
         SetTextApart.IsChecked = settings.SetTextApart;
         GameAreaPresets.IsChecked = settings.GameAreaPresets;
         ShowPacks();
-        AppearanceChoice.SelectedItem = AppearanceChoice.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == settings.Appearance.ToString());
+        (settings.Appearance switch { AppAppearance.Light => AppearanceLight, AppAppearance.System => AppearanceSystem, _ => AppearanceDark }).IsChecked = true;
+        StartupSound.IsChecked = UiPreferences.Current.StartupSound;
+        TransitionAnimations.IsChecked = UiPreferences.Current.TransitionAnimations;
+        ShowPace();
+        ShowMiniSubtitle();
+        Sections.SelectedIndex = 0;
         RemotePlayAppChoice.SelectedItem = RemotePlayAppChoice.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == settings.RemotePlayApp.ToString());
         XboxAudioOnComputer.IsChecked = settings.XboxAudioOnComputer;
         XboxLegacyFrameRate.IsChecked = settings.XboxLegacyFrameRate;
@@ -306,9 +311,9 @@ public partial class SettingsView : UserControl
     private void UpdateSourceProjectorHint(WindowCaptureTarget? target) =>
         SourceProjectorHint.Visibility = ObsProjector.NeedsSourceProjectorHint(target) ? Visibility.Visible : Visibility.Collapsed;
 
-    private void OnAppearance(object sender, SelectionChangedEventArgs e)
+    private void OnAppearance(object sender, RoutedEventArgs e)
     {
-        if (AppearanceChoice.SelectedItem is ComboBoxItem { Tag: string tag })
+        if (sender is RadioButton { Tag: string tag })
             Update(s => s with { Appearance = Enum.Parse<AppAppearance>(tag) });
     }
 
@@ -1132,6 +1137,7 @@ public partial class SettingsView : UserControl
         if (section is not { } wanted) return;
         Sections.SelectedItem = wanted switch
         {
+            SettingsSection.Appearance => AppearanceSection,
             SettingsSection.Translation => TranslationSection,
             SettingsSection.PictureSource => PictureSourceSection,
             _ => Sections.SelectedItem,
@@ -1140,8 +1146,101 @@ public partial class SettingsView : UserControl
 
     private void Update(Func<UserSettings, UserSettings> change)
     {
-        if (!loading) controller.Settings = change(controller.Settings);
+        if (loading) return;
+        controller.Settings = change(controller.Settings);
+        ShowPace();
+        ShowMiniSubtitle();
     }
+
+    // ───── Yeni arayüz: gezinme, Temel sayfası ─────
+
+    /// <summary>Soldaki gezinme satırı seçilince o sayfa açılır.</summary>
+    private void OnNav(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string tag } && int.TryParse(tag, out var index) && Sections.SelectedIndex != index)
+            Sections.SelectedIndex = index;
+    }
+
+    /// <summary>Sayfa başka yoldan (ana ekrandaki satır, "Altyazı Görünümünü Düzenle") açılınca gezinme de seçilir.</summary>
+    private void OnSection(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.OriginalSource != Sections) return;
+        foreach (var item in Nav.Children.OfType<Controls.NavItem>())
+            item.IsChecked = item.Tag is string tag && tag == Sections.SelectedIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (Sections.SelectedContent is FrameworkElement page) Theme.Motion.EnterFrom(page, 8, Theme.Motion.Medium);
+    }
+
+    private void OnEditAppearance(object sender, RoutedEventArgs e) => Sections.SelectedItem = AppearanceSection;
+
+    /// <summary>
+    /// Çeviri hızı: Hızlı (kötü okunan satır beklenmez), Dengeli (önerilen bekleme süreleri), Doğru (cümle tamamlanana
+    /// dek daha uzun beklenir). Gelişmiş'teki iki kaydırıcının hazır değerleridir; onlar elle değişince seçim kalkar.
+    /// </summary>
+    private static readonly (string Tag, int Misread, int Partial, string Hint)[] Paces =
+    [
+        ("Fast", 0, 0, "Subtitles arrive as fast as possible; you may rarely see half a sentence."),
+        ("Balanced", SubtitlePipeline.PackWaitMs, SubtitlePipeline.CleanWaitMs, "Recommended for most games. Speed and accuracy balanced."),
+        ("Accurate", 1000, 600, "Translated once the sentence is complete; arrives about half a second later."),
+    ];
+
+    private void OnPace(object sender, RoutedEventArgs e)
+    {
+        if (loading || sender is not RadioButton { Tag: string tag }) return;
+        var pace = Paces.First(p => p.Tag == tag);
+        MisreadWait.Value = pace.Misread / 1000.0;
+        PartialWait.Value = pace.Partial / 1000.0;
+        ShowPace();
+    }
+
+    private void ShowPace()
+    {
+        var settings = controller.Settings;
+        var match = Paces.FirstOrDefault(p => p.Misread == settings.MisreadWaitMs && p.Partial == settings.PartialWaitMs);
+        var was = loading;
+        loading = true;
+        PaceFast.IsChecked = match.Tag == "Fast";
+        PaceBalanced.IsChecked = match.Tag == "Balanced";
+        PaceAccurate.IsChecked = match.Tag == "Accurate";
+        loading = was;
+        PaceHint.Text = match.Tag is null ? "" : Localizer.Current[match.Hint];
+        PaceHint.Visibility = match.Tag is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void OnStartupSound(object sender, RoutedEventArgs e)
+    {
+        if (!loading) UiPreferences.Save(UiPreferences.Current with { StartupSound = StartupSound.IsChecked == true });
+    }
+
+    private void OnTransitionAnimations(object sender, RoutedEventArgs e)
+    {
+        if (loading) return;
+        var on = TransitionAnimations.IsChecked == true;
+        UiPreferences.Save(UiPreferences.Current with { TransitionAnimations = on });
+        Theme.Motion.AnimationsEnabled = on;
+    }
+
+    /// <summary>Deneysel ayarlar kapanır (ekran yazısı ve GTA 6 telefonu).</summary>
+    private void OnExperimentalDefaults(object sender, RoutedEventArgs e)
+    {
+        AutoScreenText.IsChecked = false;
+        AutoReadGamePhone.IsChecked = false;
+    }
+
+    /// <summary>Temel sayfasındaki küçük altyazı önizlemesi: yazı boyu, zemin koyuluğu ve yazı rengi.</summary>
+    private void ShowMiniSubtitle()
+    {
+        var style = controller.Settings.Style;
+        var alpha = (byte)Math.Round(Math.Clamp(style.Background, 0, 100) / 100.0 * 255);
+        MiniSubtitle.Background = new SolidColorBrush(Color.FromArgb(alpha, 0x10, 0x10, 0x14));
+        MiniSubtitleText.Foreground = new SolidColorBrush(style.TextColor.ToString() == "Yellow" ? Color.FromRgb(0xFF, 0xE0, 0x66) : Colors.White);
+        MiniSubtitleText.FontSize = Math.Max(10, Math.Round(style.FontSize * 0.5));
+        MiniSubtitleText.Inlines.Clear();
+        var name = new System.Windows.Documents.Run("Jason: ");
+        name.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "accentBrush");
+        MiniSubtitleText.Inlines.Add(name);
+        MiniSubtitleText.Inlines.Add(new System.Windows.Documents.Run(Localizer.Current.Language == "tr" ? "Tamam. Gidelim." : "Okay. Let's go."));
+    }
+
 
     private void OnTextSize(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -1530,6 +1629,12 @@ public partial class SettingsView : UserControl
     private void ShowAreaHint()
     {
         if (area == 0) return;
+        if (area > ExtraArea.ShortcutCount)
+        {
+            // Dördüncü ve sonraki alanların kısayolu yok: yalnız sürekli okunur.
+            AreaHint.Text = Localizer.Current["No Shortcut"] + " · " + Localizer.Current["Also reads small text next to the subtitle, such as objectives, phone messages or notifications. Each area is read once a second and translated again when the text changes; the translation appears on the TV next to that text."];
+            return;
+        }
         var action = HotkeyTable.AreaActions[Math.Clamp(area, 1, HotkeyTable.AreaActions.Count) - 1];
         AreaHint.Text = HotkeyText.Sentence(controller.Settings, action,
             "Draw the area to translate, for example a quest panel. While you play, press its shortcut (%@) to read and translate it once. Choose where the result shows. It works even when CouchSubs is in the background.");
