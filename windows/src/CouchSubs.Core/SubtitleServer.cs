@@ -42,6 +42,13 @@ public enum SubtitleBackgroundShape
 /// Hızlı konuşmada önceki satır(lar) yeni satırın üstünde kısa süre soluk kalsın mı; kapalıysa yeni satır eskisinin
 /// yerine geçer. TV uygulaması 0.9.16 ve sonrası tanır.
 /// </param>
+/// <param name="BackgroundColor">Zeminin rengi ("#RRGGBB"); koyuluğu <paramref name="Background"/>. TV'ye <c>backgroundColor</c>.</param>
+/// <param name="TextHex">Yazının rengi ("#RRGGBB"); yoksa <paramref name="TextColor"/>. TV'ye <c>textHex</c>.</param>
+/// <param name="NameColorMode">Karakter adının rengi: yazıyla aynı / tek renk / karaktere göre (TV'ye gitmez; sunucu uygular).</param>
+/// <param name="NameHex">"Tek Renk"te adların rengi.</param>
+/// <param name="CharacterColors">"Karaktere Göre"de seçilen renkler (küçük harfli ad → "#RRGGBB").</param>
+/// <param name="NameOnly">Konuşan rengi yalnız adı boyar (yeni arayüz). TV'ye <c>nameOnly</c>.</param>
+/// <param name="HdmiInput">Kurulumda seçilen TV girişi (1–4); yoksa null. TV'ye <c>hdmiInput</c>.</param>
 public sealed record SubtitleStyle(
     int FontSize = 46,
     int BottomPercent = 7,
@@ -51,7 +58,36 @@ public sealed record SubtitleStyle(
     SubtitleTextColor TextColor = SubtitleTextColor.White,
     TvDisplayMode DisplayMode = TvDisplayMode.Auto,
     bool StackPrevious = true,
-    SubtitleBackgroundShape BackgroundShape = SubtitleBackgroundShape.Fit);
+    SubtitleBackgroundShape BackgroundShape = SubtitleBackgroundShape.Fit,
+    string BackgroundColor = SubtitleStyle.DefaultBackgroundColor,
+    string? TextHex = null,
+    NameColorMode NameColorMode = NameColorMode.Speaker,
+    string? NameHex = null,
+    IReadOnlyDictionary<string, string>? CharacterColors = null,
+    bool NameOnly = false,
+    int? HdmiInput = null)
+{
+    public const string DefaultBackgroundColor = "#101014";
+
+    /// <summary>Geçerli "#RRGGBB" ise büyük harfle; değilse null (Mac SubtitleStyle.hex ile aynı).</summary>
+    public static string? Hex(string? value) =>
+        value is { Length: 7 } && value[0] == '#' && value.Skip(1).All(char.IsAsciiHexDigit) ? value.ToUpperInvariant() : null;
+
+    /// <summary>Yazının gerçek rengi ("#RRGGBB"): seçilen renk, yoksa beyaz / sarı.</summary>
+    public string TextRgb => Hex(TextHex) ?? (TextColor == SubtitleTextColor.Yellow ? "#FFE135" : "#FFFFFF");
+
+    /// <summary>Zeminin rengi ("#RRGGBB"); bozuk kayıtta varsayılan.</summary>
+    public string BackgroundRgb => Hex(BackgroundColor) ?? DefaultBackgroundColor;
+}
+
+/// <summary>Altyazı Görünümü › Karakter Adı (Mac NameColorMode ile aynı değerler).</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<NameColorMode>))]
+public enum NameColorMode
+{
+    [JsonStringEnumMemberName("text")] Text,
+    [JsonStringEnumMemberName("single")] Single,
+    [JsonStringEnumMemberName("speaker")] Speaker,
+}
 
 /// <summary>
 /// Android TV'de PS5 görüntüsünün nasıl gösterildiği. Yalnız Android TV uygulaması kullanır; diğer TV'ler ve OBS
@@ -614,6 +650,9 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
     public void SendStyle(SubtitleStyle style)
     {
         lock (gate) lastStyle = style;
+        // Karakter adı rengi: "Tek Renk"te herkes aynı renk, "Karaktere Göre"de seçilen renkler (Mac ile aynı).
+        SpeakerBook.Configure(style.NameColorMode == NameColorMode.Single ? SubtitleStyle.Hex(style.NameHex) : null,
+            style.NameColorMode == NameColorMode.Speaker ? style.CharacterColors ?? new Dictionary<string, string>() : new Dictionary<string, string>());
         Broadcast(StyleFrame(style, SetApart), subtitle: true);
     }
 
@@ -889,10 +928,13 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
         catch (SocketException) { }
     }
 
-    private static string StyleFrame(SubtitleStyle style, bool setApart) =>
-        Frame("style", new SortedDictionary<string, object>
+    private static string StyleFrame(SubtitleStyle style, bool setApart)
+    {
+        var json = new SortedDictionary<string, object>
         {
             ["background"] = Math.Clamp(style.Background, 0, 100),
+            ["backgroundColor"] = style.BackgroundRgb,
+            ["nameOnly"] = style.NameOnly,
             ["backgroundShape"] = style.BackgroundShape.ToString().ToLowerInvariant(),
             ["bold"] = style.Bold,
             ["bottomPercent"] = style.BottomPercent,
@@ -907,7 +949,12 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
             ["setApart"] = setApart,
             ["stackPrevious"] = style.StackPrevious,
             ["textColor"] = style.TextColor.ToString().ToLowerInvariant(),
-        });
+        };
+        // Yeni alanlar (TV 0.9.77+); eski TV tanımaz, eskisi gibi çizer.
+        if (SubtitleStyle.Hex(style.TextHex) is { } text) json["textHex"] = text;
+        if (style.HdmiInput is >= 1 and <= 4) json["hdmiInput"] = style.HdmiInput.Value;
+        return Frame("style", json);
+    }
 
     private static string Frame(string name, SortedDictionary<string, object> json) =>
         $"event: {name}\ndata: {JsonSerializer.Serialize(json, JsonOptions)}\n\n";

@@ -31,7 +31,7 @@ public partial class SecondAccountStep : UserControl
     private static void Open(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
 
     /// <summary>Sony'nin ücretsiz PlayStation hesabı açma sayfası (QR ve düğme aynı adrese gider).</summary>
-    private const string SignUpPage = "https://id.sonyentertainmentnetwork.com/create_account/";
+    private const string SignUpPage = "https://www.playstation.com/acct/create-account";
 
     private void OnOpenSignUp(object sender, RoutedEventArgs e) =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(SignUpPage) { UseShellExecute = true });

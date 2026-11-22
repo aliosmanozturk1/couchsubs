@@ -88,7 +88,8 @@ public partial class MainView : UserControl
             Refresh();
         if (e.PropertyName is nameof(AppController.Settings) or nameof(AppController.InstalledPacks) or nameof(AppController.PlayedGame)
             or nameof(AppController.IsRunning) or nameof(AppController.Ps5Tone) or nameof(AppController.TvTone) or nameof(AppController.TvClients)
-            or nameof(AppController.DemoMode) or nameof(AppController.CanStart) or nameof(AppController.TranslatorStatus) or nameof(AppController.OnlineIssue))
+            or nameof(AppController.DemoMode) or nameof(AppController.CanStart) or nameof(AppController.TranslatorStatus) or nameof(AppController.OnlineIssue)
+            or nameof(AppController.TvReconnecting) or nameof(AppController.TvStatusText))
             ShowChips();
         if (e.PropertyName is nameof(AppController.Settings))
             Preview.SetRegion(controller.Settings.Region);
@@ -279,7 +280,9 @@ public partial class MainView : UserControl
         else
         {
             var tone = controller.TvTone == StatusTone.Warning ? StatusTone.Warning : controller.TvClients > 0 || !running ? StatusTone.Good : StatusTone.Idle;
-            TvChip.Show("TV", controller.Tv?.Name ?? "TV", controller.TvClients > 0 ? null : running ? text["Waiting"] : null, tone);
+            // TV koptuysa bir dakika "Yeniden bağlanılıyor…" (TV alındısı; Mac ile aynı), sonra "Bekleniyor".
+            var more = controller.TvClients > 0 ? null : controller.TvReconnecting ? text["Reconnecting…"] : running ? text["Waiting"] : null;
+            TvChip.Show("TV", controller.Tv?.Name ?? "TV", more, tone);
         }
 
         var packs = GameCatalog.PackShelf(controller.InstalledPacks);

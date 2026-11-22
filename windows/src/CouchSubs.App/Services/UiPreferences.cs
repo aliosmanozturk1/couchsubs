@@ -12,7 +12,8 @@ namespace CouchSubs.App.Services;
 public static class UiPreferences
 {
     /// <param name="LastPopupAd">Açılır reklamın son gösterildiği an (günde en fazla bir kez).</param>
-    public sealed record Values(DateTime? LastPopupAd = null);
+    /// <param name="NewLookApplied">Yeni arayüzün ilk açılış ayarı yapıldı (bir kez; Mac ile aynı).</param>
+    public sealed record Values(DateTime? LastPopupAd = null, bool NewLookApplied = false);
 
     private static readonly string FilePath = Path.Combine(AppPaths.Data, "ui.json");
     private static Values? current;

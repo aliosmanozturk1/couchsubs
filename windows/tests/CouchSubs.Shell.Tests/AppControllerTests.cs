@@ -538,10 +538,12 @@ public class AppControllerTests
         var store = StoreUpToTv();
         var controller = Make(store: store);
         await controller.PairAsync(new LgTv("Samsung", "192.168.1.20", TvBrand.Samsung));
-        controller.Advance(); // TV -> çeviri modeli
-        controller.Advance(); // çeviri modeli -> deneme
-        controller.Advance(); // deneme -> daha iyi çeviri
-        controller.Advance(); // daha iyi çeviri -> bitti
+        controller.Advance(); // TV -> TV girişi
+        controller.TryHdmiInput(1, confirmed: true);
+        controller.Advance(); // TV girişi -> çeviri modeli
+        controller.Advance(); // çeviri modeli -> daha iyi çeviri
+        controller.Advance(); // daha iyi çeviri -> deneme
+        controller.Advance(); // deneme -> bitti
         Assert.Equal(OnboardingStep.Done, controller.Step);
         Assert.Equal(OnboardingStep.Done, Make(store: store).Step);
     }
@@ -1038,11 +1040,19 @@ public class AppControllerTests
         await controller.RegisterAsync("192.168.1.253", "12345678"); controller.Advance();
         Assert.Equal(OnboardingStep.Tv, controller.Step);
         await controller.PairAsync(new LgTv("LG TV", "192.168.1.153")); controller.Advance();
+        // TV Girişi: giriş onaylanmadan geçilmez; onaylanınca altyazı biçimine kaydedilir.
+        Assert.Equal(OnboardingStep.Hdmi, controller.Step);
+        Assert.False(controller.CanAdvance);
+        controller.TryHdmiInput(2, confirmed: false);
+        Assert.False(controller.CanAdvance);
+        controller.TryHdmiInput(2, confirmed: true);
+        Assert.Equal(2, controller.Settings.Style.HdmiInput);
+        controller.Advance();
         Assert.Equal(OnboardingStep.Translation, controller.Step); controller.Advance();
-        Assert.Equal(OnboardingStep.Test, controller.Step); controller.Advance();
         Assert.Equal(OnboardingStep.BetterTranslation, controller.Step);
         Assert.True(controller.CanAdvance);
         controller.Advance();
+        Assert.Equal(OnboardingStep.Test, controller.Step); controller.Advance();
         Assert.Equal(OnboardingStep.Done, controller.Step);
         controller.Dispose();
     }
@@ -1056,12 +1066,12 @@ public class AppControllerTests
         Assert.False(controller.UsesFreeGemini);
         Assert.True(controller.CanAdvance);
         controller.Advance();
-        Assert.Equal(OnboardingStep.Done, controller.Step);
+        Assert.Equal(OnboardingStep.Test, controller.Step);
         Assert.Equal(TranslationEngine.Free, controller.Settings.Engine);
         controller.Back();
         Assert.Equal(OnboardingStep.BetterTranslation, controller.Step);
         controller.Back();
-        Assert.Equal(OnboardingStep.Test, controller.Step);
+        Assert.Equal(OnboardingStep.Translation, controller.Step);
     }
 
     [Fact]
@@ -1083,6 +1093,8 @@ public class AppControllerTests
         Assert.True(controller.UsesFreeGemini);
         // Alttaki düğme "Şimdilik geç"ten "Devam"a döner.
         Assert.Contains(nameof(AppController.UsesFreeGemini), changed);
+        controller.Advance();
+        Assert.Equal(OnboardingStep.Test, controller.Step);
         controller.Advance();
         Assert.Equal(OnboardingStep.Done, controller.Step);
     }

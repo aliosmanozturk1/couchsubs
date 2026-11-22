@@ -316,7 +316,7 @@ public sealed class StreamWindow : Window
         var size = Math.Max(1, OverlayPlacement.FontSize(style.FontSize) * scale * (current ? 1 : 0.8) * wrapped.Scale);
         var boxed = StreamBackgrounds.BoxOpacity(style.Background) > 0;
         var dim = line.Role switch { SubtitleStack.Role.Current => 1.0, SubtitleStack.Role.Previous => 0.6, _ => 0.45 };
-        var color = style.TextColor == SubtitleTextColor.Yellow ? Color.FromRgb(0xFF, 0xE1, 0x35) : Colors.White;
+        var color = SpeakerText.Rgb(style.TextRgb);
         if (boxed) color.A = (byte)Math.Round(dim * 255);
         var text = new TextBlock
         {
@@ -329,10 +329,10 @@ public sealed class StreamWindow : Window
             Effect = boxed ? null : new DropShadowEffect { Color = Colors.Black, ShadowDepth = 2 * scale, BlurRadius = 4 * scale, Opacity = 1, Direction = 270 },
         };
         // Konuşana göre renk: "Ad: …" satırı o konuşanın renginde (ayar kapalıysa düz metin).
-        SpeakerText.Fill(text, wrapped.Text, line.Text, controller.Settings.SpeakerColors, controller.SpeakerBook, color.A);
+        SpeakerText.Fill(text, wrapped.Text, line.Text, controller.Settings.SpeakerColors, controller.SpeakerBook, color.A, style.NameOnly);
         return new Border
         {
-            Background = boxed ? Brushes.Black : Brushes.Transparent,
+            Background = boxed ? new SolidColorBrush(SpeakerText.Rgb(style.BackgroundRgb)) : Brushes.Transparent,
             CornerRadius = new CornerRadius(10 * scale),
             Padding = current ? new Thickness(26 * scale, 10 * scale, 26 * scale, 10 * scale) : new Thickness(20 * scale, 6 * scale, 20 * scale, 6 * scale),
             Margin = new Thickness(0, 14 * scale, 0, 0),
@@ -365,7 +365,7 @@ public sealed class StreamWindow : Window
                 Text = text,
                 FontSize = size,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = style.TextColor == SubtitleTextColor.Yellow ? new SolidColorBrush(Color.FromRgb(0xFF, 0xE1, 0x35)) : Brushes.White,
+                Foreground = new SolidColorBrush(SpeakerText.Rgb(style.TextRgb)),
                 TextWrapping = TextWrapping.Wrap,
                 LineHeight = size * 1.25,
             },

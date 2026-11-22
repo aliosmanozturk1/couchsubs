@@ -885,6 +885,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     public bool CanAdvance => step switch
     {
         OnboardingStep.Welcome or OnboardingStep.SecondAccount or OnboardingStep.Test or OnboardingStep.BetterTranslation => true,
+        // TV Girişi: görüntü onaylanınca (seçilen giriş kaydedilir) geçilir.
+        OnboardingStep.Hdmi => settings.Style.HdmiInput is not null,
         OnboardingStep.PsnLogin => IsXbox ? xboxToken is not null : accountId is not null,
         OnboardingStep.Console => IsXbox ? xboxConsole is not null : console is not null,
         OnboardingStep.Tv => HasTv || !ShowsOnTv,
@@ -910,12 +912,32 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             Step = OnboardingStep.Done;
             return;
         }
-        Step = step == OnboardingStep.Welcome && IsXbox ? OnboardingStep.PsnLogin : step + 1;
+        var next = step == OnboardingStep.Welcome && IsXbox ? OnboardingStep.PsnLogin : step + 1;
+        if (next == OnboardingStep.Hdmi && !NeedsHdmiStep) next++;
+        Step = next;
+    }
+
+    /// <summary>TV Girişi adımı yalnız TV eşleştiyse ve Android TV değilse (Android TV kendi girişini bilir; Mac ile aynı).</summary>
+    public bool NeedsHdmiStep => HasTv && ShowsOnTv && tv is { Brand: not TvBrand.AndroidTv };
+
+    /// <summary>
+    /// Kurulumun TV Girişi adımı: giriş TV'ye gönderilir (<c>style.hdmiInput</c>, TV uygulaması 0.9.77+ o girişi açar).
+    /// <paramref name="confirmed"/> false iken yalnız denenir (kaydedilmez, "Sırayla Dene"); onaylanınca kaydedilir.
+    /// </summary>
+    public void TryHdmiInput(int input, bool confirmed)
+    {
+        if (input is < 1 or > 4) return;
+        var style = settings.Style with { HdmiInput = input };
+        if (confirmed) Settings = settings with { Style = style };
+        else server.SendStyle(style);
     }
 
     public void Back()
     {
-        if (step > OnboardingStep.Welcome) Step = step == OnboardingStep.PsnLogin && IsXbox ? OnboardingStep.Welcome : step - 1;
+        if (step <= OnboardingStep.Welcome) return;
+        var previous = step == OnboardingStep.PsnLogin && IsXbox ? OnboardingStep.Welcome : step - 1;
+        if (previous == OnboardingStep.Hdmi && !NeedsHdmiStep) previous--;
+        Step = previous;
     }
 
     /// <summary>Ücretsiz Gemini anahtarı kayıtlı ve çeviri Gemini ile yapılıyor ("Daha iyi çeviri" adımı tamam).</summary>
@@ -2997,6 +3019,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         OnboardingStep.Tv => "tv",
         OnboardingStep.Translation => "translation",
         OnboardingStep.Test => "test",
+        OnboardingStep.Hdmi => "hdmi",
         OnboardingStep.BetterTranslation => "better_translation",
         _ => "home",
     };

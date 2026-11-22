@@ -14,9 +14,10 @@ namespace CouchSubs.App.Views;
 /// <summary>
 /// Ayarlar › Altyazı Görünümü (tuval 19): solda TV'deki altyazının 16:9 önizlemesi ve düşük kontrast uyarısı; sağda
 /// Yazı Boyutu (16–50), Zemin Rengi ve Koyuluk (Açık / Orta / Koyu = 45 / 75 / 95), Yazı Rengi, Karakter Adı (Yazıyla Aynı /
-/// Tek Renk / Karaktere Göre). Yazı boyu, koyuluk ve beyaz / sarı yazı mevcut ayara yazılır; zemin rengi, diğer yazı
-/// renkleri ve karakter adı rengi ortak altyazı biçimine (backgroundColor, textHex, nameColorMode, nameHex) eklenince
-/// kaydedilir; o zamana dek seçim bu sayfada önizlenir.
+/// Tek Renk / Karaktere Göre). Hepsi altyazı biçimine kaydedilir ve TV'ye, telefona ve bilgisayar ekranına gider
+/// (backgroundColor, textHex, nameColorMode, nameHex, characterColors; design/yeni-arayuz/METINLER.md, Mac ile aynı):
+/// 16–50 kaydırıcısı TV yazı boyuna (16–90) doğrusal eşlenir; koyuluk 45 / 75 / 100; "Zeminsiz" koyuluk 0; "Yazıyla
+/// Aynı" konuşan renklerini kapatır.
 /// </summary>
 public sealed class AppearanceEditor : Grid
 {
@@ -35,7 +36,7 @@ public sealed class AppearanceEditor : Grid
         ("Amber", Rgb(0xF5, 0xB8, 0x3D)), ("Turquoise", Rgb(0x4F, 0xD1, 0xC5)), ("Pink", Rgb(0xFF, 0x8F, 0xAB)), ("Purple", Rgb(0xB7, 0x94, 0xF6)),
         ("Green", Rgb(0x68, 0xD3, 0x91)), ("Orange", Rgb(0xF6, 0x87, 0x4F)), ("Red", Rgb(0xF5, 0x65, 0x65)), ("Blue", Rgb(0x63, 0xB3, 0xED)),
     ];
-    private static readonly int[] Darkness = [45, 75, 95];
+    private static readonly int[] Darkness = [45, 75, 100];
     private static readonly (string Name, string Line)[] Sample = [("Jason", "Tamam. Gidelim."), ("Lucia", "Yakınımda kal. Bunu birlikte yapacağız."), ("Cal", "Bir sürü silah sesi duyuyorum!")];
 
     private readonly AppController controller;
@@ -54,7 +55,9 @@ public sealed class AppearanceEditor : Grid
     private int text;
     private int nameMode = 1;
     private int singleName;
-    private readonly int[] perCharacter = [1, 2, 0];
+    private int[] perCharacter = [1, 2, 0];
+    /// <summary>"Karaktere Göre"de listelenen kişiler: bu oturumda görülenler, yoksa örnek adlar.</summary>
+    private string[] characters = [.. Sample.Select(item => item.Name)];
     private bool loading = true;
 
     public AppearanceEditor(AppController controller)
@@ -101,7 +104,7 @@ public sealed class AppearanceEditor : Grid
         size.ValueChanged += (_, e) =>
         {
             sizeValue.Text = Localizer.Current.Format("%lld px", (int)e.NewValue);
-            if (!loading) controller.Settings = controller.Settings with { Style = controller.Settings.Style with { FontSize = (int)e.NewValue } };
+            if (!loading) Save(style => style with { FontSize = TvSize((int)e.NewValue) });
             Preview();
         };
         right.Children.Add(Divider());
@@ -112,7 +115,12 @@ public sealed class AppearanceEditor : Grid
         {
             var index = i;
             var brush = Backgrounds[i].Value is { } color ? (Brush)new SolidColorBrush(color) : Checker();
-            backgroundSwatches.Children.Add(Swatch(brush, l[Backgrounds[i].Name], "bg", 32, () => { background = index; Preview(); }));
+            backgroundSwatches.Children.Add(Swatch(brush, l[Backgrounds[i].Name], "bg", 32, () =>
+            {
+                background = index;
+                SaveBackground();
+                Preview();
+            }));
         }
         right.Children.Add(backgroundSwatches);
         backgroundName.SetResourceReference(StyleProperty, "HintText");
@@ -124,7 +132,7 @@ public sealed class AppearanceEditor : Grid
         darkRow.Children.Add(darkLabel);
         darkRow.Children.Add(Segments(["Light", "Medium", "Dark"], darknessButtons, index =>
         {
-            if (!loading) controller.Settings = controller.Settings with { Style = controller.Settings.Style with { Background = Darkness[index] } };
+            SaveBackground();
             Preview();
         }));
         right.Children.Add(darkRow);
@@ -138,12 +146,12 @@ public sealed class AppearanceEditor : Grid
             textSwatches.Children.Add(Swatch(new SolidColorBrush(TextColors[i].Value), l[TextColors[i].Name], "text", 32, () =>
             {
                 text = index;
-                // Beyaz ve sarı mevcut ayardır (TV'ye bugün de gider); diğerleri ortak biçime eklenince kaydedilir.
-                if (!loading && TextColors[index].Name is "White" or "Yellow")
-                    controller.Settings = controller.Settings with
-                    {
-                        Style = controller.Settings.Style with { TextColor = TextColors[index].Name == "Yellow" ? SubtitleTextColor.Yellow : SubtitleTextColor.White },
-                    };
+                // Seçilen renk textHex olarak gider; eski TV için en yakın beyaz / sarı da (Mac ile aynı).
+                Save(style => style with
+                {
+                    TextHex = Hex(TextColors[index].Value),
+                    TextColor = TextColors[index].Name == "Yellow" ? SubtitleTextColor.Yellow : SubtitleTextColor.White,
+                });
                 Preview();
             }));
         }
@@ -154,7 +162,13 @@ public sealed class AppearanceEditor : Grid
         right.Children.Add(Divider());
 
         right.Children.Add(new TextBlock { Text = l["Character Name"], FontWeight = FontWeights.SemiBold });
-        var modes = Segments(["Same as Text", "Single Color", "By Character"], nameModes, index => { nameMode = index; ShowNameArea(); Preview(); });
+        var modes = Segments(["Same as Text", "Single Color", "By Character"], nameModes, index =>
+        {
+            nameMode = index;
+            SaveNames();
+            ShowNameArea();
+            Preview();
+        });
         modes.Margin = new Thickness(0, 16, 0, 0);
         right.Children.Add(modes);
         nameArea.Margin = new Thickness(0, 16, 0, 0);
@@ -169,18 +183,65 @@ public sealed class AppearanceEditor : Grid
         Preview();
     }
 
+    /// <summary>Kayıttan: boyut eşlemesi, zemin rengi ve koyuluğu, yazı rengi, karakter adı.</summary>
     private void Load()
     {
-        var style = controller.Settings.Style;
-        size.Value = Math.Clamp(style.FontSize, 16, 50);
+        var settings = controller.Settings;
+        var style = settings.Style;
+        size.Value = Math.Clamp((int)Math.Round(16 + (style.FontSize - 16) * 34.0 / 74), 16, 50);
         sizeValue.Text = Localizer.Current.Format("%lld px", (int)size.Value);
-        background = style.Background <= 0 ? Backgrounds.Length - 1 : 0;
+        var backgroundIndex = Array.FindIndex(Backgrounds, item => item.Value is { } color && Hex(color) == style.BackgroundRgb);
+        background = style.Background <= 0 ? Backgrounds.Length - 1 : Math.Max(0, backgroundIndex);
         ((ColorSwatch)backgroundSwatches.Children[background]).IsChecked = true;
-        var dark = Array.IndexOf(Darkness, Darkness.MinBy(value => Math.Abs(value - style.Background)));
+        var dark = Array.IndexOf(Darkness, Darkness.MinBy(value => Math.Abs(value - Math.Max(style.Background, 1))));
         darknessButtons[dark].IsChecked = true;
-        text = style.TextColor == SubtitleTextColor.Yellow ? 2 : 0;
+        text = Math.Max(0, Array.FindIndex(TextColors, item => Hex(item.Value) == style.TextRgb));
+        if (style.TextHex is null && style.TextColor == SubtitleTextColor.Yellow) text = 2;
         ((ColorSwatch)textSwatches.Children[text]).IsChecked = true;
+        nameMode = !settings.SpeakerColors || style.NameColorMode == NameColorMode.Text ? 0 : style.NameColorMode == NameColorMode.Single ? 1 : 2;
+        singleName = Math.Max(0, Array.FindIndex(NameColors, item => Hex(item.Value) == SubtitleStyle.Hex(style.NameHex)));
+        var known = controller.SpeakerBook.Known;
+        if (known.Count > 0) characters = [.. known.Take(8).Select(person => Title(person.Key))];
+        perCharacter = [.. characters.Select((name, index) =>
+        {
+            var key = name.ToLowerInvariant();
+            var chosen = style.CharacterColors is { } map && map.TryGetValue(key, out var hex) ? hex : null;
+            var found = Array.FindIndex(NameColors, item => Hex(item.Value) == SubtitleStyle.Hex(chosen));
+            return found >= 0 ? found : (index + 1) % NameColors.Length;
+        })];
         nameModes[nameMode].IsChecked = true;
+    }
+
+    private static string Title(string key) => key.Length == 0 ? key : char.ToUpper(key[0]) + key[1..];
+
+    private static string Hex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+
+    /// <summary>16–50 kaydırıcısı → TV yazı boyu 16–90 (doğrusal; Mac ile aynı).</summary>
+    private static int TvSize(int shown) => (int)Math.Round(16 + (shown - 16) * 74.0 / 34);
+
+    private void Save(Func<SubtitleStyle, SubtitleStyle> change, bool? speakerColors = null)
+    {
+        if (loading) return;
+        var settings = controller.Settings;
+        controller.Settings = settings with { Style = change(settings.Style), SpeakerColors = speakerColors ?? settings.SpeakerColors };
+    }
+
+    /// <summary>Zemin: "Zeminsiz" koyuluk 0; diğerleri rengi ve seçili koyuluğu (45 / 75 / 100).</summary>
+    private void SaveBackground()
+    {
+        var darkness = Darkness[Math.Max(0, Array.FindIndex(darknessButtons, b => b.IsChecked == true))];
+        Save(style => Backgrounds[background].Value is { } color
+            ? style with { BackgroundColor = Hex(color), Background = darkness }
+            : style with { Background = 0 });
+    }
+
+    /// <summary>Karakter adı: Yazıyla Aynı konuşan renklerini kapatır; Tek Renk ve Karaktere Göre açar.</summary>
+    private void SaveNames()
+    {
+        var mode = nameMode switch { 0 => NameColorMode.Text, 1 => NameColorMode.Single, _ => NameColorMode.Speaker };
+        var chosen = characters.Select((name, index) => (name.ToLowerInvariant(), Hex(NameColors[perCharacter[index]].Value)))
+            .ToDictionary(item => item.Item1, item => item.Item2);
+        Save(style => style with { NameColorMode = mode, NameHex = Hex(NameColors[singleName].Value), CharacterColors = chosen }, speakerColors: nameMode != 0);
     }
 
     private void ShowNameArea()
@@ -198,18 +259,18 @@ public sealed class AppearanceEditor : Grid
             for (var i = 0; i < NameColors.Length; i++)
             {
                 var index = i;
-                var swatch = Swatch(new SolidColorBrush(NameColors[i].Value), l[NameColors[i].Name], "name", 32, () => { singleName = index; Preview(); });
+                var swatch = Swatch(new SolidColorBrush(NameColors[i].Value), l[NameColors[i].Name], "name", 32, () => { singleName = index; SaveNames(); Preview(); });
                 swatch.IsChecked = i == singleName;
                 row.Children.Add(swatch);
             }
             nameArea.Children.Add(row);
             return;
         }
-        for (var c = 0; c < Sample.Length; c++)
+        for (var c = 0; c < characters.Length; c++)
         {
             var character = c;
             var line = new DockPanel { Margin = new Thickness(0, 0, 0, 12) };
-            var name = new TextBlock { Text = Sample[c].Name, Width = 72, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(NameColors[perCharacter[c]].Value),
+            var name = new TextBlock { Text = characters[c], Width = 72, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(NameColors[perCharacter[c]].Value),
                 VerticalAlignment = VerticalAlignment.Center };
             DockPanel.SetDock(name, Dock.Left);
             line.Children.Add(name);
@@ -217,10 +278,11 @@ public sealed class AppearanceEditor : Grid
             for (var i = 0; i < NameColors.Length; i++)
             {
                 var index = i;
-                var swatch = Swatch(new SolidColorBrush(NameColors[i].Value), $"{Sample[c].Name}: {l[NameColors[i].Name]}", "name" + c, 24, () =>
+                var swatch = Swatch(new SolidColorBrush(NameColors[i].Value), $"{characters[c]}: {l[NameColors[i].Name]}", "name" + c, 24, () =>
                 {
                     perCharacter[character] = index;
                     name.Foreground = new SolidColorBrush(NameColors[index].Value);
+                    SaveNames();
                     Preview();
                 });
                 swatch.IsChecked = perCharacter[c] == i;
@@ -238,6 +300,7 @@ public sealed class AppearanceEditor : Grid
         if (loading) return;
         var l = Localizer.Current;
         var darkness = Darkness[Math.Max(0, Array.FindIndex(darknessButtons, b => b.IsChecked == true))] / 100.0;
+        // Önizleme (Mac ile aynı): kaydırıcıdaki boyun yarısı.
         var bg = Backgrounds[background].Value;
         var fg = TextColors[text].Value;
         backgroundName.Text = l.Format("Selected: %@.", l[Backgrounds[background].Name]);
@@ -245,7 +308,7 @@ public sealed class AppearanceEditor : Grid
         previewLines.Children.Clear();
         for (var i = 0; i < Sample.Length; i++)
         {
-            var nameColor = nameMode == 0 ? fg : nameMode == 1 ? NameColors[singleName].Value : NameColors[perCharacter[i]].Value;
+            var nameColor = nameMode == 0 ? fg : nameMode == 1 ? NameColors[singleName].Value : NameColors[perCharacter[i % perCharacter.Length]].Value;
             var line = new TextBlock { FontWeight = FontWeights.SemiBold, FontSize = Math.Round(size.Value * 0.5), Foreground = new SolidColorBrush(fg), TextAlignment = TextAlignment.Center };
             line.Inlines.Add(new System.Windows.Documents.Run(Sample[i].Name + ":") { Foreground = new SolidColorBrush(nameColor) });
             line.Inlines.Add(new System.Windows.Documents.Run(" " + Sample[i].Line));

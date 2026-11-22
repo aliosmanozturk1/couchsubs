@@ -82,6 +82,7 @@ public partial class OnboardingView : UserControl
             OnboardingStep.PsnLogin => controller.IsXbox ? new XboxLoginStep() : new PsnLoginStep(),
             OnboardingStep.Console => controller.IsXbox ? new XboxConsoleStep() : new ConsoleStep(),
             OnboardingStep.Tv => new TvStep(),
+            OnboardingStep.Hdmi => new HdmiStep(),
             OnboardingStep.Translation => new TranslationStep(),
             OnboardingStep.Test => new TestStep(),
             _ => new BetterTranslationStep(),
@@ -101,16 +102,24 @@ public partial class OnboardingView : UserControl
     private void ShowSteps()
     {
         var text = Localizer.Current;
-        Counter.Text = text.Format("STEP %lld / %lld", controller.StepNumber, controller.StepCount);
+        // Dört nokta (Mac ile aynı): 1 Konsol, 2 Hesap + PS5, 3 TV + Giriş, 4 Çeviri + Deneme.
+        var group = controller.Step switch
+        {
+            OnboardingStep.Welcome => 1,
+            OnboardingStep.SecondAccount or OnboardingStep.PsnLogin or OnboardingStep.Console => 2,
+            OnboardingStep.Tv or OnboardingStep.Hdmi => 3,
+            _ => 4,
+        };
+        Counter.Text = text.Format("STEP %lld / %lld", group, 4);
         Dots.Children.Clear();
-        for (var number = 1; number <= controller.StepCount; number++)
+        for (var number = 1; number <= 4; number++)
         {
             var dot = new Border
             {
-                Width = number == controller.StepNumber ? 24 : 8, Height = 8, CornerRadius = new CornerRadius(4),
+                Width = number == group ? 24 : 8, Height = 8, CornerRadius = new CornerRadius(4),
                 Margin = new Thickness(number == 1 ? 0 : 8, 0, 0, 0),
             };
-            dot.SetResourceReference(Border.BackgroundProperty, number <= controller.StepNumber ? "accentBrush" : "borderBrush");
+            dot.SetResourceReference(Border.BackgroundProperty, number <= group ? "accentBrush" : "borderBrush");
             Dots.Children.Add(dot);
         }
         System.Windows.Automation.AutomationProperties.SetName(Dots, Counter.Text);

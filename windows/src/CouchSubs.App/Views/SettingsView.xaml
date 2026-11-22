@@ -716,6 +716,16 @@
             </TabItem>
             <TabItem x:Name="OutputSection">
                 <StackPanel>
+                    <!-- TV durumu: bağlıyken "Bağlı", koptuysa bir dakika "Yeniden bağlanılıyor…" (TV alındısı), sonra bekleniyor. -->
+                    <c:Card Title="TV" Margin="0,0,0,12" Visibility="{Binding ShowsOnTv, Converter={StaticResource VisibleIf}}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="{t:T 'Send Test Subtitle'}" Style="{StaticResource SmallSecondaryButton}" VerticalAlignment="Center" Click="OnTest" />
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Ellipse x:Name="TvStatusDot" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Text="{Binding TvStatusText}" Style="{StaticResource RowTitle}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DockPanel>
+                    </c:Card>
                     <local:SubtitleOutputCard x:Name="OutputCard" Detailed="True" Margin="0,0,0,12" />
                     <c:Card Margin="0,0,0,12">
                         <local:SecondScreenPanel x:Name="SecondScreenCard" />

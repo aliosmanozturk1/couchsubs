@@ -124,6 +124,7 @@ public partial class SettingsView : UserControl
         TransitionAnimations.IsChecked = settings.TransitionAnimations;
         ShowPace();
         ShowMiniSubtitle();
+        ShowTvStatus();
         Sections.SelectedIndex = 0;
         // Yazı boyutu, koyuluk ve yazı rengi artık düzenleyicide; eski satırlar gizlenir (ayarın kendisi aynı).
         AppearanceHost.Content = new AppearanceEditor(controller);
@@ -343,6 +344,8 @@ public partial class SettingsView : UserControl
 
     private void OnControllerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(AppController.TvStatusText) or nameof(AppController.TvClients) or nameof(AppController.TvReconnecting))
+            Dispatcher.BeginInvoke(ShowTvStatus);
         if (e.PropertyName is nameof(AppController.ObsAddress) or nameof(AppController.NetworkObsAddress) or nameof(AppController.LegacyTvWarning))
         {
             ObsAddress.Text = controller.ObsAddress;
@@ -1202,9 +1205,9 @@ public partial class SettingsView : UserControl
     /// </summary>
     private static readonly (string Tag, int Misread, int Partial, string Hint)[] Paces =
     [
-        ("Fast", 0, 0, "Subtitles arrive as fast as possible; you may rarely see half a sentence."),
-        ("Balanced", SubtitlePipeline.PackWaitMs, SubtitlePipeline.CleanWaitMs, "Recommended for most games. Speed and accuracy balanced."),
-        ("Accurate", 1000, 600, "Translated once the sentence is complete; arrives about half a second later."),
+        ("Fast", 400, 0, "Subtitles arrive as fast as possible; you may rarely see half a sentence."),
+        ("Balanced", 800, 300, "Recommended for most games. Speed and accuracy balanced."),
+        ("Accurate", 1000, 800, "Translated once the sentence is complete; arrives about half a second later."),
     ];
 
     private void OnPace(object sender, RoutedEventArgs e)
@@ -1250,14 +1253,20 @@ public partial class SettingsView : UserControl
         AutoReadGamePhone.IsChecked = false;
     }
 
+    /// <summary>TV durumu noktası: bağlı yeşil, yeniden bağlanıyor amber, bekliyor gri.</summary>
+    private void ShowTvStatus() =>
+        TvStatusDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty,
+            controller.TvClients > 0 ? "successBrush" : controller.TvReconnecting ? "accentBrush" : "textTertiaryBrush");
+
     /// <summary>Temel sayfasındaki küçük altyazı önizlemesi: yazı boyu, zemin koyuluğu ve yazı rengi.</summary>
     private void ShowMiniSubtitle()
     {
         var style = controller.Settings.Style;
         var alpha = (byte)Math.Round(Math.Clamp(style.Background, 0, 100) / 100.0 * 255);
-        MiniSubtitle.Background = new SolidColorBrush(Color.FromArgb(alpha, 0x10, 0x10, 0x14));
-        MiniSubtitleText.Foreground = new SolidColorBrush(style.TextColor.ToString() == "Yellow" ? Color.FromRgb(0xFF, 0xE0, 0x66) : Colors.White);
-        MiniSubtitleText.FontSize = Math.Clamp(Math.Round(style.FontSize * 0.5), 10, 18);
+        MiniSubtitle.Background = new SolidColorBrush(SpeakerText.Rgb(style.BackgroundRgb, alpha));
+        MiniSubtitleText.Foreground = new SolidColorBrush(SpeakerText.Rgb(style.TextRgb));
+        // Kaydırıcıdaki boy (16–50) yarıya (Mac ile aynı önizleme).
+        MiniSubtitleText.FontSize = Math.Clamp(Math.Round((16 + (style.FontSize - 16) * 34.0 / 74) * 0.5), 8, 25);
         MiniSubtitleText.TextWrapping = TextWrapping.NoWrap;
         MiniSubtitleText.Inlines.Clear();
         var name = new System.Windows.Documents.Run("Jason: ");

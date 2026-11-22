@@ -21,6 +21,27 @@ public sealed class SpeakerColorBook
 
     private readonly object gate = new();
     private readonly List<(string Key, string Color)> people = [];
+    /// <summary>"Tek Renk"te herkesin rengi; "Karaktere Göre"de kullanıcının seçtiği kişi renkleri (anahtar küçük harfli ad).</summary>
+    private string? fixedColor;
+    private Dictionary<string, string> overrides = [];
+
+    /// <summary>Altyazı Görünümü › Karakter Adı (Mac SpeakerColorBook.configure ile aynı).</summary>
+    public void Configure(string? fixedColor, IReadOnlyDictionary<string, string> chosen)
+    {
+        var normalized = new Dictionary<string, string>();
+        foreach (var (name, color) in chosen) normalized[Key(name)] = color;
+        lock (gate)
+        {
+            this.fixedColor = fixedColor;
+            overrides = normalized;
+        }
+    }
+
+    /// <summary>Bu oturumda rengi verilmiş kişiler (adın anahtarı ve rengi), ilk görülen önce (Mac SpeakerColorBook.known).</summary>
+    public IReadOnlyList<(string Key, string Color)> Known
+    {
+        get { lock (gate) return [.. people]; }
+    }
 
     /// <summary>Adın rengi; bilinmeyen kişi eklenir. Ad boşsa null.</summary>
     public string? Color(string name)
@@ -29,12 +50,20 @@ public sealed class SpeakerColorBook
         if (key.Length == 0) return null;
         lock (gate)
         {
+            if (fixedColor is not null) return fixedColor;
+            var chosen = overrides.TryGetValue(key, out var exact) ? exact
+                : overrides.FirstOrDefault(entry => SamePerson(entry.Key, key)).Value;
+            if (chosen is not null)
+            {
+                if (!people.Any(person => SamePerson(person.Key, key))) people.Add((key, chosen));
+                return chosen;
+            }
             foreach (var (known, color) in people)
                 if (SamePerson(known, key)) return color;
             var palette = SpeakerColors.Palette;
             var base0 = (int)(SpeakerColors.Hash(key) % (uint)palette.Count);
             var used = people.Select(person => person.Color).ToHashSet();
-            var families = used.Select(color => Families[color]).ToHashSet();
+            var families = used.Where(Families.ContainsKey).Select(color => Families[color]).ToHashSet();
             var order = Enumerable.Range(0, palette.Count).Select(step => palette[(base0 + step) % palette.Count]).ToList();
             var pick = order.FirstOrDefault(color => !used.Contains(color) && !families.Contains(Families[color]))
                        ?? order.FirstOrDefault(color => !used.Contains(color))

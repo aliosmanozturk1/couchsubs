@@ -679,10 +679,10 @@ public sealed record AreaSet(CropRegion Region, AreaPreset AreaPreset, IReadOnly
 public sealed record ExtraArea(string Id, string Name, CropRegion Region, bool Enabled = true, ResultTarget Target = ResultTarget.Tv)
 {
     /// <summary>
-    /// Ek alan sınırı yok (yeni arayüz, METINLER.md › 20): her alan saniyede bir okunur. Yalnız ilk
+    /// En çok 50 ek alan (yeni arayüz, METINLER.md; eskiden 3): her alan saniyede bir okunur. Yalnız ilk
     /// <see cref="ShortcutCount"/> alanın kısayolu vardır (Num 1-3 / Ctrl+Shift+1-3); sonrakiler kısayolsuzdur.
     /// </summary>
-    public const int MaxCount = int.MaxValue;
+    public const int MaxCount = 50;
 
     /// <summary>Kısayolu olan ilk ek alanların sayısı.</summary>
     public const int ShortcutCount = 3;
@@ -990,8 +990,12 @@ public sealed record SamsungPreflight(SamsungDeveloperInfo? Info, string? Comput
 /// <summary>Durum noktasının rengi: bağlı (yeşil), sorun var (turuncu), boşta (gri).</summary>
 public enum StatusTone { Idle, Warning, Good }
 
-/// <summary><c>BetterTranslation</c>: isteğe bağlı ücretsiz Gemini anahtarı; atlanabilir (Mac'teki betterTranslation).</summary>
-public enum OnboardingStep { Welcome, SecondAccount, PsnLogin, Console, Tv, Translation, Test, BetterTranslation, Done }
+/// <summary>
+/// <c>BetterTranslation</c>: isteğe bağlı ücretsiz Gemini anahtarı; atlanabilir (Mac'teki betterTranslation).
+/// <c>Hdmi</c>: TV Girişi (yalnız TV eşleştiyse ve Android TV değilse); seçilen giriş <c>style.hdmiInput</c> ile TV'ye gider.
+/// Sıra Mac'teki yeni kurulumla aynı: deneme en sonda, Daha İyi Çeviri'den sonra.
+/// </summary>
+public enum OnboardingStep { Welcome, SecondAccount, PsnLogin, Console, Tv, Hdmi, Translation, BetterTranslation, Test, Done }
 
 public enum AppError
 {
