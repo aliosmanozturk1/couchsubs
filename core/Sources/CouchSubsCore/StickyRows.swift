@@ -100,12 +100,16 @@ public struct StickyRows {
                 newlySticky.append(reading.lines[matched.firstIndex(of: index)!].text)
             }
         }
+        // Konuşan adıyla başlayan satır ("JASON: …") her zaman altyazıdır: görev/HUD sayılıp atılmaz (Windows, Android
+        // ile aynı). Uzun süren konuşmada adlı satır değişmeden kalınca sabit sayılabiliyordu.
         let lingering = lingeringLines(reading, matched)
+        let spoken = reading.lines.map { SpeakerPrefix.split($0.text) != nil }
+        newlySticky.removeAll { SpeakerPrefix.split($0) != nil }
         let kept = zip(reading.lines, matched).enumerated()
-            .filter { position, pair in !lingering[position] && (pair.1.map { !rows[$0].sticky } ?? true) }
+            .filter { position, pair in spoken[position] || !lingering[position] && (pair.1.map { !rows[$0].sticky } ?? true) }
             .map(\.element.0)
         removed = zip(reading.lines, matched).enumerated()
-            .filter { position, pair in lingering[position] || (pair.1.map { rows[$0].sticky } ?? false) }
+            .filter { position, pair in !spoken[position] && (lingering[position] || (pair.1.map { rows[$0].sticky } ?? false)) }
             .map(\.element.0)
         // Kalkan satırlar unutulur (dizinler yukarıda kullanıldı; silme en sonda). Önceki okumanın satırları dizin
         // değil satır olarak tutulamadığı için silmeden sonra yeniden bulunur.

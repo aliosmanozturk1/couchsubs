@@ -19,6 +19,18 @@ final class SubtitleBlockTests: XCTestCase {
         XCTAssertEqual(reading.subtitleBlock(in: area), .empty)
     }
 
+    /// Menü satırlarının kenarı hizalıdır; ortalanmış kısa konuşma satırları ("No / Wait / Go on") menü sayılmaz.
+    /// Konuşan adıyla başlayan satır da menü değildir (Windows, Android ile aynı).
+    func testCenteredShortLinesAndSpeakerLinesAreNotAMenu() {
+        let menu = Reading(lines: [line("MAP", 0.05, 0.05, 0.10), line("HELP", 0.05, 0.15, 0.11), line("SETTINGS", 0.051, 0.25, 0.17)])
+        XCTAssertTrue(menu.isMenu)
+        let spoken = Reading(lines: [line("No", 0.47, 0.05, 0.53), line("Wait", 0.46, 0.15, 0.54), line("Go on", 0.45, 0.25, 0.55)])
+        XCTAssertFalse(spoken.isMenu)
+        let named = Reading(lines: [line("JASON: No", 0.05, 0.05, 0.15), line("LUCIA: Wait", 0.05, 0.15, 0.16),
+                                    line("JASON: Go", 0.05, 0.25, 0.15)])
+        XCTAssertFalse(named.isMenu)
+    }
+
     func testCenteredSubtitleIsKeptWithoutCornerGauge() {
         let reading = Reading(lines: [
             line("We'll lose these tracks if we don't hurry.", 0.25, 0.7, 0.75),

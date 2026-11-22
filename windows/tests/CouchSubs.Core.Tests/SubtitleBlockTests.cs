@@ -21,6 +21,19 @@ public class SubtitleBlockTests
         Assert.Empty(reading.SubtitleBlock(Area).Lines);
     }
 
+    /// <summary>
+    /// Menü satırlarının kenarı hizalıdır; ortalanmış kısa konuşma satırları ("No / Wait / Go on") menü sayılmaz. Konuşan
+    /// adıyla başlayan satır da menü değildir (Mac, Android ile aynı).
+    /// </summary>
+    [Fact]
+    public void CenteredShortLinesAndSpeakerLinesAreNotAMenu()
+    {
+        Assert.True(new Reading([Line("MAP", 0.05, 0.05, 0.10), Line("HELP", 0.05, 0.15, 0.11), Line("SETTINGS", 0.051, 0.25, 0.17)]).IsMenu);
+        Assert.False(new Reading([Line("No", 0.47, 0.05, 0.53), Line("Wait", 0.46, 0.15, 0.54), Line("Go on", 0.45, 0.25, 0.55)]).IsMenu);
+        Assert.False(new Reading([Line("JASON: No", 0.05, 0.05, 0.15), Line("LUCIA: Wait", 0.05, 0.15, 0.16),
+                                  Line("JASON: Go", 0.05, 0.25, 0.15)]).IsMenu);
+    }
+
     [Fact]
     public void CenteredSubtitleIsKeptWithoutCornerGauge()
     {

@@ -115,10 +115,14 @@ public sealed class StickyRows
                 newly.Add(reading.Lines[i].Text);
             }
         }
+        // Konuşan adıyla başlayan satır ("JASON: …") her zaman altyazıdır: görev/HUD sayılıp atılmaz (Mac/iPhone, Android
+        // ile aynı).
+        newly.RemoveAll(text => SpeakerPrefix.Parse(text) is not null);
         NewlySticky = newly;
         var lingering = Lingering(reading, matched);
-        var kept = reading.Lines.Where((_, i) => matched[i] is not { Sticky: true } && !lingering[i]).ToList();
-        Removed = [.. reading.Lines.Where((_, i) => matched[i] is { Sticky: true } || lingering[i])];
+        var spoken = reading.Lines.Select(line => SpeakerPrefix.Parse(line.Text) is not null).ToList();
+        var kept = reading.Lines.Where((_, i) => spoken[i] || matched[i] is not { Sticky: true } && !lingering[i]).ToList();
+        Removed = [.. reading.Lines.Where((_, i) => !spoken[i] && (matched[i] is { Sticky: true } || lingering[i]))];
         rows.RemoveAll(r => time - r.LastSeen > ForgetAfterMs);
         return kept.Count == reading.Lines.Count ? reading : new Reading(kept);
     }

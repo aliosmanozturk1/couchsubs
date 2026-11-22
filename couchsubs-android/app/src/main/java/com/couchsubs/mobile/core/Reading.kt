@@ -61,6 +61,9 @@ class Reading(lines: List<TextLine>) {
     companion object {
         val Empty = Reading(emptyList())
 
+        /** [isMenu]: menü satırlarının sol ya da sağ kenarı bu kadar içinde hizalı (okunan alana oranla). */
+        const val MENU_EDGE = 0.012
+
         /** [joiningRows]: aynı satırdaki iki parça arasındaki en büyük boşluk (alan genişliğine oranla). */
         const val ROW_GAP = 0.05
 
@@ -256,8 +259,21 @@ class Reading(lines: List<TextLine>) {
     }
 
     /** Alt alta kısa ve noktalamasız satırlar ("MAP", "HELP", "SOCIAL CLUB") menüdür, konuşma değil. */
+    /**
+     * Satırların yeri biliniyorsa sol ya da sağ kenarları [MENU_EDGE] içinde hizalı olmalı: ortalanmış kısa konuşma
+     * satırları ("No / Wait / Go on") menü sanılıp atılmasın. Konuşan adıyla başlayan satır menü değildir (Mac/iPhone,
+     * Windows ile aynı).
+     */
     internal val isMenu: Boolean
-        get() = lines.size >= 3 && lines.all { wordCount(it.text) <= 3 && !SubtitleStabilizer.endsSentence(it.text) }
+        get() {
+            if (lines.size < 3 || !lines.all {
+                    wordCount(it.text) <= 3 && !SubtitleStabilizer.endsSentence(it.text) && SpeakerPrefix.split(it.text) == null
+                }) return false
+            val boxes = lines.mapNotNull { it.box }
+            if (boxes.size != lines.size) return true
+            fun aligned(edges: List<Double>) = edges.max() - edges.min() <= MENU_EDGE
+            return aligned(boxes.map { it.left }) || aligned(boxes.map { it.right })
+        }
 
     /** Tek başına okunan etkileşim/HUD etiketi (GTA 6: "SIT", "• ADD TO TRUNK"). */
     internal val isActionLabel: Boolean

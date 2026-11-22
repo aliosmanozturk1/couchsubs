@@ -283,12 +283,22 @@ public struct Reading: Equatable, Sendable {
         return top.hasSuffix(",") || top.hasSuffix("-") || top.hasSuffix("—") || wordCount(below) <= 3
     }
 
-    /// Alt alta kısa ve noktalamasız satırlar ("MAP", "HELP", "SOCIAL CLUB") menüdür, konuşma değil.
+    /// Alt alta kısa ve noktalamasız satırlar ("MAP", "HELP", "SOCIAL CLUB") menüdür, konuşma değil. Satırların yeri
+    /// biliniyorsa sol ya da sağ kenarları hizalı olmalı (`menuEdge` içinde): ortalanmış kısa konuşma satırları ("No /
+    /// Wait / Go on") menü sanılıp atılmasın. Konuşan adıyla başlayan satır menü değildir (Windows, Android ile aynı).
     var isMenu: Bool {
-        lines.count >= 3 && lines.allSatisfy { line in
+        guard lines.count >= 3, lines.allSatisfy({ line in
             line.text.split(whereSeparator: \.isWhitespace).count <= 3 && !SubtitleStabilizer.endsSentence(line.text)
-        }
+                && SpeakerPrefix.split(line.text) == nil
+        }) else { return false }
+        let boxes = lines.compactMap(\.box)
+        guard boxes.count == lines.count else { return true }
+        func aligned(_ edges: [Double]) -> Bool { edges.max()! - edges.min()! <= Self.menuEdge }
+        return aligned(boxes.map(\.left)) || aligned(boxes.map(\.right))
     }
+
+    /// Menü satırlarının sol ya da sağ kenarı bu kadar içinde hizalı (okunan alana oranla).
+    static let menuEdge = 0.012
 
     /// Tek başına okunan etkileşim/HUD etiketi (GTA 6: "SIT", "• ADD TO TRUNK").
     var isActionLabel: Bool { lines.count == 1 && ButtonPrompts.isActionLabel(lines[0].text) }

@@ -107,10 +107,14 @@ class StickyRows {
                 newly.add(reading.lines[i].text)
             }
         }
+        // Konuşan adıyla başlayan satır ("JASON: …") her zaman altyazıdır: görev/HUD sayılıp atılmaz (Mac/iPhone, Windows
+        // ile aynı).
+        newly.removeAll { SpeakerPrefix.split(it) != null }
         newlySticky = newly
         val lingering = lingering(reading, matched)
-        val kept = reading.lines.filterIndexed { i, _ -> matched[i]?.sticky != true && !lingering[i] }
-        removed = reading.lines.filterIndexed { i, _ -> matched[i]?.sticky == true || lingering[i] }
+        val spoken = reading.lines.map { SpeakerPrefix.split(it.text) != null }
+        val kept = reading.lines.filterIndexed { i, _ -> spoken[i] || matched[i]?.sticky != true && !lingering[i] }
+        removed = reading.lines.filterIndexed { i, _ -> !spoken[i] && (matched[i]?.sticky == true || lingering[i]) }
         rows.removeAll { time - it.lastSeen > FORGET_AFTER_MS }
         return if (kept.size == reading.lines.size) reading else Reading(kept)
     }

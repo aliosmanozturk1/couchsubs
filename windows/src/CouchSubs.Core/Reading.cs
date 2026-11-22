@@ -279,8 +279,25 @@ public sealed class Reading
     }
 
     /// <summary>Alt alta kısa ve noktalamasız satırlar ("MAP", "HELP", "SOCIAL CLUB") menüdür, konuşma değil.</summary>
-    internal bool IsMenu => Lines.Count >= 3 &&
-        Lines.All(line => WordCount(line.Text) <= 3 && !SubtitleStabilizer.EndsSentence(line.Text));
+    /// <remarks>
+    /// Satırların yeri biliniyorsa sol ya da sağ kenarları <see cref="MenuEdge"/> içinde hizalı olmalı: ortalanmış kısa
+    /// konuşma satırları ("No / Wait / Go on") menü sanılıp atılmasın. Konuşan adıyla başlayan satır menü değildir
+    /// (Mac/iPhone, Android ile aynı).
+    /// </remarks>
+    internal bool IsMenu
+    {
+        get
+        {
+            if (Lines.Count < 3 || !Lines.All(line => WordCount(line.Text) <= 3 && !SubtitleStabilizer.EndsSentence(line.Text)
+                                                      && SpeakerPrefix.Parse(line.Text) is null)) return false;
+            if (Lines.Any(line => line.Box is null)) return true;
+            static bool Aligned(IEnumerable<double> edges) => edges.Max() - edges.Min() <= MenuEdge;
+            return Aligned(Lines.Select(line => line.Box!.Value.Left)) || Aligned(Lines.Select(line => line.Box!.Value.Right));
+        }
+    }
+
+    /// <summary>Menü satırlarının sol ya da sağ kenarı bu kadar içinde hizalı (okunan alana oranla).</summary>
+    internal const double MenuEdge = 0.012;
 
     /// <summary>Tek başına okunan etkileşim/HUD etiketi (GTA 6: "SIT", "• ADD TO TRUNK").</summary>
     internal bool IsActionLabel => Lines.Count == 1 && ButtonPrompts.IsActionLabel(Lines[0].Text);
