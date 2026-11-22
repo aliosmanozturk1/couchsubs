@@ -71,6 +71,18 @@ function render() {
       result.screenBackground = getComputedStyle(drawn).backgroundColor;
       hideScreen();
       result.afterScreen = blocks('auto-1');
+      // Görev satırı ekrandayken görevin kırpık okuması ("arch near the turbi") yeni otomatik alan olarak aynı yere gelir:
+      // görevin Türkçesi gizlenmez, kırpık alan görünmez. Görev kalkınca otomatik alan görünür.
+      var mission = ${JSON.stringify(block('Türbinin yakınında ara', 0.4, 0.86, 0.6, 0.89))};
+      var cropped = ${JSON.stringify(block('Türbinin yakınında ara', 0.42, 0.86, 0.58, 0.89))};
+      showRegion({ id: 'auto-mission', text: 'm', box: mission.box, blocks: [mission] });
+      showRegion({ id: 'auto-9', text: 'c', box: cropped.box, blocks: [cropped] });
+      result.mission = { mission: blocks('auto-mission'), cropped: blocks('auto-9') };
+      showScreen([mission], 20000);
+      result.missionUnderScreen = blocks('auto-mission');
+      hideScreen();
+      hideRegion('auto-mission');
+      result.missionGone = blocks('auto-9');
       $('result').textContent = JSON.stringify(result);
       </script>`;
     const file = path.join(temp, 'test.html');
@@ -99,4 +111,8 @@ test('aynı yazıyı çizen katmanlardan yalnız biri görünür; kutu tam opak'
   assert.equal(r.screenBackground, 'rgb(28, 35, 64)');
   // Ekranı çevir kalkınca gizlenen otomatik yazı geri gelir.
   assert.deepEqual(r.afterScreen, ["Kenton'la tanıştın mı?:true", 'Bulur:false', 'Para Kazan:true']);
+  // Görev satırı sonradan gelen otomatik ekran yazısının altında kalmaz; yalnız "Ekranı çevir" görevin önüne geçer.
+  assert.deepEqual(r.mission, { mission: ['Türbinin yakınında ara:true'], cropped: ['Türbinin yakınında ara:false'] });
+  assert.deepEqual(r.missionUnderScreen, ['Türbinin yakınında ara:false']);
+  assert.deepEqual(r.missionGone, ['Türbinin yakınında ara:true']);
 });

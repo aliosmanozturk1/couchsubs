@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.71';
+  var APP_VERSION = '0.9.72';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -982,6 +982,10 @@
     $('subtitle').className = 'hidden';
     $('subtitle-cover').className = 'hidden';
     hidePrevious();
+    // Altyazıdan kaçmak için kayan görev/ekran yazısı kutusu altyazı kalkınca kendi yerine döner. Eskiden kayık kalıyordu:
+    // görevin Türkçesi bir sonraki altyazıya dek yerinden oynamış duruyor, altındaki İngilizce görev açıkta kalıyordu
+    // (GTA 6, "Search near the turbine").
+    avoidRegions();
   }
 
   // Bilgisayardan gelen "temizle": yazı okunacak kadar görünmediyse kalan süre dolunca kaldırılır.
@@ -1339,6 +1343,11 @@
   // Bilgisayardaki kural: ScreenTranslation.coverShare (Mac, iPhone), CoverShare (Windows), COVER_SHARE (Android).
   var COVER_SHARE = 0.25;
   var SCREEN_RANK = 1e15;
+  // Görev satırı (auto-mission) ekrandayken onun yerini çizen otomatik ekran yazısı görevin yerine geçmez: menü durumu
+  // bir an açılıp kapanınca görevin kırpık okuması ("arch near the turbi") yeni alan olarak geliyor, görevin Türkçesini
+  // gizliyordu (GTA 6). Görev yalnız "Ekranı çevir"in altında kalır.
+  var MISSION_ID = 'auto-mission';
+  var MISSION_RANK = SCREEN_RANK - 1;
   var regionStamp = 0;
 
   function overlapShare(a, b) {
@@ -1363,7 +1372,7 @@
       var host = regionBoxes[id];
       var list = host.className === 'region-blocks' ? host.children : [host];
       for (var j = 0; j < list.length; j++) {
-        if (list[j].couchsubsBox) parts.push({ el: list[j], box: list[j].couchsubsBox, rank: host.couchsubsStamp || 0, layer: id });
+        if (list[j].couchsubsBox) parts.push({ el: list[j], box: list[j].couchsubsBox, rank: id === MISSION_ID ? MISSION_RANK : host.couchsubsStamp || 0, layer: id });
       }
     }
     return parts;
