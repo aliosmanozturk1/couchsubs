@@ -95,7 +95,6 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var fastReading by remember { mutableStateOf(settings.fastSubtitleDetection) }
     var gamePhone by remember { mutableStateOf(settings.autoReadGamePhone) }
     var phoneChatCard by remember { mutableStateOf(settings.phoneChatCard) }
-    var subtitleBackground by remember { mutableStateOf(settings.watchSubtitleBackground) }
     var misreadWait by remember { mutableStateOf(settings.misreadWaitMs) }
     var partialWait by remember { mutableStateOf(settings.partialWaitMs) }
     var usage by remember { mutableStateOf(settings.usageData) }
@@ -179,9 +178,6 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
             // "Ekranı çevir"de telefon mesajları: kapalıyken her balonun üstünde, yerinde (Mac, iPhone, Windows ile aynı).
             { RowItem(stringResource(R.string.settings_phone_chat_card), stringResource(R.string.settings_phone_chat_card_short)) {
                 Switch(phoneChatCard, { phoneChatCard = it; settings.phoneChatCard = it })
-            } },
-            { RowItem(stringResource(R.string.settings_subtitle_background), stringResource(R.string.settings_subtitle_background_short)) {
-                Switch(subtitleBackground, { subtitleBackground = it; settings.watchSubtitleBackground = it })
             } },
             // Windows, Mac ve iPhone'daki iki bekleme kaydırıcısı: aynı ad ve açıklama, 0–1 sn, 0,1 sn adım.
             { Column {

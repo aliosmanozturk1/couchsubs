@@ -355,8 +355,6 @@
     <string name="settings_game_phone">GTA 6\'daki telefonu otomatik çevir (deneysel)</string>
     <string name="settings_phone_chat_card">GTA 6 telefonunun çevirisini telefonun yanında kartta göster</string>
     <string name="settings_phone_chat_card_short">Kapalıyken her mesaj kendi balonunun üstünde, balonun renginde çevrilir.</string>
-    <string name="settings_subtitle_background">Altyazı zeminini izle (GTA 6, deneysel)</string>
-    <string name="settings_subtitle_background_short">GTA 6’nın altyazı ayarlarında arka planı Solid (opak) olarak seçin. Yalnızca koyu lacivert altyazı zeminindeki yazılar çevrilir.</string>
     <string name="settings_misread_wait">Bozuk okunan satır için bekleme</string>
     <string name="settings_misread_wait_note" formatted="false">Satır sözlükte olmayan sözcüklerle okunursa daha iyi bir okuma için en çok bu kadar beklenir. GTA V\'te ölçülen, bozuk okumadan çıkan çeviri sayısı (0 sn\'ye göre): 0,2 sn → %77, 0,4 sn → %49, 0,6 sn → %41, 0,8 sn (önerilen) → %34, 1,0 sn → %31.</string>
     <string name="settings_partial_wait">Yarım okunan satır için bekleme</string>
@@ -364,7 +362,6 @@
     <string name="settings_waits_note">Bu bekleme süreleri yalnız kötü okunan satırları geciktirir; satırların çoğu hiç beklemeden gösterilir. Kısa bekleme o satırları daha erken gösterir ama daha çok yanlış çeviriye yol açar.</string>
     <string name="settings_waits_defaults">Varsayılanlara dön</string>
     <string name="unit_seconds">sn</string>
-    <string name="subtitle_background_tip">“Altyazı zeminini izle” açık: yalnız GTA 6’nın koyu altyazı zeminindeki yazı okunur. Oyunda altyazı zeminini Solid (opak) yapın ya da bu ayarı kapatın.</string>
     <string name="settings_xbox_audio">Xbox sesini bu cihazda çal</string>
     <string name="settings_xbox_audio_short">Xbox, uzaktan oynatma sürerken TV\'nin sesini kapatır ve oyun sesini yalnız bu cihaza gönderir (Xbox kısıtı). Kapatırsanız oyunun sesi hiç gelmez. TV\'den ya da hoparlörden duymak için telefonu Bluetooth ile hoparlöre ya da kulaklığa bağlayın.</string>
     <string name="running_now">Şimdi</string>

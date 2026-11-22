@@ -339,7 +339,6 @@ private fun RunningScreen(status: LiveStatus, topBar: @Composable () -> Unit, on
         // Görüntü bir dakikadır geliyor ama hiç altyazı satırı okunmadı (GitHub #503, #566, #572; SubtitleOffTip).
         if (status.subtitleOffTip) {
             NoteTile(stringResource(R.string.subtitle_off_tip), Tokens.Color.secondary)
-            if (Services.settings.watchSubtitleBackground) NoteTile(stringResource(R.string.subtitle_background_tip), Tokens.Color.secondary)
         }
         if (!status.demo) GameSection(status)
         Tile(Modifier.fillMaxWidth()) {

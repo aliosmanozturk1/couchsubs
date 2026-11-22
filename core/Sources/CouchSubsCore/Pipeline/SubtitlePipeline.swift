@@ -114,7 +114,6 @@ public final class SubtitlePipeline {
     private var session = 0
     /// Son ham OCR. Gri görüntü izi aynı kalırken satırların altındaki panel rengi değişebilir.
     private var lastOcrReading = Reading.empty
-    private var lastPanelReading = Reading.empty
     private var stickyRows = StickyRows()
     /// Bu oturumda kesin altyazının okunduğu yükseklikler: oradaki kısa satır sahne yazısı sayılmaz (`SceneText`).
     private var subtitleBand = SubtitleBand()
@@ -177,8 +176,6 @@ public final class SubtitlePipeline {
     /// Hedef dil Türkçe: yüksek güvenle Türkçe olan satır (`TurkishText.isSure`) çevirmene gönderilmez (#289). Uygulama
     /// hedef dil Türkçe değilse kapatır.
     public var skipsTurkish = true
-    /// Yalnız GTA 6 altyazı renginin üstündeki OCR satırlarını oku.
-    public var watchSubtitleBackground = false
     /// Hiçbir pakette bulunmayan kararlı satır (ortak havuz için).
     public var onPackMiss: ((String) -> Void)?
     /// Son gösterilen çevirinin nereden geldiği: "paket" ya da "motor" (günlük ve sayım için).
@@ -244,7 +241,6 @@ public final class SubtitlePipeline {
         let startedSession = session
         // Yazı tanıma uzun sürebilir; arayüz takılmasın diye ana iş parçacığının dışında yapılır.
         let reader = self.reader
-        let watchSubtitleBackground = self.watchSubtitleBackground
         // Karede GTA 6 telefonu açıksa ekranındaki satırlar altyazı değildir (`findsPhone`); telefon seyrek aranır
         // (`GamePhoneTracker.intervalMs`), bulunan yer sonraki karelere de geçerlidir.
         let looks = findsPhone && phoneLookedAt.map { captured < $0 || captured - $0 >= GamePhoneTracker.intervalMs } ?? findsPhone
@@ -263,31 +259,14 @@ public final class SubtitlePipeline {
         let handset = findsPhone ? phone : nil
         guard session == startedSession else { return }
         var visible = lastOcrReading
-        var panelLeft = false
-        var plan = scheduler.plan(signature: signature)
-        if case .reuse = plan, watchSubtitleBackground {
-            let cached = lastOcrReading
-            if cached.lines.contains(where: { $0.box != nil }) {
-                visible = await Task.detached(priority: .userInitiated) {
-                    SubtitleBackground.filter(cached, in: area)
-                }.value
-                guard session == startedSession else { return }
-                // Panel yeni bir kutunun altına geldiyse eski HUD yazısını diyalog sanma.
-                if !visible.lines.allSatisfy(lastPanelReading.lines.contains) { plan = .read(deep: false) }
-                // Aynı kutular yeniden sınandı ve panel yoksa bu boşluk bir OCR kaçağı değil.
-                panelLeft = !lastPanelReading.lines.isEmpty && visible.lines.isEmpty
-            } else {
-                visible = .empty
-            }
-        }
+        let plan = scheduler.plan(signature: signature)
         if case .read(let deep) = plan {
             let started = now()
             // Okuma kendi sırasında (`ReadQueue`) yapılır, Swift havuzunu tutmaz; takılırsa süre dolunca kare atlanır (#507).
-            let result: Result<(ocr: Reading, visible: Reading), Error>
+            let result: Result<Reading, Error>
             do {
                 result = .success(try await readQueue.run(priority: .subtitle, detail: ReadQueue.detail("altyazı", area, deep: deep)) {
-                    let ocr = try reader.readLines(area, deep: deep)
-                    return (ocr, watchSubtitleBackground ? SubtitleBackground.filter(ocr, in: area) : ocr)
+                    try reader.readLines(area, deep: deep)
                 })
             } catch {
                 result = .failure(error)
@@ -298,22 +277,11 @@ public final class SubtitlePipeline {
                 return
             }
             lastReadMs = now() - started
-            let observations = try? result.get()
-            lastOcrReading = observations?.ocr ?? .empty
-            visible = observations?.visible ?? .empty
-            // "Altyazı zeminini izle" okunan bütün satırları attıysa günlüğe yazılır (zemin bulunamadı; ayar kapatılabilir).
-            if watchSubtitleBackground, !lastOcrReading.lines.isEmpty, visible.lines.isEmpty {
-                let key = "zemin|" + lastOcrReading.text
-                if key != loggedLeftOut {
-                    loggedLeftOut = key
-                    log("altyazı sayılmadı: \(SubtitleLog.excerpt(lastOcrReading.text)) (altyazı zemini bulunamadı; "
-                        + "\"Altyazı zeminini izle\" açık)")
-                }
-            }
+            lastOcrReading = (try? result.get()) ?? .empty
+            visible = lastOcrReading
             onReadResult?(result.failure)
             scheduler.record(visible.text)
         }
-        lastPanelReading = watchSubtitleBackground ? visible : .empty
         // Kumanda ipuçları ("R2 Swing") altyazı değildir; çevrilmez, yeri de altyazının yerine katılmaz.
         // Yazı tanımanın uydurduğu sözcük çöpleri ("ou$3e") de çevirmene gitmez.
         // Alandaki menü ve köşe göstergeleri de altyazı değildir; yalnız altyazı bloğu çevrilir ve kutusu ona göre olur.
@@ -368,7 +336,7 @@ public final class SubtitlePipeline {
         // Altyazının yerinde yalnız kendi çevirimiz okunduysa (örtme ya da üst üste binen katman) satır kalkmış sayılmaz.
         let ownOnly = !ownLines.isEmpty && reading.lines.isEmpty && OwnSubtitles.coversLine(ownLines, line: lastBox)
         var action: StabilizerAction = ownOnly ? .none
-            : stabilizer.feed(reading.text, signature: panelLeft ? nil : signature, box: reading.box)
+            : stabilizer.feed(reading.text, signature: signature, box: reading.box)
         // Ekranda duran kötü yeniden okuma her karede not edilir; günlüğe bir kez yazılır.
         if let note = stabilizer.note, note != lastNote {
             lastNote = note
@@ -881,7 +849,6 @@ public final class SubtitlePipeline {
         work?.cancel()
         pairs.removeAll()
         lastOcrReading = .empty
-        lastPanelReading = .empty
         lastReadMs = nil
         scheduler.reset()
         stickyRows.reset()

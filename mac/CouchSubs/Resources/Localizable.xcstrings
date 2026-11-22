@@ -160,22 +160,6 @@
         }
       }
     },
-    "“Watch subtitle background” is on: only text on GTA 6’s dark subtitle panel is read. Set the game’s subtitle background to Solid or turn this setting off.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "“Watch subtitle background” is on: only text on GTA 6’s dark subtitle panel is read. Set the game’s subtitle background to Solid or turn this setting off."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "“Altyazı zeminini izle” açık: yalnız GTA 6’nın koyu altyazı zeminindeki yazı okunur. Oyunda altyazı zeminini Solid (opak) yapın ya da bu ayarı kapatın."
-          }
-        }
-      }
-    },
     "The TV app has not connected. Open CouchSubs on the TV and keep the phone and the TV on the same Wi-Fi (not a guest network). If the TV shows a 6-digit code, approve it in the window that opens on this phone. If it still waits, check that CouchSubs is allowed in Settings › Privacy & Security › Local Network on this iPhone, then stop and start translating again.": {
       "localizations": {
         "en": {
@@ -636,8 +620,6 @@
     "CPU translation threads": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "CPU translation threads"}}, "tr": {"stringUnit": {"state": "translated", "value": "CPU çeviri iş parçacıkları"}}}},
     "This uses most of your CPU threads and may slow down the game.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "This uses most of your CPU threads and may slow down the game."}}, "tr": {"stringUnit": {"state": "translated", "value": "Bu seçim CPU iş parçacıklarının çoğunu kullanır ve oyunu yavaşlatabilir."}}}},
     "Check unchanged subtitle areas more often": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Check unchanged subtitle areas more often"}}, "tr": {"stringUnit": {"state": "translated", "value": "Değişmeyen altyazı alanını daha sık oku"}}}},
-    "Watch subtitle background (GTA 6 experimental)": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Watch subtitle background (GTA 6 experimental)"}},"tr":{"stringUnit":{"state":"translated","value":"Altyazı zeminini izle (GTA 6, deneysel)"}}}},
-    "In GTA 6, set the subtitle background to Solid. Only text on the dark blue subtitle panel will be translated.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"In GTA 6, set the subtitle background to Solid. Only text on the dark blue subtitle panel will be translated."}},"tr":{"stringUnit":{"state":"translated","value":"GTA 6’nın altyazı ayarlarında arka planı Solid (opak) olarak seçin. Yalnızca koyu lacivert altyazı zeminindeki yazılar çevrilir."}}}},
     "When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU."}}, "tr": {"stringUnit": {"state": "translated", "value": "Altyazı alanı değişmemiş görünüyorsa 20 yerine 2 kare sonra yeniden oku. Daha fazla CPU kullanır."}}}},
     "Restore the old Xbox frame rate": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Restore the old Xbox frame rate"}}, "tr": {"stringUnit": {"state": "translated", "value": "Xbox kare hızlandırmasını eskiye döndür"}}}},
     "On: read an Xbox frame every 200 ms to use less CPU. Off (default): every 66 ms for faster subtitles.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "On: read an Xbox frame every 200 ms to use less CPU. Off (default): every 66 ms for faster subtitles."}}, "tr": {"stringUnit": {"state": "translated", "value": "Açık: Xbox karesini 200 ms'de bir okuyarak CPU kullanımını azaltır. Kapalı (varsayılan): daha hızlı altyazı için 66 ms'de bir okur."}}}},

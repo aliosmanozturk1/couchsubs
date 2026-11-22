@@ -371,14 +371,6 @@ class AppSettings(context: Context) : AreaStore {
         get() = prefs.getBoolean("phoneChatCard", false)
         set(value) = prefs.edit().putBoolean("phoneChatCard", value).apply()
 
-    /**
-     * "Altyazı zeminini izle (GTA 6, deneysel)": yalnız GTA 6'nın koyu lacivert opak altyazı zeminindeki yazı çevrilir
-     * (Mac/Windows watchSubtitleBackground); varsayılan kapalı.
-     */
-    var watchSubtitleBackground: Boolean
-        get() = prefs.getBoolean("watchSubtitleBackground", false)
-        set(value) = prefs.edit().putBoolean("watchSubtitleBackground", value).apply()
-
     /** Bu PS5'te son seçilen oyun ("Hangi oyunu oynuyorsunuz?" kartının ilk önerisi). */
     fun lastGame(console: String): String? = prefs.getString("lastGame.$console", null)
 

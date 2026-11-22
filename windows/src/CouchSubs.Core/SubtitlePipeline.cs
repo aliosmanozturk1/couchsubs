@@ -80,7 +80,6 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     private int session;
     /// <summary>Son ham OCR. Gri görüntü izi aynı kalırken satırların altındaki panel rengi değişebilir.</summary>
     private Reading lastOcrReading = Reading.Empty;
-    private Reading lastPanelReading = Reading.Empty;
     /// <summary>Konuşma değişirken sabit duran görev/HUD satırları (GTA 6).</summary>
     private readonly StickyRows stickyRows = new();
     /// <summary>Bu oturumda kesin altyazının okunduğu yükseklikler: oradaki kısa satır sahne yazısı sayılmaz (SceneText).</summary>
@@ -162,8 +161,6 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     /// Uygulama hedef dil Türkçe değilse kapatır.
     /// </summary>
     public bool SkipsTurkish { get; set; } = true;
-    /// <summary>Yalnız GTA 6 altyazı renginin üstündeki OCR satırlarını oku.</summary>
-    public bool WatchSubtitleBackground { get; set; }
     /// <summary>true dönerse (GTA) küçük harfsiz, noktalamasız ekran yazısı satırları çevrilmez (<see cref="ScreenText"/>).</summary>
     public Func<bool>? DropsScreenText { get; set; }
 
@@ -302,33 +299,18 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 signature = RegionCropper.Signature(area);
                 ReadPlan plan;
                 Reading recognized;
-                Reading previousPanel;
                 int? readMs;
                 lock (gate)
                 {
                     plan = schedule.Plan(signature);
                     recognized = lastOcrReading;
-                    previousPanel = lastPanelReading;
                     readMs = lastReadMs;
                 }
-                var watchPanel = WatchSubtitleBackground;
-                if (plan.Reuse)
-                {
-                    if (!watchPanel) return (recognized, readMs, signature);
-                    var visible = SubtitleBackground.Filter(recognized, area);
-                    // Panel yeni bir kutunun altına geldiyse eski HUD yazısını diyalog sanma.
-                    if (visible.Lines.All(previousPanel.Lines.Contains))
-                    {
-                        lock (gate) { if (startedSession == session) lastPanelReading = visible; }
-                        // Aynı kutular yeniden sınandı ve panel yoksa bu boşluk bir OCR kaçağı değil.
-                        bool panelLeft = previousPanel.Lines.Count > 0 && visible.Lines.Count == 0;
-                        return (visible, readMs, panelLeft ? null : signature);
-                    }
-                }
+                if (plan.Reuse) return (recognized, readMs, signature);
 
                 var readStarted = now();
                 recognized = reader.ReadLines(area, plan.Deep);
-                var read = watchPanel ? SubtitleBackground.Filter(recognized, area) : recognized;
+                var read = recognized;
                 readMs = (int)Math.Clamp(now() - readStarted, 0, int.MaxValue);
                 lock (gate)
                 {
@@ -336,7 +318,6 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                     {
                         schedule.Record(read.Text);
                         lastOcrReading = recognized;
-                        lastPanelReading = watchPanel ? read : Reading.Empty;
                         lastReadMs = readMs;
                     }
                 }
@@ -1182,7 +1163,6 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             inFlightCancel?.Cancel();
             pairs.Clear();
             lastOcrReading = Reading.Empty;
-            lastPanelReading = Reading.Empty;
             lastReadMs = null;
             currentRead = null;
             schedule.Reset();

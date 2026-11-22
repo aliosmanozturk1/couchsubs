@@ -1315,8 +1315,6 @@ struct TranslationCard: View {
         Card(title: "Advanced") {
             SwitchRow(title: "Check unchanged subtitle areas more often", isOn: $model.settings.fastSubtitleDetection)
             HintText(text: "When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.")
-            SwitchRow(title: "Watch subtitle background (GTA 6 experimental)", isOn: $model.settings.watchSubtitleBackground)
-            HintText(text: "In GTA 6, set the subtitle background to Solid. Only text on the dark blue subtitle panel will be translated.")
             // Windows'taki iki bekleme kaydırıcısı (aynı metin, aralık 0–1 sn, 0,1 sn adım; varsayılan 0,8 ve 0,3 sn).
             HintText(text: "These waits only delay lines that were read badly; most lines are shown without waiting. A shorter wait shows those lines sooner but lets more wrong translations through.")
             WaitSlider(title: "Wait for a misread line", ms: $model.settings.misreadWaitMs)

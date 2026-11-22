@@ -280,10 +280,6 @@ struct RunningScreen: View {
                 if model.showsSubtitleOffTip {
                     MobileNote(text: String(localized: "Turn on the game's own subtitles: CouchSubs reads the English subtitles on screen, not the audio."),
                                tone: Mobile.Palette.secondary)
-                    if model.settings.watchSubtitleBackground {
-                        MobileNote(text: String(localized: "“Watch subtitle background” is on: only text on GTA 6’s dark subtitle panel is read. Set the game’s subtitle background to Solid or turn this setting off."),
-                                   tone: Mobile.Palette.secondary)
-                    }
                 }
                 GameSection(choice: model.gameChoice, areas: model.gameAreas)
             }

@@ -316,8 +316,6 @@ public sealed record UserSettings
     public int CpuTranslationThreads { get; init; } = CpuThreadOptions.Default;
     /// <summary>Değişmeyen altyazı bölgesinde tam OCR okumasını en fazla iki kare yeniden kullan.</summary>
     public bool FastSubtitleDetection { get; init; }
-    /// <summary>Yalnız GTA 6'nın lacivert altyazı zemini üstündeki yazıyı oku. Varsayılan kapalı.</summary>
-    public bool WatchSubtitleBackground { get; init; }
     /// <summary>GTA 6'da ekrandaki telefon açılınca yazılarını otomatik çevirir (deneysel).</summary>
     public bool AutoReadGamePhone { get; init; }
     /// <summary>

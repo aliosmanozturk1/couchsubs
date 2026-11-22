@@ -131,10 +131,6 @@ struct ProfileScreen: View {
                           "When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.",
                           isOn: $model.settings.fastSubtitleDetection)
                 RowDivider()
-                toggleRow("Watch subtitle background (GTA 6 experimental)",
-                          "In GTA 6, set the subtitle background to Solid. Only text on the dark blue subtitle panel will be translated.",
-                          isOn: $model.settings.watchSubtitleBackground)
-                RowDivider()
                 // Windows ve Mac'teki iki bekleme kaydırıcısı (Android'de aynı ad ve açıklama; 0–1 sn, 0,1 sn adım).
                 waitRow("Wait for a misread line",
                         "When a line is read with words that are not in the dictionary, a better reading is awaited for at most this long. Measured in GTA V, translations from misread lines compared with 0 s: 0.2 s → 77%, 0.4 s → 49%, 0.6 s → 41%, 0.8 s (recommended) → 34%, 1.0 s → 31%.",

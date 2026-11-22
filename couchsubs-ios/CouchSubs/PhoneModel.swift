@@ -72,8 +72,7 @@ final class PhoneModel: ObservableObject {
             if settings.misreadWaitMs != oldValue.misreadWaitMs || settings.partialWaitMs != oldValue.partialWaitMs {
                 pipeline?.applyWaits(from: settings)
             }
-            if isRunning, translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection
-                || settings.watchSubtitleBackground != oldValue.watchSubtitleBackground {
+            if isRunning, translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection {
                 makePipeline()
             }
         }
@@ -1076,7 +1075,6 @@ final class PhoneModel: ObservableObject {
         noticeAreas = []
         pipeline.onNoticesChanged = { [weak self] areas in self?.noticeAreas = areas }
         pipeline.skipsTurkish = settings.targetLanguage == "tr"
-        pipeline.watchSubtitleBackground = settings.watchSubtitleBackground
         wireSpeech(pipeline)
         pipeline.onPair = { [weak self, weak pipeline] source, translation in
             self?.lastSource = source

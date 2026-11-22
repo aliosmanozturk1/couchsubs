@@ -424,8 +424,6 @@ class TranslationService : Service() {
     @Volatile private var playsGta6 = false
     @Volatile private var phoneTracking = false
     @Volatile private var phoneOpen = false
-    /** "Altyazı zeminini izle": yeniden kullanılan okumada zeminin durumu (yalnız okuma iş parçacığında). */
-    private val panelWatch = com.couchsubs.mobile.core.SubtitleBackground.Watch()
 
     /**
      * Ekranda beliren yazı kutularını bulan ("Ekran yazılarını otomatik çevir"); bulduğu geçici alanlar ek alanlarla
@@ -1276,15 +1274,7 @@ class TranslationService : Service() {
             // Bekleme ayarları çeviri sürerken de değişebilir (Ayarlar'daki kaydırıcılar); her karede güncel değer uygulanır.
             current.applyWaits(settings.misreadWaitMs, settings.partialWaitMs)
             val maxReuse = if (settings.fastSubtitleDetection) FAST_MAX_REUSE else DEFAULT_MAX_REUSE
-            var reused = pixels.signature == lastSignature && reusedReads < maxReuse
-            // "Altyazı zeminini izle" (GTA 6): yalnız koyu lacivert zeminin üstündeki satırlar hatta girer. Aynı okuma yeniden
-            // kullanılırken zemin yeniden sınanır; zemin yeni bir satırın altına geldiyse kare yeniden okunur.
-            val watchPanel = settings.watchSubtitleBackground
-            if (!watchPanel) panelWatch.reset()
-            val onPanel: (com.couchsubs.mobile.core.Reading) -> com.couchsubs.mobile.core.Reading =
-                { com.couchsubs.mobile.core.SubtitleBackground.filter(it, pixels.width, pixels.height, pixels.color) }
-            val step = if (reused && watchPanel) panelWatch.reuse(lastReading, onPanel) else null
-            if (reused && watchPanel && step == null) reused = false
+            val reused = pixels.signature == lastSignature && reusedReads < maxReuse
             reusedReads = if (reused) reusedReads + 1 else 0
             val started = com.couchsubs.mobile.core.monotonicClock()
             if (!reused) readStartedAt = started
@@ -1293,10 +1283,8 @@ class TranslationService : Service() {
             lastSignature = pixels.signature
             lastReading = result
             lastOcrMs = ocrMs
-            val visible = if (!watchPanel) result else step?.visible ?: panelWatch.read(result, onPanel)
-            // Zemin kalktıysa bu boşluk bir OCR kaçağı değildir: bölge izi verilmez, satır hemen silinir.
-            current.process(visible, area.box,
-                if (step?.panelLeft == true) null else com.couchsubs.mobile.core.RegionSignature.of(pixels.nv21, pixels.width, pixels.height),
+            current.process(result, area.box,
+                com.couchsubs.mobile.core.RegionSignature.of(pixels.nv21, pixels.width, pixels.height),
                 capturedAt, ocrMs, phone)
         } catch (error: java.util.concurrent.TimeoutException) {
             // Okuma süresinde bitmedi: takılan tanıyıcı bırakılır, sonraki kare yenisiyle okunur (yoksa yeni okuma da

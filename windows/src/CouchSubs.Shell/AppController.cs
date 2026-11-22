@@ -716,9 +716,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// Görüntü bir dakikadır geliyor ama bu çeviride tek altyazı satırı okunmadı: "oyunun kendi altyazısını açın" ipucu
     /// (<see cref="SubtitleOffTip"/>; GitHub #503, #554, #566, #572).
     /// </summary>
-    public bool ShowsSubtitleOffTip { get => showsSubtitleOffTip; private set => Set(ref showsSubtitleOffTip, value, [nameof(ShowsSubtitleBackgroundTip)]); }
-    /// <summary>İpucu görünürken GTA 6 altyazı zemini izleme açıksa ayrıca söylenir: zemin yoksa bütün satırlar atlanır.</summary>
-    public bool ShowsSubtitleBackgroundTip => showsSubtitleOffTip && settings.WatchSubtitleBackground;
+    public bool ShowsSubtitleOffTip { get => showsSubtitleOffTip; private set => Set(ref showsSubtitleOffTip, value); }
     /// <summary>
     /// Otomatik ekran yazısı göçle kapatıldı (beta.63'te açıktı): bu oturumda bir kez "deneysel; Ayarlar'dan açabilirsiniz"
     /// bilgisi görünür. Kullanıcı ayarı değiştirince kalkar.
@@ -829,7 +827,6 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             if (translationChanged && !isRunning) RefreshTranslatorStatus();
             if (isRunning && (old.SourceLanguage != value.SourceLanguage || old.TargetLanguage != value.TargetLanguage
                               || translationChanged || old.FastSubtitleDetection != value.FastSubtitleDetection
-                              || old.WatchSubtitleBackground != value.WatchSubtitleBackground
                               || old.OcrEngine != value.OcrEngine))
             {
                 RefreshTranslatorStatus();
@@ -3153,7 +3150,6 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         {
             ShowSpeakerNames = settings.ShowSpeakerNames,
             SkipsTurkish = settings.TargetLanguage == "tr",
-            WatchSubtitleBackground = settings.WatchSubtitleBackground,
             DropsScreenText = () => !demoMode && ScreenText.IsGta(gameSense.Current?.Name),
             Echo = SubtitleEcho,
             EchoPaused = () => Volatile.Read(ref screenText)?.InMenu == true,

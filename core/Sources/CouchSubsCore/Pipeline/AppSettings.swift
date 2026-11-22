@@ -177,8 +177,6 @@ public struct UserSettings: Codable, Equatable {
     public var speakerColors = true
     /// Mac'te değişmeyen altyazı bölgesini en fazla iki kare yeniden kullan; varsayılan kapalı.
     public var fastSubtitleDetection = false
-    /// Yalnız GTA 6'nın lacivert altyazı zemini üstündeki yazıyı oku. Varsayılan kapalı.
-    public var watchSubtitleBackground = false
     /// "Bozuk okunan satır için bekleme" (ms): sözlükte olmayan sözcüklerle okunan satırın daha iyi okuması için en çok bu
     /// kadar beklenir (Windows: MisreadWaitMs). Eski kayıtlarda yoktur; önerilen 800 ile açılır.
     public var misreadWaitMs = SubtitlePipeline.packWaitMs
@@ -275,7 +273,6 @@ public struct UserSettings: Codable, Equatable {
         showSpeakerNames = try values.decodeIfPresent(Bool.self, forKey: .showSpeakerNames) ?? defaults.showSpeakerNames
         speakerColors = try values.decodeIfPresent(Bool.self, forKey: .speakerColors) ?? defaults.speakerColors
         fastSubtitleDetection = try values.decodeIfPresent(Bool.self, forKey: .fastSubtitleDetection) ?? defaults.fastSubtitleDetection
-        watchSubtitleBackground = try values.decodeIfPresent(Bool.self, forKey: .watchSubtitleBackground) ?? defaults.watchSubtitleBackground
         misreadWaitMs = (try? values.decodeIfPresent(Int.self, forKey: .misreadWaitMs)) ?? defaults.misreadWaitMs
         partialWaitMs = (try? values.decodeIfPresent(Int.self, forKey: .partialWaitMs)) ?? defaults.partialWaitMs
         autoReadGamePhone = try values.decodeIfPresent(Bool.self, forKey: .autoReadGamePhone) ?? defaults.autoReadGamePhone

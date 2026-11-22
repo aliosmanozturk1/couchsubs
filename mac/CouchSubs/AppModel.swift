@@ -647,8 +647,7 @@ final class AppModel: ObservableObject {
             }
             let languageChanged = settings.sourceLanguage != oldValue.sourceLanguage
                 || settings.targetLanguage != oldValue.targetLanguage
-            if isRunning, languageChanged || translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection
-                || settings.watchSubtitleBackground != oldValue.watchSubtitleBackground {
+            if isRunning, languageChanged || translationChanged || settings.fastSubtitleDetection != oldValue.fastSubtitleDetection {
                 if languageChanged { Task { await refreshTranslatorStatus() } }
                 makePipeline()
             }
@@ -2599,7 +2598,6 @@ final class AppModel: ObservableObject {
         noticeAreas = []
         pipeline.onNoticesChanged = { [weak self] areas in self?.noticeAreas = areas }
         pipeline.skipsTurkish = settings.targetLanguage == "tr"
-        pipeline.watchSubtitleBackground = settings.watchSubtitleBackground
         pipeline.onPair = { [weak self, weak pipeline] source, translation in
             self?.lastSource = source
             self?.lastTranslation = translation
