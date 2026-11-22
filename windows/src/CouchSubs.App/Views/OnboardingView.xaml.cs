@@ -45,7 +45,7 @@ public partial class OnboardingView : UserControl
             var fade = Theme.Motion.To(0, Theme.Motion.Page, exit: true);
             fade.Completed += (_, _) => stage.Children.Remove(intro);
             intro!.BeginAnimation(OpacityProperty, fade);
-        });
+        }, controller.Settings.StartupSound);
         stage.Children.Add(intro);
         Content = stage;
     }

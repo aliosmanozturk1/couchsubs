@@ -123,6 +123,7 @@ public partial class ShellWindow : Window
             or nameof(AppController.Step) or nameof(AppController.Ps5Tone) or nameof(AppController.TvTone) or nameof(AppController.SessionState)
             or nameof(AppController.Settings))
             ShowStatus();
+        if (e.PropertyName is nameof(AppController.Settings)) Motion.AnimationsEnabled = controller.Settings.TransitionAnimations;
         if (e.PropertyName is nameof(AppController.IsRunning) && !controller.IsRunning && showingMain)
             PopupAdWindow.Offer(this, controller, PopupAdMoment.TranslationStopped);
         if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.HotkeysPaused) or nameof(AppController.Settings))

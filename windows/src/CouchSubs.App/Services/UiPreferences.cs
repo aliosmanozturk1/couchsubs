@@ -6,14 +6,13 @@ using System.Text.Json;
 namespace CouchSubs.App.Services;
 
 /// <summary>
-/// Arayüz tercihleri (Ayarlar › Temel › Açılış Sesi ve Geçiş Animasyonları). Ortak ayar kaydına (UserSettings,
-/// design/yeni-arayuz/METINLER.md: startupSound, transitionAnimations) alanlar eklenene dek bu bilgisayarda ayrı dosyada
-/// tutulur; eklenince oraya taşınır. Dosya okunamazsa varsayılanlar (ikisi de açık) kullanılır.
+/// Yalnız bu bilgisayarın arayüz kayıtları: açılır reklamın son gösterildiği an. (Açılış Sesi ve Geçiş Animasyonları
+/// ortak ayar kaydındadır: UserSettings.StartupSound / TransitionAnimations.) Dosya okunamazsa varsayılanlar kullanılır.
 /// </summary>
 public static class UiPreferences
 {
     /// <param name="LastPopupAd">Açılır reklamın son gösterildiği an (günde en fazla bir kez).</param>
-    public sealed record Values(bool StartupSound = true, bool TransitionAnimations = true, DateTime? LastPopupAd = null);
+    public sealed record Values(DateTime? LastPopupAd = null);
 
     private static readonly string FilePath = Path.Combine(AppPaths.Data, "ui.json");
     private static Values? current;

@@ -120,8 +120,8 @@ public partial class SettingsView : UserControl
         GameAreaPresets.IsChecked = settings.GameAreaPresets;
         ShowPacks();
         (settings.Appearance switch { AppAppearance.Light => AppearanceLight, AppAppearance.System => AppearanceSystem, _ => AppearanceDark }).IsChecked = true;
-        StartupSound.IsChecked = UiPreferences.Current.StartupSound;
-        TransitionAnimations.IsChecked = UiPreferences.Current.TransitionAnimations;
+        StartupSound.IsChecked = settings.StartupSound;
+        TransitionAnimations.IsChecked = settings.TransitionAnimations;
         ShowPace();
         ShowMiniSubtitle();
         Sections.SelectedIndex = 0;
@@ -1232,14 +1232,14 @@ public partial class SettingsView : UserControl
 
     private void OnStartupSound(object sender, RoutedEventArgs e)
     {
-        if (!loading) UiPreferences.Save(UiPreferences.Current with { StartupSound = StartupSound.IsChecked == true });
+        Update(s => s with { StartupSound = StartupSound.IsChecked == true });
     }
 
     private void OnTransitionAnimations(object sender, RoutedEventArgs e)
     {
         if (loading) return;
         var on = TransitionAnimations.IsChecked == true;
-        UiPreferences.Save(UiPreferences.Current with { TransitionAnimations = on });
+        Update(s => s with { TransitionAnimations = on });
         Theme.Motion.AnimationsEnabled = on;
     }
 

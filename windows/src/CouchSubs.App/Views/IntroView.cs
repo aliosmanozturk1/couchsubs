@@ -36,7 +36,7 @@ public sealed class IntroView : UserControl
     private static readonly Brush Light = Frozen(Color.FromRgb(0xF3, 0xEE, 0xE4));
     private static readonly Brush Faint = Frozen(Color.FromRgb(0x8D, 0x88, 0x7F));
 
-    public IntroView(Action done)
+    public IntroView(Action done, bool startupSound = true)
     {
         this.done = done;
         Background = Frozen(Color.FromRgb(0x12, 0x13, 0x16));
@@ -84,7 +84,7 @@ public sealed class IntroView : UserControl
         root.Children.Add(left);
         root.Children.Add(skip);
         Content = root;
-        Loaded += (_, _) => Play(sound: UiPreferences.Current.StartupSound);
+        Loaded += (_, _) => Play(sound: startupSound);
         Unloaded += (_, _) => player?.Stop();
     }
 

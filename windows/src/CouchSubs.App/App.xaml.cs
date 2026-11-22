@@ -62,7 +62,7 @@ public partial class App : Application
             if (Dispatcher.CheckAccess()) ThemeManager.Use(Resources, appearance);
             else Dispatcher.BeginInvoke(() => ThemeManager.Use(Resources, appearance));
         };
-        Theme.Motion.AnimationsEnabled = UiPreferences.Current.TransitionAnimations;
+        Theme.Motion.AnimationsEnabled = controller.Settings.TransitionAnimations;
         var window = new ShellWindow(controller);
         MainWindow = window;
         window.Show();
