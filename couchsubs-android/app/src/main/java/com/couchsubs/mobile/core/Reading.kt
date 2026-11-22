@@ -203,7 +203,7 @@ class Reading(lines: List<TextLine>) {
             if (index >= 0) blocks[index].add(line) else blocks.add(mutableListOf(line))
         }
         // Tabela, tişört, plaka gibi sahne yazısı ([SceneText]) altyazı alanına düşse de altyazı değildir.
-        val candidates = blocks.map { Reading(it) }.filter { block ->
+        val candidates = blocks.flatMap { withoutSignLines(it) }.map { Reading(it) }.filter { block ->
             if (block.isMenu || block.isActionLabel) return@filter false
             val reason = SceneText.reason(block, area, band) ?: return@filter true
             dropped?.invoke(block, reason)
@@ -248,6 +248,27 @@ class Reading(lines: List<TextLine>) {
     }
 
     private fun letters(text: String) = text.count { it.isLetter() }
+
+    /**
+     * Konuşmayla aynı bloğa düşen plaka/tabela satırları ayrı blok olur (sonra [SceneText] ya da [isActionLabel] ile
+     * atılır). Kullanıcı bildirimi (GitHub #1052, GTA 6, beta.84): plaka konuşmanın hemen üstünde durunca aynı bloğa
+     * katılıyor, "FLORIANA / Dunk: Yo. How you know that was me?" diye çevriliyor, plaka okundukça aynı replik yeniden
+     * işleniyordu. Ayrılan: konuşan adlı satırın üstündeki kısa büyük harfli satırlar ([SceneText.isSignLine]; konuşan
+     * adı yeni konuşmanın ilk satırıdır) ve küçük harfli konuşmanın altında, cümlenin devamı olmayan, rakam taşıyan kısa
+     * büyük harfli satır ("AKB 51"). Tümü büyük harfli altyazının devamı ("LUCIA: GET / DOWN!", "I'm with the / FBI.")
+     * ayrılmaz (Mac: Reading.withoutSignLines, Windows: Reading.WithoutSignLines).
+     */
+    private fun withoutSignLines(block: List<TextLine>): List<List<TextLine>> {
+        val speaker = (1 until block.size).firstOrNull { SpeakerPrefix.split(block[it].text) != null }
+        if (speaker != null && block.take(speaker).all { SceneText.isSignLine(it.text) }) {
+            return listOf(block.take(speaker)) + withoutSignLines(block.drop(speaker))
+        }
+        if (block.size < 2 || SpeakerPrefix.split(block[0].text) == null || block[0].text.none { it.isLowerCase() }) return listOf(block)
+        val cut = (1 until block.size).firstOrNull { i ->
+            SceneText.isSignLine(block[i].text) && block[i].text.any { it.isDigit() } && !continues(block[i - 1].text, block[i].text)
+        } ?: return listOf(block)
+        return listOf(block.take(cut), block.drop(cut))
+    }
 
     /** [centered] blokların sabit olanları ([STALE_MS]) çıkarılmış hali; satır yaşı bilinmiyorsa olduğu gibi kalır. */
     private fun withoutStale(centered: List<Reading>, age: ((String) -> Long?)?, skipped: ((Reading) -> Unit)?): List<Reading> {

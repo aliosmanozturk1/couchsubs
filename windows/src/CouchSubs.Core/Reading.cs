@@ -180,7 +180,7 @@ public sealed class Reading
             else blocks.Add([line]);
         }
         // Tabela, tişört, plaka gibi sahne yazısı (SceneText) altyazı alanına düşse de altyazı değildir.
-        var candidates = blocks.Select(block => new Reading(block)).Where(reading =>
+        var candidates = blocks.SelectMany(WithoutSignLines).Select(block => new Reading(block)).Where(reading =>
         {
             if (reading.IsMenu || reading.IsActionLabel) return false;
             if (SceneText.Reason(reading, area, band) is not { } reason) return true;
@@ -229,6 +229,27 @@ public sealed class Reading
     }
 
     private static int Letters(string text) => text.Count(char.IsLetter);
+
+    /// <summary>
+    /// Konuşmayla aynı bloğa düşen plaka/tabela satırları ayrı blok olur (sonra <see cref="SceneText"/> ya da
+    /// <see cref="IsActionLabel"/> ile atılır). Kullanıcı bildirimi (GitHub #1052, GTA 6, beta.84): plaka konuşmanın hemen
+    /// üstünde durunca aynı bloğa katılıyor, "FLORIANA / Dunk: Yo. How you know that was me?" diye çevriliyor, plaka
+    /// okundukça aynı replik yeniden işleniyordu. Ayrılan: konuşan adlı satırın üstündeki kısa büyük harfli satırlar
+    /// (<see cref="SceneText.IsSignLine"/>; konuşan adı yeni konuşmanın ilk satırıdır) ve küçük harfli konuşmanın altında,
+    /// cümlenin devamı olmayan, rakam taşıyan kısa büyük harfli satır ("AKB 51"). Tümü büyük harfli altyazının devamı
+    /// ("LUCIA: GET / DOWN!", "I'm with the / FBI.") ayrılmaz (Mac: Reading.withoutSignLines, Android: Reading.withoutSignLines).
+    /// </summary>
+    internal static List<List<TextLine>> WithoutSignLines(List<TextLine> block)
+    {
+        var speaker = Enumerable.Range(1, Math.Max(0, block.Count - 1))
+            .FirstOrDefault(i => SpeakerPrefix.Parse(block[i].Text) is not null, -1);
+        if (speaker > 0 && block.Take(speaker).All(line => SceneText.IsSignLine(line.Text)))
+            return [block.Take(speaker).ToList(), .. WithoutSignLines(block.Skip(speaker).ToList())];
+        if (block.Count < 2 || SpeakerPrefix.Parse(block[0].Text) is null || !block[0].Text.Any(char.IsLower)) return [block];
+        var cut = Enumerable.Range(1, block.Count - 1).FirstOrDefault(i =>
+            SceneText.IsSignLine(block[i].Text) && block[i].Text.Any(char.IsDigit) && !Continues(block[i - 1].Text, block[i].Text), -1);
+        return cut > 0 ? [block.Take(cut).ToList(), block.Skip(cut).ToList()] : [block];
+    }
 
     /// <summary>
     /// Ortalı blok bu kadar süredir hiç değişmediyse ve yanında ondan en az <see cref="StickyRows.YoungerByMs"/> daha yeni

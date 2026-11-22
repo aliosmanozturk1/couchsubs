@@ -13,7 +13,8 @@ import kotlin.math.abs
  *   satır kutusu sözcük boyunun [TILTED_LINE_HEIGHT] katından yüksek),
  * - düşük güvenli kısa blok (en çok [LOW_CONFIDENCE_WORDS] sözcük, ortalama güven [LOW_CONFIDENCE]'tan az),
  * - karenin ortasındaki kısa, noktalamasız tek satır (en çok üç sözcük; altyazı ve görev satırı karenin alt ya da üst
- *   kenarına yakındır, [EDGE_BAND]).
+ *   kenarına yakındır, [EDGE_BAND]),
+ * - plaka/tabela: alt alta kısa, büyük harfli satırlar ([isSign]) ve harfsiz sayı ([isNumber]); altyazının yerinde de.
  *
  * Gerçek altyazı asla atılmaz (GitHub #822): altyazısı alttaki %22'lik şeridin biraz üstünde duran oyunlarda kısa
  * altyazıların hepsi "ortadaki kısa satır" sayılıp atılıyordu. Altyazı biçimindeki blok (ortalanmış, alt şeritte, en az
@@ -46,6 +47,9 @@ object SceneText {
         val box = block.box?.placedIn(area) ?: return null
         val words = wordCount(block.text)
         val middle = (box.top + box.bottom) / 2
+        // Plaka ve tabela altyazının yerinde de atılır (GitHub #1052).
+        if (isSign(block)) return "plaka/tabela (kısa büyük harfli satırlar)"
+        if (isNumber(block.text)) return "harfsiz sayı"
         // Bu oturumda altyazının okunduğu yükseklik: yalnız eğik tabela atılır.
         val learned = band?.contains(box) == true
         // Altyazı biçimi: ortalanmış, karenin alt şeridinde, en az iki sözcük.
@@ -78,6 +82,39 @@ object SceneText {
         val direction = if (shift > 0) 1.0 else -1.0
         return middles.zipWithNext().all { (a, b) -> (b - a) * direction >= -0.15 * median }
     }
+
+    /**
+     * Plaka ya da tabela: en az iki satır ve her satır [isSignLine]; noktalama yalnız son satırın sonunda ve o satır tek
+     * sözcükse olabilir (yazı tanıma plakanın kenarını "." ya da "!" okuyor: "AKB / GLORIANA.", "AK8 / FLORIA!").
+     * Kullanıcı bildirimi (GitHub #1052, GTA 6, beta.84): plaka iki-üç satır okunduğu için tek satır kuralına takılmıyor,
+     * altyazının yerinde durduğu için de ([SubtitleBand]) çevriliyordu ("AKB / FLORIANA", "DISCOVER 28 / AKB /
+     * GLORIANA."). Altyazı satırı en çok üç sözcükken sarılmaz; kısa bağırma replikleri ("NO! / GET DOWN!") ilk satırda
+     * noktalama taşıdığı için kalır, konuşan adlı blok hep altyazıdır (Mac: SceneText.isSign, Windows: SceneText.IsSign).
+     */
+    internal fun isSign(block: Reading): Boolean {
+        if (block.lines.size < 2 || !block.lines.all { isSignLine(it.text) }) return false
+        if (block.lines.dropLast(1).any { looksSpoken(it.text) }) return false
+        val last = block.lines.last().text
+        return !looksSpoken(last) || wordCount(last) <= 1
+    }
+
+    /**
+     * Plaka/tabela satırı: kısa (en çok [SIGN_LINE_LENGTH] karakter ve en çok [SHORT_WORDS] sözcük), küçük harfsiz, en az
+     * bir büyük harf; soru işareti, tire ile başlayan karşılıklı konuşma ve konuşan adı yok. Büyük/küçük harfi olmayan
+     * yazıya (Japonca) dokunulmaz.
+     */
+    internal fun isSignLine(text: String): Boolean {
+        val line = text.trim()
+        if (line.isEmpty() || line.length > SIGN_LINE_LENGTH || !line.any { it.isUpperCase() } || line.any { it.isLowerCase() }) return false
+        if ('?' in line || line[0] in "-–—" || SpeakerPrefix.split(line) != null) return false
+        return wordCount(line) <= SHORT_WORDS
+    }
+
+    /** Plaka/tabela satırının en çok karakteri ("C118 DISCOVER 76"). */
+    const val SIGN_LINE_LENGTH = 20
+
+    /** Harfsiz sayı ("82403610."): plaka numarası, sayaç; altyazı değildir. */
+    internal fun isNumber(text: String) = !text.any { it.isLetter() } && text.any { it.isDigit() }
 
     internal fun isCentered(box: TextBox) = abs((box.left + box.right) / 2 - 0.5) <= CENTER_TOLERANCE
 

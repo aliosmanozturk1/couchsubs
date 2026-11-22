@@ -195,7 +195,7 @@ public struct Reading: Equatable, Sendable {
             }
         }
         // Tabela, tişört, plaka gibi sahne yazısı (`SceneText`) altyazı alanına düşse de altyazı değildir.
-        let candidates = blocks.map { Reading(lines: $0) }.filter { block in
+        let candidates = blocks.flatMap(Self.withoutSignLines).map { Reading(lines: $0) }.filter { block in
             guard !block.isMenu, !block.isActionLabel else { return false }
             guard let reason = SceneText.reason(block, in: area, band: band) else { return true }
             dropped?(block, reason)
@@ -240,6 +240,28 @@ public struct Reading: Equatable, Sendable {
     }
 
     private static func letters(_ text: String) -> Int { text.filter(\.isLetter).count }
+
+    /// Konuşmayla aynı bloğa düşen plaka/tabela satırları ayrı blok olur (sonra `SceneText` ya da `isActionLabel` ile
+    /// atılır). Kullanıcı bildirimi (GitHub #1052, GTA 6, beta.84): plaka konuşmanın hemen üstünde durunca aynı bloğa
+    /// katılıyor, "FLORIANA / Dunk: Yo. How you know that was me?" diye çevriliyor, plaka okundukça aynı replik yeniden
+    /// işleniyordu. Ayrılan: konuşan adlı satırın üstündeki kısa büyük harfli satırlar (`SceneText.isSignLine`; konuşan
+    /// adı yeni konuşmanın ilk satırıdır) ve küçük harfli konuşmanın altında, cümlenin devamı olmayan, rakam taşıyan kısa
+    /// büyük harfli satır ("AKB 51"). Tümü büyük harfli altyazının devamı ("LUCIA: GET / DOWN!", "I'm with the / FBI.")
+    /// ayrılmaz (Windows: Reading.WithoutSignLines, Android: Reading.withoutSignLines).
+    static func withoutSignLines(_ block: [TextLine]) -> [[TextLine]] {
+        if let speaker = block.indices.dropFirst().first(where: { SpeakerPrefix.split(block[$0].text) != nil }),
+           block[..<speaker].allSatisfy({ SceneText.isSignLine($0.text) }) {
+            return [Array(block[..<speaker])] + withoutSignLines(Array(block[speaker...]))
+        }
+        guard block.count >= 2, let first = block.first, SpeakerPrefix.split(first.text) != nil,
+              first.text.contains(where: \.isLowercase),
+              let cut = block.indices.dropFirst().first(where: { index in
+                  let text = block[index].text
+                  return SceneText.isSignLine(text) && text.contains(where: \.isNumber)
+                      && !continues(block[index - 1].text, with: text)
+              }) else { return [block] }
+        return [Array(block[..<cut]), Array(block[cut...])]
+    }
 
     /// Ortalı blok bu kadar süredir hiç değişmediyse ve yanında ondan en az `StickyRows.youngerByMs` daha yeni (kırıntı
     /// olmayan) ortalı blok varsa altyazı sayılmaz. Kullanıcı bildirimi (GitHub #933, GTA 6): karakter TV izlerken haber
