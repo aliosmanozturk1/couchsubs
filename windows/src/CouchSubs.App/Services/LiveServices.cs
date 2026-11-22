@@ -215,6 +215,8 @@ public sealed class LiveServices : IAppServices
     // ve Android TV kurulumu günlük tutuyordu.
     private static LgInstallLog LgLog => new(new TvInstall.InstallLog(TvInstallLogPath).Write);
 
+    public void WriteTvInstallLog(string line) => new TvInstall.InstallLog(TvInstallLogPath).Write(line);
+
     public Task<string> FetchDevKeyAsync(string host, string passphrase) =>
         LgLog.KeyAsync(host, () => DevModeInstaller.FetchKeyAsync(host, passphrase, new ProcessRunner(), DevModeTools.ForThisSystem()));
 

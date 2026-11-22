@@ -1317,6 +1317,34 @@ final class TVAppInstallTests: XCTestCase {
         XCTAssertEqual(model.tvApp, .needsPassphrase(error: nil))
     }
 
+    /// TV'den silinen (ya da kapanan) eski uygulamanın "TV uygulamasını güncelle" uyarısı bellekte kalmıyordu.
+    func testOutdatedWarningClearsWhenTheTVAppDisconnects() async throws {
+        let model = model(FakeServices())
+        model.tv = tv
+        model.tvClients = 1
+        model.tvAppReported("")
+        XCTAssertNotNil(model.tvAppOutdated)
+        model.tvClients = 0
+        XCTAssertNil(model.tvAppOutdated)
+    }
+
+    /// TV'den silinen uygulama için "Yeniden kur": geliştirici modu açık, anahtar yok → Passphrase kartı; neden kurulum
+    /// günlüğüne yazılır (önceden tvinstall.log'a hiç satır düşmüyordu).
+    func testReinstallForADeletedLGAppAsksThePassphraseAndLogsWhy() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        let model = model(services)
+        try await model.pair(tv)
+        XCTAssertEqual(model.tvApp, .unknown)
+        try? FileManager.default.removeItem(at: TVInstallLog.file)
+        await model.reinstallTVApp()
+        XCTAssertEqual(model.tvApp, .needsPassphrase(error: nil))
+        let written = TVInstallLog.tail(of: TVInstallLog.file)
+        XCTAssertTrue(written.contains("yeniden kurma/güncelleme istendi"), written)
+        XCTAssertTrue(written.contains("Passphrase isteniyor"), written)
+        XCTAssertFalse(TVInstallLog.file.path.contains("Library/Logs"), "Testler gerçek günlüğe yazmaz")
+    }
+
     func testOldLGAppReportedOnTheStreamIsUpdatedWithTheSavedKey() async throws {
         let services = FakeServices()
         services.devMode = true

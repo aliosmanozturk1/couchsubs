@@ -328,9 +328,21 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         var first = tvAppOutdated is null;
         TvAppOutdated = new TvAppOutdated(installed, bundled);
         if (!first) return;
+        // Sessiz güncelleme en çok saatte bir denenir: bağlantı her kopup geldiğinde (uyarı bağlantı kalkınca düşer)
+        // başarısız kurulum yeniden denenmesin (Mac ile aynı).
+        if (lastTvAppAutoUpdate is { } last && DateTime.UtcNow - last < TvAppAutoUpdateInterval)
+        {
+            SubtitleLog.Write($"TV uygulaması eski: TV {installed}, bu bilgisayardaki paket {bundled}; son denemeden bu yana bir saat geçmedi.");
+            return;
+        }
+        lastTvAppAutoUpdate = DateTime.UtcNow;
         SubtitleLog.Write($"TV uygulaması eski: TV {installed}, bu bilgisayardaki paket {bundled}; güncelleme deneniyor.");
         _ = RefreshTvAppAsync();
     }
+
+    /// <summary>Eski TV uygulamasının sessiz güncellemesi en son ne zaman denendi (en çok saatte bir).</summary>
+    private DateTime? lastTvAppAutoUpdate;
+    public static readonly TimeSpan TvAppAutoUpdateInterval = TimeSpan.FromHours(1);
 
     /// <summary>
     /// Ana ekrandaki "TV uygulamasını güncelle": TV adımı açılır ve uygulama yeniden kurulur. LG'de kayıtlı anahtar varsa
@@ -1164,7 +1176,16 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     private async Task RefreshLgAppAsync(LgTv target)
     {
-        if (services.BundledTvAppVersion is not { } bundled) return;
+        if (services.BundledTvAppVersion is not { } bundled)
+        {
+            LgSkipped("bu bilgisayarda LG TV paketi yok");
+            return;
+        }
+        if (target.Host.Length == 0)
+        {
+            LgSkipped("TV'nin adresi yok");
+            return;
+        }
         var devModeOn = await services.IsDevModeOnAsync(target.Host);
         // Beklerken parola alanından kurulum başladıysa kart geri "geliştirici modu kapalı"ya dönmez.
         if (TvApp.Kind == TvAppKind.Working) return;
@@ -1173,15 +1194,31 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         var needsSteps = tvAppMissing || tvAppOutdated is not null;
         if (!devModeOn)
         {
+            if (needsSteps) LgSkipped($"geliştirici modu kapalı ya da TV'ye ulaşılamıyor ({target.Host}:9922)");
             TvApp = needsSteps ? new TvAppState(TvAppKind.DevModeOff) : TvAppState.Unknown;
             return;
         }
         if (store.Load<string>(StoreKeys.TvDevKey) is not { } devKey)
         {
+            if (needsSteps) LgSkipped("Key Server anahtarı bu bilgisayarda yok; Passphrase isteniyor");
             TvApp = needsSteps ? new TvAppState(TvAppKind.NeedsPassphrase) : TvAppState.Unknown;
             return;
         }
         await InstallTvAppAsync(target, devKey, bundled);
+    }
+
+    /// <summary>Kurulum günlüğüne en son yazılan "LG kurulumu başlamadı" nedeni (aynısı art arda yazılmaz).</summary>
+    private string? lastLgSkipReason;
+
+    /// <summary>
+    /// LG kurulumu ya da güncellemesi başlamadıysa nedeni kurulum günlüğüne bir kez yazılır (her 3 sn'lik denetimde değil):
+    /// önceden "TV uygulamasını güncelle"ye basınca tvinstall.log'a hiç satır düşmüyordu (Mac ile aynı).
+    /// </summary>
+    private void LgSkipped(string reason)
+    {
+        if (reason == lastLgSkipReason) return;
+        lastLgSkipReason = reason;
+        services.WriteTvInstallLog($"LG kurulumu başlamadı: {reason}.");
     }
 
     /// <summary>
@@ -1380,7 +1417,12 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
 
     public async Task ReinstallTvAppAsync()
     {
-        if (tv is null) return;
+        if (tv is null)
+        {
+            services.WriteTvInstallLog("TV uygulaması kurulamadı: TV seçili değil.");
+            return;
+        }
+        lastLgSkipReason = null;
         if (tv is { Brand: TvBrand.Lg } lg)
         {
             await ReinstallLgAppAsync(lg);
@@ -1398,18 +1440,25 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// </summary>
     private async Task ReinstallLgAppAsync(LgTv target)
     {
-        if (services.BundledTvAppVersion is not { } bundled) return;
+        services.WriteTvInstallLog($"--- LG: TV uygulamasını yeniden kurma/güncelleme istendi (TV {(target.Host.Length == 0 ? "adresi yok" : target.Host)}).");
+        if (services.BundledTvAppVersion is not { } bundled)
+        {
+            LgSkipped("bu bilgisayarda LG TV paketi yok");
+            return;
+        }
         lgReinstallRequested = true;
         // Kurulum adımları görünsün: TV uygulaması bağlı değil, kullanıcı yeniden kurmak istiyor.
         tvAppMissing = true;
         TvApp = new TvAppState(TvAppKind.Working);
         if (!await services.IsDevModeOnAsync(target.Host))
         {
+            LgSkipped($"geliştirici modu kapalı ya da TV'ye ulaşılamıyor ({target.Host}:9922)");
             TvApp = new TvAppState(TvAppKind.DevModeOff);
             return;
         }
         if (store.Load<string>(StoreKeys.TvDevKey) is not { } devKey)
         {
+            LgSkipped("Key Server anahtarı bu bilgisayarda yok; Passphrase isteniyor");
             TvApp = new TvAppState(TvAppKind.NeedsPassphrase);
             return;
         }
@@ -3730,6 +3779,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         if (count > 0 && tv is { Brand: TvBrand.Samsung } connected) SamsungAppKnowledge.Mark(connected.Host);
         if (tvClients == 0 && count > 0 && isRunning) services.Usage?.Record(UsageStats.Event.TvConnected(count, UsageBrand(tv?.Brand)));
         TvClients = count;
+        // Eski uygulama TV'den kalktı (silindi, kapandı): "TV uygulamasını güncelle" bellekte kalmıyor (Mac ile aynı).
+        if (count == 0) TvAppOutdated = null;
         if (count > 0) OpenProblem = null;
         UpdateTroubleClocks();
     });

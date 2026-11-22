@@ -579,6 +579,8 @@ final class AppModel: ObservableObject {
     @Published var devModeHoursLeft: Int?
     /// Son eşleşmede TV uygulaması açılamadı.
     @Published private var tvAppMissing = false
+    /// Kurulum günlüğüne en son yazılan "LG kurulumu başlamadı" nedeni (aynısı art arda yazılmaz).
+    private var lastLGSkipReason: String?
     /// LG'de "yeniden kur" istendi: TV'deki sürüm güncel olsa da paket yeniden kurulur. İstek bir kerelik.
     private var lgReinstallRequested = false
     /// TV uygulaması denetimi sürüyor (bekleme ekranı ve çeviri başlangıcı aynı anda çağırabilir).
@@ -676,7 +678,11 @@ final class AppModel: ObservableObject {
     private var connectingWatch: Task<Void, Never>?
     /// Çeviri sürerken Mac'in boşta uykuya geçmesi engellenir (kullanıcı TV'de oynuyor, Mac'e dokunmuyor).
     var isPreventingSleep: Bool { sleepActivity != nil }
-    @Published var tvClients = 0
+    @Published var tvClients = 0 {
+        // Eski uygulama TV'den kalktı (silindi, kapandı): "TV uygulamasını güncelle" bellekte kalmıyor; ana ekran "TV
+        // uygulaması bekleniyor / Yeniden kur" der. Eski uygulama yeniden bağlanırsa sürümünü yine bildirir.
+        didSet { if tvClients == 0, tvAppOutdated != nil { tvAppOutdated = nil } }
+    }
     /// TV uygulamasını kendiliğinden açmanın son denemesi neden olmadı (ana ekranda tek satır); açıldıysa nil.
     @Published private(set) var tvOpenProblem: TVOpenProblem?
     @Published var lastSource = ""
@@ -1517,9 +1523,20 @@ final class AppModel: ObservableObject {
         let first = tvAppOutdated == nil
         tvAppOutdated = TVAppOutdated(installed: installed, bundled: bundled)
         guard first else { return }
+        // Sessiz güncelleme en çok saatte bir denenir: bağlantı her kopup geldiğinde (uyarı bağlantı kalkınca düşer)
+        // başarısız kurulum yeniden denenmesin.
+        if let last = lastTVAppAutoUpdate, Date().timeIntervalSince(last) < Self.tvAppAutoUpdateInterval {
+            SubtitleLog.write("TV uygulaması eski: TV \(installed), bu Mac'teki paket \(bundled); son denemeden bu yana bir saat geçmedi.")
+            return
+        }
+        lastTVAppAutoUpdate = Date()
         SubtitleLog.write("TV uygulaması eski: TV \(installed), bu Mac'teki paket \(bundled); güncelleme deneniyor.")
         Task { await refreshTVApp() }
     }
+
+    /// Eski TV uygulamasının sessiz güncellemesi en son ne zaman denendi (en çok saatte bir).
+    private var lastTVAppAutoUpdate: Date?
+    static let tvAppAutoUpdateInterval: TimeInterval = 3600
 
     /// Ana ekrandaki "TV uygulamasını güncelle": TV adımı açılır ve uygulama yeniden kurulur. LG'de kayıtlı anahtar varsa
     /// Passphrase sorulmaz; yoksa TV kartı Developer Mode / Passphrase adımlarını gösterir.
@@ -1534,7 +1551,10 @@ final class AppModel: ObservableObject {
     /// Anahtar yoksa ve uygulama çalışıyorsa kullanıcıdan bir şey istenmez.
     func refreshTVApp() async {
         // İptal edilmiş görevden (kapanan kartın beklemesi) TV'ye sorulmaz; sorulursa yardımcı boşuna açılır (#359).
-        guard let tv, !refreshingTVApp, !Task.isCancelled else { return }
+        guard let tv, !refreshingTVApp, !Task.isCancelled else {
+            if tv == nil, tvAppOutdated != nil { TVInstallLog.write("TV uygulaması denetlenmedi: TV seçili değil.") }
+            return
+        }
         refreshingTVApp = true
         defer { refreshingTVApp = false }
         switch tv.brand {
@@ -1553,7 +1573,14 @@ final class AppModel: ObservableObject {
     }
 
     private func refreshLGApp(_ tv: LGTV) async {
-        guard let bundled = services.bundledTVAppVersion else { return }
+        guard let bundled = services.bundledTVAppVersion else {
+            lgSkipped("bu Mac'te LG TV paketi yok")
+            return
+        }
+        guard !tv.host.isEmpty else {
+            lgSkipped("TV'nin adresi yok")
+            return
+        }
         let devModeOn = await services.isDevModeOn(host: tv.host)
         // Beklerken parola kartından kurulum başladıysa kart geri "geliştirici modu kapalı"ya dönmez.
         if tvApp == .working { return }
@@ -1561,14 +1588,24 @@ final class AppModel: ObservableObject {
         // uygulamasını güncelle" TV adımını açıp yalnız eşleştirme/test gösteriyor, ana ekrana dönülüyordu (sonsuz döngü).
         let needsSteps = tvAppMissing || tvAppOutdated != nil
         guard devModeOn else {
+            if needsSteps { lgSkipped("geliştirici modu kapalı ya da TV'ye ulaşılamıyor (\(tv.host):9922)") }
             tvApp = needsSteps ? .devModeOff : .unknown
             return
         }
         guard let devKey = store.load(String.self, for: StoreKey.tvDevKey) else {
+            if needsSteps { lgSkipped("Key Server anahtarı bu Mac'te yok; Passphrase isteniyor") }
             tvApp = needsSteps ? .needsPassphrase(error: nil) : .unknown
             return
         }
         await install(tv: tv, devKey: devKey, bundled: bundled)
+    }
+
+    /// LG kurulumu ya da güncellemesi başlamadıysa nedeni kurulum günlüğüne bir kez yazılır (her 3 sn'lik denetimde değil):
+    /// önceden "TV uygulamasını güncelle"ye basınca tvinstall.log'a hiç satır düşmüyordu.
+    private func lgSkipped(_ reason: String) {
+        guard reason != lastLGSkipReason else { return }
+        lastLGSkipReason = reason
+        TVInstallLog.write("LG kurulumu başlamadı: \(reason).")
     }
 
     /// Samsung: geliştirici modu açıksa TV'deki CouchSubs sürümüne bakar, yoksa ya da eskiyse imzalayıp kurar
@@ -1730,7 +1767,11 @@ final class AppModel: ObservableObject {
     /// Kurulan sürüm kaydını unutur ve TV'ye yeniden bakar: uygulama TV'de yoksa kurulur, Android TV'de varsa açılır.
     /// TV'ye ulaşılamazsa kart geliştirici modu / hata ayıklama adımlarını gösterir.
     func reinstallTVApp() async {
-        guard let tv else { return }
+        guard let tv else {
+            TVInstallLog.write("TV uygulaması kurulamadı: TV seçili değil.")
+            return
+        }
+        lastLGSkipReason = nil
         if tv.brand == .lg {
             await reinstallLGApp(tv)
             return
@@ -1744,16 +1785,22 @@ final class AppModel: ObservableObject {
     /// LG'de TV uygulamasını yeniden kurar: kayıtlı anahtar varsa Passphrase sorulmadan paket yeniden kurulur ve açılır;
     /// anahtar yoksa (ya da TV reddederse) Passphrase adımı, geliştirici modu kapalıysa adımları görünür.
     private func reinstallLGApp(_ tv: LGTV) async {
-        guard let bundled = services.bundledTVAppVersion else { return }
+        TVInstallLog.write("--- LG: TV uygulamasını yeniden kurma/güncelleme istendi (TV \(tv.host.isEmpty ? "adresi yok" : tv.host)).")
+        guard let bundled = services.bundledTVAppVersion else {
+            lgSkipped("bu Mac'te LG TV paketi yok")
+            return
+        }
         lgReinstallRequested = true
         // Kurulum adımları görünsün: TV uygulaması bağlı değil, kullanıcı yeniden kurmak istiyor.
         tvAppMissing = true
         tvApp = .working
         guard await services.isDevModeOn(host: tv.host) else {
+            lgSkipped("geliştirici modu kapalı ya da TV'ye ulaşılamıyor (\(tv.host):9922)")
             tvApp = .devModeOff
             return
         }
         guard let devKey = store.load(String.self, for: StoreKey.tvDevKey) else {
+            lgSkipped("Key Server anahtarı bu Mac'te yok; Passphrase isteniyor")
             tvApp = .needsPassphrase(error: nil)
             return
         }

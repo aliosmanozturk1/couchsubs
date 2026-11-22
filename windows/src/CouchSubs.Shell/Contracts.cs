@@ -821,6 +821,8 @@ public interface IAppServices
                        Action<TvOpenProblem?>? onOpenResult = null);
     /// <summary>Uygulamayla gelen TV paketinin sürümü (geliştirici derlemesinde paket olmayabilir).</summary>
     string? BundledTvAppVersion { get; }
+    /// <summary>TV kurulum günlüğüne (tvinstall.log) bir satır; kurulum başlamadıysa nedeni buraya yazılır.</summary>
+    void WriteTvInstallLog(string line) { }
     Task<bool> IsDevModeOnAsync(string host);
     Task<string> FetchDevKeyAsync(string host, string passphrase);
     Task<string?> InstalledTvAppVersionAsync(string host, string devKey);

@@ -269,6 +269,8 @@ internal sealed class FakeServices : IAppServices
     public int Installs { get; private set; }
     public int PairCount { get; private set; }
     public string? BundledTvAppVersion { get; set; } = "0.6.1";
+    public List<string> InstallLog { get; } = [];
+    public void WriteTvInstallLog(string line) => InstallLog.Add(line);
     public Task<bool> IsDevModeOnAsync(string host)
     {
         TvCalls++;
@@ -2862,6 +2864,21 @@ public class TvAppInstallTests
         controller.TvAppReported("0.5.0");
         await controller.RefreshTvAppAsync();
         Assert.Equal(TvAppKind.NeedsPassphrase, controller.TvApp.Kind);
+    }
+
+    /// <summary>TV'den silinen uygulama için "Yeniden kur": geliştirici modu açık, anahtar yok → Passphrase kartı; neden
+    /// kurulum günlüğüne yazılır (önceden tvinstall.log'a hiç satır düşmüyordu).</summary>
+    [Fact]
+    public async Task ReinstallForADeletedLgAppAsksThePassphraseAndLogsWhy()
+    {
+        var services = new FakeServices { DevMode = true };
+        var controller = Make(services);
+        await controller.PairAsync(Tv);
+        Assert.Equal(TvAppKind.Unknown, controller.TvApp.Kind);
+        await controller.ReinstallTvAppAsync();
+        Assert.Equal(TvAppKind.NeedsPassphrase, controller.TvApp.Kind);
+        Assert.Contains(services.InstallLog, line => line.Contains("yeniden kurma/güncelleme istendi"));
+        Assert.Contains(services.InstallLog, line => line.Contains("Passphrase isteniyor"));
     }
 
     [Fact]
