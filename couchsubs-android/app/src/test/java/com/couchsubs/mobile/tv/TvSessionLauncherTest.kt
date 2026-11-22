@@ -30,6 +30,26 @@ class TvSessionLauncherTest {
         val native = JSONObject(TvSessionLauncher.launchMessage(TvBrand.SAMSUNG, "http://1.2.3.4:8787", "k", "NATIVE_LAUNCH"))
         assertEquals("NATIVE_LAUNCH", native.getJSONObject("params").getJSONObject("data").getString("action_type"))
     }
+    /**
+     * TV'den silinmiş uygulama "kurulu" bilinirse bekçi her 30 sn'de listesiz DEEP_LINK gönderiyor, TV her seferinde
+     * "Sunucu bakım altında (1544007)" diyordu: listesiz açma, uygulama her bağlandığında bir kez.
+     */
+    @Test fun samsungDirectLaunchIsAllowedOncePerAppConnection() {
+        val host = "198.51.100.77"
+        val logged = mutableListOf<String>()
+        TvSessionLauncher.samsungAppConnected(host)
+        assertTrue(TvSessionLauncher.samsungAllowsDirect(host, logged::add))
+        // Uygulama bağlanmadı: bilgi bayat sayılır, liste belirler; satır bir kez yazılır.
+        assertFalse(TvSessionLauncher.samsungAllowsDirect(host, logged::add))
+        assertFalse(TvSessionLauncher.samsungAllowsDirect(host, logged::add))
+        assertEquals(1, logged.size)
+        assertTrue(logged[0].contains("kurulu uygulama listesine bakılıyor"))
+        // Uygulama bağlandı: hak yenilenir.
+        TvSessionLauncher.samsungAppConnected(" $host ")
+        assertTrue(TvSessionLauncher.samsungAllowsDirect(host, logged::add))
+        TvSessionLauncher.samsungAppConnected(host)
+    }
+
     /** beta.63: liste geliştirici moduyla kurulan uygulamayı içermiyorsa telefon uygulamayı hiç açmıyordu. */
     @Test fun samsungKnownInstalledAppLaunchesWithoutTheList() {
         val missing = TvSessionLauncher.SamsungAppPresence(false, null)

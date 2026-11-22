@@ -162,9 +162,49 @@ public static class SamsungAppKnowledge
     {
         if (string.IsNullOrWhiteSpace(host)) return;
         bool added;
-        lock (hosts) added = hosts.Add(host.Trim());
+        lock (hosts)
+        {
+            added = hosts.Add(host.Trim());
+            unconfirmed.Remove(host.Trim());
+            staleReported.Remove(host.Trim());
+        }
         if (added && notify) Changed?.Invoke(host.Trim());
     }
+
+    /// <summary>Listeye bakılmadan DEEP_LINK gönderilen ama TV uygulaması o günden beri bağlanmayan TV'ler (yalnız bellekte).</summary>
+    private static readonly HashSet<string> unconfirmed = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Bayat bilgi günlüğe yazıldı (bekçi her 30 sn'de denediği için bir kez).</summary>
+    private static readonly HashSet<string> staleReported = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Bilinen TV'de listeye bakmadan DEEP_LINK gönderilebilir mi. Hak, TV uygulaması her bağlandığında (<see cref="Mark"/>)
+    /// bir kez verilir: bir önceki listesiz DEEP_LINK'ten sonra uygulama bağlanmadıysa bilgi bayat sayılır ve TV'nin kurulu
+    /// uygulama listesine bakılır. Uygulama TV'den silinince (Smart Hub sıfırlaması, kaldırılıp yeniden kurulamayan
+    /// güncelleme, TV yazılım güncellemesi) "kurulu" bilgisi kalıyordu; bekçi her 30 sn'de DEEP_LINK gönderiyor, Smart Hub
+    /// uygulamayı mağazada arıyor, TV her seferinde "Sunucu bakım altında (1544007)" diyordu (22 Kas). Mac/iPhone ve Android ile aynı.
+    /// </summary>
+    public static bool AllowsDirect(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return false;
+        var key = host.Trim();
+        bool allowed, firstStale = false;
+        lock (hosts)
+        {
+            if (!hosts.Contains(key)) return false;
+            allowed = unconfirmed.Add(key);
+            if (!allowed) firstStale = staleReported.Add(key);
+        }
+        if (firstStale)
+        {
+            var line = UnconfirmedLine(key);
+            Log?.Invoke(line);
+            InstallLog?.Invoke(line);
+        }
+        return allowed;
+    }
+
+    public static string UnconfirmedLine(string host) =>
+        $"Samsung {host}: son doğrudan açma komutundan sonra TV uygulaması bağlanmadı; kurulu uygulama listesine bakılıyor (kurulu olmayan uygulamaya DEEP_LINK \"Sunucu bakım altında\" uyarısı çıkarır).";
 
     /// <summary>
     /// Eşleşmiş TV ağda yeni adreste bulundu (modem yeni adres verdi, bkz. <see cref="TvLocator"/>): eski adreste kurulu
@@ -338,7 +378,8 @@ public sealed class SamsungClient(Uri url, TimeSpan? approvalTimeout = null) : I
         // Uygulama bu TV'den daha önce bağlandıysa ya da bu cihaz kurduysa listeye bakılmaz, eskisi gibi doğrudan açılır:
         // listenin geliştirici moduyla kurulan uygulamayı içerdiği gerçek TV'de doğrulanmadı (beta.63'te içermeyen TV'de
         // bekçi uygulamayı hiç açmıyordu).
-        var known = KnownInstalled ?? SamsungAppKnowledge.IsKnown(host);
+        // Bilinen TV'de listesiz açma, uygulama her bağlandığında bir kez: bayat bilgi "Sunucu bakım altında" çıkarmasın.
+        var known = KnownInstalled ?? SamsungAppKnowledge.AllowsDirect(host);
         if (!SamsungAppKnowledge.ChecksList(known))
         {
             var direct = Encoding.UTF8.GetBytes(SamsungMessages.Launch(appId, parameters, SamsungAppKnowledge.ActionFor(true, null)!));

@@ -216,6 +216,10 @@ public final class SamsungAppKnowledge: @unchecked Sendable {
     private let defaults: UserDefaults?
     private var hosts: Set<String>
     private var probed = false
+    /// Listeye bakılmadan DEEP_LINK gönderilen ama TV uygulaması o günden beri bağlanmayan TV'ler (yalnız bellekte).
+    private var unconfirmed: Set<String> = []
+    /// Bayat bilgi günlüğe yazıldı (bekçi her 30 sn'de denediği için bir kez).
+    private var staleReported: Set<String> = []
 
     /// `defaults` nil ise bilgi yalnız bellekte tutulur (testler).
     init(defaults: UserDefaults? = .standard) {
@@ -233,10 +237,12 @@ public final class SamsungAppKnowledge: @unchecked Sendable {
         return lock.withLock { hosts.contains(host) }
     }
 
-    /// TV uygulaması bu TV'de kurulu: bağlandı ya da kuruldu.
+    /// TV uygulaması bu TV'de kurulu: bağlandı ya da kuruldu. Listesiz açma hakkı da yenilenir (`allowsDirect`).
     public func mark(host: String?) {
         guard let host = Self.normalized(host) else { return }
         lock.withLock {
+            unconfirmed.remove(host)
+            staleReported.remove(host)
             guard hosts.insert(host).inserted else { return }
             defaults?.set(hosts.sorted(), forKey: Self.storeKey)
         }
@@ -257,6 +263,30 @@ public final class SamsungAppKnowledge: @unchecked Sendable {
             guard hosts.remove(host) != nil else { return }
             defaults?.set(hosts.sorted(), forKey: Self.storeKey)
         }
+    }
+
+    /// Bilinen TV'de listeye bakmadan DEEP_LINK gönderilebilir mi. Hak, TV uygulaması her bağlandığında (`mark`) bir kez
+    /// verilir: bir önceki listesiz DEEP_LINK'ten sonra uygulama bağlanmadıysa bilgi bayat sayılır ve TV'nin kurulu
+    /// uygulama listesine bakılır. Uygulama TV'den silinince (Smart Hub sıfırlaması, kaldırılıp yeniden kurulamayan
+    /// güncelleme, TV yazılım güncellemesi) "kurulu" bilgisi kalıyordu; bekçi her 30 sn'de DEEP_LINK gönderiyor, Smart Hub
+    /// uygulamayı mağazada arıyor, TV her seferinde "Sunucu bakım altında (1544007)" diyordu (22 Kas). Windows ve Android ile aynı.
+    func allowsDirect(host: String?) -> Bool {
+        guard let host = Self.normalized(host) else { return false }
+        let (allowed, firstStale) = lock.withLock { () -> (Bool, Bool) in
+            guard hosts.contains(host) else { return (false, false) }
+            if unconfirmed.insert(host).inserted { return (true, false) }
+            return (false, staleReported.insert(host).inserted)
+        }
+        if firstStale {
+            let line = Self.unconfirmedLine(host: host)
+            SubtitleLog.write(line)
+            Self.installLog?(line)
+        }
+        return allowed
+    }
+
+    static func unconfirmedLine(host: String) -> String {
+        "Samsung \(host): son doğrudan açma komutundan sonra TV uygulaması bağlanmadı; kurulu uygulama listesine bakılıyor (kurulu olmayan uygulamaya DEEP_LINK \"Sunucu bakım altında\" uyarısı çıkarır)."
     }
 
     /// Sahadan öğrenmek için yapılan liste sorgusu çalışma boyunca bir kez yapılır.
@@ -387,7 +417,8 @@ public final class SamsungClient: NSObject, TVControlling, URLSessionDelegate, @
         // listenin geliştirici moduyla kurulan uygulamayı içerdiği gerçek TV'de doğrulanmadı (beta.63'te içermeyen TV'de
         // bekçi uygulamayı hiç açmıyordu).
         let host = url?.host
-        let known = knownInstalled ?? SamsungAppKnowledge.shared.isKnown(host: host)
+        // Bilinen TV'de listesiz açma, uygulama her bağlandığında bir kez: bayat bilgi "Sunucu bakım altında" çıkarmasın.
+        let known = knownInstalled ?? SamsungAppKnowledge.shared.allowsDirect(host: host)
         if !SamsungAppKnowledge.checksList(knownInstalled: known) {
             let direct = SamsungMessages.launch(appId: appId, params: params, actionType: "DEEP_LINK")
             try await socket.send(.string(String(decoding: direct, as: UTF8.self)))

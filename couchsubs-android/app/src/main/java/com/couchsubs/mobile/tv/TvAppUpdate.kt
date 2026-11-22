@@ -62,6 +62,8 @@ object TvAppUpdate {
     fun installed(tv: InstalledTv) {
         val settings = Services.settings
         settings.installedTv = tv
+        // Samsung: uygulama yeni kuruldu/doğrulandı; listesiz açma hakkı yenilenir (Mac/iPhone ve Windows'ta mark ile aynı).
+        if (tv.brand == TvBrand.SAMSUNG) TvSessionLauncher.samsungAppConnected(tv.host)
         // Kurulumun 3. adımından TV uygulaması kurulunca altyazı TV'ye gider ve kurulum biter; yoksa uygulama her
         // açılışta yine 3. adımdan (altyazının yeri) başlıyordu, "Devam"a basılmadıysa ana ekrana hiç gelinmiyordu (#113).
         // "İkisi de" seçiliyse korunur; yalnız "Bu telefonda" TV'ye döner.

@@ -84,6 +84,40 @@ object TvSessionLauncher {
         if (presence == null) "Samsung $host: uygulama listesi 3 sn'de gelmedi; açma isteği gönderilmedi (kurulu olmayan uygulamaya DEEP_LINK Smart Hub'ı mağazaya yollar)."
         else "Samsung $host: kurulu uygulama listesinde CouchSubs yok; açma isteği gönderilmedi."
 
+    /** Listesiz DEEP_LINK gönderilen ama TV uygulaması o günden beri bağlanmayan TV'ler (yalnız bellekte). */
+    private val samsungUnconfirmed = java.util.Collections.synchronizedSet(HashSet<String>())
+    /** Bayat bilgi günlüğe yazıldı (bekçi her 30 sn'de denediği için bir kez). */
+    private val samsungStaleReported = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /**
+     * Kurulu olduğu bilinen TV'de listeye bakmadan DEEP_LINK gönderilebilir mi. Hak, TV uygulaması her bağlandığında
+     * ([samsungAppConnected]) bir kez verilir: bir önceki listesiz DEEP_LINK'ten sonra uygulama bağlanmadıysa bilgi bayat
+     * sayılır ve TV'nin kurulu uygulama listesine bakılır. Uygulama TV'den silinince (Smart Hub sıfırlaması, kaldırılıp
+     * yeniden kurulamayan güncelleme, TV yazılım güncellemesi) "kurulu" bilgisi kalıyordu; bekçi her 30 sn'de DEEP_LINK
+     * gönderiyor, Smart Hub uygulamayı mağazada arıyor, TV her seferinde "Sunucu bakım altında (1544007)" diyordu (22 Kas).
+     * Windows ve Mac/iPhone ile aynı. Yalnız bilinen TV için çağrılır.
+     */
+    fun samsungAllowsDirect(host: String, installLog: (String) -> Unit = {}): Boolean {
+        val key = host.trim().lowercase()
+        if (samsungUnconfirmed.add(key)) return true
+        if (samsungStaleReported.add(key)) {
+            val line = samsungUnconfirmedLine(host)
+            android.util.Log.i("CouchSubsTvLaunch", line)
+            installLog(line)
+        }
+        return false
+    }
+
+    /** TV uygulaması bu Samsung TV'den bağlandı: listesiz açma hakkı yenilenir. */
+    fun samsungAppConnected(host: String) {
+        val key = host.trim().lowercase()
+        samsungUnconfirmed.remove(key)
+        samsungStaleReported.remove(key)
+    }
+
+    fun samsungUnconfirmedLine(host: String): String =
+        "Samsung $host: son doğrudan açma komutundan sonra TV uygulaması bağlanmadı; kurulu uygulama listesine bakılıyor (kurulu olmayan uygulamaya DEEP_LINK \"Sunucu bakım altında\" uyarısı çıkarır)."
+
     /** Bekçi her 30 sn'de denediği için aynı satır tvinstall.log'da yinelenmez. */
     private val lastNotSent = java.util.concurrent.atomic.AtomicReference<String?>(null)
 
@@ -282,7 +316,8 @@ object TvSessionLauncher {
                 // Samsung: kurulu uygulama listesinin yanıtı bekleniyor mu. Yanıt 3 saniyede gelmezse eski yol (DEEP_LINK).
                 val awaitingList = java.util.concurrent.atomic.AtomicBoolean(false)
                 // Uygulamanın bu TV'de kurulu olduğu biliniyorsa listeye bakılmaz, eskisi gibi doğrudan açılır.
-                val known = samsungKnownInstalled(tv, settings.samsungAppSeenHost)
+                // Listesiz açma, uygulama her bağlandığında bir kez: bayat bilgi "Sunucu bakım altında" çıkarmasın.
+                val known = samsungKnownInstalled(tv, settings.samsungAppSeenHost) && samsungAllowsDirect(tv.host, installLog)
                 // Bilinen TV'de açma komutundan sonra, yalnız günlük için listeye bir kez bakılıyor mu.
                 val probing = java.util.concurrent.atomic.AtomicBoolean(false)
                 fun samsungLaunch(webSocket: WebSocket, presence: SamsungAppPresence?) {

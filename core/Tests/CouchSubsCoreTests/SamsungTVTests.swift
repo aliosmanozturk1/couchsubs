@@ -189,6 +189,23 @@ final class SamsungTVTests: XCTestCase {
         XCTAssertFalse(knowledge.takeProbe())
     }
 
+    /// TV'den silinmiş uygulama "kurulu" bilinirse bekçi her 30 sn'de listesiz DEEP_LINK gönderiyor, TV her seferinde
+    /// "Sunucu bakım altında (1544007)" diyordu: listesiz açma, uygulama her bağlandığında bir kez.
+    func testDirectLaunchIsAllowedOncePerAppConnection() {
+        let knowledge = SamsungAppKnowledge(defaults: nil)
+        XCTAssertFalse(knowledge.allowsDirect(host: "192.168.1.40"))
+        knowledge.mark(host: "192.168.1.40")
+        XCTAssertTrue(knowledge.allowsDirect(host: "192.168.1.40"))
+        // Uygulama bağlanmadı: bilgi bayat sayılır, liste belirler.
+        XCTAssertFalse(knowledge.allowsDirect(host: "192.168.1.40"))
+        XCTAssertFalse(knowledge.allowsDirect(host: "192.168.1.40"))
+        XCTAssertTrue(knowledge.isKnown(host: "192.168.1.40"))
+        // Uygulama bağlandı: hak yenilenir.
+        knowledge.mark(host: " 192.168.1.40 ")
+        XCTAssertTrue(knowledge.allowsDirect(host: "192.168.1.40"))
+        XCTAssertTrue(SamsungAppKnowledge.unconfirmedLine(host: "1.2.3.4").contains("kurulu uygulama listesine bakılıyor"))
+    }
+
     /// Modem TV'ye yeni adres verince (TVLocator) kurulu olduğu bilgisi yeni adrese geçer: yoksa bekçi yeni adreste listeye
     /// bakıyor, liste geliştirici moduyla kurulan uygulamayı içermiyorsa uygulamayı hiç açmıyordu.
     func testKnowledgeFollowsTheTVToItsNewAddress() throws {

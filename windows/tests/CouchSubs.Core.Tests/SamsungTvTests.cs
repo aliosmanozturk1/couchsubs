@@ -51,6 +51,34 @@ public class SamsungTvTests
         Assert.Contains("açma isteği gönderilmedi", SamsungAppKnowledge.NotSentLine("1.2.3.4", SamsungAppPresence.Missing));
     }
 
+    /// <summary>
+    /// TV'den silinmiş uygulama "kurulu" bilinirse bekçi her 30 sn'de listesiz DEEP_LINK gönderiyor, TV her seferinde
+    /// "Sunucu bakım altında (1544007)" diyordu: listesiz açma, uygulama her bağlandığında bir kez.
+    /// </summary>
+    [Fact]
+    public void DirectLaunchIsAllowedOncePerAppConnection()
+    {
+        var host = "198.51.100." + Random.Shared.Next(1, 250);
+        try
+        {
+            Assert.False(SamsungAppKnowledge.AllowsDirect(host));
+            SamsungAppKnowledge.Mark(host, notify: false);
+            Assert.True(SamsungAppKnowledge.AllowsDirect(host));
+            // Uygulama bağlanmadı: bilgi bayat sayılır, liste belirler.
+            Assert.False(SamsungAppKnowledge.AllowsDirect(host));
+            Assert.False(SamsungAppKnowledge.AllowsDirect(host));
+            Assert.True(SamsungAppKnowledge.IsKnown(host));
+            // Uygulama bağlandı: hak yenilenir.
+            SamsungAppKnowledge.Mark(" " + host + " ", notify: false);
+            Assert.True(SamsungAppKnowledge.AllowsDirect(host));
+            Assert.Contains("kurulu uygulama listesine bakılıyor", SamsungAppKnowledge.UnconfirmedLine("1.2.3.4"));
+        }
+        finally
+        {
+            SamsungAppKnowledge.Forget(host);
+        }
+    }
+
     [Fact]
     public void ConnectedTvIsRememberedAsInstalled()
     {
