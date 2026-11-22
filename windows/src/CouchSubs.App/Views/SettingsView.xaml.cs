@@ -289,6 +289,20 @@ public partial class SettingsView : UserControl
                 CaptureWindowChoice.Items.Insert(0, selected);
             }
             CaptureWindowChoice.SelectedItem = selected;
+            // Görünen liste: her pencere bir seçenek kartı (ad kalın, altında uygulama); seçili olan amber çerçeveli.
+            CaptureWindowCards.Children.Clear();
+            foreach (ComboBoxItem item in CaptureWindowChoice.Items)
+            {
+                if (item.Tag is not WindowCaptureTarget target) continue;
+                var card = new Controls.OptionCard
+                {
+                    Content = target.Title, Description = item == selected && !windows.Contains(target)
+                        ? $"{target.ProcessName} · {Localizer.Current["Not currently open"]}" : target.ProcessName,
+                    GroupName = "captureWindow", IsChecked = item == selected, Margin = new Thickness(0, 0, 0, 8), MinHeight = 64,
+                };
+                card.Checked += (_, _) => { if (!refreshingCaptureWindows) CaptureWindowChoice.SelectedItem = item; };
+                CaptureWindowCards.Children.Add(card);
+            }
             CaptureWindowEmpty.Visibility = windows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             UpdateSourceProjectorHint(saved);
         }

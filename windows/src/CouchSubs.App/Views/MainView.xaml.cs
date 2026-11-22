@@ -507,7 +507,15 @@ public partial class MainView : UserControl
         GameCard.Visibility = controller.IsRunning && !controller.DemoMode ? Visibility.Visible : Visibility.Collapsed;
         var asking = controller.AskingGame;
         GameRow.Visibility = asking ? Visibility.Collapsed : Visibility.Visible;
+        var wasAsking = GameAsk.Visibility == Visibility.Visible;
         GameAsk.Visibility = asking ? Visibility.Visible : Visibility.Collapsed;
+        // Kart açıkken ana ekran bulanıklaşır ve soluklaşır (tasarım: filter blur(2px), opacity .5).
+        foreach (var part in new UIElement[] { ChipsCard, Body })
+        {
+            part.Effect = asking ? new System.Windows.Media.Effects.BlurEffect { Radius = 4 } : null;
+            part.Opacity = asking ? 0.5 : 1;
+        }
+        if (asking && !wasAsking) Theme.Motion.EnterFrom((FrameworkElement)GameAsk.Children[0], 12, Theme.Motion.Page);
         PlayedGameText.Text = controller.PlayedGame ?? text["Not known"];
         GameChangeButton.Content = text[controller.PlayedGame is null ? "Choose" : "Change"];
         if (asking) ShowGameSuggestions();
@@ -535,34 +543,40 @@ public partial class MainView : UserControl
     private void OnDeclineAreaProfile(object sender, RoutedEventArgs e) => controller.DeclineOfferedAreaProfile();
     private void OnUndoAreaProfile(object sender, RoutedEventArgs e) => controller.UndoAreaProfile();
 
+    /// <summary>Oyun seçenekleri: en çok beş; seçenek kartı 64 yüksek, solda 40'lık kapak, ad, sağda rozet.</summary>
     private void ShowGameSuggestions()
     {
+        var text = Localizer.Current;
         var typed = GameSearch.Text.Trim();
+        GameSearchHint.Visibility = typed.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         var suggestions = controller.GameSuggestions(typed).Take(5).ToList();
         var last = controller.LastPlayedGame;
+        var shelf = GameCatalog.PackShelf(controller.InstalledPacks);
         GameList.Children.Clear();
         foreach (var name in suggestions)
         {
-            var label = new DockPanel();
-            if (name == last)
+            var row = new DockPanel();
+            var cover = new Border { Width = 40, Height = 40, CornerRadius = new CornerRadius(10), Margin = new Thickness(0, 0, 16, 0) };
+            cover.SetResourceReference(Border.BackgroundProperty, "tileBrush");
+            cover.Child = new TextBlock { Text = Monogram(name), FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            DockPanel.SetDock(cover, Dock.Left);
+            row.Children.Add(cover);
+            var hasPack = shelf.Any(item => item.Titles.Append(item.Title).Any(title => GameName.Key(title) == GameName.Key(name)));
+            if (hasPack || name == last)
             {
-                var note = new TextBlock { Text = Localizer.Current["Last played"], Style = (Style)FindResource("CaptionText"), VerticalAlignment = VerticalAlignment.Center };
-                DockPanel.SetDock(note, Dock.Right);
-                label.Children.Add(note);
+                var tag = new Controls.Badge { Content = text[hasPack ? "Pack Available" : "Last Played"], Tone = hasPack ? Controls.PillTone.Attention : Controls.PillTone.Idle };
+                DockPanel.SetDock(tag, Dock.Right);
+                row.Children.Add(tag);
             }
-            label.Children.Add(new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
-            var button = new Button
-            {
-                Content = label, Style = (Style)FindResource("GhostButton"), HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 2, 0, 2),
-            };
-            button.Click += (_, _) => controller.ChooseGame(name);
-            GameList.Children.Add(button);
+            row.Children.Add(new TextBlock { Text = name, FontSize = 15, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
+            var option = new Controls.OptionCard { Content = row, GroupName = "playedGame", MinHeight = 64, Margin = new Thickness(0, 0, 0, 8) };
+            option.Checked += (_, _) => controller.ChooseGame(name);
+            GameList.Children.Add(option);
         }
-        var custom = typed.Length > 0 && !suggestions.Any(n => GameName.Key(n) == GameName.Key(typed));
-        GameCustom.Visibility = custom ? Visibility.Visible : Visibility.Collapsed;
-        GameCustom.Content = Localizer.Current.Format("Not listed: use “%@”", typed);
     }
+
+    private static string Monogram(string name) =>
+        new string([.. name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(word => char.ToUpperInvariant(word[0]))]);
 
     private void OnChangeGame(object sender, RoutedEventArgs e) => controller.AskGame();
 
@@ -577,5 +591,10 @@ public partial class MainView : UserControl
         e.Handled = true;
     }
 
-    private void OnCustomGame(object sender, RoutedEventArgs e) => controller.ChooseGame(GameSearch.Text.Trim());
+    /// <summary>"Listede Yok": yazılan ad kullanılır; bir şey yazılmadıysa arama kutusuna odaklanılır.</summary>
+    private void OnCustomGame(object sender, RoutedEventArgs e)
+    {
+        if (GameSearch.Text.Trim() is { Length: > 0 } typed) controller.ChooseGame(typed);
+        else GameSearch.Focus();
+    }
 }

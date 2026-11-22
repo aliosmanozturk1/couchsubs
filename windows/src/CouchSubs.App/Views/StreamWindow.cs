@@ -91,7 +91,11 @@ public sealed class StreamWindow : Window
         layers.Children.Add(linesPanel);
         linesHost = new Border { Child = layers };
         root = new Grid { Children = { phoneLayer, linesHost } };
+        root.Children.Add(BuildBar());
         Content = root;
+        // Çubuk yalnız fare pencerenin üstündeyken görünür: yayın programı yakalarken görüntüye girmez.
+        MouseEnter += (_, _) => ShowBar();
+        MouseLeave += (_, _) => ShowBar();
         ApplyBackground();
         linesHost.SizeChanged += (_, _) =>
         {
@@ -117,6 +121,85 @@ public sealed class StreamWindow : Window
             timer.Stop();
             open = null;
         };
+    }
+
+    // ───── Alt çubuk (tuval 13): Ekranı Çevir, Örtsün, Çubuğu Gizle; gizliyken sağ altta "Çubuğu Göster". ─────
+
+    private Border? bar;
+    private Button? showBar;
+    private Button? cover;
+    private bool barHidden;
+    /// <summary>"Örtsün"den önceki zemin koyuluğu (yeniden basınca geri gelir).</summary>
+    private int? coverBefore;
+
+    private UIElement BuildBar()
+    {
+        var text = Localizer.Current;
+        Button Pill(string label, Brush background, Brush foreground, FontWeight weight)
+        {
+            var button = new Button { Content = label, Height = 36, MinHeight = 36, Padding = new Thickness(16, 0, 16, 0), FontSize = 13, FontWeight = weight,
+                Background = background, Foreground = foreground, Margin = new Thickness(4, 0, 4, 0) };
+            button.SetResourceReference(StyleProperty, "ButtonBase");
+            return button;
+        }
+        var translate = Pill(text["Translate the Screen"], (Brush)FindResource("accentBrush"), (Brush)FindResource("onAccentBrush"), FontWeights.SemiBold);
+        translate.Click += async (_, _) =>
+        {
+            try { await controller.TranslateScreenAsync(); }
+            catch (Exception error) { StartupGuard.Log("Yayın penceresinden ekran çevrilemedi", error); }
+        };
+        cover = Pill(text["Cover"], Brushes.Transparent, Brushes.White, FontWeights.Medium);
+        cover.Click += (_, _) => ToggleCover();
+        var hide = Pill(text["Hide the Bar"], new SolidColorBrush(Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF)), Brushes.White, FontWeights.Medium);
+        hide.Click += (_, _) => { barHidden = true; ShowBar(); };
+        bar = new Border
+        {
+            Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { translate, cover, hide } },
+            Padding = new Thickness(2, 6, 2, 6), CornerRadius = new CornerRadius(24), Background = new SolidColorBrush(Color.FromArgb(0xB3, 0x10, 0x10, 0x14)),
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(16),
+        };
+        showBar = Pill(text["Show the Bar"], new SolidColorBrush(Color.FromArgb(0x99, 0x10, 0x10, 0x14)), Brushes.White, FontWeights.Medium);
+        showBar.Height = showBar.MinHeight = 32;
+        showBar.FontSize = 12;
+        showBar.HorizontalAlignment = HorizontalAlignment.Right;
+        showBar.VerticalAlignment = VerticalAlignment.Bottom;
+        showBar.Margin = new Thickness(16);
+        showBar.Click += (_, _) => { barHidden = false; ShowBar(); };
+        ShowCover();
+        var layer = new Grid { Children = { bar, showBar } };
+        ShowBar();
+        return layer;
+    }
+
+    private void ShowBar()
+    {
+        if (bar is null || showBar is null) return;
+        var hover = IsMouseOver;
+        bar.Visibility = hover && !barHidden ? Visibility.Visible : Visibility.Collapsed;
+        showBar.Visibility = hover && barHidden ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>"Örtsün": altyazı zemini tam koyu olur, oyunun İngilizce altyazısı görünmez; yeniden basınca eski koyuluk.</summary>
+    private void ToggleCover()
+    {
+        var style = controller.Settings.Style;
+        if (coverBefore is { } before)
+        {
+            controller.Settings = controller.Settings with { Style = style with { Background = before } };
+            coverBefore = null;
+        }
+        else
+        {
+            coverBefore = style.Background;
+            controller.Settings = controller.Settings with { Style = style with { Background = 100 } };
+        }
+        ShowCover();
+    }
+
+    private void ShowCover()
+    {
+        if (cover is null) return;
+        cover.Background = coverBefore is null ? new SolidColorBrush(Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF)) : (Brush)FindResource("successBrush");
     }
 
     private void ApplyBackground()

@@ -837,11 +837,14 @@
                             <StackPanel x:Name="CaptureWindowPanel" Margin="0,12,0,0" Visibility="Collapsed">
                                 <TextBlock Text="{t:T 'Open an OBS projector or game window, then select it below. Only that window is read: CouchSubs never switches to the whole desktop when it closes.'}"
                                            Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,0,0,8" />
-                                <DockPanel>
-                                    <Button Content="{t:T 'Refresh windows'}" DockPanel.Dock="Right" Margin="10,0,0,0"
-                                            Click="OnRefreshCaptureWindows" />
-                                    <ComboBox x:Name="CaptureWindowChoice" MinWidth="250" SelectionChanged="OnCaptureWindowChanged" />
+                                <!-- Tuval 14: başlık satırında sağda "Pencereleri Yenile"; pencereler seçenek kartı (ad ve uygulama). -->
+                                <DockPanel Margin="0,0,0,8">
+                                    <Button Content="{t:T 'Refresh Windows'}" DockPanel.Dock="Right" Style="{StaticResource SmallSecondaryButton}" Height="32" MinHeight="32"
+                                            FontSize="12" Padding="12,0" VerticalAlignment="Center" Click="OnRefreshCaptureWindows" />
+                                    <TextBlock Text="{t:T 'OBS PROJECTOR OR GAME WINDOW'}" Style="{StaticResource SectionLabel}" Margin="0" VerticalAlignment="Center" />
                                 </DockPanel>
+                                <StackPanel x:Name="CaptureWindowCards" />
+                                <ComboBox x:Name="CaptureWindowChoice" Visibility="Collapsed" SelectionChanged="OnCaptureWindowChanged" />
                                 <TextBlock x:Name="CaptureWindowEmpty" Style="{StaticResource HintText}" Margin="0,8,0,0"
                                            Text="{t:T 'No suitable windows found. Open OBS or the game first, then refresh.'}" />
                                 <!-- OBS'in Program/Önizleme projektörü CouchSubs'ın OBS katmanını da içerir (OwnSubtitles). -->
