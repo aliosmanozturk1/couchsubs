@@ -2,6 +2,7 @@
 
 using System.Net;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using HtmlAgilityPack;
 
 namespace CouchSubs.Shell;
@@ -48,7 +49,7 @@ public sealed class GitHubReleaseNotes(HttpClient http)
                     var document = new HtmlDocument { OptionMaxNestedChildNodes = 128 };
                     document.LoadHtml(rendered);
                     var runs = new List<ReleaseNoteRun>();
-                    Append(document.DocumentNode, runs);
+                    foreach (var node in CurrentSection(document.DocumentNode)) Append(node, runs);
                     if (runs.Any(run => !string.IsNullOrWhiteSpace(run.Text))) return runs;
                 }
                 // Html Agility Pack iç içelik sınırı aşılınca doğrudan Exception atar.
@@ -64,6 +65,29 @@ public sealed class GitHubReleaseNotes(HttpClient http)
             return [];
         }
     }
+
+    /// <summary>
+    /// Sürüm notları geçmiş sürümlerin özetini de taşır ("beta.65'te gelenler" …). Kartta yalnız teklif edilen sürümün
+    /// "Bu sürümde yeni" bölümü gösterilir: o başlıklı paragraftan bir sonraki eski sürüm paragrafına kadar.
+    /// Başlık yoksa (eski ya da elle yazılmış not) bütün gövde gösterilir.
+    /// </summary>
+    internal static IEnumerable<HtmlNode> CurrentSection(HtmlNode document)
+    {
+        var start = document.Descendants().FirstOrDefault(node => node.Name is "p" or "h1" or "h2" or "h3" or "h4" &&
+            LeadText(node).StartsWith("Bu sürümde yeni", StringComparison.Ordinal));
+        if (start is null) return [document];
+        var section = new List<HtmlNode> { start };
+        for (var node = start.NextSibling; node is not null; node = node.NextSibling)
+        {
+            if (node.NodeType == HtmlNodeType.Element && OlderRelease.IsMatch(LeadText(node))) break;
+            section.Add(node);
+        }
+        return section;
+    }
+
+    private static readonly Regex OlderRelease = new(@"^(beta\.\d+\S*\s+gelenler\b|Daha önce\b|Önceki sürüm)", RegexOptions.CultureInvariant);
+
+    private static string LeadText(HtmlNode node) => WebUtility.HtmlDecode(node.InnerText).TrimStart();
 
     private static void Append(HtmlNode node, List<ReleaseNoteRun> runs, Uri? link = null, bool bold = false)
     {

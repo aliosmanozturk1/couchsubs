@@ -88,6 +88,28 @@ public class GitHubReleaseNotesTests
     }
 
     [Fact]
+    public async Task ShowsOnlyThisReleasesSectionNotTheOlderReleaseSummaries()
+    {
+        using var http = new HttpClient(new Handler(_ => Task.FromResult(Reply("v0.1.0-beta.82", """
+            <p>CouchSubs'ın yeni deneme sürümü.</p>
+            <p><strong>İndir:</strong> <a href="https://example.org/dmg">Mac (DMG)</a></p>
+            <p><strong>Bu sürümde yeni</strong> (yalnız hata düzeltmeleri)</p>
+            <ul>
+            <li><strong>LG'de HDR yazısı</strong> düzeltildi.</li>
+            </ul>
+            <p><strong>beta.81'de gelenler:</strong> çevirinin durması.</p>
+            <p><strong>Daha önce (beta.71):</strong> LG düzeltmesi.</p>
+            <p><strong>beta.65'te gelenler:</strong> Android TV katmanı.</p>
+            """))));
+        var text = string.Concat((await new GitHubReleaseNotes(http).LoadAsync("0.1.0-beta.82")).Select(n => n.Text));
+        Assert.StartsWith("Bu sürümde yeni (yalnız hata düzeltmeleri)\n", text);
+        Assert.Contains("• LG'de HDR yazısı düzeltildi.", text);
+        Assert.DoesNotContain("gelenler", text);
+        Assert.DoesNotContain("Daha önce", text);
+        Assert.DoesNotContain("İndir", text);
+    }
+
+    [Fact]
     public async Task OverlyNestedHtmlFallsBackToTheFullSourceAsInertText()
     {
         var nested = string.Concat(Enumerable.Repeat("<div>", 200)) + "note" + string.Concat(Enumerable.Repeat("</div>", 200));

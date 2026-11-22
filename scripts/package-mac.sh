@@ -169,6 +169,8 @@ if [[ -n "$DEVELOPER_ID" && -n "$NOTARY_PROFILE" ]]; then
     LENGTH=$(stat -f %z "$ZIP")
     PUBDATE=$(LC_ALL=C date -u "+%a, %d %b %Y %H:%M:%S +0000")
     PAGE="https://github.com/yorulmazsinan/couchsubs/releases/tag/v$APP_VERSION"
+    # Güncelleme penceresinde yalnız bu sürümün "Bu sürümde yeni" bölümü görünür (Windows kartıyla aynı bölüm).
+    NOTES=$(python3 scripts/surum-notlari-html.py docs/surum-notlari.md)
     {
       echo '<?xml version="1.0" encoding="utf-8"?>'
       echo '<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">'
@@ -182,6 +184,7 @@ if [[ -n "$DEVELOPER_ID" && -n "$NOTARY_PROFILE" ]]; then
       echo "      <sparkle:minimumSystemVersion>$MIN_MACOS</sparkle:minimumSystemVersion>"
       echo "      <link>$PAGE</link>"
       echo "      <sparkle:fullReleaseNotesLink>$PAGE</sparkle:fullReleaseNotesLink>"
+      [[ -z "$NOTES" ]] || printf '      <description><![CDATA[%s]]></description>\n' "$NOTES"
       echo "      <enclosure url=\"https://github.com/yorulmazsinan/couchsubs/releases/download/v$APP_VERSION/CouchSubs-macos.zip\""
       echo "                 length=\"$LENGTH\" type=\"application/octet-stream\" sparkle:edSignature=\"$SIGNATURE\" />"
       echo '    </item>'
