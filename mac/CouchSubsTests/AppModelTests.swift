@@ -1284,6 +1284,39 @@ final class TVAppInstallTests: XCTestCase {
         XCTAssertNil(model.tvAppOutdated)
     }
 
+    /// Eski TV uygulaması bağlı (eksik değil) ve geliştirici modu kapalı: TV adımında Developer Mode adımları görünür.
+    /// Önceden kart boş kalıyor (`.unknown`), "TV uygulamasını güncelle" yalnız eşleştirme/test gösteriyordu (döngü).
+    func testOldLGAppWithDevModeOffShowsTheDevModeSteps() async throws {
+        let services = FakeServices()
+        let model = model(services)
+        try await model.pair(tv)
+        XCTAssertEqual(model.tvApp, .unknown, "Güncel bilinen uygulamada kart boş")
+        model.tvAppReported("")
+        await model.refreshTVApp()
+        XCTAssertEqual(model.tvApp, .devModeOff)
+        await model.updateTVApp()
+        XCTAssertEqual(model.step, .tv)
+        XCTAssertEqual(model.tvApp, .devModeOff)
+        // TV adımının bekleme döngüsü yeniden denetler; kart boşalmaz.
+        await model.refreshTVApp()
+        XCTAssertEqual(model.tvApp, .devModeOff)
+        services.devMode = true
+        await model.refreshTVApp()
+        XCTAssertEqual(model.tvApp, .needsPassphrase(error: nil))
+    }
+
+    /// Eski TV uygulaması bağlı, geliştirici modu açık, anahtar bu Mac'te yok: Passphrase kartı görünür.
+    func testOldLGAppWithoutKeyShowsThePassphraseCard() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        let model = model(services)
+        try await model.pair(tv)
+        XCTAssertEqual(model.tvApp, .unknown)
+        model.tvAppReported("0.5.0")
+        await model.refreshTVApp()
+        XCTAssertEqual(model.tvApp, .needsPassphrase(error: nil))
+    }
+
     func testOldLGAppReportedOnTheStreamIsUpdatedWithTheSavedKey() async throws {
         let services = FakeServices()
         services.devMode = true
@@ -1398,6 +1431,21 @@ final class TVAppInstallTests: XCTestCase {
         await model.refreshTVApp()
         XCTAssertEqual(services.brandInstalls.count, 1)
         XCTAssertEqual(model.tvApp, .upToDate("0.7.0"))
+    }
+
+    /// Bu Mac'in kaydı güncel dese de TV eski sürümü bildirdiyse geliştirici modu kapalıyken adımlar görünür.
+    func testOldSamsungAppReportedOnTheStreamWithDevModeOffShowsTheSteps() async {
+        let services = FakeServices()
+        services.bundled[.samsung] = app
+        let store = MemoryStore()
+        store.save("0.7.0", for: StoreKey.tvAppVersion)
+        let model = model(services, store: store)
+        model.tv = samsung
+        await model.refreshTVApp()
+        XCTAssertEqual(model.tvApp, .upToDate("0.7.0"))
+        model.tvAppReported("0.6.0")
+        await model.refreshTVApp()
+        XCTAssertEqual(model.tvApp, .devModeOff)
     }
 
     func testCurrentSamsungAppOnTheTVIsNotReinstalled() async {

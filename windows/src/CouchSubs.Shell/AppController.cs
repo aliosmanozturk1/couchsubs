@@ -1168,14 +1168,17 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         var devModeOn = await services.IsDevModeOnAsync(target.Host);
         // Beklerken parola alanından kurulum başladıysa kart geri "geliştirici modu kapalı"ya dönmez.
         if (TvApp.Kind == TvAppKind.Working) return;
+        // Eski TV uygulaması da eksik gibi kurulum adımlarını gösterir: bağlı (eski) uygulamada kart boş kalıyor, "TV
+        // uygulamasını güncelle" TV adımını açıp yalnız eşleştirme/test gösteriyor, ana ekrana dönülüyordu (Mac ile aynı).
+        var needsSteps = tvAppMissing || tvAppOutdated is not null;
         if (!devModeOn)
         {
-            TvApp = tvAppMissing ? new TvAppState(TvAppKind.DevModeOff) : TvAppState.Unknown;
+            TvApp = needsSteps ? new TvAppState(TvAppKind.DevModeOff) : TvAppState.Unknown;
             return;
         }
         if (store.Load<string>(StoreKeys.TvDevKey) is not { } devKey)
         {
-            TvApp = tvAppMissing ? new TvAppState(TvAppKind.NeedsPassphrase) : TvAppState.Unknown;
+            TvApp = needsSteps ? new TvAppState(TvAppKind.NeedsPassphrase) : TvAppState.Unknown;
             return;
         }
         await InstallTvAppAsync(target, devKey, bundled);
@@ -1205,7 +1208,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         // "TV uygulamasını yeniden kur": güncel uygulama da TV'de açılır (Android'deki gibi). İstek bir kerelik.
         var open = openTvAppAfterCheck;
         openTvAppAfterCheck = false;
-        var remembered = !NeedsInstall(bundled);
+        // TV eski sürümü bildirdiyse bu bilgisayarın kurduğu sürümün kaydına güvenilmez: kurulum adımları gösterilir.
+        var remembered = !NeedsInstall(bundled) && tvAppOutdated is null;
         // TV 8001'de geliştirici modunu ve Host PC IP'yi söyler (Android ve iPhone uygulaması da buna bakar). Host PC IP
         // bu bilgisayarınki değilse TV 26101'de sdb el sıkışmasında bağlantıyı keser ve önceden yalnız genel "TV bu
         // bilgisayarı kabul etmedi" görünüyordu (#343); bu durumda sdb hiç denenmez, iki adres de söylenir.
@@ -1268,7 +1272,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             // ancak TV'nin adresi biliniyorsa ya da TV uygulaması şu an bağlıysa güvenilir: TV sihirbazda yeniden seçilince
             // adres boşalıyor, kayıt kalıyordu; TV'den kaldırılan uygulama "hazır" görünüyor, ağda TV hiç aranmıyor ve
             // kurulum denenmiyordu (#352, #389).
-            if (!NeedsInstall(bundled) && (target.Host.Length > 0 || tvClients > 0))
+            if (!NeedsInstall(bundled) && tvAppOutdated is null && (target.Host.Length > 0 || tvClients > 0))
             {
                 TvApp = new TvAppState(TvAppKind.UpToDate, InstalledAppVersion ?? bundled.Version);
                 return;

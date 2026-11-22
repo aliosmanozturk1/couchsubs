@@ -2830,6 +2830,40 @@ public class TvAppInstallTests
         Assert.False(controller.ShowTvAppUpdate);
     }
 
+    /// <summary>Eski TV uygulaması bağlı (eksik değil) ve geliştirici modu kapalı: TV adımında Developer Mode adımları
+    /// görünür. Önceden kart boş kalıyor, "TV uygulamasını güncelle" yalnız eşleştirme/test gösteriyordu (Mac ile aynı).</summary>
+    [Fact]
+    public async Task OldLgAppWithDevModeOffShowsTheDevModeSteps()
+    {
+        var services = new FakeServices();
+        var controller = Make(services);
+        await controller.PairAsync(Tv);
+        Assert.Equal(TvAppKind.Unknown, controller.TvApp.Kind);
+        controller.TvAppReported("");
+        await controller.RefreshTvAppAsync();
+        Assert.Equal(TvAppKind.DevModeOff, controller.TvApp.Kind);
+        await controller.UpdateTvAppAsync();
+        Assert.Equal(OnboardingStep.Tv, controller.Step);
+        Assert.Equal(TvAppKind.DevModeOff, controller.TvApp.Kind);
+        await controller.RefreshTvAppAsync();
+        Assert.Equal(TvAppKind.DevModeOff, controller.TvApp.Kind);
+        services.DevMode = true;
+        await controller.RefreshTvAppAsync();
+        Assert.Equal(TvAppKind.NeedsPassphrase, controller.TvApp.Kind);
+    }
+
+    /// <summary>Eski TV uygulaması bağlı, geliştirici modu açık, anahtar bu bilgisayarda yok: Passphrase kartı görünür.</summary>
+    [Fact]
+    public async Task OldLgAppWithoutKeyShowsThePassphraseCard()
+    {
+        var controller = Make(new FakeServices { DevMode = true });
+        await controller.PairAsync(Tv);
+        Assert.Equal(TvAppKind.Unknown, controller.TvApp.Kind);
+        controller.TvAppReported("0.5.0");
+        await controller.RefreshTvAppAsync();
+        Assert.Equal(TvAppKind.NeedsPassphrase, controller.TvApp.Kind);
+    }
+
     [Fact]
     public async Task OldLgAppReportedOnTheStreamIsUpdatedWithTheSavedKey()
     {

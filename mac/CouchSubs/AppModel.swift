@@ -1557,12 +1557,15 @@ final class AppModel: ObservableObject {
         let devModeOn = await services.isDevModeOn(host: tv.host)
         // Beklerken parola kartından kurulum başladıysa kart geri "geliştirici modu kapalı"ya dönmez.
         if tvApp == .working { return }
+        // Eski TV uygulaması da eksik gibi kurulum adımlarını gösterir: bağlı (eski) uygulamada kart boş kalıyor, "TV
+        // uygulamasını güncelle" TV adımını açıp yalnız eşleştirme/test gösteriyor, ana ekrana dönülüyordu (sonsuz döngü).
+        let needsSteps = tvAppMissing || tvAppOutdated != nil
         guard devModeOn else {
-            tvApp = tvAppMissing ? .devModeOff : .unknown
+            tvApp = needsSteps ? .devModeOff : .unknown
             return
         }
         guard let devKey = store.load(String.self, for: StoreKey.tvDevKey) else {
-            tvApp = tvAppMissing ? .needsPassphrase(error: nil) : .unknown
+            tvApp = needsSteps ? .needsPassphrase(error: nil) : .unknown
             return
         }
         await install(tv: tv, devKey: devKey, bundled: bundled)
@@ -1573,7 +1576,8 @@ final class AppModel: ObservableObject {
     /// kalan uygulama (ör. 0.9.10 gelirken 0.9.7) hiç güncellenmiyordu.
     private func refreshSamsungApp(_ tv: LGTV) async {
         guard let bundled = services.bundledApp(for: .samsung) else { return }
-        let remembered = !needsInstall(bundled)
+        // TV eski sürümü bildirdiyse bu Mac'in kurduğu sürümün kaydına güvenilmez: kurulum adımları gösterilir.
+        let remembered = !needsInstall(bundled) && tvAppOutdated == nil
         let current = TVAppState.upToDate(installedAppVersion ?? bundled.version)
         // TV 8001'de geliştirici modunu ve Host PC IP'yi söyler (Android ve iPhone uygulaması da buna bakar). Host PC IP
         // bu Mac'inki değilse TV sdb el sıkışmasında bağlantıyı keser (#343); sdb hiç denenmez, iki adres söylenir.
@@ -1634,7 +1638,7 @@ final class AppModel: ObservableObject {
             // Bu Mac'in kurduğu sürüm kayıtlıysa ve TV'de hata ayıklama kapalıysa yapılacak bir şey yok. Ama kayda ancak
             // TV'nin adresi biliniyorsa ya da TV uygulaması şu an bağlıysa güvenilir: TV sihirbazda yeniden seçilince adres
             // boşalıyor, kayıt kalıyordu; TV'den kaldırılan uygulama "hazır" görünüyor, kurulum denenmiyordu (#352, #389).
-            if !needsInstall(bundled), !tv.host.isEmpty || tvClients > 0 {
+            if !needsInstall(bundled), tvAppOutdated == nil, !tv.host.isEmpty || tvClients > 0 {
                 tvApp = .upToDate(installedAppVersion ?? bundled.version)
                 return
             }
