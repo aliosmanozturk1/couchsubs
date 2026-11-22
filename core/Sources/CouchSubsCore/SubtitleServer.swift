@@ -29,10 +29,17 @@ public enum SubtitleTextColor: String, Codable, CaseIterable, Sendable {
     case yellow
 }
 
-/// Android TV'de PS5 görüntüsünün nasıl gösterildiği.
+/// Android TV'de PS5 görüntüsünün nasıl gösterildiği (Windows TvDisplayMode, Android TvDisplayMode ile aynı).
+///
+/// Ham değer hem kayıtta hem TV'ye giden `displayMode` alanındadır. Eskiden varsayılan "uygulama içinde"ydi ve "inApp"
+/// diye kaydediliyordu; bazı TV'lerde (Philips 55PUS8609, TCL) görüntü orada siyah kalıyor, altyazı yalnız Katman'da
+/// geliyordu. "inApp" artık Otomatik'tir: kullanıcı seçmediyse de bu kaydediliyordu, ayrılamaz. TV uygulaması 0.9.74+
+/// Otomatik'te izin varsa katmanda açar; eski TV uygulaması "inApp"i eskisi gibi uygulama içi sayar.
 public enum TVDisplayMode: String, Codable, CaseIterable, Sendable {
-    /// HDMI CouchSubs'ın içinde; görüntü hiç gelmezse TV uygulaması kendiliğinden katmana geçer.
-    case inApp
+    /// Varsayılan: TV uygulaması katmana izin veriyorsa (bilgisayarın/telefonun kurduğu APK) katman, yoksa uygulama içi.
+    case auto = "inApp"
+    /// Bilerek seçilmiş uygulama içi: HDMI CouchSubs'ın içinde; görüntü hiç gelmezse TV uygulaması kendiliğinden katmana geçer.
+    case inApp = "inAppOnly"
     /// TV HDMI'yı kendi ekranında gösterir, altyazı üstteki şeffaf katmanda (bazı TV'lerde uygulama içi görüntü siyah kalıyor).
     case overlay
 }
@@ -57,7 +64,7 @@ public struct SubtitleStyle: Codable, Equatable, Sendable {
     public var stackPrevious: Bool
 
     public init(fontSize: Int = 46, bottomPercent: Int = 7, placement: SubtitlePlacement = .cover, background: Int = 90, backgroundShape: SubtitleBackgroundShape = .fit, bold: Bool = false,
-                textColor: SubtitleTextColor = .white, displayMode: TVDisplayMode = .inApp, stackPrevious: Bool = true) {
+                textColor: SubtitleTextColor = .white, displayMode: TVDisplayMode = .auto, stackPrevious: Bool = true) {
         self.fontSize = fontSize
         self.bottomPercent = bottomPercent
         self.placement = placement

@@ -433,9 +433,9 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
             // Katman'da TV, PS5'i kendi HDMI girişinde gösterir (Mac ve Windows'taki Görüntü modu seçimi, iPhone ile aynı).
             if (settings.target.showsOnTv) {
                 TileLabel(stringResource(R.string.settings_display_mode))
-                Segmented(listOf(stringResource(R.string.settings_display_mode_in_app), stringResource(R.string.settings_display_mode_overlay)),
-                    if (displayMode == TvDisplayMode.OVERLAY) 1 else 0) {
-                    displayMode = if (it == 1) TvDisplayMode.OVERLAY else TvDisplayMode.IN_APP
+                Segmented(listOf(stringResource(R.string.settings_display_mode_auto), stringResource(R.string.settings_display_mode_in_app),
+                    stringResource(R.string.settings_display_mode_overlay)), displayMode.ordinal) {
+                    displayMode = TvDisplayMode.entries[it]
                     settings.tvDisplayMode = displayMode
                 }
                 Text(stringResource(R.string.settings_display_mode_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)

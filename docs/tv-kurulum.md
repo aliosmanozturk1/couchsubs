@@ -230,13 +230,18 @@ Menü adları markaya göre biraz değişebilir.
 
 Kurulumdan sonra hata ayıklamayı kapatabilirsiniz; yeni sürümleri kurmak için CouchSubs onu yeniden açmanızı ister.
 
-### Görüntü modu değişiyor, oyun modu ya da HDR kayboluyorsa
+### Görüntü modu (Android TV): Otomatik, Uygulama içinde, Katman
 
-TV uygulaması PS5 görüntüsünü kendi içinde gösterir ("Uygulama içinde" modu). Bazı TV'ler (ör. Sony Bravia) bu
-görüntüyü HDMI girişi olarak değil uygulama olarak işler: uygulama açıkken görüntü modu değişebilir, oyun modu ya da
-HDR kapanabilir. Bu durumda bilgisayarda ya da telefonda Ayarlar'daki **Görüntü modu**'ndan **Katman**'ı seçin:
-TV, PS5'i kendi HDMI girişinde (kendi görüntü ayarları, oyun modu ve HDR ile) gösterir, altyazı görüntünün üstünde
-çıkar. Katman, bilgisayarın ya da telefonun kurduğu TV uygulamasında vardır; Google Play'den kurulan kopyada yoktur.
+Varsayılan **Otomatik**'tir (TV uygulaması 0.9.74+): bilgisayarın ya da telefonun kurduğu TV uygulaması **Katman**'da
+açılır; TV, PS5'i kendi HDMI girişinde (kendi görüntü ayarları, oyun modu ve HDR ile) gösterir, altyazı görüntünün
+üstünde çıkar. Bazı TV'lerde (ör. Philips 55PUS8609, TCL) uygulamanın içindeki görüntü siyah kalıyor; TV "görüntü
+geldi" dediği için uygulama bunu fark edemiyordu, altyazı yalnız Katman seçilince geliyordu. Google Play'den kurulan
+kopyada Katman yoktur; orada Otomatik uygulamanın içinde kalır.
+
+PS5'i CouchSubs'ın içinde görmek isterseniz bilgisayarda ya da telefonda Ayarlar'daki **Görüntü modu**'ndan
+**Uygulama içinde**'yi seçin. Bazı TV'ler (ör. Sony Bravia) bu görüntüyü HDMI girişi olarak değil uygulama olarak
+işler: uygulama açıkken görüntü modu değişebilir, oyun modu ya da HDR kapanabilir; o zaman Otomatik'e ya da Katman'a
+dönün.
 
 LG (webOS) ve Samsung (Tizen) TV uygulamaları HDMI'yi her zaman kendi içinde gösterir, bu TV'lerde Katman modu yoktur;
 oyun modu ya da HDR'nin kapanması bu TV'lerin uygulamalara koyduğu bir sınırdır.

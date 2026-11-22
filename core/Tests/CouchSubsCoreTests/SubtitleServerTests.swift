@@ -535,7 +535,7 @@ final class SubtitleServerTests: XCTestCase {
     func testOldSavedStyleGetsNewDefaults() throws {
         let style = try JSONDecoder().decode(SubtitleStyle.self, from: Data(#"{"fontSize":58,"bottomPercent":12}"#.utf8))
         XCTAssertEqual(style, SubtitleStyle(fontSize: 58, bottomPercent: 12, placement: .cover, background: 90, bold: false,
-                                             textColor: .white, displayMode: .inApp))
+                                             textColor: .white, displayMode: .auto))
     }
 
     func testBackgroundShapeIsSentAndOldStyleDefaultsToFit() throws {
@@ -557,6 +557,19 @@ final class SubtitleServerTests: XCTestCase {
         let decoded = try JSONDecoder().decode(SubtitleStyle.self, from: JSONEncoder().encode(style))
         XCTAssertEqual(decoded.displayMode, .overlay)
         XCTAssertEqual(style.json["displayMode"] as? String, "overlay")
+    }
+
+    /// Eski kayıttaki "inApp" (eski varsayılan) Otomatik'tir ve TV'ye yine "inApp" gider; bilerek seçilen uygulama içi
+    /// "inAppOnly" gider (Philips/TCL'de uygulama içi siyah: Otomatik izin varsa katmanda açar).
+    func testOldInAppIsAutomaticAndChosenInAppIsSentApart() throws {
+        XCTAssertEqual(SubtitleStyle().displayMode, .auto)
+        let old = try JSONDecoder().decode(SubtitleStyle.self, from: Data(#"{"displayMode":"inApp"}"#.utf8))
+        XCTAssertEqual(old.displayMode, .auto)
+        XCTAssertEqual(old.json["displayMode"] as? String, "inApp")
+        var chosen = SubtitleStyle()
+        chosen.displayMode = .inApp
+        XCTAssertEqual(chosen.json["displayMode"] as? String, "inAppOnly")
+        XCTAssertEqual(try JSONDecoder().decode(SubtitleStyle.self, from: JSONEncoder().encode(chosen)).displayMode, .inApp)
     }
 
     /// "Hızlı konuşmada önceki satırları üstte tut": varsayılan açık, TV'ye `stackPrevious` olarak gider, eski ayar dosyasında yoksa açık kalır.

@@ -4,6 +4,7 @@
     <string name="overlay_running">Altyazı TV\'nin HDMI görüntüsünün üstünde gösteriliyor</string>
     <string name="overlay_stopped">Katman kapatıldı: altyazı artık CouchSubs\'ın içinde gösteriliyor. Panel için Tamam\'a basın.</string>
     <string name="overlay_selected">Katman modu: altyazı TV\'nin kendi HDMI görüntüsünün üstünde çıkar.</string>
+    <string name="overlay_auto">CouchSubs katman modunda açıldı: TV PS5\'i kendi HDMI girişinde gösterir, altyazı üstte çıkar. Görüntüyü CouchSubs\'ın içinde görmek isterseniz bilgisayardaki ya da telefondaki CouchSubs ayarlarında Görüntü modu › Uygulama içinde\'yi seçin.</string>
     <string name="overlay_fallback">CouchSubs\'ın içinde görüntü gelmedi. Katman moduna geçiliyor: altyazı TV\'nin kendi HDMI görüntüsünün üstünde çıkar.</string>
     <string name="overlay_choose_input">TV\'yi kumandadan PS5\'in girişine (HDMI %1$d) alın. Altyazı görüntünün üstünde çıkar.</string>
     <string name="overlay_permission_needed">Katman modu için \"Diğer uygulamaların üzerinde göster\" izni gerekiyor.</string>

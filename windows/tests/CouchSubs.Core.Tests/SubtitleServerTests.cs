@@ -498,10 +498,22 @@ public class SubtitleServerTests
     public void DisplayModeIsSavedAndOldSettingsStayInsideTheApp()
     {
         var old = System.Text.Json.JsonSerializer.Deserialize<SubtitleStyle>("{\"FontSize\":58}");
-        Assert.Equal(TvDisplayMode.InApp, old!.DisplayMode);
+        Assert.Equal(TvDisplayMode.Auto, old!.DisplayMode);
         var saved = System.Text.Json.JsonSerializer.Serialize(old with { DisplayMode = TvDisplayMode.Overlay });
         Assert.Contains("\"Overlay\"", saved);
         Assert.Equal(TvDisplayMode.Overlay, System.Text.Json.JsonSerializer.Deserialize<SubtitleStyle>(saved)!.DisplayMode);
+    }
+
+    /// Eski kayıttaki "InApp" (eski varsayılan) Otomatik'tir; bilerek seçilen uygulama içi ayrı kaydedilir ve TV'ye
+    /// "inAppOnly" gider (Mac/iPhone ve Android ile aynı).
+    [Fact]
+    public void OldInAppIsAutomaticAndChosenInAppIsSavedApart()
+    {
+        var old = System.Text.Json.JsonSerializer.Deserialize<SubtitleStyle>("{\"DisplayMode\":\"InApp\"}");
+        Assert.Equal(TvDisplayMode.Auto, old!.DisplayMode);
+        Assert.Contains("\"InApp\"", System.Text.Json.JsonSerializer.Serialize(old));
+        var chosen = System.Text.Json.JsonSerializer.Serialize(old with { DisplayMode = TvDisplayMode.InAppOnly });
+        Assert.Equal(TvDisplayMode.InAppOnly, System.Text.Json.JsonSerializer.Deserialize<SubtitleStyle>(chosen)!.DisplayMode);
     }
 
     [Fact]

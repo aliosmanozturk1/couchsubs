@@ -416,9 +416,9 @@ struct SettingsScreen: View {
                 // Katman'da TV, PS5'i kendi HDMI girişinde gösterir (Mac ve Windows'taki Görüntü modu seçimi, Android ile aynı).
                 if model.settings.output.showsOnTV {
                     Text("Picture mode (Android TV)").font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
-                    SegmentedTabs(options: [TVDisplayMode.inApp: "Inside the app", .overlay: "Overlay"],
+                    SegmentedTabs(options: [TVDisplayMode.auto: "Automatic", .inApp: "Inside the app", .overlay: "Overlay"],
                                   selection: $model.settings.style.displayMode)
-                    Text("If the PS5 picture stays black inside the CouchSubs TV app, choose Overlay: the TV shows the PS5 on its own HDMI input and the subtitles appear on top. If no picture arrives, the TV app first lists its HDMI inputs and switches to Overlay where it can. Overlay also helps if the TV changes its picture mode or drops Game mode or HDR while the TV app is open: inside the app the TV handles the PS5 picture as an app, not as its HDMI input. The TV app from Google Play has no Overlay mode: there this choice is not applied and the TV says so on screen.")
+                    Text("Automatic uses Overlay whenever the TV app allows it: the TV shows the PS5 on its own HDMI input and the subtitles appear on top. On some TVs the picture stays black inside the CouchSubs TV app. To show the PS5 inside the CouchSubs TV app instead, choose Inside the app; if no picture arrives there, the TV app first lists its HDMI inputs and switches to Overlay where it can. With Overlay the TV also keeps its picture mode, Game mode and HDR. The TV app from Google Play has no Overlay mode: there Automatic stays inside the app, and the TV says so on screen if Overlay is chosen.")
                         .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
                 }
             }

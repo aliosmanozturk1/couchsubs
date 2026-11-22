@@ -49,7 +49,7 @@ public sealed record SubtitleStyle(
     int Background = 90,
     bool Bold = false,
     SubtitleTextColor TextColor = SubtitleTextColor.White,
-    TvDisplayMode DisplayMode = TvDisplayMode.InApp,
+    TvDisplayMode DisplayMode = TvDisplayMode.Auto,
     bool StackPrevious = true,
     SubtitleBackgroundShape BackgroundShape = SubtitleBackgroundShape.Fit);
 
@@ -60,8 +60,14 @@ public sealed record SubtitleStyle(
 [JsonConverter(typeof(JsonStringEnumConverter<TvDisplayMode>))]
 public enum TvDisplayMode
 {
-    /// <summary>HDMI CouchSubs'ın içinde; görüntü hiç gelmezse TV uygulaması kendiliğinden katmana geçer.</summary>
-    InApp,
+    /// <summary>
+    /// Varsayılan: TV uygulaması katmana izin veriyorsa katman, yoksa uygulama içi. Eski kayıtlardaki "InApp" (eski
+    /// varsayılan) budur; TV'ye "inApp" gider (Mac/iPhone TVDisplayMode.auto, Android TvDisplayMode.AUTO ile aynı).
+    /// </summary>
+    [JsonStringEnumMemberName("InApp")]
+    Auto,
+    /// <summary>Bilerek seçilmiş uygulama içi; görüntü hiç gelmezse TV uygulaması kendiliğinden katmana geçer. TV'ye "inAppOnly".</summary>
+    InAppOnly,
     /// <summary>TV HDMI'yı kendi ekranında gösterir, altyazı üstteki şeffaf katmanda (bazı TV'lerde uygulama içi görüntü siyah kalıyor).</summary>
     Overlay,
 }
@@ -827,7 +833,12 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
             ["backgroundShape"] = style.BackgroundShape.ToString().ToLowerInvariant(),
             ["bold"] = style.Bold,
             ["bottomPercent"] = style.BottomPercent,
-            ["displayMode"] = style.DisplayMode == TvDisplayMode.Overlay ? "overlay" : "inApp",
+            ["displayMode"] = style.DisplayMode switch
+            {
+                TvDisplayMode.Overlay => "overlay",
+                TvDisplayMode.InAppOnly => "inAppOnly",
+                _ => "inApp",
+            },
             ["fontSize"] = style.FontSize,
             ["placement"] = style.Placement.ToString().ToLowerInvariant(),
             ["setApart"] = setApart,

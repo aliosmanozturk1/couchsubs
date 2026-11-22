@@ -171,14 +171,23 @@ final class TvPage {
     // --- Görüntü modu tercihi ---
 
     static String storedDisplayMode(Context context) {
-        String mode = DisplayMode.normalize(prefs(context).getString(KEY_DISPLAY_MODE, null));
-        return mode == null ? DisplayMode.IN_APP : mode;
+        return DisplayMode.orAuto(prefs(context).getString(KEY_DISPLAY_MODE, null));
     }
 
     /** Yeni modu kaydeder; kayıtlı olandan farklıysa true döner. */
     static boolean storeDisplayMode(Context context, String mode) {
         if (!DisplayMode.isChange(storedDisplayMode(context), mode)) return false;
         prefs(context).edit().putString(KEY_DISPLAY_MODE, DisplayMode.normalize(mode)).apply();
+        return true;
+    }
+
+    private static final String KEY_AUTO_OVERLAY_TOLD = "autoOverlayTold";
+
+    /** Otomatik tercihle ilk kez katmanda açılıyor mu (bilgi bir kez gösterilir); işaret burada konur. */
+    static boolean firstAutoOverlay(Context context) {
+        SharedPreferences prefs = prefs(context);
+        if (prefs.getBoolean(KEY_AUTO_OVERLAY_TOLD, false)) return false;
+        prefs.edit().putBoolean(KEY_AUTO_OVERLAY_TOLD, true).apply();
         return true;
     }
 

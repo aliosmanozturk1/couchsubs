@@ -32,8 +32,8 @@ import android.widget.Toast;
 import java.util.List;
 
 /**
- * İki modda çalışır (bkz. DisplayMode):
- * - Uygulama içinde (varsayılan): HDMI girişini TvView ile tam ekran gösterir; üstünde şeffaf WebView'de LG ve Samsung'la
+ * İki modda çalışır (bkz. DisplayMode; varsayılan Otomatik: izin varsa katman, yoksa uygulama içi):
+ * - Uygulama içinde: HDMI girişini TvView ile tam ekran gösterir; üstünde şeffaf WebView'de LG ve Samsung'la
  *   ortak arayüz çalışır. Görüntü hiç gelmezse (bazı TV'lerde TvView siyah kalıyor) ve izin varsa katmana geçer.
  * - Katman: HDMI'yı TV kendi giriş ekranında gösterir, altyazıyı OverlayService üstte çizer. Bu ekran yalnız servisi
  *   başlatıp kapanır; servis çalışırken CouchSubs yeniden açılırsa katman kapanır.
@@ -152,15 +152,31 @@ public class MainActivity extends Activity implements TvPage.Host {
             leftOverlay = true;
         }
 
-        DisplayMode.Start start = DisplayMode.atLaunch(TvPage.storedDisplayMode(this), overlayAllowed(),
+        String preference = TvPage.storedDisplayMode(this);
+        DisplayMode.Start start = DisplayMode.atLaunch(preference, overlayAllowed(),
                 intent.getStringExtra(EXTRA_OVERLAY_FAILED), leftOverlay);
         if (start == DisplayMode.Start.OVERLAY) {
-            if (startOverlay()) return;
+            if (startOverlay()) {
+                if (DisplayMode.AUTO.equals(preference)) tellAutoOverlay();
+                return;
+            }
             start = DisplayMode.Start.IN_APP_OVERLAY_FAILED;
         }
         showInApp();
         if (start == DisplayMode.Start.IN_APP_NEEDS_PERMISSION) showPermissionHelp(R.string.overlay_permission_needed);
         else if (start == DisplayMode.Start.IN_APP_OVERLAY_FAILED) showOverlayFailed();
+    }
+
+    /**
+     * Otomatik tercihle katmanda açıldı: kullanıcıya kısa bilgi. TV girişleri uygulamalara açmıyorsa (TV HDMI'ya kendisi
+     * geçemez) her seferinde girişin elle seçilmesi söylenir; yoksa yalnız ilk kez, uygulama içine nasıl dönüleceğiyle.
+     */
+    private void tellAutoOverlay() {
+        if (HdmiInputs.list(this).isEmpty()) {
+            Toast.makeText(this, R.string.overlay_started_manual_input, Toast.LENGTH_LONG).show();
+        } else if (TvPage.firstAutoOverlay(this)) {
+            Toast.makeText(this, R.string.overlay_auto, Toast.LENGTH_LONG).show();
+        }
     }
 
     /** Katman açılabilir mi: bu derlemede var (Play paketinde yok) ve "Diğer uygulamaların üzerinde göster" izni verilmiş. */
@@ -717,6 +733,11 @@ public class MainActivity extends Activity implements TvPage.Host {
 
     @Override
     public void displayModeChanged(String mode) {
+        // Otomatik seçildi: izin varsa katmana geçilir, yoksa uygulama içinde kalınır (izin istenmez).
+        if (DisplayMode.AUTO.equals(mode)) {
+            if (overlayAllowed()) switchToOverlay(R.string.overlay_selected);
+            return;
+        }
         if (!DisplayMode.OVERLAY.equals(mode)) return;
         if (overlayAllowed()) switchToOverlay(R.string.overlay_selected);
         else if (pickerShown) Toast.makeText(this, BuildConfig.OVERLAY_MODE

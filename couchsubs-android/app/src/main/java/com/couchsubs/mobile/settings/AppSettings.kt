@@ -408,7 +408,8 @@ class AppSettings(context: Context) : AreaStore {
      * Katman'da TV, PS5'i kendi HDMI girişinde gösterir, altyazı üstte çıkar (Mac, Windows ve iPhone ile aynı seçim).
      */
     var tvDisplayMode: com.couchsubs.mobile.core.TvDisplayMode
-        get() = enumOr(prefs.getString("tvDisplayMode", null), com.couchsubs.mobile.core.TvDisplayMode.IN_APP)
+        // Eski kayıttaki "IN_APP" (eski varsayılan) artık yoktur: Otomatik olur (bkz. TvDisplayMode).
+        get() = enumOr(prefs.getString("tvDisplayMode", null), com.couchsubs.mobile.core.TvDisplayMode.AUTO)
         set(value) = prefs.edit().putString("tvDisplayMode", value.name).apply()
 
     /**

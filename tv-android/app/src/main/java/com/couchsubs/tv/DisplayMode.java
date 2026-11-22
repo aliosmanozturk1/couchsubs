@@ -5,15 +5,26 @@ import java.util.Locale;
 
 /**
  * Görüntü modu: HDMI CouchSubs'ın içinde mi gösterilir, yoksa TV kendi giriş ekranında gösterir ve altyazı onun üstündeki
- * şeffaf pencerede mi durur ("katman"). Bazı TV'lerde (TCL ve diğer bazı Android TV / Google TV'ler) uygulamanın içinde
- * HDMI görüntüsü siyah kalıyor; katman modu bunu çözer. Seçim bilgisayardaki Ayarlar › TV'de bölümünden gelir
- * (style olayının displayMode alanı) ya da elle: adb shell am start -n com.couchsubs.tv/.MainActivity --es displayMode overlay
+ * şeffaf pencerede mi durur ("katman"). Bazı TV'lerde (TCL, Philips ve diğer bazı Android TV / Google TV'ler) uygulamanın
+ * içinde HDMI görüntüsü siyah kalıyor; katman modu bunu çözer. Seçim bilgisayardaki/telefondaki Ayarlar › TV'de bölümünden
+ * gelir (style olayının displayMode alanı) ya da elle: adb shell am start -n com.couchsubs.tv/.MainActivity --es displayMode overlay
+ *
+ * Üç tercih var: Otomatik (varsayılan), Uygulama içinde, Katman. Otomatik, izin varsa (bilgisayarın/telefonun kurduğu APK)
+ * katmanda açar, yoksa (Play paketi, izin verilmemiş) uygulama içinde. Eskiden varsayılan uygulama içiydi: Philips
+ * 55PUS8609 gibi TV'lerde TvView "görüntü geldi" deyip siyah kalıyor, kendiliğinden katmana geçiş (FallbackWatch) bunu
+ * göremiyordu; kullanıcı çeviri başlayınca yalnız siyah ekran görüyordu, altyazı yalnız Katman seçilince geliyordu.
+ *
+ * Kablodaki adlar: "inApp" eski uygulamaların varsayılanıdır ve Otomatik sayılır (kullanıcı seçmediyse de bunu
+ * gönderiyorlardı, ayrılamaz); bilerek seçilen uygulama içi "inAppOnly"dir. Eski TV uygulaması "inAppOnly"yi tanımaz,
+ * kendi kaydında kalır.
  *
  * Buradaki kararlar Android'e bağlı değildir; JVM birim testleriyle denenir (bkz. DisplayModeTest).
  */
 final class DisplayMode {
-    /** Uygulamanın içinde; görüntü hiç gelmezse kendiliğinden katmana geçilir (bkz. FallbackWatch). Varsayılan. */
-    static final String IN_APP = "inApp";
+    /** Varsayılan: katman izni varsa katman, yoksa uygulama içinde. Eski "inApp" de budur. */
+    static final String AUTO = "auto";
+    /** Bilerek seçilmiş uygulama içi; görüntü hiç gelmezse yine kendiliğinden katmana geçilir (bkz. FallbackWatch). */
+    static final String IN_APP = "inAppOnly";
     /** TV'nin kendi HDMI ekranının üstünde katman. */
     static final String OVERLAY = "overlay";
 
@@ -64,7 +75,19 @@ final class DisplayMode {
     static boolean switchOnNewIntent(String launchParams, boolean leftOverlay, String preference, boolean canDrawOverlays) {
         if (launchParams != null && !launchParams.isEmpty()) return false;
         if (leftOverlay) return false;
-        return OVERLAY.equals(normalize(preference)) && canDrawOverlays;
+        return wantsOverlay(preference, canDrawOverlays);
+    }
+
+    /** Bu tercihle, bu izinle katmana geçilir mi (izin yoksa Otomatik uygulama içinde kalır, Katman izin ister). */
+    static boolean wantsOverlay(String preference, boolean canDrawOverlays) {
+        String mode = orAuto(preference);
+        return canDrawOverlays && (OVERLAY.equals(mode) || AUTO.equals(mode));
+    }
+
+    /** Tanınmayan ya da kayıtsız tercih Otomatik'tir. */
+    static String orAuto(String preference) {
+        String mode = normalize(preference);
+        return mode == null ? AUTO : mode;
     }
 
     /** Katman servisinin uygulamayı geri açarken bildirdiği neden (bkz. OverlayService). */
@@ -78,7 +101,8 @@ final class DisplayMode {
     static String normalize(String value) {
         if (value == null) return null;
         String plain = value.trim().toLowerCase(Locale.ROOT).replace("-", "").replace("_", "");
-        if (plain.equals("inapp")) return IN_APP;
+        if (plain.equals("auto") || plain.equals("inapp")) return AUTO;
+        if (plain.equals("inapponly")) return IN_APP;
         if (plain.equals("overlay")) return OVERLAY;
         return null;
     }
@@ -95,7 +119,10 @@ final class DisplayMode {
     static Start atLaunch(String preference, boolean canDrawOverlays, String overlayFailure) {
         if (FAILED_PERMISSION.equals(overlayFailure)) return Start.IN_APP_NEEDS_PERMISSION;
         if (overlayFailure != null) return Start.IN_APP_OVERLAY_FAILED;
-        if (!OVERLAY.equals(normalize(preference))) return Start.IN_APP;
+        String mode = orAuto(preference);
+        if (IN_APP.equals(mode)) return Start.IN_APP;
+        // Otomatik: izin yoksa (Play paketi, izin verilmemiş) sessizce uygulama içinde; izin istenmez.
+        if (AUTO.equals(mode)) return canDrawOverlays ? Start.OVERLAY : Start.IN_APP;
         return canDrawOverlays ? Start.OVERLAY : Start.IN_APP_NEEDS_PERMISSION;
     }
 
@@ -106,7 +133,6 @@ final class DisplayMode {
     static boolean isChange(String stored, String incoming) {
         String next = normalize(incoming);
         if (next == null) return false;
-        String current = normalize(stored);
-        return !next.equals(current == null ? IN_APP : current);
+        return !next.equals(orAuto(stored));
     }
 }

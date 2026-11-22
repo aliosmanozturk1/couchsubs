@@ -43,6 +43,9 @@ class SubtitleServerTest {
         )
         assertTrue(SubtitleServer.styleFrame(SubtitleStyle(displayMode = TvDisplayMode.OVERLAY, textColor = SubtitleTextColor.YELLOW))
             .contains("\"displayMode\":\"overlay\""))
+        // Bilerek seçilen uygulama içi ayrı gider; Otomatik eski "inApp" adını taşır (eski TV uygulaması tanısın).
+        assertTrue(SubtitleServer.styleFrame(SubtitleStyle(displayMode = TvDisplayMode.IN_APP_ONLY)).contains("\"displayMode\":\"inAppOnly\""))
+        assertTrue(SubtitleServer.styleFrame(SubtitleStyle()).contains("\"displayMode\":\"inApp\""))
         val band = SubtitleServer.styleFrame(SubtitleStyle(background = 100, backgroundShape = SubtitleBackgroundShape.BAND))
         assertTrue(band.contains("\"background\":100") && band.contains("\"backgroundShape\":\"band\""))
         // "Önceki satırları üstte tut" kapalıysa TV'ye false gider (Windows ve Mac ile aynı).

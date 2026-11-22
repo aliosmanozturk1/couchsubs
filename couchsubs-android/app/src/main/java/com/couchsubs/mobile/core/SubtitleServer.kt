@@ -18,7 +18,13 @@ import kotlin.concurrent.thread
 enum class SubtitlePlacement { COVER, ABOVE, BELOW, FIXED }
 
 /** Android TV'de PS5 görüntüsünün nasıl gösterildiği (yalnız Android TV uygulaması kullanır). */
-enum class TvDisplayMode { IN_APP, OVERLAY }
+/**
+ * Android TV'de PS5 görüntüsünün nasıl gösterildiği (Mac/iPhone TVDisplayMode, Windows TvDisplayMode ile aynı). AUTO
+ * varsayılandır: TV uygulaması katmana izin veriyorsa katman, yoksa uygulama içi. Eski kayıttaki "IN_APP" (eski
+ * varsayılan; Philips/TCL'de uygulama içi siyah kalıyordu) tanınmaz ve AUTO olur. TV'ye AUTO "inApp", bilerek seçilen
+ * uygulama içi "inAppOnly" gider; eski TV uygulaması "inApp"i eskisi gibi uygulama içi sayar.
+ */
+enum class TvDisplayMode { AUTO, IN_APP_ONLY, OVERLAY }
 
 enum class SubtitleTextColor { WHITE, YELLOW }
 
@@ -34,7 +40,7 @@ data class SubtitleStyle(
     val backgroundShape: SubtitleBackgroundShape = SubtitleBackgroundShape.FIT,
     val bold: Boolean = false,
     val textColor: SubtitleTextColor = SubtitleTextColor.WHITE,
-    val displayMode: TvDisplayMode = TvDisplayMode.IN_APP,
+    val displayMode: TvDisplayMode = TvDisplayMode.AUTO,
     /** Hızlı konuşmada önceki satır(lar) yeni satırın üstünde kısa süre soluk kalsın mı; kapalıysa yeni satır eskisinin yerine geçer. */
     val stackPrevious: Boolean = true,
 )
@@ -270,7 +276,11 @@ class SubtitleServer(
                 "backgroundShape" to style.backgroundShape.name.lowercase(Locale.ROOT),
                 "bold" to style.bold,
                 "bottomPercent" to style.bottomPercent,
-                "displayMode" to if (style.displayMode == TvDisplayMode.OVERLAY) "overlay" else "inApp",
+                "displayMode" to when (style.displayMode) {
+                    TvDisplayMode.OVERLAY -> "overlay"
+                    TvDisplayMode.IN_APP_ONLY -> "inAppOnly"
+                    TvDisplayMode.AUTO -> "inApp"
+                },
                 "fontSize" to style.fontSize,
                 "placement" to style.placement.name.lowercase(Locale.ROOT),
                 "setApart" to setApart,

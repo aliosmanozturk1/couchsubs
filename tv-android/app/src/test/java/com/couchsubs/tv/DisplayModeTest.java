@@ -11,11 +11,16 @@ import org.junit.Test;
 public class DisplayModeTest {
     @Test
     public void knownNamesAreNormalized() {
-        assertEquals(DisplayMode.IN_APP, DisplayMode.normalize("inApp"));
-        assertEquals(DisplayMode.IN_APP, DisplayMode.normalize(" in-app "));
+        // "inApp" eski uygulamaların varsayılanıdır: Otomatik sayılır.
+        assertEquals(DisplayMode.AUTO, DisplayMode.normalize("inApp"));
+        assertEquals(DisplayMode.AUTO, DisplayMode.normalize(" in-app "));
+        assertEquals(DisplayMode.AUTO, DisplayMode.normalize("auto"));
+        assertEquals(DisplayMode.IN_APP, DisplayMode.normalize("inAppOnly"));
         assertEquals(DisplayMode.OVERLAY, DisplayMode.normalize("OVERLAY"));
-        assertNull(DisplayMode.normalize("auto"));
+        assertNull(DisplayMode.normalize("garbage"));
         assertNull(DisplayMode.normalize(null));
+        assertEquals(DisplayMode.AUTO, DisplayMode.orAuto(null));
+        assertEquals(DisplayMode.AUTO, DisplayMode.orAuto("garbage"));
     }
 
     @Test
@@ -41,10 +46,38 @@ public class DisplayModeTest {
     public void overlayStartsOnlyWithPermission() {
         assertEquals(DisplayMode.Start.OVERLAY, DisplayMode.atLaunch("overlay", true));
         assertEquals(DisplayMode.Start.IN_APP_NEEDS_PERMISSION, DisplayMode.atLaunch("overlay", false));
-        assertEquals(DisplayMode.Start.IN_APP, DisplayMode.atLaunch("inApp", true));
-        // Kayıt yok ya da tanınmıyor: uygulama içinde.
-        assertEquals(DisplayMode.Start.IN_APP, DisplayMode.atLaunch(null, true));
-        assertEquals(DisplayMode.Start.IN_APP, DisplayMode.atLaunch("garbage", true));
+        assertEquals(DisplayMode.Start.IN_APP, DisplayMode.atLaunch("inAppOnly", true));
+        assertEquals(DisplayMode.Start.IN_APP, DisplayMode.atLaunch("inAppOnly", false));
+    }
+
+    /**
+     * Philips 55PUS8609 (X, 0.9.73): "test yazısı gözüküyor ama çeviriyi açınca siyah ekran"; başka Android TV'lerde de
+     * altyazı yalnız Katman seçilince geliyordu. TvView "görüntü geldi" deyip siyah kalınca kendiliğinden katmana geçiş
+     * işlemiyordu. Varsayılan artık Otomatik: izin varsa katmanda açılır; Play paketinde (izin yok) sessizce uygulama
+     * içinde kalınır, izin istenmez.
+     */
+    @Test
+    public void defaultOpensInOverlayWhenAllowedAndStaysQuietOtherwise() {
+        assertEquals(DisplayMode.Start.OVERLAY, DisplayMode.atLaunch(null, true));
+        assertEquals(DisplayMode.Start.OVERLAY, DisplayMode.atLaunch("inApp", true));
+        assertEquals(DisplayMode.Start.OVERLAY, DisplayMode.atLaunch("auto", true));
+        assertEquals(DisplayMode.Start.OVERLAY, DisplayMode.atLaunch("garbage", true));
+        assertEquals(DisplayMode.Start.IN_APP, DisplayMode.atLaunch(null, false));
+        assertEquals(DisplayMode.Start.IN_APP, DisplayMode.atLaunch("inApp", false));
+        // Kullanıcı katmandan çıktıysa bu açılışta uygulama içinde kalınır; katman açılamadıysa yeniden denenmez.
+        assertEquals(DisplayMode.Start.IN_APP, DisplayMode.atLaunch(null, true, null, true));
+        assertEquals(DisplayMode.Start.IN_APP_OVERLAY_FAILED, DisplayMode.atLaunch(null, true, DisplayMode.FAILED_WINDOW));
+        assertEquals(DisplayMode.Start.IN_APP_NEEDS_PERMISSION,
+                DisplayMode.atLaunch(null, true, DisplayMode.FAILED_PERMISSION));
+    }
+
+    @Test
+    public void wantsOverlayFollowsPreferenceAndPermission() {
+        assertTrue(DisplayMode.wantsOverlay(null, true));
+        assertTrue(DisplayMode.wantsOverlay("overlay", true));
+        assertFalse(DisplayMode.wantsOverlay("inAppOnly", true));
+        assertFalse(DisplayMode.wantsOverlay(null, false));
+        assertFalse(DisplayMode.wantsOverlay("overlay", false));
     }
 
     @Test
@@ -56,7 +89,7 @@ public class DisplayModeTest {
         assertEquals(DisplayMode.Start.IN_APP_OVERLAY_FAILED,
                 DisplayMode.atLaunch("overlay", true, DisplayMode.FAILED_FOREGROUND));
         assertEquals(DisplayMode.Start.IN_APP_OVERLAY_FAILED,
-                DisplayMode.atLaunch("inApp", true, DisplayMode.FAILED_WINDOW));
+                DisplayMode.atLaunch("inAppOnly", true, DisplayMode.FAILED_WINDOW));
         // İzin geri alındıysa iznin nasıl verileceği gösterilir.
         assertEquals(DisplayMode.Start.IN_APP_NEEDS_PERMISSION,
                 DisplayMode.atLaunch("overlay", true, DisplayMode.FAILED_PERMISSION));
@@ -68,12 +101,18 @@ public class DisplayModeTest {
     public void sameModeSentAgainIsNotAChange() {
         // Bilgisayar her bağlantıda ayarı yeniden gönderir; kendiliğinden katmana geçen TV geri dönmemeli.
         assertFalse(DisplayMode.isChange(null, "inApp"));
+        assertFalse(DisplayMode.isChange(null, "auto"));
         assertFalse(DisplayMode.isChange("inApp", "inApp"));
+        assertFalse(DisplayMode.isChange("auto", "inApp"));
+        assertFalse(DisplayMode.isChange("inAppOnly", "inAppOnly"));
         assertFalse(DisplayMode.isChange("overlay", "overlay"));
         assertFalse(DisplayMode.isChange("overlay", null));
         assertFalse(DisplayMode.isChange("overlay", "unknown"));
         assertTrue(DisplayMode.isChange(null, "overlay"));
-        assertTrue(DisplayMode.isChange("inApp", "overlay"));
+        assertTrue(DisplayMode.isChange(null, "inAppOnly"));
+        assertTrue(DisplayMode.isChange("inAppOnly", "overlay"));
+        assertTrue(DisplayMode.isChange("inAppOnly", "inApp"));
+        // Katman kullanıcısı: bilgisayar Otomatik'e (eski "inApp") dönünce kayıt Otomatik olur (izin varsa yine katman).
         assertTrue(DisplayMode.isChange("overlay", "inApp"));
     }
 
@@ -92,6 +131,10 @@ public class DisplayModeTest {
         // Katmana hiç girilmemiş ekranda kumandadan açılış kayıtlı katman tercihine uyar (eski davranış).
         assertTrue(DisplayMode.switchOnNewIntent("", false, "overlay", true));
         assertFalse(DisplayMode.switchOnNewIntent("", false, "overlay", false));
-        assertFalse(DisplayMode.switchOnNewIntent("", false, "inApp", true));
+        assertFalse(DisplayMode.switchOnNewIntent("", false, "inAppOnly", true));
+        // Otomatik: izin varsa katman tercihi gibi.
+        assertTrue(DisplayMode.switchOnNewIntent("", false, "auto", true));
+        assertFalse(DisplayMode.switchOnNewIntent("", false, "auto", false));
+        assertFalse(DisplayMode.switchOnNewIntent("", true, "auto", true));
     }
 }
