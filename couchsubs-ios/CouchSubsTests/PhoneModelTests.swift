@@ -388,8 +388,10 @@ final class PhoneModelTests: XCTestCase {
         XCTAssertFalse(PhoneModel.tracksGamePhone(running: true, enabled: true, game: nil))
     }
 
-    /// Oyun telefonunun çevirisi telefon ekranında tek kutuda durur; boş liste yalnız o kutuyu kaldırır.
-    func testGamePhoneTranslationIsOneBoxOnThePhoneScreen() {
+    /// Oyun telefonunun çevirisi telefon ekranında her mesaj kendi balonunun yerinde çizilir (bloklar korunur; TV ve
+    /// Android gibi); boş liste yalnız o alanı kaldırır. Bildirim (iPhone, 1.0.5): mesajlar telefonun üstünde tek kutuda
+    /// birleşiyor, kimin ne yazdığı belli olmuyordu.
+    func testGamePhoneMessagesArePlacedOnTheirOwnBubbles() {
         let other = PhoneModel.PhoneRegion(id: "help", text: "Yardım", box: nil)
         let items = [ScreenTranslation.Item(source: "Hi", translation: "Selam", box: TextBox(left: 0.7, top: 0.3, right: 0.9, bottom: 0.35), lineHeight: 0.03),
                      ScreenTranslation.Item(source: "Bye", translation: "Hoşça kal", box: TextBox(left: 0.72, top: 0.4, right: 0.88, bottom: 0.45), lineHeight: 0.03)]
@@ -397,6 +399,12 @@ final class PhoneModelTests: XCTestCase {
         XCTAssertEqual(shown.map(\.id), ["help", "game-phone"])
         XCTAssertEqual(shown.last?.text, "Selam\nHoşça kal")
         XCTAssertEqual(shown.last?.box, TextBox(left: 0.7, top: 0.3, right: 0.9, bottom: 0.45))
+        let placed = PhoneModel.placedItems(shown, screen: [])
+        XCTAssertEqual(placed.map(\.translation), ["Selam", "Hoşça kal"])
+        XCTAssertEqual(placed.map(\.box), items.map(\.box))
+        // "Ekranı çevir" sonucu aynı balonu örterse o balonun telefon bloğu çizilmez, sonuç en üstte.
+        let screen = ScreenTranslation.Item(source: "Hi", translation: "Merhaba", box: items[0].box, lineHeight: 0.03)
+        XCTAssertEqual(PhoneModel.placedItems(shown, screen: [screen]).map(\.translation), ["Hoşça kal", "Merhaba"])
         XCTAssertEqual(PhoneModel.phoneRegions(shown, gamePhone: []), [other])
     }
 

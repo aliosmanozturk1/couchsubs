@@ -168,6 +168,9 @@ final class PhoneModel: ObservableObject {
         let id: String
         let text: String
         let box: TextBox?
+        /// Bloklu alanın (GTA 6 telefonu, kendiliğinden bulunan ekran yazısı) blokları: her biri kendi yerinde ve özgün
+        /// stilinde çizilir (Android ve TV ile aynı); düz ek alanlarda nil.
+        var items: [ScreenTranslation.Item]? = nil
     }
     @Published private(set) var installedPacks: [GamePackLibrary.Info] = []
     /// Paketler ekranında kapatılan paketlerin kimlikleri (Android'deki gibi karoya dokunarak; UserDefaults'ta).
@@ -1518,8 +1521,8 @@ final class PhoneModel: ObservableObject {
         // "Ekranı çevir" sonuçları yazının yerinde gösterilir (`screenItems`); satır yığınına girmez.
         case .screen, .screenClear:
             return
-        // Oyun telefonunun çevirisi telefon ekranında ek alan kutusu gibi tek kutuda görünür (TV'de satırlar kendi yerinde;
-        // boş liste kutuyu kaldırır).
+        // Oyun telefonunun çevirisi telefon ekranında da her mesaj kendi balonunun yerinde ve renginde (TV ve Android gibi;
+        // boş liste kaldırır).
         case .gamePhone(let items):
             phoneRegions = Self.phoneRegions(phoneRegions, gamePhone: items)
             return
@@ -1529,12 +1532,12 @@ final class PhoneModel: ObservableObject {
             if !text.isEmpty { regions.append(PhoneRegion(id: id, text: text, box: box)) }
             if regions != phoneRegions { phoneRegions = regions }
             return
-        // Kendiliğinden bulunan ekran yazısı telefonda da ek alan kutusu gibi görünür (TV'de özgün stilinde).
+        // Kendiliğinden bulunan ekran yazısı telefonda da blok blok kendi yerinde ve özgün stilinde (TV ve Android gibi).
         case .screenText(let id, let items):
             let boxes = items.map(\.box)
             let box = boxes.dropFirst().reduce(boxes.first) { $0?.union($1) }
             var regions = phoneRegions.filter { $0.id != id }
-            regions.append(PhoneRegion(id: id, text: items.map(\.translation).joined(separator: "\n"), box: box))
+            regions.append(PhoneRegion(id: id, text: items.map(\.translation).joined(separator: "\n"), box: box, items: items))
             if regions != phoneRegions { phoneRegions = regions }
             return
         case .regionClear:
@@ -1544,15 +1547,23 @@ final class PhoneModel: ObservableObject {
         phoneRefresh()
     }
 
-    /// Oyun telefonunun kutusu (`game-phone`) eklenmiş ya da kaldırılmış ek alan kutuları.
+    /// Oyun telefonunun alanı (`game-phone`) eklenmiş ya da kaldırılmış ek alanlar; mesajlar blok blok tutulur (her biri
+    /// kendi balonunun yerinde çizilir, `placedItems`).
     static func phoneRegions(_ regions: [PhoneRegion], gamePhone items: [ScreenTranslation.Item]) -> [PhoneRegion] {
         var regions = regions.filter { $0.id != gamePhoneRegionId }
         let boxes = items.map(\.box)
         if let first = boxes.first {
             regions.append(PhoneRegion(id: gamePhoneRegionId, text: items.map(\.translation).joined(separator: "\n"),
-                                       box: boxes.dropFirst().reduce(first) { $0.union($1) }))
+                                       box: boxes.dropFirst().reduce(first) { $0.union($1) }, items: items))
         }
         return regions
+    }
+
+    /// Telefon ekranında kendi yerinde çizilecek bloklar: bloklu ek alanlarınki ("Ekranı çevir" sonuçlarının örttüğü
+    /// bloklar hariç, #827) ve "Ekranı çevir" sonuçları en üstte. Android `PhoneSubtitleActivity` ile aynı kural.
+    static func placedItems(_ regions: [PhoneRegion], screen: [ScreenTranslation.Item]) -> [ScreenTranslation.Item] {
+        let blocks = regions.flatMap { $0.items ?? [] }
+        return (screen.isEmpty ? blocks : ScreenTranslation.uncovered(blocks, by: screen)) + screen
     }
 
     static let gamePhoneRegionId = "game-phone"

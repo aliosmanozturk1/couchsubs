@@ -506,7 +506,8 @@ struct SubtitleScreen: View {
                 // "Ekranı çevir" ekrandayken onun yazılarının yerindeki ek alan kutusu çizilmez: aynı yazı iki kez üst üste
                 // görünmesin (#827).
                 ForEach(model.phoneRegions.filter { region in
-                    region.box.map { box in !model.screenItems.contains { ScreenTranslation.overlap(box, $0.box) >= ScreenTranslation.coverShare } } ?? true
+                    region.items == nil
+                        && (region.box.map { box in !model.screenItems.contains { ScreenTranslation.overlap(box, $0.box) >= ScreenTranslation.coverShare } } ?? true)
                 }) { region in
                     let box = region.box ?? TextBox(left: 0.6, top: 0.05, right: 0.95, bottom: 0.2)
                     Text(verbatim: region.text)
@@ -520,10 +521,12 @@ struct SubtitleScreen: View {
                 }
             }
             .allowsHitTesting(false)
-            // "Ekranı çevir" sonuçları: her çeviri kendi yazısının yerinde, aynı boyda ve özgün yazının stilinde (zemin ve
-            // yazı rengi, kalınlık, hiza; TV'deki gibi). GTA 6 telefonunun yazıları yanında mesaj kartı olarak gelir.
+            // Bloklu ek alanlar (GTA 6 telefonunun mesajları, kendiliğinden bulunan ekran yazısı) ve "Ekranı çevir" sonuçları:
+            // her çeviri kendi yazısının yerinde, aynı boyda ve özgün yazının stilinde (zemin ve yazı rengi, kalınlık, hiza;
+            // TV ve Android'deki gibi). Telefonun her mesajı kendi balonunun üstünde, balonun renginde; eskiden bütün sohbet
+            // telefonun üstünde tek siyah kutuda birleşiyordu. "Ekranı çevir" ekrandayken onun yerindeki bloklar çizilmez (#827).
             GeometryReader { proxy in
-                ForEach(Array(model.screenItems.enumerated()), id: \.offset) { _, item in
+                ForEach(Array(PhoneModel.placedItems(model.phoneRegions, screen: model.screenItems).enumerated()), id: \.offset) { _, item in
                     let box = item.box
                     let backdrop = ScreenPhoneCard.isBackdrop(item)
                     let width = backdrop ? proxy.size.width * (box.right - box.left) : max(60, proxy.size.width * (box.right - box.left))
@@ -546,7 +549,7 @@ struct SubtitleScreen: View {
                         .padding(4)
                         .frame(width: width, alignment: frameAlignment)
                         .frame(minHeight: backdrop ? height : 0)
-                        .background((Self.screenColor(item.style?.background) ?? .black).opacity(item.look == nil ? 0.85 : 1),
+                        .background((Self.screenColor(item.style?.background) ?? .black).opacity(item.look == nil && item.style == nil ? 0.85 : 1),
                                     in: RoundedRectangle(cornerRadius: 4))
                         .fixedSize(horizontal: false, vertical: true)
                         .position(x: proxy.size.width * box.left + width / 2,
