@@ -231,6 +231,8 @@ final class PhoneModel: ObservableObject {
     /// Ekran yazılarını kendiliğinden bulan (ayar açık ve çeviri sürerken var); örnek arka planda, tek uçuşta alınır.
     private var screenTextDetector: ScreenTextDetector?
     private var screenTextBusy = false
+    /// Altyazı günlüğüne son yazılan menü durumu (`ScreenTextDetector.menuLog`).
+    private var loggedMenu = false
     /// Altyazı hattının altyazıdan ayırdığı görev satırının bölgesi (bkz. `MissionLine`); yoksa nil.
     private var missionRegion: CropRegion?
     /// Altyazı hattının altyazıdan ayırdığı kenar bildirimlerinin alanları (bkz. `ScreenNotices`); yoksa boş.
@@ -684,6 +686,11 @@ final class PhoneModel: ObservableObject {
         // Konuşan renkleri oturum başına: yeni oturumda kişiler yeniden sıralanır.
         server.speakerBook.reset()
         makePipeline()
+        // Mac'teki gibi: altyazı günlüğünde oturumun dili, motoru ve alanı (günlükten teşhis için).
+        SubtitleLog.write("oturum başladı: CouchSubs iOS \(AppIdentity.version), \(settings.sourceLanguage)→\(settings.targetLanguage), "
+            + "motor: \(onlineTranslationActive ? settings.onlineEngine.rawValue : "ücretsiz"), "
+            + "seçilen motor: \(settings.translationEngine.rawValue), paketler: \(settings.gamePacks ? "açık" : "kapalı"), "
+            + "görüntü: \(demoMode ? "deneme modu" : xbox != nil ? "Xbox (Beta)" : "PS5"), " + SubtitleLog.areaSummary(settings))
         guard let (session, consoleName) = makeSession(xbox: xbox) else { return }
         // "Durdur / Başlat" takılı okumayı da bırakır: eskiden iPhone'da takılan okuma bitmezse yalnız uygulamayı kapatıp
         // açmak düzeltiyordu.
@@ -827,7 +834,9 @@ final class PhoneModel: ObservableObject {
         keeper?.stop()
         keeper = nil
         pipeline?.reset()
+        if pipeline != nil { SubtitleLog.write("oturum bitti") }
         pipeline = nil
+        loggedMenu = false
         regionWatcher?.reset()
         regionWatcher = nil
         screenTextDetector?.reset()
@@ -1017,6 +1026,14 @@ final class PhoneModel: ObservableObject {
 
     private func sessionStateChanged(_ state: SessionState) {
         let wasStreaming = sessionState == .streaming
+        // Altyazı günlüğünde durumun türü ve kopmanın nedeni (Mac ile aynı satırlar).
+        if state != sessionState {
+            switch state {
+            case .connecting: SubtitleLog.write("\(isXbox ? "Xbox" : "PS5"): bağlanıyor")
+            case .streaming: SubtitleLog.write("\(isXbox ? "Xbox" : "PS5"): bağlandı")
+            case .disconnected(let reason): SubtitleLog.write("\(isXbox ? "Xbox" : "PS5"): bağlantı yok (\(reason.logName))")
+            }
+        }
         // PS5'in kendi tarafındaki çökme altyazı günlüğüne de yazılır: kullanıcının günlüğünde nedeni görünsün (GitHub #519).
         if state == .disconnected(.consoleRemotePlayCrashed), state != sessionState {
             SubtitleLog.write("PS5: Uzaktan Oynatma PS5'te çöktü (Remote Play on Console has crashed); PS5 tamamen kapatılıp açılmalı")
@@ -1071,6 +1088,10 @@ final class PhoneModel: ObservableObject {
             self?.noteLine(source: source, translation: translation, fromPack: fromPack)
         }
         pipeline.onMetrics = { [weak self] metrics in self?.lastMetrics = metrics }
+        // Altyazı hattının olayları (ilk kare, okunan satırlar ve akıbetleri, sahne yazısı, kalkan satır) Mac'teki gibi
+        // altyazi.log'a yazılır. Eskiden iPhone'da bağlı değildi: paylaşılan günlükte yalnız ek alan satırları vardı,
+        // altyazının neden çevrilmediği görülemiyordu (1.0.6, 2026-11-22).
+        pipeline.onLog = { SubtitleLog.write($0) }
         pipeline.onReadResult = { [weak self] error in
             // Takılıyken her kare beklemeden `stuck` alır; takılma uzadıysa okuma bırakılır, altyazı yeni kuyrukta sürer.
             if case ReadQueueError.stuck? = error { self?.abandonStalledRead(olderThanMs: Self.abandonStallAfterMs) }
@@ -1193,7 +1214,12 @@ final class PhoneModel: ObservableObject {
         if regionWatcher == nil, !areas.isEmpty || pose != nil { regionWatcher = makeRegionWatcher(packLookup: current.packLookup) }
         regionWatcher?.offer(frame, areas: areas, phone: pose)
         // Ekranda menü açık (otomatik ekran yazısı menü durumunda): menü satırları altyazıya karışmasın, altyazı okunmaz.
-        if screenTextDetector?.inMenu == true { return }
+        let inMenu = screenTextDetector?.inMenu == true
+        if inMenu != loggedMenu {
+            loggedMenu = inMenu
+            SubtitleLog.write(ScreenTextDetector.menuLog(inMenu))
+        }
+        if inMenu { return }
         // Önceki kare hâlâ işleniyorsa bu kare atlanır. Tek okuma bitmezse çeviri tamamen duruyor, "Durdur / Başlat"
         // düzeltmiyordu (Mac'te görüldü, 2026-11-13); takılan okuma hattı yeniden kurdurur.
         var entry = frameGate.enter(now: SubtitleStabilizer.uptimeMs())

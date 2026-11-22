@@ -109,6 +109,9 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
     var menu = false
         private set
 
+    /** Menüye girildiği örnekteki bileşenlerin karoları: menü bunlardan biri yerinde durdukça sürer. */
+    private var menuAnchors = emptySet<Int>()
+
     private fun Auto.area() = ExtraArea(id, NAME, region, auto = true, menu = menu)
 
     /**
@@ -229,10 +232,14 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
         val wasMenu = menu
         // Menü kanıtı altyazı alanının dışındaki bileşenlerden: iki satırlık altyazı (sakin zeminde) menü sanılıp
         // altyazıyı duraklatmasın.
-        menu = isMenu(all.filter { members -> members.any { !inSubtitle[it] } }, sample)
-        // Menüde gezinirken seçim çerçevesi kayınca birkaç karo bir an aday olmaktan çıkar: menü alanlarından biri hâlâ
-        // görünüyorsa menü sürer (kutular yanıp sönmez, kısa etiketler gürültü sayılmaz).
-        if (!menu && wasMenu && autos.any { auto -> auto.menu && auto.tiles.any { candidate[it] } }) menu = true
+        val evidence = all.filter { members -> members.any { !inSubtitle[it] } }
+        menu = isMenu(evidence, sample)
+        if (menu && !wasMenu) menuAnchors = evidence.flatten().toSet()
+        // Menüde gezinirken seçim çerçevesi kayınca birkaç karo bir an aday olmaktan çıkar: menüye girildiğindeki
+        // yazılardan biri hâlâ görünüyorsa menü sürer (kutular yanıp sönmez, kısa etiketler gürültü sayılmaz). Menüdeyken
+        // sonradan beliren yazı (karanlık sahnenin görev yazısı, PS5 bildirimi) menüyü sürdürmez: GTA 6 "Gone Fishing"te
+        // menü durumu bitmiyor, altyazı bütün oturum okunmuyordu (Mac/iPhone, Windows ile aynı kural).
+        if (!menu && wasMenu && autos.any { auto -> auto.menu && auto.tiles.any { candidate[it] && it in menuAnchors } }) menu = true
         // Altyazı alanındaki yazı bulucuya girmez; menü durumunda ise (altyazı duraklar) menünün oradaki etiketleri de alan olur.
         if (!menu && inSubtitle.any { it }) {
             for (index in 0 until TILES) if (inSubtitle[index]) candidate[index] = false
@@ -318,6 +325,7 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
         for (index in 0 until TILES) tiles[index] = Tile()
         autos.clear()
         menu = false
+        menuAnchors = emptySet()
         lastSample = null
         busy = false
     }

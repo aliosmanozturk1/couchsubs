@@ -3079,7 +3079,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             ? ReadScheduler.FastMaxReuse : ReadScheduler.DefaultMaxReuse);
         // Ekranda menü varken altyazı gönderilmez: altyazı alanındaki menü satırları (alttaki seçenekler, tuş çubuğu)
         // otomatik ekran yazısı olarak kendi yerinde çevriliyor, altyazıya karışmasın.
-        var sender = new MenuPausedSender(server, () => Volatile.Read(ref screenText)?.InMenu == true);
+        var sender = new MenuPausedSender(server, () => Volatile.Read(ref screenText)?.InMenu == true, SubtitleLog.Write);
         var built = new SubtitlePipeline(reader, MakeTranslator(), sender, scheduler)
         {
             ShowSpeakerNames = settings.ShowSpeakerNames,

@@ -111,6 +111,8 @@ public sealed class ScreenTextDetector
     private long? lastSample;
     private int counter;
     private bool menu;
+    /// <summary>Menüye girildiği örnekteki bileşenlerin karoları: menü bunlar yerinde durdukça sürer (<see cref="IsMenu"/>).</summary>
+    private HashSet<int> menuAnchors = [];
 
     /// <summary>Tanı: her örnekte bileşenler, bölgeleri ve kanıtları (gerçek kare doğrulaması günlüğe yazar).</summary>
     internal Action<string>? Diagnose { get; set; }
@@ -219,6 +221,7 @@ public sealed class ScreenTextDetector
             tracked.Clear();
             lastSample = null;
             menu = false;
+            menuAnchors = [];
         }
     }
 
@@ -434,7 +437,10 @@ public sealed class ScreenTextDetector
     /// <summary>
     /// Menü durumu: en az üç ayrı bileşen var ve bileşenlerin dışındaki karoların çoğu düşük kenar enerjili (bulanık ya da
     /// karartılmış zemin). Menüye ilk girişte bileşenlerin en çok 300 ms arayla birlikte belirmiş olması da gerekir;
-    /// menüde gezinirken (seçim çerçevesi değişince) durum korunur.
+    /// menüde gezinirken (seçim çerçevesi değişince) durum, menüye girildiğindeki bileşenlerden biri (karolarının en az
+    /// <see cref="KeepOverlap"/> kadarı) yerinde durdukça korunur (Mac/iPhone ve Android ile aynı). Eskiden yalnız "en az üç
+    /// bileşen ve sakin zemin" yetiyordu: GTA 6 "Gone Fishing" (gece) menüden sonra görev yazısı, PS5 bildirimi ve HUD üç
+    /// bileşen, karanlık zemin sakin sayıldı; menü durumu bitmedi, altyazı bütün oturum okunmadı.
     /// </summary>
     private bool IsMenu(List<(Cells Cells, List<int> Tiles)> components, long now)
     {
@@ -442,9 +448,11 @@ public sealed class ScreenTextDetector
         var inside = components.SelectMany(item => item.Tiles).ToHashSet();
         var outside = Enumerable.Range(0, tiles.Length).Where(index => !inside.Contains(index)).ToList();
         if (outside.Count == 0 || outside.Count(index => tiles[index].Quiet) < MenuQuietShare * outside.Count) return false;
-        if (menu) return true;
+        if (menu && components.Any(item => item.Tiles.Count(menuAnchors.Contains) >= KeepOverlap * item.Tiles.Count)) return true;
         var appeared = components.Select(item => item.Tiles.Max(index => tiles[index].StableSince)).ToList();
-        return appeared.Max() - appeared.Min() <= MenuTogetherMs;
+        if (appeared.Max() - appeared.Min() > MenuTogetherMs) return false;
+        menuAnchors = inside;
+        return true;
     }
 
     private void Update(List<(Cells Cells, List<int> Tiles)> components, bool[] candidate, long now, bool inMenu)

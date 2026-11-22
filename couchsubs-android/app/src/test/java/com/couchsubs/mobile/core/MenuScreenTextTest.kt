@@ -50,6 +50,25 @@ class MenuScreenTextTest {
         assertFalse(detector.menu)
     }
 
+    /**
+     * Menü kapandıktan sonra sakin (karanlık) sahnede ayrı ayrı belirmiş üç yazı menüyü sürdürmez. GTA 6 "Gone Fishing"
+     * (2026-11-22): menü durumu bitmedi, altyazı bütün oturum okunmadı (Mac/iPhone ve Windows ile aynı sınama).
+     */
+    @Test
+    fun menuEndsWhenItsOwnLabelsLeaveEvenIfOtherTextStays() {
+        val scene = listOf(Triple(1, 0, 500L), Triple(28, 0, 900L), Triple(1, 17, 1300L))
+        fun frame(t: Long, withWheel: Boolean): ByteArray {
+            val pixels = if (withWheel) wheel(0) else ByteArray(width * height) { 112 }
+            scene.forEach { (column, row, from) -> if (t >= from) label(pixels, column, row, columns = 2) }
+            return pixels
+        }
+        val detector = ScreenTextDetector()
+        for (t in 0L..1900L step 100) detector.step(frame(t, withWheel = true), t)
+        assertTrue(detector.menu)
+        for (t in 2000L..4000L step 100) detector.step(frame(t, withWheel = false), t)
+        assertFalse(detector.menu)
+    }
+
     @Test
     fun shortLabelsOverASharpMovingSceneAreNotAMenu() {
         val detector = ScreenTextDetector()

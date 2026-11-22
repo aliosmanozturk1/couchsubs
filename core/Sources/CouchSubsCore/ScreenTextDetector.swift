@@ -91,11 +91,20 @@ public final class ScreenTextDetector: @unchecked Sendable {
     private var lastSample: Int?
     private var counter = 0
     private var menu = false
+    /// Menüye girildiği örnekteki bileşenlerin karoları: menü bunlar yerinde durdukça sürer (`isMenu`).
+    private var menuAnchors = Set<Int>()
 
     public init() {}
 
     /// Son örnekte ekranda menü vardı (bulanık zeminde birlikte beliren en az üç yazı).
     public var inMenu: Bool { lock.withLock { menu } }
+
+    /// Menü durumu değişince altyazı günlüğüne yazılan satır (menüdeyken altyazı okunmaz; günlükte görünmeyince "altyazı
+    /// hattı hiç satır üretmiyor" nedensiz kalıyordu). Android aynı metni yazar; Windows menüde okur ama göstermez
+    /// (MenuPausedSender) ve bunu yazar.
+    public static func menuLog(_ inMenu: Bool) -> String {
+        inMenu ? "ekran menüsü açık: altyazı okunmuyor" : "ekran menüsü kapandı: altyazı okunuyor"
+    }
 
     /// Şu an önerilen otomatik alanlar.
     public var areas: [ExtraArea] { lock.withLock { current() } }
@@ -172,6 +181,7 @@ public final class ScreenTextDetector: @unchecked Sendable {
             tracked.removeAll()
             lastSample = nil
             menu = false
+            menuAnchors = []
         }
     }
 
@@ -295,7 +305,14 @@ public final class ScreenTextDetector: @unchecked Sendable {
 
     /// Menü durumu: en az üç ayrı bileşen var ve bileşenlerin dışındaki karoların çoğu düşük kenar enerjili (bulanık ya
     /// da karartılmış zemin). Menüye ilk girişte bileşenlerin en çok 300 ms arayla birlikte belirmiş olması da gerekir;
-    /// menüde gezinirken (seçim çerçevesi değişince) durum korunur.
+    /// menüde gezinirken (seçim çerçevesi değişince) durum, menüye girildiğindeki bileşenlerden biri (karolarının en az
+    /// `keepOverlap` kadarı) yerinde durdukça korunur (Android ile aynı: menünün kendi yazılarından biri görünmeli).
+    ///
+    /// Eskiden menü girişten sonra yalnız "en az üç bileşen ve sakin zemin" ile sürüyordu. GTA 6 "Chapter 1: Gone Fishing"
+    /// (gece, karanlık kamp) duraklatma menüsü kapandıktan sonra sahnenin görev yazısı, PS5 bildirimi ve HUD üç bileşen,
+    /// karanlık zemin de sakin sayıldı; menü durumu hiç bitmedi. Menüdeyken altyazı okunmadığı için bütün oturumda tek
+    /// altyazı çevrilmedi (Mac 04:01–04:05 ve iPhone 1.0.6 04:10–04:14 günlükleri: "ilk yazı" yok, diyalog satırı
+    /// altyazı alanı dışlanmadığı için yalnız ekran yazısı olarak okundu).
     /// Arayüz kanıtı: zemin örneklerinin parlaklık sapması en çok bu kadar (düz ya da yarı saydam düz panel).
     public static let groundDeviation = 22.0
     /// Zemin karolarının en az bu kadarı aynı tonda (±`groundTone`).
@@ -335,9 +352,13 @@ public final class ScreenTextDetector: @unchecked Sendable {
         let outside = tiles.indices.filter { !inside.contains($0) }
         guard !outside.isEmpty,
               Double(outside.filter { tiles[$0].quiet }.count) >= Self.menuQuietShare * Double(outside.count) else { return false }
-        if menu { return true }
+        if menu, components.contains(where: { component in
+            Double(component.tiles.filter(menuAnchors.contains).count) >= Self.keepOverlap * Double(component.tiles.count)
+        }) { return true }
         let appeared = components.map { $0.tiles.map { tiles[$0].stableSince }.max()! }
-        return appeared.max()! - appeared.min()! <= Self.menuTogetherMs
+        guard appeared.max()! - appeared.min()! <= Self.menuTogetherMs else { return false }
+        menuAnchors = inside
+        return true
     }
 
     private func update(_ components: [(cells: Cells, tiles: [Int])], candidate: [Bool], now: Int, inMenu: Bool) {

@@ -78,6 +78,24 @@ final class ScreenMenuTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(detector.areas.filter { before.contains($0.id) }.count, 9)
     }
 
+    /// Menü kapandıktan sonra sakin (karanlık) sahnede ayrı ayrı belirmiş üç yazı (görev satırı, PS5 bildirimi, HUD)
+    /// menüyü sürdürmez. GTA 6 "Gone Fishing" (Mac ve iPhone günlükleri, 2026-11-22): menü durumu bitmedi, altyazı
+    /// bütün oturum okunmadı; diyalog ve görev satırı yalnız ekran yazısı olarak çevrildi.
+    func testMenuEndsWhenItsOwnLabelsLeaveEvenIfOtherTextStays() {
+        let scene: [(column: Int, row: Int, width: Int, from: Int)] = [(1, 0, 2, 500), (29, 0, 2, 900), (1, 17, 3, 1300)]
+        func frame(_ time: Int, wheel: Bool) -> CGImage {
+            var canvas = wheel ? Self.wheel() : Canvas(fill: 70)
+            for label in scene where time >= label.from { canvas.paint(label.column, label.row, label.width, ink: 240) }
+            return canvas.image
+        }
+        let detector = ScreenTextDetector()
+        run(detector, 0, 1900) { frame($0, wheel: true) }
+        XCTAssertTrue(detector.inMenu)
+        // Eski kuralda (menü yalnız "≥3 bileşen + sakin zemin" ile sürüyordu) burada menü durumu hiç bitmiyordu.
+        run(detector, 2000, 4000) { frame($0, wheel: false) }
+        XCTAssertFalse(detector.inMenu)
+    }
+
     func testLabelsOnABusyMovingSceneAreNotAMenu() {
         let detector = ScreenTextDetector()
         run(detector, 0, 1000) { time in

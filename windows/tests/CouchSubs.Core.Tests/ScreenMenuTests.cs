@@ -70,6 +70,28 @@ public class ScreenMenuTests
         Assert.Empty(detector.Areas);
     }
 
+    /// <summary>
+    /// Menü kapandıktan sonra sakin (karanlık) sahnede ayrı ayrı belirmiş üç yazı menüyü sürdürmez. GTA 6 "Gone Fishing"
+    /// (2026-11-22): menü durumu bitmedi, altyazı bütün oturum okunmadı (Mac ve iPhone ile aynı sınama).
+    /// </summary>
+    [Fact]
+    public void MenuEndsWhenItsOwnLabelsLeaveEvenIfOtherTextStays()
+    {
+        (int Column, int Row, int Width, long From)[] scene = [(1, 0, 2, 500), (29, 0, 2, 900), (1, 17, 3, 1300)];
+        Frame Scene(long time, bool wheel)
+        {
+            var frame = wheel ? Wheel() : Blurred();
+            foreach (var (column, row, width, from) in scene)
+                if (time >= from) Paint(frame, column, row, width, 240);
+            return frame;
+        }
+        var detector = new ScreenTextDetector();
+        Run(detector, 0, 1900, time => Scene(time, true));
+        Assert.True(detector.InMenu);
+        Run(detector, 2000, 4000, time => Scene(time, false));
+        Assert.False(detector.InMenu);
+    }
+
     [Fact]
     public void NavigatingKeepsTheOtherBoxes()
     {
