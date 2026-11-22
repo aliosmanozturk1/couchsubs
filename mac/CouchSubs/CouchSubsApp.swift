@@ -92,7 +92,7 @@ struct RootView: View {
     var body: some View {
         Group {
             // Deneme modu kurulumdan bağımsızdır: sihirbazın hangi adımından açılırsa açılsın ana pencere görünür.
-            if model.step == .done || model.demoMode { AppShell() } else { OnboardingView() }
+            if model.step == .done || model.demoMode { AppShell() } else { WizardView() }
         }
         .onAppear { model.adoptNewDesign() }
         .sheet(isPresented: $model.showAbout) { AboutView().appSurface() }

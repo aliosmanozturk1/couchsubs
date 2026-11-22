@@ -1,0 +1,1 @@
+0.9.75: Subtitles can use the background, text and character name colors chosen on the computer; the character color can color only the name.
