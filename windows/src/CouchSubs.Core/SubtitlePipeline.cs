@@ -429,6 +429,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
 
         Action? after = null;
         Action? flushed = null;
+        Action? forced = null;
         CancellationTokenSource? abandoned = null;
         lock (gate)
         {
@@ -590,18 +591,52 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             }
             // Restore önce işlenir: geri görünen satırın LeftAt bilgisi temizlenmeden iptal edilmemeli.
             abandoned = AbandonUndisplayableTranslation();
+            forced = WatchSilence(raw, [("kendi altyazısı", ownLines), ("telefon yazısı", seen.Lines),
+                                        ("kumanda ipucu, okuma gürültüsü ya da ekran yazısı", cleaned.Lines),
+                                        ("sabit satır (görev/HUD)", rows.Lines),
+                                        ("altyazı bloğu seçilmedi (sahne yazısı, menü ya da başka blok)", reading.Lines)], area);
         }
         // Olaylar ve iptal kilidin dışında çağrılır. Cancel, çevirmeni ve kuyruğu eşzamanlı ilerletebilir.
         try
         {
             flushed?.Invoke();
             after?.Invoke();
+            forced?.Invoke();
         }
         finally
         {
             try { if (abandoned is not null) lock (abandoned) abandoned.Cancel(); }
             catch (ObjectDisposedException) { } // Bu sırada biten eski istektir; yeni isteğin token'ına dokunulmaz.
         }
+    }
+
+    /// <summary>Sessizlik bekçisi (<see cref="WatchSilence"/>).</summary>
+    private SilenceWatch silence = new();
+
+    /// <summary>
+    /// gate tutulurken çağrılır. Alanda konuşmaya benzeyen satır 10 sn okunup hiçbir şey gönderilmediyse süzgeçleri atlayıp
+    /// o satırı doğrudan çeviriye verir (en çok 10 sn'de bir, aynı satırı bir kez); hangi aşamanın tuttuğu günlüğe yazılır.
+    /// Kendi altyazımız ve telefon yazısı hiçbir zaman gönderilmez (Mac/iPhone, Android ile aynı).
+    /// </summary>
+    private Action? WatchSilence(Reading raw, (string Name, IReadOnlyList<TextLine> Lines)[] stages, TextBox area)
+    {
+        if (silence.Due(raw.Lines.Select(line => line.Text), now()) is not { } candidate) return null;
+        var key = TextMatch.Normalize(candidate);
+        bool Holds(IReadOnlyList<TextLine> lines) => lines.Any(line =>
+        {
+            var text = TextMatch.Normalize(line.Text);
+            return text.Contains(key) || (text.Length > 0 && key.Contains(text) && text.Length * 2 >= key.Length);
+        });
+        var holder = Holds(stages[0].Lines) ? stages[0].Name
+            : stages.Skip(1).Where(stage => !Holds(stage.Lines)).Select(stage => (string?)stage.Name).FirstOrDefault()
+              ?? "kararlayıcı ya da bekleme (çeviri gönderilmedi)";
+        if (holder is "kendi altyazısı" or "telefon yazısı") return null;
+        silence.Fired(candidate, now());
+        Write($"bekçi: {SubtitleLog.Excerpt(candidate)} {SilenceWatch.SilenceMs / 1000} sn'dir okunuyor, hiçbir şey gönderilmedi "
+              + $"(tutan: {holder}); doğrudan çevriliyor");
+        var box = raw.Lines.FirstOrDefault(line => line.Text == candidate)?.Box?.PlacedIn(area).CenteredOnScreen();
+        LineLeft();
+        return Enqueue(candidate, box);
     }
 
     /// <summary>gate tutulurken çağrılır; motor bitmeden sıradaki üretimi başlatmaz, yalnız iptal sinyali hazırlar.</summary>
@@ -1189,6 +1224,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             sawText = false;
             lastNote = null;
             quiet = new QuietReads(now());
+            silence = new SilenceWatch();
             session++;
             lineOnScreen = null;
             waiting.Clear();
@@ -1219,6 +1255,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     /// <summary>Çeviri ekrana gider; kendi altyazısı süzgeci onu hatırlar.</summary>
     private void Send(string translation, string source, int durationMs, TextBox? box, bool replaces)
     {
+        lock (gate) silence.Sent();
         Own.Record(translation, source, durationMs);
         sender.SendSubtitle(translation, durationMs, box, replaces: replaces);
     }

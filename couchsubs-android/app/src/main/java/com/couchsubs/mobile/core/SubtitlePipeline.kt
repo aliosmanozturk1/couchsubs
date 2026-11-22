@@ -417,9 +417,42 @@ class SubtitlePipeline(
             abandonUndisplayableTranslation()
             result
         }
+        val forced = synchronized(lock) {
+            watchSilence(raw, listOf("kendi altyazısı" to ownLines, "telefon yazısı" to seen.lines,
+                "kumanda ipucu ya da okuma gürültüsü" to rows.lines, "sabit satır (görev/HUD)" to filteredRows.lines,
+                "altyazı bloğu seçilmedi (sahne yazısı, menü ya da başka blok)" to reading.lines), area)
+        }
         // Olaylar kilidin dışında çağrılır.
         flushed?.invoke()
         after?.invoke()
+        forced?.invoke()
+    }
+
+    /** Sessizlik bekçisi ([watchSilence]). */
+    private var silence = SilenceWatch()
+
+    /**
+     * lock tutulurken çağrılır. Alanda konuşmaya benzeyen satır 10 sn okunup hiçbir şey gönderilmediyse süzgeçleri atlayıp
+     * o satırı doğrudan çeviriye verir (en çok 10 sn'de bir, aynı satırı bir kez); hangi aşamanın tuttuğu günlüğe yazılır.
+     * Kendi altyazımız ve telefon yazısı hiçbir zaman gönderilmez (Mac/iPhone, Windows ile aynı).
+     */
+    private fun watchSilence(raw: Reading, stages: List<Pair<String, List<TextLine>>>, area: TextBox): (() -> Unit)? {
+        val candidate = silence.due(raw.lines.map { it.text }, now()) ?: return null
+        val key = TextMatch.normalize(candidate)
+        fun holds(lines: List<TextLine>) = lines.any { line ->
+            val text = TextMatch.normalize(line.text)
+            text.contains(key) || (text.isNotEmpty() && key.contains(text) && text.length * 2 >= key.length)
+        }
+        val holder = if (holds(stages[0].second)) stages[0].first
+            else stages.drop(1).firstOrNull { !holds(it.second) }?.first ?: "kararlayıcı ya da bekleme (çeviri gönderilmedi)"
+        if (holder == "kendi altyazısı" || holder == "telefon yazısı") return null
+        silence.fired(candidate, now())
+        val excerpt = candidate.replace('\n', ' ').let { if (it.length > 120) it.take(120) + "…" else it }
+        onLog?.invoke("bekçi: \"$excerpt\" ${SilenceWatch.SILENCE_MS / 1000} sn'dir okunuyor, hiçbir şey gönderilmedi " +
+            "(tutan: $holder); doğrudan çevriliyor")
+        val box = raw.lines.firstOrNull { it.text == candidate }?.box?.placedIn(area)?.centeredOnScreen()
+        lineLeft()
+        return enqueue(candidate, box)
     }
 
     /** Bekletilen okumayı çeviriye gönderir (lock tutulurken çağrılır). */
@@ -720,6 +753,7 @@ class SubtitlePipeline(
     /** Okuma durunca TV'deki son altyazıyı kaldırır. */
     fun reset() = synchronized(lock) {
         quiet = QuietReads(now())
+        silence = SilenceWatch()
         session++
         lineOnScreen = null
         held = null
@@ -743,6 +777,7 @@ class SubtitlePipeline(
 
     /** Çeviri ekrana gider; kendi altyazısı süzgeci onu hatırlar. */
     private fun send(translation: String, source: String, durationMs: Int, box: TextBox?, replaces: Boolean) {
+        synchronized(lock) { silence.sent() }
         own.record(translation, source, durationMs)
         lastSentBox = box
         sender.sendSubtitle(translation, durationMs, box, replaces)

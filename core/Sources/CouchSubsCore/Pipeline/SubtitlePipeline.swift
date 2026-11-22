@@ -139,6 +139,8 @@ public final class SubtitlePipeline {
     private var loggedOwn: String?
     /// Günlüğe yazılmış son telefon yazısı (her karede yeniden yazılmasın).
     private var loggedPhone: String?
+    /// Sessizlik bekçisi (`watchSilence`).
+    private var silence = SilenceWatch()
     /// Günlüğe yazılmış son "altyazı sayılmadı" kümesi (`logLeftOut`).
     private var loggedLeftOut = ""
     /// Karede açık GTA 6 telefonunun ekranındaki satırlar altyazı sayılmaz (`ScreenPhoneCard.holds`); telefonun çevirisi
@@ -215,6 +217,7 @@ public final class SubtitlePipeline {
 
     /// Çeviri ekrana gider; kendi altyazısı süzgeci onu hatırlar.
     private func send(_ translation: String, source: String, durationMs: Int, box: TextBox?, replaces: Bool) {
+        silence.sent()
         own.record(translation, source: source, durationMs: durationMs)
         server.sendSubtitle(translation, durationMs: durationMs, box: box, replaces: replaces)
     }
@@ -315,7 +318,8 @@ public final class SubtitlePipeline {
             log("kendi altyazısı: \(SubtitleLog.excerpt(ownLines.map(\.text).joined(separator: " "))) karede okundu, yok "
                 + "sayıldı (görüntü kaynağı CouchSubs'ın OBS katmanını da içeriyor; OBS'te Kaynak projektörünü seçin)")
         }
-        let rows = stickyRows.filter(seen.withoutButtonPrompts().withoutOcrNoise().joiningRows(), at: now())
+        let cleaned = seen.withoutButtonPrompts().withoutOcrNoise().joiningRows()
+        let rows = stickyRows.filter(cleaned, at: now())
         for row in stickyRows.newlySticky { log("sabit satır: \(SubtitleLog.excerpt(row)) görev/HUD yazısı sayıldı, çevrilmiyor") }
         if mission.observe(stickyRows.removed, area: place, at: now()) {
             log(mission.region == nil ? "görev satırı kalktı" : "görev satırı kendi yerinde gösteriliyor")
@@ -441,6 +445,36 @@ public final class SubtitlePipeline {
         }
         // Restore önce işlenir: geri görünen satırın leftAt bilgisi temizlenmeden iptal edilmemeli.
         abandonUndisplayableTranslation()
+        watchSilence(visible, stages: [("kendi altyazısı", ownLines), ("telefon yazısı", seen.lines),
+                                       ("kumanda ipucu ya da okuma gürültüsü", cleaned.lines),
+                                       ("sabit satır (görev/HUD)", rows.lines),
+                                       ("altyazı bloğu seçilmedi (sahne yazısı, menü ya da başka blok)", reading.lines)],
+                     place: place)
+    }
+
+    /// Sessizlik bekçisi (`SilenceWatch`): alanda konuşmaya benzeyen satır 10 sn okunup hiçbir şey gönderilmediyse
+    /// süzgeçleri atlayıp o satırı doğrudan çevirir (en çok 10 sn'de bir, aynı satırı bir kez). Hangi aşamanın tuttuğu
+    /// günlüğe yazılır. Kendi altyazımız ve telefon yazısı hiçbir zaman gönderilmez. İlke: fazladan bir HUD çevirisi
+    /// kabul, diyaloğun kaybolması kabul değil (Windows, Android ile aynı).
+    private func watchSilence(_ raw: Reading, stages: [(String, [TextLine])], place: TextBox) {
+        guard let candidate = silence.due(raw.lines.map(\.text), at: now()) else { return }
+        let key = TextMatch.normalize(candidate)
+        func holds(_ lines: [TextLine]) -> Bool {
+            lines.contains { line in
+                let text = TextMatch.normalize(line.text)
+                return text.contains(key) || (!text.isEmpty && key.contains(text) && text.count * 2 >= key.count)
+            }
+        }
+        // İlk aşama kendi altyazısı (satır onun içindeyse tutan odur); sonrakiler satırın kalmadığı ilk aşama.
+        let holder = holds(stages[0].1) ? stages[0].0 : stages.dropFirst().first { !holds($0.1) }?.0
+            ?? "kararlayıcı ya da bekleme (çeviri gönderilmedi)"
+        guard holder != "kendi altyazısı", holder != "telefon yazısı" else { return }
+        silence.fired(candidate, at: now())
+        log("bekçi: \(SubtitleLog.excerpt(candidate)) \(SilenceWatch.silenceMs / 1000) sn'dir okunuyor, hiçbir şey "
+            + "gönderilmedi (tutan: \(holder)); doğrudan çevriliyor")
+        let box = raw.lines.first { $0.text == candidate }?.box?.placed(in: place).centeredOnScreen()
+        lineLeft()
+        enqueue(candidate, box: box)
     }
 
     /// Süren çeviri artık gösterilemeyecekse üretimi iptal eder, böylece sıradaki satır onu beklemez. Yalnız iki durumda:
@@ -873,6 +907,7 @@ public final class SubtitlePipeline {
         phoneLookedAt = nil
         loggedLeftOut = ""
         loggedPhone = nil
+        silence = SilenceWatch()
         session += 1
         lineOnScreen = nil
         held = nil
