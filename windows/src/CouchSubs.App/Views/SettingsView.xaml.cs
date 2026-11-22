@@ -1233,7 +1233,8 @@ public partial class SettingsView : UserControl
         var alpha = (byte)Math.Round(Math.Clamp(style.Background, 0, 100) / 100.0 * 255);
         MiniSubtitle.Background = new SolidColorBrush(Color.FromArgb(alpha, 0x10, 0x10, 0x14));
         MiniSubtitleText.Foreground = new SolidColorBrush(style.TextColor.ToString() == "Yellow" ? Color.FromRgb(0xFF, 0xE0, 0x66) : Colors.White);
-        MiniSubtitleText.FontSize = Math.Max(10, Math.Round(style.FontSize * 0.5));
+        MiniSubtitleText.FontSize = Math.Clamp(Math.Round(style.FontSize * 0.5), 10, 18);
+        MiniSubtitleText.TextWrapping = TextWrapping.NoWrap;
         MiniSubtitleText.Inlines.Clear();
         var name = new System.Windows.Documents.Run("Jason: ");
         name.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "accentBrush");
