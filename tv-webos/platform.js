@@ -76,7 +76,7 @@
     lastTime: -1, lastAdvanceAt: 0, advances: 0, playTried: false, sawUnpaused: false,
     pending: null, building: null, checkTimer: null, soonTimer: null, soonStrict: false, wasHidden: false,
     stalls: 0, stallNote: '', stallRebuiltAt: 0, stallTimer: null,
-    stallVideo: null, stallTime: 0
+    stallVideo: null, stallTime: 0, stallRebuilds: []
   };
 
   function nowMs() { return new Date().getTime(); }
@@ -166,6 +166,21 @@
   // - 'stalled' denetiminin kendi zamanlayıcısı var; arka plandan dönüşün sıkı denetimi gevşek olaylarla gevşemez.
   // - Eski boru hattı bırakıldıktan sonra yenisi REBUILD_GAP_MS sonra açılır (kumandada aynı giriş numarası da). Tahmin
   //   (gerçek TV'de doğrulanmadı): webOS 4'te bırakma geç biterse yeni <video> "oynuyor" der ama görüntü gelmez.
+  //
+  // 0.9.73 (X, LG webOS): "son güncellemeden beri ekran yaklaşık dakikada bir 2 sn kararıp geri geliyor, sonra üstte HDR
+  // yazısı çıkıyor". Bu, <video>'nun yeniden kurulmasıdır (eski boru hattı bırakılır, 1 sn sonra yenisi açılır, TV HDMI
+  // ile yeniden el sıkışır ve HDR rozetini gösterir). #643'teki TV her yeni <video>'da birkaç saniye sonra 'stalled'
+  // gönderiyor ("rebuilt 1 (ev stalled) · ev stalled") ve sayacı ilerletmiyor (t=); böyle bir TV'de görüntü sağlamken de
+  // 0.9.67'nin kuralı her 'stalled'ı yeniden kurmaya çeviriyordu: yeni <video> yine 'stalled' olur, yine kurulur. Artan
+  // aralık (BACKOFF_MS) 60 sn'de durduğu ve sıra hep dolu olduğu için (tick sayaç sıfırlamıyor) döngü ~66 sn'de bir kurmaya
+  // oturuyordu; 0.9.61-0.9.66'da 30 sn içindeki ikinci 'stalled' beklendiği için yalnız bir kez kuruluyordu. Bu TV'lerde
+  // sayfa siyah ekranla sağlam görüntüyü ayıramıyor (ikisinde de "hdmi playing rs4 t= · ev stalled"). Artık 'stalled'
+  // yüzünden en çok STALL_REBUILD_MAX kez STALL_REBUILD_WINDOW_MS içinde kurulur (#643'ün siyah ekranına yine üç deneme);
+  // sonra 'stalled' olayı yalnız yazılır ("stall <n> limit"), görüntüye dokunulmaz. Gözcünün açık bozulma işaretleri
+  // (hata, kare yok, duraklama, durmuş sayaç) ve arka plandan dönüş denetimi değişmedi; kullanıcı girişi yeniden seçince
+  // (sayı tuşu, ◀▶) sayaç sıfırlanır.
+  var STALL_REBUILD_MAX = 3;
+  var STALL_REBUILD_WINDOW_MS = 10 * 60000;
   var FOCUS_MAX = 3;
   var MUTE_CHECK_MS = 1500;
   var SOUND_AFTER_MS = 3000;
@@ -427,6 +442,11 @@
     }
     // Denetim zaten bekliyorsa ya da kurma sıradaysa art arda gelen olay onu ertelemez.
     if (hdmi.stallTimer !== null || hdmi.pending !== null || hdmi.building !== null) return;
+    // Bu pencerede 'stalled' yüzünden yeterince kuruldu: TV olayı sağlam görüntüde de gönderiyor olabilir (0.9.73).
+    if (stallLimitReached(nowMs())) {
+      hdmi.stallNote = 'limit';
+      return;
+    }
     var waiting = !!hdmi.stallRebuiltAt && nowMs() - hdmi.stallRebuiltAt < STALL_EVENT_WAIT_MS;
     hdmi.stallNote = waiting ? 'wait' : 'check';
     hdmi.stallVideo = video;
@@ -443,6 +463,12 @@
         hdmi.stallNote = 'busy';
       }
     }, STALL_CHECK_MS);
+  }
+
+  // 'stalled' yüzünden son STALL_REBUILD_WINDOW_MS içinde STALL_REBUILD_MAX kez kuruldu mu.
+  function stallLimitReached(now) {
+    while (hdmi.stallRebuilds.length && now - hdmi.stallRebuilds[0] >= STALL_REBUILD_WINDOW_MS) hdmi.stallRebuilds.shift();
+    return hdmi.stallRebuilds.length >= STALL_REBUILD_MAX;
   }
 
   // 'stalled' olayından sonra görüntü kendiliğinden akmaya devam etti mi (sayaç ilerledi ve başka bozulma yok).
@@ -497,6 +523,7 @@
     hdmi.reason = reason;
     if (reason === 'ev stalled') {
       hdmi.stallRebuiltAt = nowMs();
+      hdmi.stallRebuilds.push(hdmi.stallRebuiltAt);
       hdmi.stallNote = 'rebuilt';
     }
     clearTimeout(hdmi.stallTimer);
@@ -800,6 +827,7 @@
       hdmi.everPlayed = false;
       hdmi.failures = 0;
       hdmi.sincePort = 0;
+      hdmi.stallRebuilds = [];
 
       onStatus('loading');
       if (released) {

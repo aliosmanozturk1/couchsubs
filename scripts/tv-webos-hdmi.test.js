@@ -568,22 +568,50 @@ test('webOS HDMI #643: öne gelişin sıkı denetimi hemen ardından gelen webOS
   assert.strictEqual(tv.videos.length, 2);
 });
 
-test('webOS HDMI #643: her yeni <video>\'da stalled gelse de dakikada en çok 4 kez kurulur', () => {
-  const tv = startTv();
-  tv.show(2);
-  let seen = 0;
-  for (let i = 0; i < 240; i++) {
+// Sağlam görüntü, sayacı ilerletmeyen TV (t=): her yeni <video> kurulduktan 3 sn sonra bir kez 'stalled' gönderir.
+// Döndürür: kurulma anları (sn).
+function stallOnEveryBuild(tv, seconds, from) {
+  const built = [];
+  let seen = tv.videos.length - 1;
+  for (let t = from || 0; t < (from || 0) + seconds; t++) {
     if (tv.videos.length > seen) {
       seen = tv.videos.length;
       tv.video.start();
-    } else if (tv.video && tv.video.readyState >= 2) {
+      tv.video.stallAt = t + 3;
+      built.push(t);
+    } else if (tv.video && tv.video.stallAt === t) {
       tv.video.fire('stalled');
     }
     tv.advance(1000);
   }
-  // İlk <video> dışındaki kurmalar 4 dakikada.
-  assert.ok(tv.videos.length - 1 <= 16, 'kurma sayısı ' + (tv.videos.length - 1));
-  assert.ok(tv.videos.length - 1 >= 4, 'yine de kuruluyor');
+  return built;
+}
+
+test('webOS HDMI 0.9.73: her yeni <video>\'da stalled gönderen TV\'de sağlam görüntü dakikada bir yeniden kurulmaz', () => {
+  const tv = startTv();
+  tv.show(2);
+  // 0.9.67-0.9.72: 0, 6, 16, 30, 52, 88, 154, 220… (~66 sn'de bir kararma ve HDR rozeti, sonsuza dek).
+  const built = stallOnEveryBuild(tv, 30 * 60);
+  assert.ok(built.length - 1 <= 3, 'stalled yüzünden kurma sayısı ' + (built.length - 1) + ': ' + built.join(','));
+  assert.ok(built[built.length - 1] < 60, 'ilk dakikadan sonra dokunulmaz: ' + built.join(','));
+  assert.match(tv.platform.diagnostics(), /rebuilt 3 \(ev stalled\) · ev stalled · stall 4 limit/);
+  // Kullanıcı girişi yeniden seçince (siyah ekran) 'stalled' yine kurdurur.
+  tv.show(2);
+  tv.advance(1000);
+  const again = stallOnEveryBuild(tv, 60);
+  assert.ok(again.length >= 2, 'yeniden seçimden sonra stalled yine kurdurur');
+});
+
+test('webOS HDMI 0.9.73: sınır dolduktan 10 dk sonra gelen stalled yine kurdurur', () => {
+  const tv = startTv();
+  tv.show(2);
+  stallOnEveryBuild(tv, 120);
+  const before = tv.videos.length;
+  tv.advance(10 * 60000);
+  assert.strictEqual(tv.videos.length, before);
+  tv.video.fire('stalled');
+  tv.advance(3000);
+  assert.strictEqual(tv.videos.length, before + 1);
 });
 
 test('webOS HDMI #643: ses adımları açıkken stalled olursa adımlar kapanır, yeni <video>\'ya dokunulmaz', () => {
