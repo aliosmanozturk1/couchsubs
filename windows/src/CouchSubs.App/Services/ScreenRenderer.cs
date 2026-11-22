@@ -19,9 +19,9 @@ namespace CouchSubs.App.Services;
 /// </summary>
 public static class ScreenRenderer
 {
-    /// <summary>Uygulama penceresinin boyu (tokens.json › size.windowWidth / windowHeight).</summary>
-    private static int Width => (int)DesignTokens.Shared.Size["windowWidth"];
-    private static int Height => (int)DesignTokens.Shared.Size["windowHeight"];
+    /// <summary>Uygulama penceresinin en küçük boyu (1200 × 760; Theme/Palette.cs).</summary>
+    private static int Width => (int)Palette.Size["windowWidth"];
+    private static int Height => (int)Palette.Size["windowHeight"];
 
     public static void Run(Application app, string folder)
     {
@@ -39,6 +39,8 @@ public static class ScreenRenderer
         {
             ThemeManager.Apply(app.Resources, dark);
             var suffix = dark ? "koyu" : "acik";
+            // Yeni arayüzün ortak bileşenleri (tasarım sistemi).
+            Save(() => new DesignGallery(), Width, Height, Path.Combine(folder, $"bilesenler-{suffix}.png"));
             foreach (var step in Enum.GetValues<OnboardingStep>().Where(s => s != OnboardingStep.Done))
             {
                 var controller = Demo(step);
