@@ -205,6 +205,8 @@ public sealed class GamePreview : ContentControl
         drawing.Children.Add(new GeometryDrawing(new SolidColorBrush(Color.FromRgb(0x6D, 0x6A, 0x5D)), null, new RectangleGeometry(new Rect(0, 0, 160, 90))));
         drawing.Children.Add(new GeometryDrawing(Glow(Color.FromRgb(0x7A, 0x8A, 0x6A)), null, new EllipseGeometry(new Point(48, 32), 56, 32)));
         drawing.Children.Add(new GeometryDrawing(Glow(Color.FromRgb(0xC7, 0x9A, 0x62)), null, new EllipseGeometry(new Point(120, 27), 48, 27)));
+        // Parıltılar 16:9 alanın dışına taşmasın (taşarsa fırça büyür, kenarlarda boşluk kalır).
+        drawing.ClipGeometry = new RectangleGeometry(new Rect(0, 0, 160, 90));
         group.Drawing = drawing;
         group.Freeze();
         return group;

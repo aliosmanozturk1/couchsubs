@@ -264,7 +264,14 @@
                     BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource PillCorner}}"
                     Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
                 <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"
-                                  TextElement.Foreground="{TemplateBinding Foreground}" RecognizesAccessKey="True" />
+                                  TextElement.Foreground="{TemplateBinding Foreground}" RecognizesAccessKey="True">
+                    <ContentPresenter.Resources>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                            <Setter Property="TextWrapping" Value="NoWrap" />
+                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                        </Style>
+                    </ContentPresenter.Resources>
+                </ContentPresenter>
             </Border>
             <Border x:Name="Focus" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource PillCorner}}" BorderBrush="{DynamicResource accentBrush}" Margin="-3"
                     BorderThickness="2" Visibility="Collapsed" />

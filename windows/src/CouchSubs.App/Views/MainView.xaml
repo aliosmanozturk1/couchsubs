@@ -274,27 +274,27 @@
                         <TextBlock Text="{t:T 'STATUS'}" Style="{StaticResource SectionLabel}" />
                         <TextBlock x:Name="StateTitle" Style="{StaticResource HeadlineText}" Margin="0,4,0,12" />
                         <UniformGrid Rows="1">
-                            <Border Style="{StaticResource Tile}" Margin="0,0,4,0">
+                            <Border Style="{StaticResource Tile}" Margin="0,0,4,0" MinHeight="112">
                                 <Grid>
                                     <TextBlock x:Name="LineCount" Style="{StaticResource MonoValue}" VerticalAlignment="Top" />
-                                    <local:Sparkline x:Name="LineSpark" Height="40" VerticalAlignment="Bottom" Margin="-12,0,-12,22" />
-                                    <TextBlock x:Name="LineRate" Style="{StaticResource CaptionText}" VerticalAlignment="Bottom" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                    <local:Sparkline x:Name="LineSpark" Height="36" VerticalAlignment="Center" Margin="-12,8,-12,0" />
+                                    <TextBlock x:Name="LineRate" Style="{StaticResource CaptionText}" VerticalAlignment="Bottom" TextWrapping="Wrap" LineHeight="15" LineStackingStrategy="BlockLineHeight" />
                                 </Grid>
                             </Border>
-                            <Border Style="{StaticResource Tile}" Margin="4,0">
+                            <Border Style="{StaticResource Tile}" Margin="4,0" MinHeight="112">
                                 <Grid>
                                     <DockPanel VerticalAlignment="Top">
                                         <local:Ring x:Name="PackRing" DockPanel.Dock="Right" Width="40" Height="40" />
                                         <TextBlock x:Name="PackCount" Style="{StaticResource MonoValue}" />
                                     </DockPanel>
-                                    <TextBlock x:Name="PackShare" Style="{StaticResource CaptionText}" VerticalAlignment="Bottom" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                    <TextBlock x:Name="PackShare" Style="{StaticResource CaptionText}" VerticalAlignment="Bottom" TextWrapping="Wrap" LineHeight="15" LineStackingStrategy="BlockLineHeight" />
                                 </Grid>
                             </Border>
-                            <Border Style="{StaticResource Tile}" Margin="4,0,0,0">
+                            <Border Style="{StaticResource Tile}" Margin="4,0,0,0" MinHeight="112">
                                 <Grid>
                                     <TextBlock x:Name="DelayValue" Style="{StaticResource MonoValue}" VerticalAlignment="Top" />
-                                    <local:Bars x:Name="DelayBars" Height="28" VerticalAlignment="Bottom" Margin="0,0,0,22" />
-                                    <TextBlock Text="{t:T 'Average Delay'}" Style="{StaticResource CaptionText}" VerticalAlignment="Bottom" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                                    <local:Bars x:Name="DelayBars" Height="24" VerticalAlignment="Center" Margin="0,8,0,0" />
+                                    <TextBlock Text="{t:T 'Average Delay'}" Style="{StaticResource CaptionText}" VerticalAlignment="Bottom" TextWrapping="Wrap" LineHeight="15" LineStackingStrategy="BlockLineHeight" />
                                 </Grid>
                             </Border>
                         </UniformGrid>
