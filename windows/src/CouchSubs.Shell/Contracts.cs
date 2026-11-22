@@ -319,10 +319,15 @@ public sealed record UserSettings
     /// <summary>GTA 6'da ekrandaki telefon açılınca yazılarını otomatik çevirir (deneysel).</summary>
     public bool AutoReadGamePhone { get; init; }
     /// <summary>
-    /// "Ekranı çevir"de GTA 6 telefonunun mesajları telefonun yanındaki kartta gösterilir. Kapalıyken (varsayılan) her
-    /// mesajın çevirisi kendi balonunun üstünde, balonun renginde, yerindedir (Mac: phoneChatCard).
+    /// "GTA 6 Telefon Mesajları": açıkken (Yanda Panel, varsayılan) telefonun mesajları telefonun yanındaki sohbet panelinde
+    /// (karşı taraf solda, oyuncu sağda), kapalıyken (Balonların Üstünde) her mesajın çevirisi kendi balonunun üstünde
+    /// gösterilir. Otomatik telefon okuması ve "Ekranı çevir" aynı ayarı kullanır. Eski PhoneChatCard kaydı (varsayılanı
+    /// kapalıydı) okunmaz; herkes panelle başlar (Mac: phoneMessagesPanel).
     /// </summary>
-    public bool PhoneChatCard { get; init; }
+    public bool PhoneMessagesPanel { get; init; } = true;
+    /// <summary>Eski adı (<see cref="PhoneMessagesPanel"/>); kayda yazılmaz, kayıttan okunmaz.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool PhoneChatCard { get => PhoneMessagesPanel; init => PhoneMessagesPanel = value; }
     /// <summary>
     /// Ekran yazıları kendiliğinden bulunup yerinde çevrilir (görev, yardım, mesaj; bütün oyunlarda, bkz.
     /// <see cref="ScreenTextDetector"/>). Altyazı alanı Tam ekranken çalışmaz. Deneysel: varsayılan kapalı (beta.63'te açık

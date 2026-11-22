@@ -707,12 +707,14 @@ class RegionWatcher(
     private var phoneSession: PhoneRegionSession? = null
     /** Telefon mesajları İngilizce: kısaltmalar çevirmene açık yazılır ([GamePhoneText.englishModelInput]). */
     @Volatile var englishPhoneMessages = true
+    /** "GTA 6 Telefon Mesajları: Yanda Panel / Balonların Üstünde" ve panelin yazı boyu; her gönderide okunur (Mac ile aynı). */
+    @Volatile var phonePanel: () -> PhonePanelOptions = { PhonePanelOptions() }
 
     /** Telefon açık: izleyicinin telefonu gördüğü son kare. Okuma sonraki [offer] turunda, 450 ms'de bir yapılır. */
     fun observePhone(capture: PhoneCapture) {
         val read = readPhone ?: return
         synchronized(lock) {
-            (phoneSession ?: PhoneRegionSession(read, translator, sender).also { phoneSession = it }).observe(capture)
+            (phoneSession ?: PhoneRegionSession(read, translator, sender, { phonePanel() }).also { phoneSession = it }).observe(capture)
         }
     }
 

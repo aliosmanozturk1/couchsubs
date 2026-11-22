@@ -382,8 +382,10 @@ class PhoneRegionSessionTest {
         }
     }
 
+    // Bu sınamalar balonların üstündeki düzeni (kararlılık) ölçer; Yanda Panel ScreenPhoneCardTest'te sınanır.
     private fun watcher(reader: Reader, translator: Translator, server: Server) =
         RegionWatcher({ reader.read() }, translator, server, clock = { clock }, readPhone = { reader.read() })
+            .apply { phonePanel = { PhonePanelOptions(enabled = false) } }
 
     private fun RegionWatcher.offer(areas: List<ExtraArea> = emptyList()) = offer(areas, {
         RegionWatcher.Crop(Unit, ByteArray(RegionSignature.WIDTH * RegionSignature.HEIGHT))

@@ -21,10 +21,23 @@ internal class PhoneRegionSession(
     private val reader: (GamePhoneReader.Flat) -> Reading,
     private val translator: TextTranslator,
     private val sender: RegionSender,
+    /** "GTA 6 Telefon Mesajları: Yanda Panel / Balonların Üstünde" ve panelin yazı boyu; her gönderide okunur. */
+    private val panel: () -> PhonePanelOptions = { PhonePanelOptions() },
 ) {
     companion object {
         const val ID = SubtitleServer.GAME_PHONE_ID
         const val INTERVAL_MS = 450L
+
+        /**
+         * Gönderilecek düzen: Yanda Panel'de telefonun mesajları yanındaki sohbet panelinde ([ScreenPhoneCard.layout]; ana
+         * ekran yazıları yerinde kalır), Balonların Üstünde'de her çeviri kendi balonunun yerinde (çevirisi aslıyla aynı
+         * olanlar atılır). Telefonun yeri bilinmiyorsa balonlar yerinde kalır (Mac: PhoneRegionSession.arranged).
+         */
+        fun arranged(items: List<ScreenTranslation.Item>, pose: GamePhoneGeometry.Pose?, aspect: Double,
+                     options: PhonePanelOptions): List<ScreenTranslation.Item> {
+            if (!options.enabled || pose == null || items.isEmpty()) return items.filter { !it.unchanged }
+            return ScreenPhoneCard.layout(items, ScreenPhoneCard.Handset(pose, aspect), options.textScale).filter { !it.unchanged }
+        }
 
         /**
          * Aynı balon ekranda yerini izler, ama küçük OCR kutu farkları yazı boyunu ve satır kırılımını, renk örneği de
@@ -120,6 +133,8 @@ internal class PhoneRegionSession(
     /** Son gönderilen bloklar ve o anki telefon boyu ([steady]). */
     private var sent: List<ScreenTranslation.Item> = emptyList()
     private var sentScale = 0.0
+    /** Son gönderinin ayarı: ayar değişince aynı mesajlar yeni düzende yeniden gönderilir. */
+    private var sentOptions: PhonePanelOptions? = null
 
     fun observe(capture: PhoneCapture) {
         if (!closed) latest = capture
@@ -184,6 +199,10 @@ internal class PhoneRegionSession(
             holds = 0
             page = fresh
         } else if (!needsWork) {
+            // "GTA 6 Telefon Mesajları" ayarı değişti: aynı sayfa yeni düzende hemen gösterilir.
+            val shown = page
+            if (shown != null && rendered.isNotEmpty() && sentOptions != panel())
+                publish(items(shown, availableTranslations(shown.bubbles.map { it.group }, packLookup, skipsTurkish)))
             return
         }
         if (closed) return
@@ -208,7 +227,7 @@ internal class PhoneRegionSession(
         emptyOnce = false
         val groups = current.bubbles.map { it.group }
         val paragraphs = groups.flatMap { it.paragraphs }
-        var available = availableTranslations(paragraphs, packLookup, skipsTurkish)
+        var available = availableTranslations(groups, packLookup, skipsTurkish)
         // Önce yalnız güncel sayfayla eşleşen balonlar kalır. Örneğin yeni WhatUp yanıtı ağdayken önceki yanıtın üstü
         // kendi özgün yazısıyla görünür, bitmiş komşu balonlar okunabilir.
         publish(items(current, available))
@@ -254,7 +273,7 @@ internal class PhoneRegionSession(
         if (last.image !== verified.image && !matches(current, last)) {
             verified = last
             current = reread(verified) ?: run { missed(); return }
-            available = availableTranslations(current.bubbles.flatMap { it.group.paragraphs }, packLookup, skipsTurkish)
+            available = availableTranslations(current.bubbles.map { it.group }, packLookup, skipsTurkish)
         }
         if (closed) return
         publish(items(current, available))
@@ -351,11 +370,19 @@ internal class PhoneRegionSession(
         translations[source] = translation
     }
 
+    /**
+     * Paketten, hafızadan ya da zaten Türkçe olduğu için hazır çeviriler. Kişinin adı (sohbet başlığı) çevrilmez: "Rose"
+     * "Gül" olmasın; panelin başlığında aslıyla görünür (Mac ile aynı).
+     */
     private fun availableTranslations(
-        paragraphs: List<String>, packLookup: ((String) -> PackMatch?)?, skipsTurkish: Boolean,
+        groups: List<ScreenTranslation.Group>, packLookup: ((String) -> PackMatch?)?, skipsTurkish: Boolean,
     ): MutableMap<String, String> {
         val result = HashMap<String, String>()
-        for (text in paragraphs) {
+        for (group in groups) for (text in group.paragraphs) {
+            if (group.phone?.role?.keepsText == true) {
+                result[text] = text
+                continue
+            }
             val known = packLookup?.invoke(IconText.plain(text))?.text ?: PhoneSteady.translation(text, translations)
                 ?: if (skipsTurkish && TurkishText.isSure(text)) text else null
             if (known != null) result[text] = known else result.remove(text)
@@ -363,13 +390,19 @@ internal class PhoneRegionSession(
         return result
     }
 
-    private fun items(page: Page, translations: Map<String, String>): List<ScreenTranslation.Item> =
-        page.bubbles.mapNotNull { bubble ->
+    /**
+     * Çevirisi hazır balonlar. Panelde çevirisi aslıyla aynı mesajlar ("ok", ad) da görünür (sohbet eksik kalmasın);
+     * balonların üstünde ise atılır, özgün yazı görünür kalır.
+     */
+    private fun items(page: Page, translations: Map<String, String>): List<ScreenTranslation.Item> {
+        val keepUnchanged = panel().enabled
+        return page.bubbles.mapNotNull { bubble ->
             val group = bubble.group
             val result = group.paragraphs.mapNotNull { GamePhoneText.keepIdentifiers(it, translations[it]) }
             if (result.size != group.paragraphs.size) return@mapNotNull null
-            ScreenTranslation.item(group, group.paragraphs.map(IconText::protect), result)?.copy(surface = bubble.style)
+            ScreenTranslation.item(group, group.paragraphs.map(IconText::protect), result, keepUnchanged)?.copy(surface = bubble.style)
         }
+    }
 
     private fun publish(fresh: List<ScreenTranslation.Item>): Unit = synchronized(this) {
         // Kapanan telefonun bekleyen çevirisi oyunun üstüne çizilmez.
@@ -384,12 +417,17 @@ internal class PhoneRegionSession(
         }
         val items = if (sent.isEmpty()) fresh else steady(fresh, sent)
         sent = items
-        if (rendered == items) return
+        val options = panel()
+        if (rendered == items && (sentOptions == options || items.isEmpty())) return
         rendered = items
-        val box = items.map { it.box }.reduceOrNull { a, b -> a.union(b) }
-        val heights = items.map { it.lineHeight }.sorted()
-        sender.sendRegion(ID, items.joinToString("\n") { it.translation }, box,
-            if (heights.isEmpty()) null else heights[heights.size / 2], null, items.takeIf { it.isNotEmpty() })
+        sentOptions = options
+        val capture = latest
+        val shown = arranged(items, capture?.pose, capture?.let { it.image.width.toDouble() / maxOf(1, it.image.height) } ?: (16.0 / 9),
+            options)
+        val box = shown.map { it.box }.reduceOrNull { a, b -> a.union(b) }
+        val heights = shown.map { it.lineHeight }.sorted()
+        sender.sendRegion(ID, shown.filter { !ScreenPhoneCard.isBackdrop(it) }.joinToString("\n") { it.translation }, box,
+            if (heights.isEmpty()) null else heights[heights.size / 2], null, shown.takeIf { it.isNotEmpty() })
     }
 
     /** Mesaj listesi kaydıysa (önizlemeler başka yerde) sıradaki balon baştan seçilir. */

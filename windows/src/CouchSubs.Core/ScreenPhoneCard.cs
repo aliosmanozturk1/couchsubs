@@ -2,27 +2,50 @@
 
 namespace CouchSubs.Core;
 
+/// <summary>"GTA 6 Telefon Mesajları" ayarı ve panelin yazı çarpanı (Mac: PhonePanelOptions).</summary>
+public sealed record PhonePanelOptions(bool Enabled = true, double TextScale = 1);
+
 /// <summary>
-/// "Ekranı çevir"de GTA 6 telefonu: eğik telefon ekranının üstüne yazmak okunmuyordu (yazı küçük, ekran yamuk). Telefon
-/// karede bulunursa (<see cref="GamePhoneGeometry"/>) ekranındaki satırlar düz ekrana taşınıp ayrı gruplanır
-/// (<see cref="PhoneChat"/>) ve çevirileri telefonun hemen yanına, ekranda yer olan tarafa, telefon boyunda açık renkli bir
-/// "mesaj kartı" olarak dizilir: en üstte kişi adı, altında her mesaj kendi balonunda (giden sağda mavi, gelen solda beyaz),
-/// sohbet listesinde ad + önizleme satırları. Balonların yüksekliği Türkçenin kaç satır tutacağına göre hesaplanır, üst üste
-/// binmez; kart dolarsa en eski mesajlar düşer. Yanda yer yoksa kart telefonun üstüne konur. Telefon dışındaki yazılar kendi
-/// yerlerinde kalır. Kart TV'ye ve masaüstüne sıradan stilli öğeler olarak gider (zemin, başlık, balonlar), ayrı bir çizim
-/// gerekmez (Mac: ScreenPhoneCard.swift, Android: ScreenPhoneCard.kt; ortak deneme dosyası Fixtures/phone-chat.json).
+/// GTA 6 telefonunun sohbet paneli ("Ekranı çevir" ve otomatik telefon okuması): eğik telefon ekranının üstüne yazmak
+/// okunmuyordu (yazı küçük, ekran yamuk, monitörde balonların yeri kayıyor). Telefon karede bulunursa
+/// (<see cref="GamePhoneGeometry"/>) ekranındaki satırlar düz ekrana taşınıp ayrı gruplanır (<see cref="PhoneChat"/>,
+/// <see cref="GamePhoneText.Groups"/>) ve çevirileri telefonun hemen yanına (telefon solda ise sağına, sağda ise soluna; yanda
+/// yer yoksa altına), telefon boyunda koyu, yarı saydam bir sohbet paneli olarak dizilir: en üstte kişi adı (çevrilmez), altında
+/// her mesaj kendi balonunda (karşı taraf solda açık zeminde, oyuncu sağda amber zeminde). Panel dolarsa en eski mesajlar
+/// düşer. Yazı boyu altyazı boyutu ayarına bağlıdır. Panel stilli öğeler olarak gider ve her öğe panel parçasını taşır
+/// (<see cref="PanelPart"/>, JSON <c>panel</c>): yeni çiziciler paneli akışla çizer, eski TV öğeleri yerinde çizer
+/// (Mac: ScreenPhoneCard.swift, Android: ScreenPhoneCard.kt; ortak deneme dosyası Fixtures/phone-chat.json).
 /// </summary>
 public static class ScreenPhoneCard
 {
+    /// <summary>Panelin parçası; JSON'da <c>panel</c> alanının değeri (card, title, theirs, mine, note).</summary>
+    public enum PanelPart { Card, Title, Theirs, Mine, Note }
+
+    public static string Json(this PanelPart part) => part switch
+    {
+        PanelPart.Card => "card",
+        PanelPart.Title => "title",
+        PanelPart.Theirs => "theirs",
+        PanelPart.Mine => "mine",
+        _ => "note",
+    };
+
     /// <summary>Kartın zemini: yazısı yalnız bölünmez boşluk olan öğe, kartın tamamını kaplar; balonlar üstüne çizilir.</summary>
     public const string BackdropText = " ";
-    internal static readonly PhoneTextStyle CardColor = new("#F2F2F7", "#1C1C1E");
-    internal static readonly PhoneTextStyle IncomingColor = new("#FFFFFF", "#1C1C1E");
-    internal static readonly PhoneTextStyle OutgoingColor = new("#0A84FF", "#FFFFFF");
+    /// <summary>Panelin renkleri (CouchSubs tasarım dili): koyu zemin (çiziciler %88 örtüyle çizer), karşı taraf krem, oyuncu amber.</summary>
+    internal static readonly PhoneTextStyle CardColor = new("#141518", "#F3EEE4");
+    internal static readonly PhoneTextStyle IncomingColor = new("#F3EEE4", "#17181B");
+    internal static readonly PhoneTextStyle OutgoingColor = new("#F5B83D", "#17181B");
+    internal static readonly PhoneTextStyle NoteColor = new("#141518", "#A9A59C");
+    /// <summary>Panelin köşe yarıçapı (1080 satırlık ekranda piksel) ve zemin örtüsü.</summary>
+    public const double PanelRadius = 18, PanelOpacity = 0.88;
+    /// <summary>Kanepe simgesi: 24×16 ızgarada yuvarlak köşeli dikdörtgenler (x, y, en, boy, köşe); Mac ile aynı şekil.</summary>
+    public static readonly (double X, double Y, double Width, double Height, double Radius)[] CouchGlyph =
+        [(3, 1, 18, 8, 2.5), (0, 5, 5, 8, 2), (19, 5, 5, 8, 2), (4, 8, 16, 5, 1.5), (2, 13, 2, 3, 0.8), (20, 13, 2, 3, 0.8)];
     /// <summary>Telefonla kart arasındaki boşluk ve kartın ekran kenarından payı (ekran genişliğine oranla).</summary>
     internal const double Gap = 0.008;
-    /// <summary>Kart için yanda en az bu kadar yer olmalı; yoksa kart telefonun üstüne konur.</summary>
-    internal const double MinWidth = 0.12;
+    /// <summary>Kart için yanda en az bu kadar yer olmalı; yoksa kart telefonun altına (orada da yer yoksa üstüne) konur.</summary>
+    internal const double MinWidth = 0.12, MinBelow = 0.18;
     /// <summary>
     /// Kartın istenen eni: telefonun bu katı, en az <see cref="CardMin"/> (yanda yer varsa). Telefon boyundaki dar kartta
     /// Türkçe mesajlar çok satıra bölünüyor, balonlar iç içe görünüyordu.
@@ -198,7 +221,15 @@ public static class ScreenPhoneCard
         var candidates = new[] { Side(roomLeft < roomRight), Side(roomLeft >= roomRight) }
             .Where(box => box is not null).Select(box => box!.Value).ToList();
         if (candidates.Count == 0)
+        {
+            if (1 - ScreenMargin - (phone.Bottom + Gap) >= MinBelow)
+            {
+                var width = Math.Min(wanted, 1 - 2 * Gap);
+                var left = Math.Min(Math.Max(Gap, (phone.Left + phone.Right - width) / 2), 1 - Gap - width);
+                return new TextBox(left, phone.Bottom + Gap, left + width, 1 - ScreenMargin);
+            }
             return new TextBox(Math.Max(0, phone.Left), phone.Top, Math.Min(1, phone.Right), phone.Bottom);
+        }
         var best = candidates[0];
         foreach (var candidate in candidates.Skip(1))
             if (Covered(candidate, others) < Covered(best, others) - 1e-9) best = candidate;
@@ -218,7 +249,8 @@ public static class ScreenPhoneCard
     /// Balonlar arasında en az <see cref="BubbleSpacing"/> satır boşluk kalır; mesajlar telefon boyuna sığmazsa kart uzar,
     /// yine sığmazsa en eski mesajlar düşer. Kartın altında kalan başka bir çeviri kartın dışına, yanına alınır.
     /// </summary>
-    public static IReadOnlyList<ScreenTranslation.Item> Layout(IReadOnlyList<ScreenTranslation.Item> items, Handset handset)
+    public static IReadOnlyList<ScreenTranslation.Item> Layout(IReadOnlyList<ScreenTranslation.Item> items, Handset handset,
+                                                               double textScale = 1)
     {
         var onPhone = items.Where(item => item.Phone?.Role.InCard() == true).OrderBy(item => item.Phone!.Spot.Top).ToList();
         if (!onPhone.Any(item => !item.Unchanged)) return items;
@@ -226,7 +258,7 @@ public static class ScreenPhoneCard
         var card = CardBox(handset.Bounds, [.. others.Where(item => !item.Unchanged).Select(item => item.Box)]);
         var cardWidth = card.Right - card.Left;
         var heights = onPhone.Select(item => item.LineHeight).OrderBy(h => h).ToList();
-        var line = Math.Max(MinLine, heights[heights.Count / 2]);
+        var line = Math.Max(MinLine * Math.Min(MaxScale, Math.Max(MinScale, textScale)), heights[heights.Count / 2]);
         double pad = cardWidth * 0.05, padY = line * 0.4, spacing = line * BubbleSpacing;
         static TextLook Flat(string align, bool bold) => new(bold, false, align, false, true);
 
@@ -242,7 +274,7 @@ public static class ScreenPhoneCard
         // Her satırın kartta kaplayacağı yer: genişliği rolünden, yüksekliği Türkçenin o genişlikte kaç satır tuttuğundan.
         var rows = body.Select(item =>
         {
-            var role = item.Phone!.Role == Role.Message ? (IsBlue(item.Style) ? Role.Outgoing : Role.Incoming) : item.Phone!.Role;
+            var role = item.Phone!.Role == Role.Message ? (IsOutgoing(item.Style) ? Role.Outgoing : Role.Incoming) : item.Phone!.Role;
             var bubble = role is Role.Incoming or Role.Outgoing;
             var widest = (bubble ? BubbleShare : 1) * cardWidth - (bubble ? 0 : 2 * pad);
             var inner = widest - 2 * pad;
@@ -253,7 +285,11 @@ public static class ScreenPhoneCard
             var placed = item with
             {
                 Unchanged = false, LineHeight = line,
-                Style = role switch { Role.Outgoing => OutgoingColor, Role.Incoming => IncomingColor, _ => CardColor },
+                Style = role switch
+                {
+                    Role.Outgoing => OutgoingColor, Role.Incoming => IncomingColor, Role.Note => NoteColor, _ => CardColor,
+                },
+                Panel = role switch { Role.Outgoing => PanelPart.Mine, Role.Incoming => PanelPart.Theirs, _ => PanelPart.Note },
                 Look = Flat(side, role is Role.Contact or Role.Heading),
             };
             var inside = line * (bubble ? BubblePadding : 0.3);
@@ -285,7 +321,10 @@ public static class ScreenPhoneCard
             var left = cardOnLeft ? card.Left - Gap - width : card.Right + Gap;
             if (left >= 0 && left + width <= 1) result[i] = result[i] with { Box = new TextBox(left, box.Top, left + width, box.Bottom) };
         }
-        result.Add(new ScreenTranslation.Item("", BackdropText, card, line) { Style = CardColor, Look = Flat("left", false) });
+        result.Add(new ScreenTranslation.Item("", BackdropText, card, line)
+        {
+            Style = CardColor, Look = Flat("left", false), Panel = PanelPart.Card,
+        });
 
         var bodyTop = card.Top + padY;
         if (header is not null)
@@ -294,7 +333,7 @@ public static class ScreenPhoneCard
             {
                 Unchanged = false,
                 Box = new TextBox(card.Left + pad, bodyTop, card.Right - pad, bodyTop + line * 1.4),
-                LineHeight = line, Style = CardColor, Look = Flat("center", true),
+                LineHeight = line, Style = CardColor, Look = Flat("center", true), Panel = PanelPart.Title,
             };
             result.Add(placed);
             bodyTop = placed.Box.Bottom + spacing;
@@ -347,6 +386,40 @@ public static class ScreenPhoneCard
             lines.Add(current);
         }
         return lines;
+    }
+
+    /// <summary>Çizilecek sohbet paneli: zemin, kişinin adı, mesajlar telefondaki sırasıyla ve panel dışındaki öğeler.</summary>
+    public sealed record ChatPanel(ScreenTranslation.Item Card, ScreenTranslation.Item? Title,
+                               IReadOnlyList<ScreenTranslation.Item> Messages, IReadOnlyList<ScreenTranslation.Item> Outside);
+
+    /// <summary>Öğelerde panel varsa parçaları; yoksa null (Mac: ScreenPhoneCard.panel).</summary>
+    public static ChatPanel? PanelOf(IReadOnlyList<ScreenTranslation.Item> items)
+    {
+        var card = items.FirstOrDefault(item => item.Panel == PanelPart.Card);
+        if (card is null) return null;
+        var parts = items.Where(item => item.Panel is { } part && part != PanelPart.Card).ToList();
+        return new ChatPanel(card, parts.FirstOrDefault(item => item.Panel == PanelPart.Title),
+                         [.. parts.Where(item => item.Panel != PanelPart.Title).OrderBy(item => item.Box.Top)],
+                         [.. items.Where(item => item.Panel is null)]);
+    }
+
+    /// <summary>Altyazı boyutu ayarının (TV pikseli, 1080p) panel yazısına çarpanı: varsayılan boyda 1.</summary>
+    public static double TextScale(int fontSize) => Math.Min(MaxScale, Math.Max(MinScale, fontSize / (double)DefaultFontSize));
+    internal const int DefaultFontSize = 46;
+    internal const double MinScale = 0.75, MaxScale = 1.6;
+
+    /// <summary>
+    /// Tarafı hizadan belli olmayan balon oyuncunun mu: zemini belirgin mavi, doygun bir renk ya da açık mavimsi (GTA 6'nın
+    /// giden balonu #D3DCF4; gelen balon kremdir).
+    /// </summary>
+    internal static bool IsOutgoing(PhoneTextStyle? style)
+    {
+        if (IsBlue(style)) return true;
+        if (style?.Background is not { Length: 7 } hex || hex[0] != '#'
+            || !int.TryParse(hex.AsSpan(1), System.Globalization.NumberStyles.HexNumber, null, out var value)) return false;
+        int r = (value >> 16) & 0xFF, g = (value >> 8) & 0xFF, b = value & 0xFF;
+        int max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
+        return (max - min >= 70 && max >= 90) || (b - r >= 20 && b >= g);
     }
 
     /// <summary>Balonun okunan rengi belirgin mavi mi (giden mesaj balonu): mavi kanal kırmızı ve yeşilin ortalamasından en az 40 fazla.</summary>

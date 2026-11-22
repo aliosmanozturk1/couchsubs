@@ -1907,7 +1907,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
                 server.SendScreen(shown, milliseconds);
                 screenItems = shown;
                 screenShownUntil = DateTime.UtcNow.AddMilliseconds(milliseconds);
-            }, work.Token, frame, memory, phoneCard: settings.PhoneChatCard);
+            }, work.Token, frame, memory, phoneCard: settings.PhoneMessagesPanel,
+                panelScale: ScreenPhoneCard.TextScale(settings.Style.FontSize));
             if (!refresh) server.Clear();
             if (items.Count == 0)
             {
@@ -1953,7 +1954,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     private async Task FollowPhoneAsync(Frame frame)
     {
         // Çeviriler balonların üstündeyken (kartsız) sohbet kayınca/değişince hemen kalkar (ScreenPhoneFollow.Step.Hide).
-        var follow = screenFollow ?? new ScreenPhoneFollow { HidesOnChange = !settings.PhoneChatCard };
+        var follow = screenFollow ?? new ScreenPhoneFollow { HidesOnChange = !settings.PhoneMessagesPanel };
         var look = await Task.Run(() => ScreenPhoneFollow.Look(frame)).ConfigureAwait(true);
         if (look is not { } found)
         {
@@ -3362,6 +3363,12 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             regionWatcher.Game = () => gameSense.Current?.Name;
             // Ayarlar'daki ekran yazısı türleri (telefon, görev, yardım/eylemler, menüler, diğer).
             regionWatcher.Allows = kind => Volatile.Read(ref settings).ScreenTextAllows(kind);
+            // "GTA 6 Telefon Mesajları: Yanda Panel / Balonların Üstünde"; panelin yazısı altyazı boyutuyla (Mac ile aynı).
+            regionWatcher.PhonePanel = () =>
+            {
+                var current = Volatile.Read(ref settings);
+                return new PhonePanelOptions(current.PhoneMessagesPanel, ScreenPhoneCard.TextScale(current.Style.FontSize));
+            };
             regionWatcher.Slowdown = () => ReadPressure.Slowdown(pipeline?.LastReadMs, frameGate.BusyMs(Environment.TickCount64));
         }
     }

@@ -188,10 +188,12 @@ public struct UserSettings: Codable, Equatable {
     public static let maxWaitMs = 2000
     /// Mac'te GTA 6 telefonu açıkken mesajları yerinde gösterir. Varsayılan kapalı; kullanıcı açmadıkça telefon okunmaz.
     public var autoReadGamePhone = false
-    /// "Ekranı çevir"de GTA 6 telefonunun mesajları telefonun yanındaki kartta gösterilir. Kapalıyken (varsayılan) her
-    /// mesajın çevirisi kendi balonunun üstünde, balonun renginde, yerindedir (`ScreenTranslation.present`). Eski
-    /// kayıtlarda yoktur; kapalı başlar.
-    public var phoneChatCard = false
+    /// "GTA 6 Telefon Mesajları": açıkken (Yanda Panel, varsayılan) telefonun mesajları telefonun yanındaki sohbet
+    /// panelinde (karşı taraf solda, oyuncu sağda; `ScreenPhoneCard.layout`), kapalıyken (Balonların Üstünde) her mesajın
+    /// çevirisi kendi balonunun üstünde, balonun renginde gösterilir. Otomatik telefon okuması ve "Ekranı çevir" aynı
+    /// ayarı kullanır. Kullanıcı bildirimi (X, monitörde oynayan): balonların üstündeki çeviriler kayıyor, küçük kalıyor,
+    /// kimin ne dediği belli olmuyordu. Eski `phoneChatCard` kaydı (varsayılanı kapalıydı) okunmaz; herkes panelle başlar.
+    public var phoneMessagesPanel = true
     /// Bilinen oyunlarda hazır ek alanlar (bkz. `GameAreaPresets`); kullanıcının kendi ek alanı varsa o kullanılır.
     /// Varsayılan kapalı (beta.63–68'de açık geliyordu: otomatik ekran yazısı kapalıyken de GTA 6'nın sol üstünde menüyü,
     /// sağda bildirimleri çeviriyordu). Kullanıcı açmadıkça altyazı alanı dışında hiçbir şey çevrilmez.
@@ -276,7 +278,7 @@ public struct UserSettings: Codable, Equatable {
         misreadWaitMs = (try? values.decodeIfPresent(Int.self, forKey: .misreadWaitMs)) ?? defaults.misreadWaitMs
         partialWaitMs = (try? values.decodeIfPresent(Int.self, forKey: .partialWaitMs)) ?? defaults.partialWaitMs
         autoReadGamePhone = try values.decodeIfPresent(Bool.self, forKey: .autoReadGamePhone) ?? defaults.autoReadGamePhone
-        phoneChatCard = try values.decodeIfPresent(Bool.self, forKey: .phoneChatCard) ?? defaults.phoneChatCard
+        phoneMessagesPanel = try values.decodeIfPresent(Bool.self, forKey: .phoneMessagesPanel) ?? defaults.phoneMessagesPanel
         gameAreaPresets = try values.decodeIfPresent(Bool.self, forKey: .gameAreaPresets) ?? defaults.gameAreaPresets
         setTextApart = try values.decodeIfPresent(Bool.self, forKey: .setTextApart) ?? defaults.setTextApart
         autoScreenText = try values.decodeIfPresent(Bool.self, forKey: .autoScreenText) ?? defaults.autoScreenText
@@ -410,6 +412,12 @@ public struct DubbingSettings: Codable, Equatable {
 }
 
 extension UserSettings {
+    /// Eski adı (`phoneMessagesPanel`); kayda yazılmaz.
+    public var phoneChatCard: Bool {
+        get { phoneMessagesPanel }
+        set { phoneMessagesPanel = newValue }
+    }
+
     /// "Ekran yazılarını otomatik çevir" bir kerelik göçü (Windows AutoScreenTextMigration, Android aynı kural): göç
     /// işareti olmayan kayıtta ayar kapatılır, işaret konur. Dönüş true ise ayar açıktı (beta.63 varsayılanı); kullanıcıya
     /// bir kez "deneysel; Ayarlar'dan açabilirsiniz" bilgisi gösterilir.

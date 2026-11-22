@@ -122,10 +122,20 @@ struct ProfileScreen: View {
                 }
                 .tint(Mobile.Palette.accent)
                 RowDivider()
-                // "Ekranı çevir"de telefon mesajları: kapalıyken her balonun üstünde, yerinde (Mac ile aynı).
-                toggleRow("Show GTA 6 phone translations in a card next to the phone",
-                          "Off: each message is translated on top of its own bubble, in the bubble's colours.",
-                          isOn: $model.settings.phoneChatCard)
+                // GTA 6 telefon mesajları (otomatik okuma ve "Ekranı çevir"): Yanda Panel (varsayılan) ya da Balonların
+                // Üstünde; Mac, Windows, Android ile aynı ad ve seçenekler.
+                VStack(alignment: .leading, spacing: Mobile.Space.hair) {
+                    Text("GTA 6 Phone Messages").font(Mobile.TypeScale.headline)
+                    Picker("GTA 6 Phone Messages", selection: $model.settings.phoneMessagesPanel) {
+                        Text("Side Panel").tag(true)
+                        Text("On the Bubbles").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    Text("Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble.")
+                        .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+                }
+                .padding(.vertical, Mobile.Space.gap)
                 RowDivider()
                 toggleRow("Check unchanged subtitle areas more often",
                           "When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.",

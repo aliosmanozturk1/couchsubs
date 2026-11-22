@@ -284,6 +284,8 @@ public sealed partial class SubtitleOverlayWindow : Window
             linesPanel.Children.Add(box);
         }
 
+        // Sohbet paneli saydam pencerede alanın telefon tarafındaki kenarında, yazısı altyazı boyundan (Mac ile aynı).
+        regionsPanel.PanelFont = Math.Max(13, OverlayPlacement.FontSize(controller.Settings.Style.FontSize) * Scale * 0.55);
         regionsPanel.ShowRegions(regions, MakeRegionBox);
 
         var visible = controller.ShowsOnComputer && (lines.Count > 0 || regions.Count > 0);

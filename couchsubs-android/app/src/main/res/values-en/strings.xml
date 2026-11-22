@@ -347,8 +347,10 @@
     <string name="settings_fast_reading">Check unchanged subtitle areas more often</string>
     <string name="settings_fast_reading_short">When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.</string>
     <string name="settings_game_phone">Automatically translate the GTA 6 phone (experimental)</string>
-    <string name="settings_phone_chat_card">Show GTA 6 phone translations in a card next to the phone</string>
-    <string name="settings_phone_chat_card_short">Off: each message is translated on top of its own bubble, in the bubble\'s colours.</string>
+    <string name="settings_phone_messages">GTA 6 Phone Messages</string>
+    <string name="settings_phone_messages_panel">Side Panel</string>
+    <string name="settings_phone_messages_bubbles">On the Bubbles</string>
+    <string name="settings_phone_messages_note">Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble.</string>
     <string name="settings_misread_wait">Wait for a misread line</string>
     <string name="settings_misread_wait_note" formatted="false">When a line is read with words that are not in the dictionary, a better reading is awaited for at most this long. Measured in GTA V, translations from misread lines compared with 0 s: 0.2 s → 77%, 0.4 s → 49%, 0.6 s → 41%, 0.8 s (recommended) → 34%, 1.0 s → 31%.</string>
     <string name="settings_partial_wait">Wait for a half-read line</string>

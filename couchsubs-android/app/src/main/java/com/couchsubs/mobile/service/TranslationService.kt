@@ -783,6 +783,11 @@ class TranslationService : Service() {
             subtitleEcho = com.couchsubs.mobile.core.SubtitleEcho.shared
             // Ayarlar'daki ekran yazısı türleri (telefon, görev, yardım/eylemler, menüler, diğer).
             allows = { kind -> settings.screenTextAllows(kind) }
+            // "GTA 6 Telefon Mesajları: Yanda Panel / Balonların Üstünde"; panelin yazısı altyazı boyutuyla (Mac ile aynı).
+            phonePanel = {
+                com.couchsubs.mobile.core.PhonePanelOptions(settings.phoneMessagesPanel,
+                    com.couchsubs.mobile.core.ScreenPhoneCard.textScale(settings.style.fontSize))
+            }
             // Altyazı okuması yavaşsa ya da uzun süredir bitmediyse ek alanlar seyrek okunur (Mac, iPhone ve Windows ile aynı).
             slowdown = {
                 val since = readStartedAt
@@ -1162,7 +1167,7 @@ class TranslationService : Service() {
             return
         }
         // Çeviriler balonların üstündeyken (kartsız) sohbet kayınca/değişince hemen kalkar (ScreenPhoneFollow.Step.HIDE).
-        val follow = screenFollow ?: ScreenPhoneFollow(hidesOnChange = !settings.phoneChatCard)
+        val follow = screenFollow ?: ScreenPhoneFollow(hidesOnChange = !settings.phoneMessagesPanel)
         follow.settled(look.first, look.second)
         screenFollow = follow
     }
@@ -1234,7 +1239,8 @@ class TranslationService : Service() {
                 val phone = com.couchsubs.mobile.core.ScreenPhoneCard.phone(
                     CopiedPhoneImage(pixels.width, pixels.height, pixels))
                 val items = ScreenTranslation.translate(reading, translator, { screenGeneration.get() != generation }, pixels.gray,
-                    pixels.color, phone, memory, settings.phoneChatCard) { shown ->
+                    pixels.color, phone, memory, settings.phoneMessagesPanel,
+                    com.couchsubs.mobile.core.ScreenPhoneCard.textScale(settings.style.fontSize)) { shown ->
                     if (screenGeneration.get() != generation) return@translate
                     // İzlemenin yenilemesinde aynı çeviriler yeniden gönderilmez (TV'de kart yeniden çizilmesin).
                     if (refresh && shown == screenShown) return@translate

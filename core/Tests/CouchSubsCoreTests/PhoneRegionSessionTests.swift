@@ -82,6 +82,8 @@ final class PhoneRegionSessionTests: XCTestCase {
         let reader = Reader(), translator = Translator(), server = Server()
         var clock = 0
         let watcher = RegionWatcher(reader: reader, translator: translator, server: server, clock: { clock })
+        // Bu sınamalar balonların üstündeki düzeni (kararlılık) ölçer; panel ayrı sınanır.
+        watcher.phonePanel = { PhonePanelOptions(enabled: false) }
         let a = GamePhoneTestFrame.phone(), b = GamePhoneTestFrame.phone(patch: edit)
         let pose = try XCTUnwrap(GamePhoneGeometry.locate(a))
         let unchanged = TextLine("Meet me tomorrow.", box: second)
@@ -115,6 +117,8 @@ final class PhoneRegionSessionTests: XCTestCase {
         let reader = Reader(), translator = Translator(), server = Server()
         var clock = 0
         let watcher = RegionWatcher(reader: reader, translator: translator, server: server, clock: { clock })
+        // Bu sınamalar balonların üstündeki düzeni (kararlılık) ölçer; panel ayrı sınanır.
+        watcher.phonePanel = { PhonePanelOptions(enabled: false) }
         let a = GamePhoneTestFrame.phone(), b = GamePhoneTestFrame.phone(patch: edit)
         let pose = try XCTUnwrap(GamePhoneGeometry.locate(a))
         await translator.delay("Reply today.")
@@ -136,6 +140,8 @@ final class PhoneRegionSessionTests: XCTestCase {
         let reader = Reader(), translator = Translator(), server = Server()
         var clock = 0
         let watcher = RegionWatcher(reader: reader, translator: translator, server: server, clock: { clock })
+        // Bu sınamalar balonların üstündeki düzeni (kararlılık) ölçer; panel ayrı sınanır.
+        watcher.phonePanel = { PhonePanelOptions(enabled: false) }
         let a = GamePhoneTestFrame.phone(), b = GamePhoneTestFrame.phone(patch: edit)
         let pose = try XCTUnwrap(GamePhoneGeometry.locate(a))
         let quest = ExtraArea(id: "q", name: "Quest", region: ExtraAreaPreset.quest.region)
@@ -177,6 +183,8 @@ final class PhoneRegionSessionTests: XCTestCase {
             let reader = Reader(), translator = Translator(), server = Server()
             var clock = 0
             let watcher = RegionWatcher(reader: reader, translator: translator, server: server, clock: { clock })
+            // Bu sınamalar balonların üstündeki düzeni (kararlılık) ölçer; panel ayrı sınanır.
+            watcher.phonePanel = { PhonePanelOptions(enabled: false) }
             let a = GamePhoneTestFrame.phone()
             // Değişen piksel balonun dışında: OCR yeniden çalışır, balonun yüzeyi aynı kalır.
             let b = GamePhoneTestFrame.phone(patch: CGRect(x: 183, y: 160, width: 36, height: 12))
@@ -210,6 +218,8 @@ final class PhoneRegionSessionTests: XCTestCase {
         let reader = Reader(), translator = Translator(), server = Server()
         var clock = 0
         let watcher = RegionWatcher(reader: reader, translator: translator, server: server, clock: { clock })
+        // Bu sınamalar balonların üstündeki düzeni (kararlılık) ölçer; panel ayrı sınanır.
+        watcher.phonePanel = { PhonePanelOptions(enabled: false) }
         let a = GamePhoneTestFrame.phone(), gone = GamePhoneTestFrame.phone(camera: false)
         let pose = try XCTUnwrap(GamePhoneGeometry.locate(a))
         reader.set([TextLine("Where are you man", box: first)])
@@ -232,6 +242,8 @@ final class PhoneRegionSessionTests: XCTestCase {
         let reader = Reader(), translator = Translator(), server = Server()
         var clock = 0
         let watcher = RegionWatcher(reader: reader, translator: translator, server: server, clock: { clock })
+        // Bu sınamalar balonların üstündeki düzeni (kararlılık) ölçer; panel ayrı sınanır.
+        watcher.phonePanel = { PhonePanelOptions(enabled: false) }
         let a = GamePhoneTestFrame.phone(), gone = GamePhoneTestFrame.phone(camera: false)
         let pose = try XCTUnwrap(GamePhoneGeometry.locate(a))
         reader.set([TextLine("Reply today.", box: first)])
@@ -258,6 +270,8 @@ final class PhoneRegionSessionTests: XCTestCase {
             let reader = Reader(), translator = Translator(), server = Server()
             var clock = 0
             let watcher = RegionWatcher(reader: reader, translator: translator, server: server, clock: { clock })
+            // Bu sınamalar balonların üstündeki düzeni (kararlılık) ölçer; panel ayrı sınanır.
+            watcher.phonePanel = { PhonePanelOptions(enabled: false) }
             let a = GamePhoneTestFrame.phone(), b = GamePhoneTestFrame.phone(patch: edit)
             let pose = try XCTUnwrap(GamePhoneGeometry.locate(a))
             reader.set(full)
@@ -280,5 +294,55 @@ final class PhoneRegionSessionTests: XCTestCase {
             try await wait { !watcher.isBusy }
             XCTAssertEqual(server.sent.last?.items.count, stillMissing ? 3 : 4)
         }
+    }
+
+    /// Yanda Panel (varsayılan; X'teki bildirim: monitörde balonların üstündeki çeviriler kayıyor, kimin ne dediği belli
+    /// olmuyor): mesajlar telefonun yanındaki panelde, telefonun üstüne binmeden; üstte kişinin adı aslıyla (çevirmene
+    /// gitmez), karşı tarafın mesajı solda açık zeminde, oyuncunun mesajı sağda amber zeminde, sırası telefondaki gibi.
+    func testSidePanelShowsTheChatNextToThePhone() async throws {
+        let reader = Reader(), translator = Translator(), server = Server()
+        var clock = 0
+        let watcher = RegionWatcher(reader: reader, translator: translator, server: server, clock: { clock })
+        let a = GamePhoneTestFrame.phone()
+        let pose = try XCTUnwrap(GamePhoneGeometry.locate(a))
+        reader.set([TextLine("Lucia", box: TextBox(left: 0.40, top: 0.05, right: 0.60, bottom: 0.09)),
+                    TextLine("Reply today.", box: TextBox(left: 0.05, top: 0.30, right: 0.55, bottom: 0.36)),
+                    TextLine("Open the camera.", box: TextBox(left: 0.45, top: 0.50, right: 0.95, bottom: 0.56))])
+        watcher.offer(a, areas: [], phone: pose)
+        try await wait { !watcher.isBusy }
+        let items = try XCTUnwrap(server.sent.last?.items)
+        XCTAssertEqual(items.map(\.panel), [.card, .title, .theirs, .mine])
+        XCTAssertEqual(items.map { SubtitleServer.json($0, phone: true)["panel"] as? String }, ["card", "title", "theirs", "mine"])
+        XCTAssertEqual(items.map(\.translation), [ScreenPhoneCard.backdropText, "Lucia", "Bugün yanıtla.", "Kamerayı aç."])
+        let calls = await translator.calls
+        XCTAssertFalse(calls.contains("Lucia"), "kişinin adı çevrilmez")
+        XCTAssertEqual(server.sent.last?.text, "Lucia\nBugün yanıtla.\nKamerayı aç.")
+        let card = items[0].box, phone = pose.bounds
+        XCTAssertTrue(card.left >= phone.right || card.right <= phone.left || card.top >= phone.bottom, "panel telefonun yanında")
+        for item in items.dropFirst() {
+            XCTAssertTrue(item.box.left >= card.left - 1e-9 && item.box.right <= card.right + 1e-9
+                          && item.box.top >= card.top - 1e-9 && item.box.bottom <= card.bottom + 1e-9)
+        }
+        XCTAssertEqual(items[2].style, ScreenPhoneCard.incomingColor)
+        XCTAssertEqual(items[3].style, ScreenPhoneCard.outgoingColor)
+        XCTAssertLessThan(items[2].box.left, items[3].box.left, "karşı taraf solda, oyuncu sağda")
+        XCTAssertLessThan(items[2].box.top, items[3].box.top)
+        XCTAssertGreaterThanOrEqual(items[2].lineHeight, ScreenPhoneCard.minLine - 1e-9)
+
+        // Balonların Üstünde: her çeviri kendi balonunun yerinde, adı aslıyla aynı olduğu için çizilmez.
+        watcher.phonePanel = { PhonePanelOptions(enabled: false) }
+        clock = 450
+        watcher.offer(a, areas: [], phone: pose)
+        try await wait { !watcher.isBusy }
+        let bubbles = try XCTUnwrap(server.sent.last?.items)
+        XCTAssertEqual(bubbles.map(\.translation), ["Bugün yanıtla.", "Kamerayı aç."])
+        XCTAssertTrue(bubbles.allSatisfy { $0.panel == nil && $0.box.left >= phone.left && $0.box.right <= phone.right })
+    }
+
+    /// Panelin yazısı altyazı boyutu ayarıyla büyür.
+    func testSidePanelTextFollowsSubtitleSize() {
+        XCTAssertEqual(ScreenPhoneCard.textScale(fontSize: 46), 1, accuracy: 1e-9)
+        XCTAssertEqual(ScreenPhoneCard.textScale(fontSize: 69), 1.5, accuracy: 1e-9)
+        XCTAssertEqual(ScreenPhoneCard.textScale(fontSize: 10), ScreenPhoneCard.minScale, accuracy: 1e-9)
     }
 }

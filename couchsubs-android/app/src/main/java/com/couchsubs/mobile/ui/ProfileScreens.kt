@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -94,7 +95,7 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
     var setTextApart by remember { mutableStateOf(settings.setTextApart) }
     var fastReading by remember { mutableStateOf(settings.fastSubtitleDetection) }
     var gamePhone by remember { mutableStateOf(settings.autoReadGamePhone) }
-    var phoneChatCard by remember { mutableStateOf(settings.phoneChatCard) }
+    var phoneMessagesPanel by remember { mutableStateOf(settings.phoneMessagesPanel) }
     var misreadWait by remember { mutableStateOf(settings.misreadWaitMs) }
     var partialWait by remember { mutableStateOf(settings.partialWaitMs) }
     var usage by remember { mutableStateOf(settings.usageData) }
@@ -175,9 +176,16 @@ fun ProfileScreen(onBack: () -> Unit, onSettings: () -> Unit, onPairing: () -> U
             { RowItem(stringResource(R.string.settings_game_phone)) {
                 Switch(gamePhone, { gamePhone = it; settings.autoReadGamePhone = it })
             } },
-            // "Ekranı çevir"de telefon mesajları: kapalıyken her balonun üstünde, yerinde (Mac, iPhone, Windows ile aynı).
-            { RowItem(stringResource(R.string.settings_phone_chat_card), stringResource(R.string.settings_phone_chat_card_short)) {
-                Switch(phoneChatCard, { phoneChatCard = it; settings.phoneChatCard = it })
+            // GTA 6 telefon mesajları (otomatik okuma ve "Ekranı çevir"): Yanda Panel (varsayılan) ya da Balonların Üstünde;
+            // Mac, iPhone, Windows ile aynı ad ve seçenekler.
+            { Column(verticalArrangement = Arrangement.spacedBy(Tokens.Space.hair)) {
+                TileLabel(stringResource(R.string.settings_phone_messages))
+                Segmented(listOf(stringResource(R.string.settings_phone_messages_panel), stringResource(R.string.settings_phone_messages_bubbles)),
+                    if (phoneMessagesPanel) 0 else 1) { index ->
+                    phoneMessagesPanel = index == 0
+                    settings.phoneMessagesPanel = index == 0
+                }
+                Text(stringResource(R.string.settings_phone_messages_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
             } },
             // Windows, Mac ve iPhone'daki iki bekleme kaydırıcısı: aynı ad ve açıklama, 0–1 sn, 0,1 sn adım.
             { Column {
