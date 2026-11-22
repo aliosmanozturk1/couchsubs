@@ -50,6 +50,7 @@ enum XboxText {
         case .service: return String(localized: "The Xbox service sent an unexpected reply. Retrying…")
         case .noPicture: return String(localized: "No picture from the Xbox. Reconnecting…")
         case .noFirstFrame: return String(localized: "No picture came from the Xbox. Trying once more…")
+        case .serverClosed: return String(localized: "The Xbox closed the stream. Reconnecting…")
         }
     }
 }

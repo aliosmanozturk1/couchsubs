@@ -1114,6 +1114,22 @@
         }
       }
     },
+    "The Xbox closed the stream. Reconnecting…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Xbox closed the stream. Reconnecting…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox yayını kapattı. Yeniden bağlanılıyor…"
+          }
+        }
+      }
+    },
     "No picture from the Xbox. Reconnecting…": {
       "localizations": {
         "en": {

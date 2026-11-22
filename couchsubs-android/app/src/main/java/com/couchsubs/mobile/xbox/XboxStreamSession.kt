@@ -79,6 +79,8 @@ class XboxStreamSession(
         const val KEEPALIVE_MS = 30_000L
         /** El sıkışmadan sonra bu sürede kare gelmezse bağlantı "görüntü gelmedi" nedeniyle kapatılır. */
         const val FIRST_FRAME_MS = XboxFirstFrameWatch.FIRST_FRAME_LIMIT_MS
+        /** ICE değişiminden sonra görüntü kanalı bu sürede açılmazsa bağlantı zaman aşımıyla kapatılır. */
+        const val CONNECT_MS = XboxConnectWatch.CONNECT_LIMIT_MS
         /** OCR saniyede beş kez okur; her kareyi I420'ye çevirmeye gerek yok. */
         const val FRAME_INTERVAL_MS = 66L
         /** Kare onayları oynatıcıdaki gibi 16 ms'de bir paketlenir (Input.ts `_inputInterval`). */
@@ -101,6 +103,14 @@ class XboxStreamSession(
     @Volatile private var factory: PeerConnectionFactory? = null
     @Volatile private var ended: CountDownLatch? = null
     @Volatile private var endReason: String? = null
+    /** Bağlantıyı bitiren olayın türü ([endReason] ile birlikte yazılır): kapanma nedenini ve ekrandaki metni seçer. */
+    @Volatile private var endKind: XboxError? = null
+    /**
+     * Kapatılamayan (DELETE başarısız) oturum: bir sonraki `play`dan önce yeniden kapatılır. Kapatılmadan yenisi
+     * açılınca Xbox eski oturumu açık sayıp yeni oturumu reddediyordu.
+     */
+    @Volatile private var staleSessionId: String? = null
+    @Volatile private var lastKind: XboxError? = null
     @Volatile private var keepalive: ScheduledFuture<*>? = null
     @Volatile private var lastConverted = 0L
     @Volatile private var firstFrameAt = 0L
@@ -159,6 +169,11 @@ class XboxStreamSession(
             var decided: XboxSessionMachine.Action? = null
             onState(SessionState.Connecting)
             try {
+                staleSessionId?.let { stale ->
+                    staleSessionId = null
+                    log("önceki oturum Xbox'ta açık kalmış olabilir: yeni oturumdan önce kapatılıyor")
+                    closeRemote(stale)
+                }
                 log("oturum açılıyor: ${console.name}")
                 sessionId = home.play(console.id)
                 log("play yanıtı: oturum ${sessionId?.take(8)}…")
@@ -192,7 +207,7 @@ class XboxStreamSession(
                 if (!stopped.get()) {
                     // Bağlantı kuruldu ama Xbox tek kare göndermeden kapattı: "görüntü gelmedi" sayılır (iki bağlantıda durulur).
                     val noFirstFrame = connectedAt > 0 && frameSession?.let { frameCounter.framesInSession(it) } == 0L
-                    throw XboxException(if (noFirstFrame) XboxError.NO_FIRST_FRAME else XboxError.NETWORK, endReason ?: "Xbox görüntü bağlantısı kapandı")
+                    throw XboxException(if (noFirstFrame) XboxError.NO_FIRST_FRAME else endKind ?: XboxError.NETWORK, endReason ?: "Xbox görüntü bağlantısı kapandı")
                 }
             } catch (error: InterruptedException) {
                 if (stopped.get()) break
@@ -227,7 +242,8 @@ class XboxStreamSession(
         val now = SystemClock.elapsedRealtime()
         val lived = if (firstFrameAt > 0) "${(now - firstFrameAt) / 1000} sn" else "ilk kare yok"
         val reason = endReason ?: lastError ?: "durduruldu"
-        val text = "bağlantı bitti: $reason; kare $frames, onay $acksSent, ilk kareden sonra $lived"
+        val cause = lastKind?.let { " (${XboxEndCause.of(it).text})" } ?: ""
+        val text = "bağlantı bitti$cause: $reason; kare $frames, onay $acksSent, ilk kareden sonra $lived"
         log(text)
         if (!stopped.get() && endReported.compareAndSet(false, true)) Backend.recordError(XboxSessionEnded(text))
     }
@@ -236,8 +252,10 @@ class XboxStreamSession(
 
     private fun report(kind: XboxError, detail: String?) {
         lastError = "$kind: $detail"
+        lastKind = kind
         if (stopped.get()) return
         log("kopma ($kind): $detail")
+        log(XboxEndCause.line(kind, detail))
         if (kind == XboxError.NO_FIRST_FRAME) {
             log("Xbox görüntü göndermedi: bağlantı kuruldu ama tek kare gelmedi. Xbox'ta Ayarlar › Cihazlar ve bağlantılar › " +
                 "Uzak özellikler açık mı, Xbox kablolu mu? Tanı satırlarında video bayt 0 ise Xbox hiç görüntü kodlamıyor")
@@ -273,11 +291,34 @@ class XboxStreamSession(
     private fun stopRemote() {
         val id = sessionId ?: return
         sessionId = null
-        try {
-            home.stop(id)
-        } catch (error: Exception) {
-            // Kopan bağlantının kapatılacak oturumu yoktur.
+        closeRemote(id)
+    }
+
+    /**
+     * Oturumu Xbox hizmetinde kapatır (birkaç deneme). Kapanmazsa bir sonraki `play`dan önce yeniden denenir; sonuç
+     * günlüğe yazılır (eskiden hata sessizce yutuluyordu).
+     */
+    private fun closeRemote(id: String) {
+        val error = try {
+            home.close(id)
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            "kesildi"
         }
+        if (error == null) {
+            log("oturum kapatıldı: ${id.take(8)}…")
+            return
+        }
+        staleSessionId = id
+        log("oturum kapatılamadı (${XboxHome.CLOSE_DELAYS_MS.size} deneme): ${XboxSessionMachine.shortReason(error, "?")}; yeni oturumdan önce yeniden denenecek")
+    }
+
+    /** Bağlantıyı bitiren ilk olay kaydedilir (neden ve türü); sonrakiler ilkinin yerine geçmez. */
+    @Synchronized
+    private fun end(reason: String, kind: XboxError) {
+        if (endReason != null) return
+        endReason = reason
+        endKind = kind
     }
 
     // --- WebRTC ---
@@ -343,7 +384,9 @@ class XboxStreamSession(
         }
         val done = CountDownLatch(1).also { ended = it }
         endReason = null
+        endKind = null
         lastError = null
+        lastKind = null
         firstFrameAt = 0L
         connectedAt = 0L
         acking = false
@@ -383,8 +426,11 @@ class XboxStreamSession(
             override fun onRenegotiationNeeded() {}
             override fun onConnectionChange(state: PeerConnection.PeerConnectionState?) {
                 log("bağlantı: $state")
-                if (state == PeerConnection.PeerConnectionState.FAILED || state == PeerConnection.PeerConnectionState.CLOSED) {
-                    endReason = "Xbox WebRTC bağlantısı kesildi ($state)"
+                if (state == PeerConnection.PeerConnectionState.FAILED) {
+                    end("Xbox WebRTC bağlantısı kesildi (ICE failed)", XboxError.NETWORK)
+                    done.countDown()
+                } else if (state == PeerConnection.PeerConnectionState.CLOSED) {
+                    end("Xbox WebRTC bağlantısını kapattı", XboxError.SERVER_CLOSED)
                     done.countDown()
                 }
             }
@@ -435,9 +481,18 @@ class XboxStreamSession(
         val negotiatedAt = SystemClock.elapsedRealtime()
         while (!stopped.get()) {
             if (done.await(1, TimeUnit.SECONDS)) break
-            if (frameCounter.framesInSession(negotiatedFrames) == 0L && SystemClock.elapsedRealtime() - negotiatedAt > FIRST_FRAME_MS) {
-                endReason = "Xbox'tan ${FIRST_FRAME_MS / 1000} sn içinde görüntü gelmedi"
-                throw XboxException(XboxError.NO_FIRST_FRAME, endReason!!)
+            val now = SystemClock.elapsedRealtime()
+            val connected = connectedAt
+            // Görüntü kanalı açılmadı (ICE Wi-Fi'da kurulamadı): ilk kare sınırı kanal açılınca başlar.
+            if (connected == 0L && now - negotiatedAt > CONNECT_MS) {
+                val reason = "Xbox ile görüntü bağlantısı ${CONNECT_MS / 1000} sn içinde kurulamadı (ICE)"
+                end(reason, XboxError.TIMEOUT)
+                throw XboxException(XboxError.TIMEOUT, reason)
+            }
+            if (frameCounter.framesInSession(negotiatedFrames) == 0L && connected > 0L && now - connected > FIRST_FRAME_MS) {
+                val reason = "Xbox'tan ${FIRST_FRAME_MS / 1000} sn içinde görüntü gelmedi"
+                end(reason, XboxError.NO_FIRST_FRAME)
+                throw XboxException(XboxError.NO_FIRST_FRAME, reason)
             }
             checkPicture(watchPicture)
         }
@@ -460,7 +515,7 @@ class XboxStreamSession(
             }
             is XboxPictureVerdict.Stalled -> {
                 log("${verdict.reason}; oturum yeniden kuruluyor")
-                endReason = verdict.reason
+                end(verdict.reason, XboxError.NO_PICTURE)
                 throw XboxException(XboxError.NO_PICTURE, verdict.reason)
             }
         }
@@ -479,7 +534,7 @@ class XboxStreamSession(
                     startWatch()
                 }
                 state == DataChannel.State.CLOSED && name == "input" -> {
-                    endReason = "Xbox görüntü bağlantısı kapandı"
+                    end("Xbox görüntü kanalını kapattı", XboxError.SERVER_CLOSED)
                     done.countDown()
                 }
             }
@@ -588,14 +643,32 @@ class XboxStreamSession(
         }
     }
 
+    /**
+     * Tek başarısız canlı tutma isteği yayını bitirmez (görüntü akarken ağ bir an takılabilir); ardışık
+     * [XboxKeepalive.MAX_FAILURES] hata ya da oturumun Xbox hizmetinde artık olmaması (404/410) bitirir ve oturum baştan
+     * denenir (iPhone, Mac ve Windows'la aynı; eskiden telefonda hata yalnız günlüğe yazılıyordu).
+     */
     private fun startKeepalive() {
         keepalive?.cancel(false)
+        val counter = XboxKeepalive()
+        val latch = ended
         keepalive = timers.scheduleWithFixedDelay({
             val id = sessionId ?: return@scheduleWithFixedDelay
             try {
                 home.keepalive(id)
+                if (counter.failures > 0) log("canlı tutma yeniden yanıt verdi")
+                counter.succeeded()
             } catch (error: Exception) {
-                log("canlı tutma: ${error.message}")
+                val detail = error.message ?: error.javaClass.simpleName
+                val finish = counter.failed()
+                log("canlı tutma başarısız (${counter.failures}/${XboxKeepalive.MAX_FAILURES}): ${XboxSessionMachine.shortReason(detail, "?")}")
+                when {
+                    XboxKeepalive.sessionGone(detail) -> end("Xbox oturumu kapattı (canlı tutma: ${XboxSessionMachine.shortReason(detail, "?").take(60)})", XboxError.SERVER_CLOSED)
+                    finish -> end("Xbox canlı tutma isteklerine yanıt vermiyor", XboxError.TIMEOUT)
+                    else -> return@scheduleWithFixedDelay
+                }
+                latch?.countDown()
+                keepalive?.cancel(false)
             }
         }, KEEPALIVE_MS, KEEPALIVE_MS, TimeUnit.MILLISECONDS)
     }

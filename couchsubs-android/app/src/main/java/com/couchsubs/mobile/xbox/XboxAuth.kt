@@ -98,6 +98,15 @@ class XboxAuth(
         home = null
     }
 
+    /**
+     * Ev yayını hizmeti jetonu süresinden önce reddedildi (HTTP 401): bellekteki jetonlar bırakılır, sonraki istek
+     * yenilerini alır. Kullanıcı jetonu korunur; eskiden önbellekteki geçersiz jetonla her yeniden deneme 401 alıyor ve
+     * "yeniden giriş yapın" deyip duruyordu (iPhone/Mac XboxAuth.invalidateHomeToken ile aynı).
+     */
+    fun invalidateHomeToken() {
+        synchronized(lock) { reset() }
+    }
+
     /** Microsoft erişim jetonu; 60 sn'den az kaldıysa yenilenir (xal-node `getOrRefreshUserToken`). */
     fun userAccessToken(): String { synchronized(lock) {
         val current = userToken ?: throw XboxException(XboxError.SIGN_IN_REQUIRED, "Microsoft girişi gerekiyor")

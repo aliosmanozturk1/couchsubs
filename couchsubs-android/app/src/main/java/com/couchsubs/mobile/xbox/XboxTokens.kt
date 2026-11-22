@@ -33,6 +33,11 @@ enum class XboxError {
      * durulur (bkz. XboxSessionMachine.MAX_NO_PICTURE_ATTEMPTS).
      */
     NO_FIRST_FRAME,
+    /**
+     * Xbox yayını kendisi kapattı (görüntü kanalı ya da WebRTC bağlantısı karşı taraftan kapandı, oturum sunucuda
+     * bulunamadı); yeniden bağlanılır (bkz. XboxEndCause).
+     */
+    SERVER_CLOSED,
 }
 
 class XboxException(val kind: XboxError, message: String, cause: Throwable? = null) : Exception(message, cause)

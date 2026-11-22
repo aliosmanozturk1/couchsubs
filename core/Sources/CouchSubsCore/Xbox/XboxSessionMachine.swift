@@ -3,7 +3,8 @@
 // Kurallar Windows'taki XboxStreamSession ile aynı; iletiler xbox-xcloud-player 0.2.11'inkilerle birebir (MIT, unknownskl).
 // Hata ya da kopmada 5, 15, 45 sn sonra baştan denenir; üç ardışık denemeden sonra durulur (konsol "oyun başka yerde
 // açıldı" deyip yayını kesince eskiden her 5 sn'de bir yeniden açılıyordu). Konsol `Failed` ya da `errorDetails` dönerse
-// hiç denenmez. Yayın `healthyStreamMs` ayakta kaldıysa deneme sayısı sıfırlanır.
+// hiç denenmez; yalnız görüntü gelmiş bir yayın koptuktan sonraki ilk ret bir kez, `reconnectGraceMs` sonra denenir.
+// Yayın `healthyStreamMs` ayakta kaldıysa deneme sayısı sıfırlanır.
 
 import Foundation
 
@@ -41,6 +42,12 @@ public struct XboxSessionMachine {
     /// Ardışık, Xbox'tan tek kare gelmeden biten bağlantılar.
     private var noPictureConnections = 0
     public static let maxNoPictureAttempts = 2
+    /// Bu makinede bir kez görüntü geldi (kopmadan sonraki ret bir kez denenir, bkz. `fail`).
+    private var hadPicture = false
+    /// Kopmadan sonraki ret için tanınan tek deneme kullanıldı; yeni görüntüde sıfırlanır.
+    private var graceUsed = false
+    /// Kopmadan sonra Xbox yeni oturumu reddederse (eski oturum Xbox'ta henüz kapanmadı) beklenen süre.
+    public static let reconnectGraceMs = 15_000
 
     public init(maxPolls: Int = 90, pollIntervalMs: Int = 1000, retryDelaysMs: [Int] = [5000, 15000, 45000], healthyStreamMs: Int = 60_000,
          clock: @escaping () -> Double = { ProcessInfo.processInfo.systemUptime * 1000 }) {
@@ -98,6 +105,8 @@ public struct XboxSessionMachine {
         phase = .streaming
         streamingSince = clock()
         noPictureConnections = 0
+        hadPicture = true
+        graceUsed = false
         return true
     }
 
@@ -113,10 +122,16 @@ public struct XboxSessionMachine {
         failures += 1
         if kind == .noFirstFrame { noPictureConnections += 1 }
         // Xbox uzaktan oynatma hizmetini başlatamadı (HTTP hatası olarak gelse de): yeniden denemek işe yaramaz (#871).
-        let retry = !permanent && !XboxStop.isPermanent(message) && !Self.fatal.contains(kind) && failures <= retryDelaysMs.count
+        let refused = permanent || XboxStop.isPermanent(message)
+        // Görüntü gelmiş yayın koptuktan hemen sonra Xbox eski oturumu bırakmadan yenisini reddedebiliyor ("bir kez
+        // kopunca Xbox yeniden başlatılmadan bağlanmıyor"): bu ret bir kez, eski oturum kapansın diye uzun beklenip denenir.
+        let grace = refused && hadPicture && !graceUsed
+        let retry = (!refused || grace) && !Self.fatal.contains(kind) && failures <= retryDelaysMs.count
             && noPictureConnections < Self.maxNoPictureAttempts
+        if retry && grace { graceUsed = true }
         phase = .failed(kind, message: message, willRetry: retry, attempt: retry ? failures : 0)
-        return .retry(delayMs: retry ? retryDelaysMs[failures - 1] : nil)
+        guard retry else { return .retry(delayMs: nil) }
+        return .retry(delayMs: grace ? max(Self.reconnectGraceMs, retryDelaysMs[failures - 1]) : retryDelaysMs[failures - 1])
     }
 
     /// `errorDetails` gerçek bir hata mı (boş nesne ya da tüm alanları null olan nesne sayılmaz).

@@ -151,6 +151,35 @@ public class XboxSessionHealthTests
     }
 
     [Fact]
+    public void RefusalAfterDropIsRetriedOnce()
+    {
+        // "Bir kez kopunca tekrar bağlanmıyor": görüntü gelmiş yayın koptuktan sonra Xbox eski oturumu bırakmadan
+        // yenisini reddedebiliyor. Bu ret bir kez, uzun beklenip denenir; ikinci ret yayını durdurur.
+        var plan = new XboxRetryPlan();
+        plan.PictureArrived();
+        Assert.Equal(5000, plan.Failed(false, false, 10_000, "WebRTC failed"));
+        Assert.Equal(XboxRetryPlan.ReconnectGraceMs, plan.Failed(permanent: false, noFirstFrame: false, streamedMs: null, "Xbox service HTTP 500: " + CloudServiceTimeout));
+        Assert.Null(plan.Failed(permanent: true, noFirstFrame: false, streamedMs: null));
+        // Görüntü hiç gelmeden gelen ret eskisi gibi denenmez.
+        Assert.Null(new XboxRetryPlan().Failed(permanent: true, noFirstFrame: false, streamedMs: null));
+    }
+
+    [Fact]
+    public void EndCauseIsLoggedAndShown()
+    {
+        Assert.Equal("kapanma nedeni: sunucu kapattı (Xbox görüntü kanalını kapattı)", XboxEndCauses.Line(XboxEndCause.Server, "Xbox görüntü kanalını kapattı"));
+        Assert.Equal("bağlantı bitti (ağ): x; kare 3, ilk kareden sonra 1 sn", XboxStop.Summary("x", 3, TimeSpan.FromSeconds(1), XboxEndCause.Network));
+        Assert.Equal(XboxEndCause.Timeout, XboxEndCauses.FromMessage("Xbox WebRTC exchange timed out (SDP, 30 sn)"));
+        Assert.Equal(XboxEndCause.Server, XboxEndCauses.FromMessage("Xbox service HTTP 409: {}"));
+        Assert.Equal(XboxEndCause.Network, XboxEndCauses.FromMessage("fetch failed"));
+        Assert.True(XboxKeepalive.SessionGone("Xbox service HTTP 404: "));
+        Assert.False(XboxKeepalive.SessionGone("Xbox service HTTP 500: "));
+        // Ekrandaki metinler Mac kataloğunda (Türkçesiyle) var.
+        foreach (var cause in Enum.GetValues<XboxEndCause>())
+            Assert.NotEqual(XboxEndCauses.RetryMessage(cause), Localizer.ForLanguage("tr")[XboxEndCauses.RetryMessage(cause)]);
+    }
+
+    [Fact]
     public void BridgeOutputHidesTokenLikeValues()
     {
         var token = new string('A', 30) + "." + new string('b', 30);
