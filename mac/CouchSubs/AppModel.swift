@@ -784,6 +784,8 @@ final class AppModel: ObservableObject {
     private(set) var frameCount = 0
     private(set) var lastFrameAt: Date?
     @Published var showAbout = false
+    /// Uygulama menüsündeki "Sürüm Notları".
+    @Published var showReleaseNotes = false
     @Published var showSettings = false {
         didSet { if showSettings, !oldValue { usage.record(.screen("settings")) } }
     }
