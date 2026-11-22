@@ -45,6 +45,8 @@ internal sealed class XboxBridge : IDisposable
         };
         info.ArgumentList.Add(script);
         process = Process.Start(info) ?? throw new InvalidOperationException(Localizer.Current["The Xbox streaming component couldn't start."]);
+        // CouchSubs kapanınca (güncellemede de) node.exe kurulum klasörünü kilitli bırakmasın.
+        ChildProcessGuard.Attach(process);
         _ = ReadRepliesAsync(process);
         _ = WatchExitAsync(process);
         loadedToken = null;

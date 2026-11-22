@@ -109,13 +109,14 @@ public partial class MainView : UserControl
             notesVersion = null;
         }
         UpdateCard.Visibility = controller.UpdateVersion is null ? Visibility.Collapsed : Visibility.Visible;
-        UpdateTitle.Text = text["A new version of CouchSubs is available: %@"].Replace("%@", controller.UpdateVersion ?? "");
-        UpdateButton.Content = text[controller.CanUpdateItself ? "Update now" : "Download"];
+        UpdateTitle.Text = controller.UpdateTitle;
+        UpdateButton.Content = controller.UpdateButtonText;
         UpdateButton.IsEnabled = !controller.Updating;
         UpdateBar.Visibility = controller.Updating ? Visibility.Visible : Visibility.Collapsed;
         UpdateBar.Value = controller.UpdateProgress;
-        UpdateErrorText.Text = controller.UpdateError ?? "";
-        UpdateErrorText.Visibility = controller.UpdateError is null ? Visibility.Collapsed : Visibility.Visible;
+        var problem = controller.UpdateError ?? controller.UpdateHint;
+        UpdateErrorText.Text = problem ?? "";
+        UpdateErrorText.Visibility = problem is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private async void OnUpdateNotesExpanded(object sender, RoutedEventArgs e)

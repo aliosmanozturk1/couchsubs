@@ -145,6 +145,7 @@ internal sealed class FakeServices : IAppServices
     public PackMatch? FindInPacks(string text) => GamePacks?.Find(text) is { } found ? new PackMatch(found, []) : null;
     public FakeTranslation Translation { get; } = new();
     public IFirewall? Firewall { get; set; }
+    public IUpdater? Updater { get; set; }
     ITranslationModel IAppServices.Translation => Translation;
     public OnlineKeyCheck KeyCheck { get; set; } = new(OnlineKeyState.Valid, 10, 500_000);
     public List<string> CheckedKeys { get; } = [];

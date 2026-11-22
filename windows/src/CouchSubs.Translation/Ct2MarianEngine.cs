@@ -84,6 +84,8 @@ internal sealed class Ct2MarianEngine : ISentenceEngine
         info.ArgumentList.Add(device);
         info.ArgumentList.Add((device == "cpu" ? cpuThreads : 2).ToString(System.Globalization.CultureInfo.InvariantCulture));
         var process = Process.Start(info) ?? throw new IOException("CTranslate2 worker did not start");
+        // CouchSubs kapanınca (güncellemede de) python.exe kurulum klasörünü kilitli bırakmasın.
+        CouchSubs.Core.ChildProcessGuard.Attach(process);
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) Debug.WriteLine("CTranslate2: " + e.Data); };
         process.BeginErrorReadLine();
         try

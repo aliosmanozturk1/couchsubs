@@ -438,6 +438,7 @@ public sealed class ProcessRunner : ICommandRunner
         try
         {
             process.Start();
+            ChildProcessGuard.Attach(process);
         }
         catch (Win32Exception)
         {

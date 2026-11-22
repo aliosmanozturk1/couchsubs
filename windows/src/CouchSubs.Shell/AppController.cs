@@ -4143,33 +4143,68 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         UpdateVersion == version && services.Updater is { } updater ? updater.ReleaseNotesAsync(version)
             : Task.FromResult<IReadOnlyList<ReleaseNoteRun>>([]);
 
+    /// <summary>
+    /// Önceki "Şimdi güncelle" uygulanamadı: uygulama yeniden açıldı ama sürüm değişmedi (çoğunlukla güvenlik yazılımı
+    /// kurulum klasörünü kilitler). Aynı şerit yine gösterilmez; kurulum dosyasını indirmesi istenir.
+    /// </summary>
+    public bool UpdateFailed { get; private set; }
+
+    /// <summary>Güncelleme şeridinin başlığı.</summary>
+    public string UpdateTitle => UpdateFailed
+        ? text.Format("CouchSubs couldn't be updated to %@", UpdateVersion ?? "")
+        : text.Format("A new version of CouchSubs is available: %@", UpdateVersion ?? "");
+
+    /// <summary>Şeridin düğmesi: kendini güncelleyebiliyorsa "Şimdi güncelle", değilse kurulum dosyasını indirme.</summary>
+    public string UpdateButtonText => CanUpdateItself && !UpdateFailed ? text["Update now"] : text["Download Setup File"];
+
+    /// <summary>Şeridin açıklaması: uygulanamayan güncelleme ya da kendini güncelleyemeyen (zip'ten açılmış) kopya.</summary>
+    public string? UpdateHint => UpdateFailed
+        ? text["The update couldn't be applied. Security software may have blocked it; download the setup file from our website and install it."]
+        : services.Updater is { CanUpdateItself: false }
+            ? text["This copy can't update itself. Reinstall it with the setup file."]
+            : null;
+
     /// <summary>Açılışta bir kez; ağ yoksa sessizce geçer.</summary>
     public async Task CheckForUpdateAsync()
     {
         if (services.Updater is not { } updater) return;
-        try { UpdateVersion = await updater.CheckAsync(); }
+        var failed = updater.Attempts?.FailedAttempt();
+        if (failed is not null)
+        {
+            UpdateFailed = true;
+            SubtitleLog.Write($"Güncelleme uygulanamadı: {failed.FromVersion} → {failed.TargetVersion} ({failed.At:yyyy-MM-dd HH:mm}); " +
+                              $"uygulama hâlâ {updater.Attempts!.CurrentVersion}. Velopack günlüğü: {updater.UpdateLogPath ?? "bilinmiyor"}");
+        }
+        string? version = null;
+        try { version = await updater.CheckAsync(); }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException) { }
+        // Ağ yoksa da uygulanamayan güncelleme söylenir.
+        UpdateVersion = version ?? failed?.TargetVersion;
     }
 
     public async Task InstallUpdateAsync()
     {
         if (services.Updater is not { } updater || updating) return;
-        if (!updater.CanUpdateItself)
+        if (!updater.CanUpdateItself || UpdateFailed)
         {
             OpenInBrowser(updater.DownloadPage);
             return;
         }
         Updating = true;
         UpdateError = null;
+        var target = UpdateVersion;
         try
         {
             // Çeviri sürüyorsa önce durur; uygulama güncellenip yeniden açılır.
             Stop();
-            await updater.InstallAsync(new ImmediateProgress(value => post(() => UpdateProgress = value)));
+            await updater.InstallAsync(new ImmediateProgress(value => post(() => UpdateProgress = value)),
+                () => { if (target is not null) updater.Attempts?.Record(target); });
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException
                                           or UnauthorizedAccessException)
         {
+            // Uygulama kapanmadı; deneme sayılmaz.
+            updater.Attempts?.Clear();
             UpdateError = error.Message;
         }
         finally

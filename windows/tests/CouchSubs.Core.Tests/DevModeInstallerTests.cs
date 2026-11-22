@@ -5,6 +5,7 @@ using Xunit;
 
 namespace CouchSubs.Core.Tests;
 
+[Collection(ChildProcessGuardTests.Group)]
 public class DevModeInstallerTests
 {
     private sealed class FakeShell : IRemoteShell
