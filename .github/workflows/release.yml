@@ -188,6 +188,10 @@ jobs:
           GA_MEASUREMENT_ID: ${{ secrets.GA_MEASUREMENT_ID }}
           GA_API_SECRET: ${{ secrets.GA_API_SECRET }}
           PACKS_APP_SECRET: ${{ secrets.PACKS_APP_SECRET }}
+          # package-mac.sh paketleri yeniden doğrular (fetch-packs --require); R2 erişimi burada da gerekli.
+          PACKS_R2_ACCESS_KEY_ID: ${{ secrets.PACKS_R2_ACCESS_KEY_ID }}
+          PACKS_R2_SECRET_ACCESS_KEY: ${{ secrets.PACKS_R2_SECRET_ACCESS_KEY }}
+          PACKS_R2_ENDPOINT: ${{ secrets.PACKS_R2_ENDPOINT }}
         run: |
           APKS=(android-apk/*.apk)
           ANDROID_APK="${APKS[0]}" ./scripts/package-mac.sh
