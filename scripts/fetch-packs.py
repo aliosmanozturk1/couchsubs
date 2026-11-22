@@ -25,6 +25,13 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+# Windows runner'larında konsol cp1252: ✓ gibi karakterler yazılırken çökmesin.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 ROOT = Path(__file__).resolve().parent.parent
 TARGETS = {
     "bundled/": ROOT / "core/Sources/CouchSubsCore/Resources/packs",
