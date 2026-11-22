@@ -22,6 +22,51 @@ public struct XboxKeepalive {
         failures += 1
         return failures >= Self.maxFailures
     }
+
+    /// Canlı tutma yanıtı oturumun Xbox hizmetinde artık olmadığını söylüyor (HTTP 404/410): beklenmez, oturum biter.
+    public static func sessionGone(_ message: String?) -> Bool {
+        let text = message ?? ""
+        return text.contains("HTTP 404") || text.contains("HTTP 410")
+    }
+}
+
+/// Bir bağlantının neden bittiği: günlükte açıkça yazılır, yeniden bağlanırken ekrandaki kısa metni seçer. Windows'taki
+/// CouchSubs.Shell/XboxEndCause ve Android'deki XboxEndCause ile aynı kurallar.
+public enum XboxEndCause: String, Sendable {
+    /// Xbox (ya da Xbox hizmeti) yayını kapattı: görüntü kanalı karşı taraftan kapandı, oturum bulunamadı, yayın reddedildi.
+    case server = "sunucu kapattı"
+    /// Beklenen yanıt ya da görüntü süresinde gelmedi.
+    case timeout = "zaman aşımı"
+    /// Ağ bağlantısı koptu ya da kurulamadı (ICE, Wi-Fi, internet).
+    case network = "ağ"
+
+    public static func of(_ kind: XboxErrorKind) -> XboxEndCause {
+        switch kind {
+        case .timeout, .noFirstFrame: return .timeout
+        case .network, .noPicture: return .network
+        default: return .server
+        }
+    }
+
+    /// Günlük satırı, ör. `kapanma nedeni: ağ (Xbox ICE bağlantısı koptu (failed))`.
+    public static func line(_ kind: XboxErrorKind, _ detail: String?) -> String {
+        "kapanma nedeni: \(of(kind).rawValue) (\(XboxStop.shorten(detail)))"
+    }
+}
+
+/// Oturum kapatma (DELETE) denemeleri. Kopma anında ağ da takılıyor olabilir; tek başarısız istek eski oturumu Xbox'ta
+/// açık bırakıyor, yeni oturum "uzaktan oynatma hizmeti hazır değil" ya da `Failed` ile reddediliyordu. Kapatılamayan
+/// oturum bir sonraki `play`dan önce yeniden kapatılır (Windows köprüsü ve Android'de de).
+public enum XboxSessionClose {
+    /// Denemeler arasındaki bekleme (ilki hemen).
+    public static let delaysMs = [0, 1000, 2000]
+}
+
+/// ICE adayları değişildikten sonra görüntü kanalı (input) bu sürede açılmazsa bağlantı zaman aşımıyla kapatılır. İlk
+/// kare sınırı (`XboxFirstFrameWatch.firstFrameLimitMs`) kanal açılınca başlar: Wi-Fi'daki yavaş ICE kurulumu ilk kare
+/// süresinden yemez (Windows ve Android'de de böyle).
+public enum XboxConnectWatch {
+    public static let connectLimitMs = 30_000
 }
 
 /// Yayının neden durduğu (kullanıcıya gösterilen metni seçer).
@@ -113,10 +158,10 @@ public enum XboxStop {
 
     /// Bağlantı bitince yazılan özet: neden, kare ve onay sayısı, ilk kareden sonra kaç saniye sürdüğü. "Görüntü hiç
     /// gelmedi" ile "görüntü geldi, sonra kesildi" bu satırla ayrılır.
-    public static func summary(reason: String?, frames: Int, acks: Int? = nil, secondsSinceFirstFrame: Int?) -> String {
+    public static func summary(reason: String?, frames: Int, acks: Int? = nil, secondsSinceFirstFrame: Int?, cause: XboxEndCause? = nil) -> String {
         let why = (reason ?? "").trimmingCharacters(in: .whitespaces).isEmpty ? "durduruldu" : reason!
         let lived = secondsSinceFirstFrame.map { "\($0) sn" } ?? "ilk kare yok"
-        return "bağlantı bitti: \(why); kare \(frames), \(acks.map { "onay \($0), " } ?? "")ilk kareden sonra \(lived)"
+        return "bağlantı bitti\(cause.map { " (\($0.rawValue))" } ?? ""): \(why); kare \(frames), \(acks.map { "onay \($0), " } ?? "")ilk kareden sonra \(lived)"
     }
 }
 

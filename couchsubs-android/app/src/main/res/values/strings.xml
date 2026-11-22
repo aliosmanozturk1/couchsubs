@@ -354,8 +354,10 @@
     <string name="settings_fast_reading">Değişmeyen altyazı alanını daha sık oku</string>
     <string name="settings_fast_reading_short">Altyazı alanı değişmemiş görünüyorsa 20 yerine 2 kare sonra yeniden oku. Daha fazla CPU kullanır.</string>
     <string name="settings_game_phone">GTA 6\'daki telefonu otomatik çevir (deneysel)</string>
-    <string name="settings_phone_chat_card">GTA 6 telefonunun çevirisini telefonun yanında kartta göster</string>
-    <string name="settings_phone_chat_card_short">Kapalıyken her mesaj kendi balonunun üstünde, balonun renginde çevrilir.</string>
+    <string name="settings_phone_messages">GTA 6 Telefon Mesajları</string>
+    <string name="settings_phone_messages_panel">Yanda Panel</string>
+    <string name="settings_phone_messages_bubbles">Balonların Üstünde</string>
+    <string name="settings_phone_messages_note">Yanda Panel: sohbet telefonun yanında gösterilir; karşı taraf solda, siz sağdasınız. Balonların Üstünde: her mesaj kendi balonunun üstünde çevrilir.</string>
     <string name="settings_misread_wait">Bozuk okunan satır için bekleme</string>
     <string name="settings_misread_wait_note" formatted="false">Satır sözlükte olmayan sözcüklerle okunursa daha iyi bir okuma için en çok bu kadar beklenir. GTA V\'te ölçülen, bozuk okumadan çıkan çeviri sayısı (0 sn\'ye göre): 0,2 sn → %77, 0,4 sn → %49, 0,6 sn → %41, 0,8 sn (önerilen) → %34, 1,0 sn → %31.</string>
     <string name="settings_partial_wait">Yarım okunan satır için bekleme</string>
@@ -639,6 +641,7 @@
     <string name="xbox_error_service">Xbox hizmeti beklenmedik yanıt verdi. Yeniden deneniyor…</string>
     <string name="xbox_error_no_picture">Xbox\'tan görüntü gelmiyor. Yeniden bağlanılıyor…</string>
     <string name="xbox_error_no_first_frame">Xbox\'tan görüntü gelmedi. Bir kez daha deneniyor…</string>
+    <string name="xbox_error_server_closed">Xbox yayını kapattı. Yeniden bağlanılıyor…</string>
     <string name="xbox_stopped_no_picture">Xbox\'tan görüntü gelmedi, çeviri durdu. Xbox\'ta Ayarlar › Cihazlar ve bağlantılar › Uzak özellikler\'de uzaktan oynatmanın açık olduğunu denetleyin, olabiliyorsa Xbox\'u ağa kabloyla bağlayın (ya da yeniden başlatın), sonra çeviriyi yeniden başlatın.</string>
     <string name="xbox_connection_lost">Xbox yayını durdu (%1$s). Çeviriyi yeniden başlatın; sürekli duruyorsa Xbox\'ı yeniden başlatın.</string>
     <string name="xbox_stopped_service">Xbox uzaktan oynatma hizmetini başlatamadı. Xbox\'ı güç düğmesine 10 sn basılı tutarak tam kapatıp açın, Uzak özelliklerin açık olduğunu denetleyin, sonra yeniden deneyin.</string>

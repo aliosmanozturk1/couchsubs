@@ -85,6 +85,8 @@ public sealed partial class RegionWatcher
         public GamePhoneReader? PhoneReader;
         public IReadOnlyList<ScreenTranslation.Item>? SentPhoneBlocks;
         public double PhoneScale;
+        /// <summary>Telefonun okunduğu karenin eni / boyu (sohbet panelinin yeri için).</summary>
+        public double PhoneAspect = 16.0 / 9;
         public Frame? LastReadCrop;
         public TextBox[] Lines = [];
         public long LastFullCheck;
@@ -131,7 +133,9 @@ public sealed partial class RegionWatcher
     /// <summary>Alanda ayrı duran bir yazı grubu: <see cref="Candidate.Paragraphs"/> içinde <paramref name="Start"/>'tan
     /// başlayan <paramref name="Count"/> parça, karedeki yeri ve satır yüksekliği (kareye oranla).</summary>
     /// <param name="Look">Otomatik ekran yazısında özgün yazının görünüşü (<see cref="TextStyleSampler"/>); diğerlerinde null.</param>
-    internal sealed record Block(int Start, int Count, TextBox Box, double LineHeight, PhoneTextStyle? Style = null, TextLook? Look = null);
+    /// <param name="Phone">GTA 6 telefonunda grubun rolü ve düz ekrandaki yeri (<see cref="GamePhoneText.Roles"/>); sohbet paneli bununla dizilir.</param>
+    internal sealed record Block(int Start, int Count, TextBox Box, double LineHeight, PhoneTextStyle? Style = null, TextLook? Look = null,
+                                 ScreenPhoneCard.Placement? Phone = null);
 
     /// <param name="Icons">Her parçadaki kumanda simgeleri (kareden kesilmiş), parçadaki sırasıyla.</param>
     /// <param name="Blocks">Alanda birden çok ayrı yazı grubu varsa grupları; tek grupta null (tek kutu).</param>
@@ -181,6 +185,8 @@ public sealed partial class RegionWatcher
     /// <summary>İngilizceden Türkçeye çeviride tuş çubuğu komutları, simgeleriyle birlikte, sözlükten gelir.</summary>
     public bool TranslatesUiCommands { get; set; }
     public bool EnglishPhoneMessages { get; set; }
+    /// <summary>"GTA 6 Telefon Mesajları: Yanda Panel / Balonların Üstünde" ve panelin yazı boyu; her gönderide okunur (Mac ile aynı).</summary>
+    public Func<PhonePanelOptions> PhonePanel { get; set; } = () => new PhonePanelOptions();
     /// <summary>Oynanan oyunun adı (bilinmiyorsa null); oyuna özgü yerleşim kuralları için.</summary>
     public Func<string?>? Game { get; set; }
 
@@ -589,7 +595,8 @@ public sealed partial class RegionWatcher
                     var own = lines.Where(line => Inside(line.Box!.Value, group.Box)).ToList();
                     (style, look) = TextStyleSampler.Sample(frame, group.Box, own, string.Join(' ', group.Paragraphs));
                 }
-                list.Add(new Block(start, group.Paragraphs.Count, group.Box.PlacedIn(place), group.LineHeight * height, style, look));
+                list.Add(new Block(start, group.Paragraphs.Count, group.Box.PlacedIn(place), group.LineHeight * height, style, look,
+                                   phone ? group.Phone : null));
                 start += group.Paragraphs.Count;
             }
             if (styled) list = AlignByNeighbours(list);
@@ -892,9 +899,33 @@ public sealed partial class RegionWatcher
                 if (blocks is not null && state.SentPhoneBlocks is { } previous)
                     blocks = StablePhoneBlocks(blocks, previous);
                 state.SentPhoneBlocks = blocks;
+                if (blocks is { Count: > 0 })
+                {
+                    // Yanda Panel: mesajlar telefonun yanındaki sohbet panelinde; Balonların Üstünde: her biri kendi balonunda.
+                    var arranged = ArrangedPhone(blocks, area.PhonePose, state.PhoneAspect, PhonePanel());
+                    if (arranged.Any(item => item.Panel == ScreenPhoneCard.PanelPart.Card))
+                    {
+                        text = string.Join('\n', arranged.Where(item => !ScreenPhoneCard.IsBackdrop(item)).Select(item => item.Translation));
+                        box = arranged.Select(item => item.Box).Aggregate((a, b) => a.Union(b));
+                    }
+                    blocks = arranged.Count == 0 ? null : arranged;
+                }
             }
             server.SendRegion(area.Id, text, box, lineHeight, icons, blocks);
         }
+    }
+
+    /// <summary>
+    /// Gönderilecek düzen: Yanda Panel'de telefonun mesajları yanındaki sohbet panelinde (<see cref="ScreenPhoneCard.Layout"/>;
+    /// ana ekran yazıları yerinde kalır), Balonların Üstünde'de her çeviri kendi balonunun yerinde (çevirisi aslıyla aynı
+    /// olanlar atılır). Telefonun yeri bilinmiyorsa balonlar yerinde kalır (Mac: PhoneRegionSession.arranged).
+    /// </summary>
+    internal static IReadOnlyList<ScreenTranslation.Item> ArrangedPhone(IReadOnlyList<ScreenTranslation.Item> items,
+        GamePhoneGeometry.Pose? pose, double aspect, PhonePanelOptions options)
+    {
+        if (!options.Enabled || pose is not { } found || items.Count == 0) return [.. items.Where(item => !item.Unchanged)];
+        var handset = new ScreenPhoneCard.Handset(found, aspect);
+        return [.. ScreenPhoneCard.Layout(items, handset, options.TextScale).Where(item => !item.Unchanged)];
     }
 
     // Aynı balon hareket ederken konumu her pakette izlenir. Küçük OCR kutu farkları punto ve satır
@@ -956,7 +987,9 @@ public sealed partial class RegionWatcher
         var similar = candidate.Paragraphs.Select((source, i) =>
                 TextMatch.IsSimilar(TextMatch.Normalize(IconText.Plain(source)), TextMatch.Normalize(IconText.Plain(text[i])), 0.90))
             .ToList();
-        if (similar.All(same => same))
+        var keepUnchanged = area.PanelLifetime.HasValue && PhonePanel().Enabled;
+        // Sohbet panelinde yalnız aslıyla aynı mesajlar ("ok", kişinin adı) olsa da panel görünür.
+        if (similar.All(same => same) && !(keepUnchanged && candidate.Blocks?.Any(block => block.Phone is not null) == true))
         {
             SendCurrent(area, state, started, "", null);
             state.RenderedKey = candidate.Key;
@@ -970,7 +1003,7 @@ public sealed partial class RegionWatcher
         var origin = cached || readyCount == candidate.Paragraphs.Count ? "hazır çeviri" : readyCount > 0 ? "hazır çeviri+motor" : "motor";
         Log?.Invoke($"ek alan {area.Name}: {SubtitleLog.Excerpt(IconText.Plain(string.Join(' ', candidate.Paragraphs)))} → {origin}");
         var (shown, icons) = IconText.Render(string.Join('\n', text), slots);
-        var blocks = candidate.Blocks is { } layout ? RenderBlocks(candidate, layout, text, similar, slots) : null;
+        var blocks = candidate.Blocks is { } layout ? RenderBlocks(candidate, layout, text, similar, slots, keepUnchanged) : null;
         var box = candidate.Box;
         if (partialPhone && blocks is { Count: > 0 })
         {
@@ -1001,21 +1034,24 @@ public sealed partial class RegionWatcher
     /// </summary>
     private static List<(int Group, ScreenTranslation.Item Item)> RenderBlocks(
         Candidate candidate, IReadOnlyList<Block> layout, IReadOnlyList<string> text, IReadOnlyList<bool> similar,
-        IReadOnlyList<IconSlot> slots)
+        IReadOnlyList<IconSlot> slots, bool keepUnchanged = false)
     {
         var result = new List<(int, ScreenTranslation.Item)>(layout.Count);
         for (var g = 0; g < layout.Count; g++)
         {
             var block = layout[g];
             var range = Enumerable.Range(block.Start, block.Count).ToList();
-            if (range.All(i => similar[i])) continue;
+            // Sohbet panelinde çevirisi aslıyla aynı mesaj ("ok", kişinin adı) da görünür; başka yerde atlanır.
+            var unchanged = range.All(i => similar[i]);
+            if (unchanged && !(keepUnchanged && block.Phone is not null)) continue;
             var joined = string.Join('\n', range.Select(i => text[i]));
             // Özgün yazı BÜYÜK HARF: çeviri de Türkçe kurallarıyla büyük harf (simge imleri harf değildir, korunur).
             if (block.Look is { Upper: true }) joined = TextStyleSampler.TurkishUpper(joined);
             var (translation, icons) = IconText.Render(joined, slots);
             var source = string.Join('\n', range.Select(i => IconText.Plain(candidate.Paragraphs[i])));
             result.Add((g, new ScreenTranslation.Item(source, translation, block.Box, block.LineHeight,
-                                                      icons.Count > 0 ? icons : null) { Style = block.Style, Look = block.Look }));
+                                                      icons.Count > 0 ? icons : null)
+            { Style = block.Style, Look = block.Look, Phone = block.Phone, Unchanged = unchanged }));
         }
         return result;
     }

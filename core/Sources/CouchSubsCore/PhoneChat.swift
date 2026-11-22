@@ -191,14 +191,25 @@ enum PhoneChat {
     /// harfsiz satır olarak zaten çevrilmez, bileşen ve bildirim yazıları kendi yerinde kalır. Satırların yeri düz ekranda
     /// (`phoneBox`) bilinmiyorsa ya da ekran ana ekran değilse satırlar olduğu gibi döner ("Ekranı çevir" ile aynı kural).
     static func withoutAppNames(_ lines: [TextLine]) -> [TextLine] {
-        guard !lines.isEmpty, lines.allSatisfy({ $0.phoneBox != nil }) else { return lines }
-        let single = lines.indices.map { Row(lines: [lines[$0]], spot: lines[$0].phoneBox!, text: clean(lines[$0].text)) }
-            .filter { $0.text.filter(\.isLetter).count >= 2 }.sorted { $0.spot.top < $1.spot.top }
-        let rows = joinedRows(single, join: homeJoin)
-        guard !rows.isEmpty, isHome(rows, raw: lines) else { return lines }
+        guard isHomeScreen(lines) else { return lines }
+        let rows = homeRows(lines)
         let median = rows.map(\.height).sorted()[rows.count / 2]
         let names = homeBlocks(rows, median: median).filter(isAppName).flatMap { $0[0].lines }
         return lines.filter { line in !names.contains { $0.text == line.text && $0.phoneBox == line.phoneBox } }
+    }
+
+    /// Satırlar (düz ekrandaki yerleri bilinen) telefonun ana ekranı mı (`isHome`); sohbet panelinde ana ekran yazıları
+    /// kendi yerinde kalır (`GamePhoneText.roles`).
+    static func isHomeScreen(_ lines: [TextLine]) -> Bool {
+        guard !lines.isEmpty, lines.allSatisfy({ $0.phoneBox != nil }) else { return false }
+        let rows = homeRows(lines)
+        return !rows.isEmpty && isHome(rows, raw: lines)
+    }
+
+    private static func homeRows(_ lines: [TextLine]) -> [Row] {
+        let single = lines.indices.map { Row(lines: [lines[$0]], spot: lines[$0].phoneBox!, text: clean(lines[$0].text)) }
+            .filter { $0.text.filter(\.isLetter).count >= 2 }.sorted { $0.spot.top < $1.spot.top }
+        return joinedRows(single, join: homeJoin)
     }
 
     /// Ana ekranın yazıları: bir arada duran satırlar (bileşenin başlığı ve içeriği, bildirimin satırları) birer blok, her

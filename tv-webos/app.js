@@ -6,7 +6,7 @@
   'use strict';
 
   // TV uygulamasının sürümü: appinfo.json, tv-tizen/config.xml ve tv-android/app/build.gradle ile aynı tutulur.
-  var APP_VERSION = '0.9.75';
+  var APP_VERSION = '0.9.76';
   var t = window.t;
   var config = window.COUCHSUBS_CONFIG || {};
   var platform = window.COUCHSUBS_PLATFORM;
@@ -1144,6 +1144,100 @@
     return bottom;
   }
 
+  // GTA 6 telefonunun yanındaki sohbet paneli (TV uygulaması 0.9.75; bilgisayar öğelere "panel" alanını ekler: card, title,
+  // theirs, mine, note). Panel yuvarlak köşeli, yarı saydam koyu kartta akışla çizilir: üstte kişinin adı, altında
+  // mesajlar sırayla (karşı taraf solda krem, oyuncu sağda amber balon, not ortada); sığmayan en eski mesajlar düşer,
+  // son mesajlar görünür kalır. Sağ altta sade kanepe simgesi. Mac, Windows, iPhone ve Android aynı çizimi yapar.
+  // Alanı göndermeyen eski bilgisayarda öğeler eskisi gibi yerinde çizilir.
+  var PANEL_PARTS = { title: true, theirs: true, mine: true, note: true };
+  var PANEL_OPACITY = 0.88;
+  var PANEL_COUCH = [[3, 1, 18, 8, 2.5], [0, 5, 5, 8, 2], [19, 5, 5, 8, 2], [4, 8, 16, 5, 1.5], [2, 13, 2, 3, 0.8], [20, 13, 2, 3, 0.8]];
+
+  function panelCard(items) {
+    for (var i = 0; i < (items || []).length; i++) {
+      if (items[i] && items[i].panel === 'card' && validBox(items[i].box)) return items[i];
+    }
+    return null;
+  }
+
+  function translucent(hex, alpha) {
+    var value = parseInt(hex.slice(1), 16);
+    return 'rgba(' + ((value >> 16) & 255) + ',' + ((value >> 8) & 255) + ',' + (value & 255) + ',' + alpha + ')';
+  }
+
+  function couchIcon() {
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 16');
+    svg.setAttribute('class', 'panel-couch');
+    for (var i = 0; i < PANEL_COUCH.length; i++) {
+      var part = PANEL_COUCH[i];
+      var rect = document.createElementNS(ns, 'rect');
+      rect.setAttribute('x', part[0]);
+      rect.setAttribute('y', part[1]);
+      rect.setAttribute('width', part[2]);
+      rect.setAttribute('height', part[3]);
+      rect.setAttribute('rx', part[4]);
+      svg.appendChild(rect);
+    }
+    return svg;
+  }
+
+  function placePanel(host, items, card, width, height) {
+    var box = validBox(card.box);
+    var panel = document.createElement('div');
+    panel.className = 'phone-panel';
+    panel.couchsubsBox = box;
+    panel.style.left = (box.left * 100) + '%';
+    panel.style.top = (box.top * 100) + '%';
+    panel.style.width = Math.round((box.right - box.left) * width) + 'px';
+    panel.style.height = Math.round((box.bottom - box.top) * height) + 'px';
+    var line = typeof card.line === 'number' && card.line > 0 ? card.line * height : 0.022 * height;
+    panel.style.fontSize = Math.max(Math.round(BUBBLE_MIN_FONT * height / 1080), Math.round(line * 0.95)) + 'px';
+    panel.style.borderRadius = Math.max(6, Math.round(18 * height / 1080)) + 'px';
+    var surface = card.surface;
+    if (surface && phoneColor(surface.background) && phoneColor(surface.foreground)) {
+      panel.style.backgroundColor = translucent(surface.background, PANEL_OPACITY);
+      panel.style.color = surface.foreground;
+    }
+    var title = null, messages = [];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!item || typeof item.text !== 'string' || !item.text || !PANEL_PARTS[item.panel]) continue;
+      if (item.panel === 'title') title = item;
+      else messages.push(item);
+    }
+    messages.sort(function (a, b) { return ((validBox(a.box) || {}).top || 0) - ((validBox(b.box) || {}).top || 0); });
+    if (title) {
+      var name = document.createElement('div');
+      name.className = 'panel-title';
+      name.textContent = title.text;
+      panel.appendChild(name);
+    }
+    var list = document.createElement('div');
+    list.className = 'panel-messages';
+    for (var j = 0; j < messages.length; j++) {
+      var message = messages[j];
+      var row = document.createElement('div');
+      row.className = 'panel-row ' + message.panel;
+      var bubble = document.createElement('div');
+      bubble.className = 'panel-bubble';
+      fillText(bubble, message.text, message.icons);
+      var colors = message.surface;
+      if (colors && phoneColor(colors.background) && phoneColor(colors.foreground)) {
+        if (message.panel !== 'note') bubble.style.backgroundColor = colors.background;
+        bubble.style.color = colors.foreground;
+      }
+      row.appendChild(bubble);
+      list.appendChild(row);
+    }
+    panel.appendChild(list);
+    panel.appendChild(couchIcon());
+    host.appendChild(panel);
+    // Sığmayan en eski mesajlar düşer: son mesajlar görünür kalır.
+    while (list.children.length > 1 && list.scrollHeight > list.clientHeight + 1) list.removeChild(list.firstChild);
+  }
+
   // Yeriyle gelen çevirileri (ekranı çevir öğeleri, ek alan blokları) kendi İngilizce yazılarının üstüne koyar.
   function placeItems(host, items, regionId) {
     var phone = regionId === 'game-phone';
@@ -1151,8 +1245,11 @@
     var height = (window.innerHeight || 1080) / (window.COUCHSUBS_ZOOM || 1);
     var pad = phone ? 0.001 : SCREEN_PAD;
     var minWidth = phone ? 1 : 80;
+    var card = panelCard(items);
+    if (card) placePanel(host, items, card, width, height);
     for (var i = 0; i < (items || []).length; i++) {
       var item = items[i];
+      if (card && item && (item.panel === 'card' || PANEL_PARTS[item.panel])) continue;
       var box = validBox(item && item.box);
       if (!box || !item.text || tooBig(box)) continue;
       var el = document.createElement('div');

@@ -688,8 +688,12 @@ private struct AreaSettings: View {
             Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .screen, String(localized: "Translate the screen (%@)")))) {
                 HintText(text: LocalizedStringKey(HotkeyText.sentence(model.settings, .screen,
                     String(localized: "Press %@ while playing: every text on the screen is translated once and shown on the TV in its own place. Press again to remove the translations."))))
-                SwitchRow(title: "Show GTA 6 phone translations in a card next to the phone", isOn: $model.settings.phoneChatCard)
-                HintText(text: "Off: each message is translated on top of its own bubble, in the bubble's colours.")
+            }
+            // Otomatik telefon okumasına ve "Ekranı çevir"e uygulanır; varsayılan Yanda Panel (dört platformda aynı).
+            DSCard(scrolls: false) {
+                Text("GTA 6 Phone Messages").font(.dsBodyStrong)
+                DSTabs(selection: $model.settings.phoneMessagesPanel, items: [(true, "Side Panel"), (false, "On the Bubbles")])
+                Text("Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble.").dsMuted()
             }
             Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .freeArea, String(localized: "Free area (%@)")))) {
                 HintText(text: LocalizedStringKey(HotkeyText.sentence(model.settings, .freeArea,

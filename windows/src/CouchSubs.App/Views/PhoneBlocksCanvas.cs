@@ -30,6 +30,12 @@ internal sealed class PhoneBlocksCanvas : Canvas
 
     public bool HasItems => items.Count > 0;
 
+    /// <summary>
+    /// Verilirse (saydam pencere: alan oyun karesi değil, kullanıcının seçtiği altyazı yeri) sohbet paneli alanın telefon
+    /// tarafındaki kenarına yaslanır, yazısı bu boydadır (altyazı boyutundan; Mac GamePhoneBlocks panelFont ile aynı).
+    /// </summary>
+    public double? PanelFont { get; set; }
+
     public void Show(IReadOnlyList<ScreenTranslation.Item>? blocks)
     {
         items = blocks ?? [];
@@ -41,7 +47,10 @@ internal sealed class PhoneBlocksCanvas : Canvas
         Children.Clear();
         double width = ActualWidth, height = ActualHeight;
         if (width <= 0 || height <= 0) return;
-        foreach (var item in items)
+        // Yanda Panel: telefonun mesajları sohbet panelinde (PhonePanelView), panel dışındaki yazılar kendi yerinde.
+        var panel = ScreenPhoneCard.PanelOf(items);
+        if (panel is not null) AddPanel(panel, width, height);
+        foreach (var item in panel?.Outside ?? items)
         {
             if (ScreenPhoneCard.IsBackdrop(item) || item.Translation.Length == 0) continue;
             var (left, top, boxWidth, boxHeight) = Frame(item.Box, width, height);
@@ -67,6 +76,29 @@ internal sealed class PhoneBlocksCanvas : Canvas
             SetTop(block, top);
             Children.Add(block);
         }
+    }
+
+    private void AddPanel(ScreenPhoneCard.ChatPanel panel, double width, double height)
+    {
+        FrameworkElement view;
+        double left, top;
+        if (PanelFont is { } font)
+        {
+            var panelWidth = Math.Min(width * 0.45, font * 20);
+            view = PhonePanelView.Make(panel, panelWidth, height, font, Math.Max(8, font * 0.7));
+            left = (panel.Card.Box.Left + panel.Card.Box.Right) / 2 > 0.5 ? width - panelWidth : 0;
+            top = 0;
+        }
+        else
+        {
+            var (x, y, w, h) = Frame(panel.Card.Box, width, height);
+            view = PhonePanelView.Make(panel, w, h, panel.Card.LineHeight * height * 0.85,
+                                       Math.Max(6, ScreenPhoneCard.PanelRadius * height / 1080));
+            (left, top) = (x, y);
+        }
+        SetLeft(view, left);
+        SetTop(view, top);
+        Children.Add(view);
     }
 
     /// <summary>Kutunun alandaki yeri ve boyu (piksel); Mac GamePhoneBlocks ile aynı dönüşüm.</summary>

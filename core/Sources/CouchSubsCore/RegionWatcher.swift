@@ -137,6 +137,8 @@ public final class RegionWatcher {
     private var lastPass: Int?
     private var phoneSession: PhoneRegionSession?
     public var englishPhoneMessages = false
+    /// "GTA 6 Telefon Mesajları: Yanda Panel / Balonların Üstünde" ve panelin yazı boyu; her gönderide okunur.
+    public var phonePanel: () -> PhonePanelOptions = { PhonePanelOptions() }
     private var running: Task<Void, Never>?
     private var session = 0
     /// Yalnız kararlı okumaların başarılı çevirileri saklanır.
@@ -179,7 +181,11 @@ public final class RegionWatcher {
     /// Her karede çağrılır; tur zamanı geldiyse ve önceki tur bittiyse turu arka planda başlatır, hemen döner.
     public func offer(_ frame: CGImage, areas: [ExtraArea], phone pose: GamePhoneGeometry.Pose? = nil) {
         if let pose {
-            if phoneSession == nil { phoneSession = PhoneRegionSession(reader: reader, translator: translator, server: server) }
+            if phoneSession == nil {
+                let session = PhoneRegionSession(reader: reader, translator: translator, server: server)
+                session.panel = { [weak self] in self?.phonePanel() ?? PhonePanelOptions() }
+                phoneSession = session
+            }
             phoneSession?.observe(frame, pose: pose)
         } else if phoneSession != nil {
             closePhone()

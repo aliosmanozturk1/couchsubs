@@ -10,7 +10,8 @@ import java.util.concurrent.atomic.AtomicLong
  * `Provisioned` olunca WebRTC el sıkışması başlar. Hata ya da kopmada 5, 15, 45 sn sonra baştan denenir; üç ardışık
  * denemeden sonra durulur (konsol "oyun başka yerde açıldı" deyip yayını kesince eskiden her 5 sn'de bir yeniden
  * açılıyordu). Konsol `Failed` ya da `errorDetails` dönerse, yeniden giriş gerekirse (ör. yenileme jetonu geçersiz)
- * hiç denenmez. Yayın [healthyStreamMs] ayakta kaldıysa deneme sayısı sıfırlanır.
+ * hiç denenmez; yalnız görüntü gelmiş bir yayın koptuktan sonraki ilk ret bir kez, [RECONNECT_GRACE_MS] sonra denenir.
+ * Yayın [healthyStreamMs] ayakta kaldıysa deneme sayısı sıfırlanır.
  */
 class XboxSessionMachine(
     val maxPolls: Int = 90,
@@ -59,6 +60,10 @@ class XboxSessionMachine(
     private var streamingSince = 0L
     /** Ardışık, Xbox'tan tek kare gelmeden biten bağlantılar. */
     private var noPictureConnections = 0
+    /** Bu makinede bir kez görüntü geldi (kopmadan sonraki ret bir kez denenir, bkz. [fail]). */
+    private var hadPicture = false
+    /** Kopmadan sonraki ret için tanınan tek deneme kullanıldı; yeni görüntüde sıfırlanır. */
+    private var graceUsed = false
 
     fun start(): Action {
         if (phase == Phase.Stopped) return Action.Nothing
@@ -110,6 +115,8 @@ class XboxSessionMachine(
         phase = Phase.Streaming
         streamingSince = clock()
         noPictureConnections = 0
+        hadPicture = true
+        graceUsed = false
         return true
     }
 
@@ -127,9 +134,15 @@ class XboxSessionMachine(
         failures++
         if (kind == XboxError.NO_FIRST_FRAME) noPictureConnections++
         // Xbox uzaktan oynatma hizmetini başlatamadı (HTTP hatası olarak gelse de): yeniden denemek işe yaramaz (#871).
-        val retry = !permanent && !isPermanent(message) && kind !in FATAL && failures <= retryDelaysMs.size && noPictureConnections < MAX_NO_PICTURE_ATTEMPTS
+        val refused = permanent || isPermanent(message)
+        // Görüntü gelmiş yayın koptuktan hemen sonra Xbox eski oturumu bırakmadan yenisini reddedebiliyor ("bir kez
+        // kopunca Xbox yeniden başlatılmadan bağlanmıyor"): bu ret bir kez, eski oturum kapansın diye uzun beklenip denenir.
+        val grace = refused && hadPicture && !graceUsed
+        val retry = (!refused || grace) && kind !in FATAL && failures <= retryDelaysMs.size && noPictureConnections < MAX_NO_PICTURE_ATTEMPTS
+        if (retry && grace) graceUsed = true
         phase = Phase.Failed(kind, message, retry, if (retry) failures else 0)
-        return Action.Retry(if (retry) retryDelaysMs[failures - 1] else null)
+        if (!retry) return Action.Retry(null)
+        return Action.Retry(if (grace) maxOf(RECONNECT_GRACE_MS, retryDelaysMs[failures - 1]) else retryDelaysMs[failures - 1])
     }
 
     fun stop() {
@@ -142,6 +155,9 @@ class XboxSessionMachine(
 
         /** Xbox'tan hiç görüntü gelmeyen bu kadar ardışık bağlantıdan sonra yeniden denenmez. */
         const val MAX_NO_PICTURE_ATTEMPTS = 2
+
+        /** Kopmadan sonra Xbox yeni oturumu reddederse (eski oturum Xbox'ta henüz kapanmadı) beklenen süre. */
+        const val RECONNECT_GRACE_MS = 15_000L
 
         /** `errorDetails` gerçek bir hata mı (boş nesne ya da tüm alanları null olan nesne sayılmaz). */
         fun hasErrorDetails(details: String?): Boolean {

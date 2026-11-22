@@ -21,6 +21,14 @@ let msal = new Msal(store);
 let challenge;
 let home;
 let sessionId;
+// Kapatılamayan (DELETE başarısız) oturum: bir sonraki 'start'tan önce yeniden kapatılır. Kapatılmadan yenisi açılınca
+// Xbox eski oturumu açık sayıp yeni oturumu reddediyordu (CouchSubsCore XboxSessionClose, Android XboxHome.close ile aynı).
+let staleSessionId;
+const CLOSE_DELAYS_MS = [0, 1000, 2000];
+// SDP/ICE yanıtı ilk 5 sn 250 ms'de bir, sonra saniyede bir, toplam 30 sn sorulur (eskiden 7,5 sn'de bırakılıyordu).
+const EXCHANGE_FAST_ATTEMPTS = 20;
+const EXCHANGE_ATTEMPTS = EXCHANGE_FAST_ATTEMPTS + 25;
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function reply(id, value, error) {
   process.stdout.write(JSON.stringify({ id, value, error }) + '\n');
@@ -49,8 +57,24 @@ async function homeApi() {
 }
 
 async function api(path, method = 'GET', data) {
+  let response = await send(path, method, data);
+  // The cached streaming token was rejected before it expired: refresh it once and repeat the request.
+  if (response.status === 401) {
+    home = undefined;
+    response = await send(path, method, data);
+  }
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 500);
+    throw new Error(`Xbox service HTTP ${response.status}: ${detail}`);
+  }
+  if (response.status === 204) return null;
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
+async function send(path, method, data) {
   const current = await homeApi();
-  const response = await fetch(current.url + path, {
+  return fetch(current.url + path, {
     method,
     headers: {
       Accept: 'application/json',
@@ -68,23 +92,34 @@ async function api(path, method = 'GET', data) {
     },
     body: data === undefined ? undefined : JSON.stringify(data),
   });
-  if (!response.ok) {
-    const detail = (await response.text()).slice(0, 500);
-    throw new Error(`Xbox service HTTP ${response.status}: ${detail}`);
-  }
-  if (response.status === 204) return null;
-  const text = await response.text();
-  return text ? JSON.parse(text) : null;
 }
 
 async function exchange(path, payload) {
   await api(path, 'POST', payload);
-  for (let attempt = 0; attempt < 30; attempt++) {
+  for (let attempt = 0; attempt < EXCHANGE_ATTEMPTS; attempt++) {
     const result = await api(path);
     if (result?.exchangeResponse) return JSON.parse(result.exchangeResponse);
-    await new Promise(resolve => setTimeout(resolve, 250));
+    await sleep(attempt < EXCHANGE_FAST_ATTEMPTS ? 250 : 1000);
   }
-  throw new Error('Xbox WebRTC exchange timed out');
+  throw new Error(`Xbox WebRTC exchange timed out (${path.endsWith('/ice') ? 'ICE' : 'SDP'}, 30 sn)`);
+}
+
+const sessionGone = error => /HTTP (404|410)/.test(String(error?.message || error));
+
+// Closes a session, retrying with CLOSE_DELAYS_MS; a session the service no longer knows (404/410) counts as closed.
+async function closeSession(id) {
+  let last;
+  for (const delay of CLOSE_DELAYS_MS) {
+    if (delay) await sleep(delay);
+    try {
+      await api(`/v5/sessions/home/${id}`, 'DELETE');
+      return;
+    } catch (error) {
+      if (sessionGone(error)) return;
+      last = error;
+    }
+  }
+  throw last;
 }
 
 function sessionPath(suffix = '') {
@@ -119,6 +154,15 @@ async function handle(command, args = {}) {
     }
     case 'start': {
       if (!args.consoleId) throw new Error('Xbox console not selected');
+      // A previous session that could not be closed (or was never stopped) is closed before a new one is opened.
+      const previous = staleSessionId || sessionId;
+      let closedStale;
+      if (previous) {
+        sessionId = undefined;
+        staleSessionId = undefined;
+        try { await closeSession(previous); closedStale = true; }
+        catch { closedStale = false; staleSessionId = previous; }
+      }
       const result = await api('/v5/sessions/home/play', 'POST', {
         clientSessionId: '', titleId: '', systemUpdateGroup: '', serverId: args.consoleId,
         fallbackRegionNames: [],
@@ -128,7 +172,7 @@ async function handle(command, args = {}) {
       });
       sessionId = result.sessionPath?.split('/').pop();
       if (!sessionId) throw new Error('Xbox did not return a stream session');
-      return { sessionId, userToken: store.getUserToken().data };
+      return { sessionId, closedStale, userToken: store.getUserToken().data };
     }
     case 'status': {
       const status = await api(sessionPath('/state'));
@@ -177,8 +221,14 @@ async function handle(command, args = {}) {
       if (!sessionId) return {};
       const id = sessionId;
       sessionId = undefined;
-      await api(`/v5/sessions/home/${id}`, 'DELETE');
-      return {};
+      try {
+        await closeSession(id);
+      } catch (error) {
+        // Kept so the next 'start' closes it first; the app logs the error.
+        staleSessionId = id;
+        throw error;
+      }
+      return { closed: true };
     }
     default:
       throw new Error(`Unknown Xbox bridge command: ${command}`);

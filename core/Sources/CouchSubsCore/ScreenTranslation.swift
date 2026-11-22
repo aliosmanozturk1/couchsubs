@@ -39,6 +39,9 @@ public enum ScreenTranslation {
         /// GTA 6 telefonunun mesajı kendi balonunun üstünde, yerinde (kartsız): TV çeviriyi balona sığdırır (yazı
         /// okunabilir sınıra kadar küçülür, satır kırılır; sığmazsa balon biraz aşağı uzar).
         public var bubble = false
+        /// Telefonun yanındaki sohbet panelinin parçası (zemin, kişi adı, karşı tarafın ya da oyuncunun mesajı, not);
+        /// yeni çiziciler paneli bunlarla akışta çizer (`ScreenPhoneCard.PanelPart`), eski TV kutuları yerinde çizer.
+        public var panel: ScreenPhoneCard.PanelPart?
 
         public init(source: String, translation: String, box: TextBox, lineHeight: Double, icons: [IconPlacement]? = nil) {
             self.source = source
@@ -67,7 +70,7 @@ public enum ScreenTranslation {
     /// karesiz sınamalar için.
     public static func translate(_ reading: Reading, using translate: (String) async throws -> String,
                                  frame: CGImage? = nil, memory: PhoneChatMemory? = nil, handset: ScreenPhoneCard.Handset? = nil,
-                                 phoneCard: Bool = true,
+                                 phoneCard: Bool = true, panelScale: Double = 1,
                                  progress: ([Item]) -> Void = { _ in }) async throws -> [Item] {
         let phone = handset ?? frame.flatMap(ScreenPhoneCard.phone(in:))
         var items: [Item] = []
@@ -90,21 +93,21 @@ public enum ScreenTranslation {
             }
             guard let item = item(group, prepared, translated, keepUnchanged: phone != nil) else { continue }
             items.append(styled(item, frame: frame))
-            let shown = present(items, phone: phone, card: phoneCard)
+            let shown = present(items, phone: phone, card: phoneCard, textScale: panelScale)
             if !shown.isEmpty { progress(shown) }
         }
-        return present(items, phone: phone, card: phoneCard)
+        return present(items, phone: phone, card: phoneCard, textScale: panelScale)
     }
 
     /// Çevirmen parçaları tek istekte çevirebiliyorsa (yapay zekâ) ekranın bütün parçaları birlikte gider ve sonuç bir
     /// kerede gelir; yoksa gruplar sırayla çevrilip hazırlandıkça bildirilir. `frame`: bkz. yukarıdaki `translate`.
     public static func translate(_ reading: Reading, using translator: TextTranslator, frame: CGImage? = nil,
                                  memory: PhoneChatMemory? = nil, handset: ScreenPhoneCard.Handset? = nil,
-                                 phoneCard: Bool = true,
+                                 phoneCard: Bool = true, panelScale: Double = 1,
                                  progress: ([Item]) -> Void = { _ in }) async throws -> [Item] {
         guard translator.translatesTogether else {
             return try await translate(reading, using: { try await translator.translate($0) }, frame: frame, memory: memory,
-                                       handset: handset, phoneCard: phoneCard, progress: progress)
+                                       handset: handset, phoneCard: phoneCard, panelScale: panelScale, progress: progress)
         }
         let phone = handset ?? frame.flatMap(ScreenPhoneCard.phone(in:))
         let groups = withImages(groups(reading, frame: frame, wholeScreen: true, handset: phone), from: frame)
@@ -135,7 +138,7 @@ public enum ScreenTranslation {
                 items.append(styled(item, frame: frame))
             }
         }
-        let shown = present(items, phone: phone, card: phoneCard)
+        let shown = present(items, phone: phone, card: phoneCard, textScale: panelScale)
         if !shown.isEmpty { progress(shown) }
         return shown
     }
@@ -181,10 +184,10 @@ public enum ScreenTranslation {
     /// çevirisi kendi balonunun üstünde, balonun rengiyle yerinde kalır (`Item.bubble`). İstek: "çeviriyi birebir o
     /// görüntünün yerine geçiremez miyiz?"; kartta son mesaj kayboluyor, telefonun altındaki yazılar karta karışıyordu
     /// (X, beta.79). Çevirisi aslıyla aynı öğeler (kart dışında; yerinde kişi adı) atılır, özgün yazı görünür kalır.
-    static func present(_ items: [Item], phone: ScreenPhoneCard.Handset?, card: Bool = true) -> [Item] {
+    static func present(_ items: [Item], phone: ScreenPhoneCard.Handset?, card: Bool = true, textScale: Double = 1) -> [Item] {
         let laid: [Item]
         if let phone, card {
-            laid = ScreenPhoneCard.layout(items, handset: phone)
+            laid = ScreenPhoneCard.layout(items, handset: phone, textScale: textScale)
         } else {
             laid = items.map { item in
                 var placed = item

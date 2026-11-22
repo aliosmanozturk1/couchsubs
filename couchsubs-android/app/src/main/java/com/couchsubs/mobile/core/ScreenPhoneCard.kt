@@ -4,6 +4,9 @@ package com.couchsubs.mobile.core
 import kotlin.math.abs
 
 /**
+ * GTA 6 telefonunun sohbet paneli ("Ekranı çevir" ve otomatik telefon okuması; Yanda Panel ayarı, varsayılan). Panel
+ * koyu, yarı saydam kartta; karşı taraf solda krem, oyuncu sağda amber; parçalar [PanelPart] ile işaretlenir.
+ *
  * "Ekranı çevir"de GTA 6 telefonu: eğik telefon ekranının üstüne yazmak okunmuyordu (yazı küçük, ekran yamuk). Telefon
  * karede bulunursa ([GamePhoneGeometry]) ekranındaki satırlar düz ekrana taşınıp ayrı gruplanır ([PhoneChat]) ve
  * çevirileri telefonun hemen yanına, ekranda yer olan tarafa, telefon boyunda açık renkli bir "mesaj kartı" olarak
@@ -13,12 +16,43 @@ import kotlin.math.abs
  * yerlerinde kalır. Kart TV'ye ve telefona sıradan stilli öğeler olarak gider (zemin, başlık, balonlar), ayrı bir çizim
  * gerekmez (Mac/iPhone: ScreenPhoneCard.swift, Windows: ScreenPhoneCard.cs; ortak deneme dosyası fixtures/phone-chat.json).
  */
+/** "GTA 6 Telefon Mesajları" ayarı ve panelin yazı çarpanı (Mac: PhonePanelOptions). */
+data class PhonePanelOptions(val enabled: Boolean = true, val textScale: Double = 1.0)
+
 object ScreenPhoneCard {
+    /** Panelin parçası; JSON'da `panel` alanının değeri ([wire]). Mac/Windows ile aynı. */
+    enum class PanelPart(val wire: String) {
+        /** Panelin zemini (kutusu panelin yeri ve boyu). */
+        CARD("card"),
+        /** Konuşulan kişinin adı (telefonun başlığı; çevrilmez). */
+        TITLE("title"),
+        /** Karşı tarafın mesajı (solda, açık zemin) ve oyuncunun mesajı (sağda, amber zemin). */
+        THEIRS("theirs"), MINE("mine"),
+        /** Ortalı kısa satır, sohbet listesinin satırları ve bölüm başlığı. */
+        NOTE("note"),
+    }
+
     /** Kartın zemini: yazısı yalnız bölünmez boşluk olan öğe, kartın tamamını kaplar; balonlar üstüne çizilir. */
     const val BACKDROP_TEXT = "\u00A0"
-    val CARD = TextSurface("#F2F2F7", "#1C1C1E")
-    val INCOMING = TextSurface("#FFFFFF", "#1C1C1E")
-    val OUTGOING = TextSurface("#0A84FF", "#FFFFFF")
+    /** Panelin renkleri (CouchSubs tasarım dili): koyu zemin (çiziciler %88 örtüyle çizer), karşı taraf krem, oyuncu amber. */
+    val CARD = TextSurface("#141518", "#F3EEE4")
+    val INCOMING = TextSurface("#F3EEE4", "#17181B")
+    val OUTGOING = TextSurface("#F5B83D", "#17181B")
+    val NOTE = TextSurface("#141518", "#A9A59C")
+    /** Panelin köşe yarıçapı (1080 satırlık ekranda piksel) ve zemin örtüsü. */
+    const val PANEL_RADIUS = 18.0
+    const val PANEL_OPACITY = 0.88
+    /** Kanepe simgesi: 24×16 ızgarada yuvarlak köşeli dikdörtgenler (x, y, en, boy, köşe); Mac ile aynı şekil. */
+    val COUCH_GLYPH: List<DoubleArray> = listOf(
+        doubleArrayOf(3.0, 1.0, 18.0, 8.0, 2.5), doubleArrayOf(0.0, 5.0, 5.0, 8.0, 2.0), doubleArrayOf(19.0, 5.0, 5.0, 8.0, 2.0),
+        doubleArrayOf(4.0, 8.0, 16.0, 5.0, 1.5), doubleArrayOf(2.0, 13.0, 2.0, 3.0, 0.8), doubleArrayOf(20.0, 13.0, 2.0, 3.0, 0.8),
+    )
+    /** Altyazı boyutu ayarının panel yazısına çarpanı sınırları; varsayılan altyazı boyu (TV pikseli, 1080p). */
+    const val DEFAULT_FONT_SIZE = 46
+    const val MIN_SCALE = 0.75
+    const val MAX_SCALE = 1.6
+    /** Yanda yer yoksa kart telefonun altına; orada da en az bu kadar yükseklik yoksa telefonun üstüne konur. */
+    const val MIN_BELOW = 0.18
     /** Telefonla kart arasındaki boşluk ve kartın ekran kenarından payı (ekran genişliğine oranla). */
     const val GAP = 0.008
     /** Kart için yanda en az bu kadar yer olmalı; yoksa kart telefonun üstüne konur. */
@@ -182,8 +216,16 @@ object ScreenPhoneCard {
         }
         // Önce daha geniş yan; öbür yan ancak başka çevirilerin üstüne daha az binerse seçilir.
         val candidates = listOfNotNull(side(roomLeft < roomRight), side(roomLeft >= roomRight))
-        var best = candidates.firstOrNull()
-            ?: return TextBox(maxOf(0.0, phone.left), phone.top, minOf(1.0, phone.right), phone.bottom)
+        if (candidates.isEmpty()) {
+            // Yanda yer yoksa telefonun altında; orada da yer yoksa telefonun üstünde (Mac ile aynı).
+            if (1 - SCREEN_MARGIN - (phone.bottom + GAP) >= MIN_BELOW) {
+                val width = minOf(wanted, 1 - 2 * GAP)
+                val left = minOf(maxOf(GAP, (phone.left + phone.right - width) / 2), 1 - GAP - width)
+                return TextBox(left, phone.bottom + GAP, left + width, 1 - SCREEN_MARGIN)
+            }
+            return TextBox(maxOf(0.0, phone.left), phone.top, minOf(1.0, phone.right), phone.bottom)
+        }
+        var best = candidates.first()
         for (candidate in candidates.drop(1)) if (covered(candidate, others) < covered(best, others) - 1e-9) best = candidate
         return best
     }
@@ -203,7 +245,7 @@ object ScreenPhoneCard {
      * sığmazsa kart uzar, yine sığmazsa en eski mesajlar düşer. Kartın altında kalan başka bir çeviri kartın dışına,
      * yanına alınır.
      */
-    fun layout(items: List<ScreenTranslation.Item>, handset: Handset): List<ScreenTranslation.Item> {
+    fun layout(items: List<ScreenTranslation.Item>, handset: Handset, textScale: Double = 1.0): List<ScreenTranslation.Item> {
         val onPhone = items.filter { it.phone?.role?.inCard == true }.sortedBy { it.phone!!.spot.top }
         if (onPhone.none { !it.unchanged }) return items
         val others = items.filter { it.phone?.role?.inCard != true }
@@ -212,7 +254,7 @@ object ScreenPhoneCard {
         var cardBottom = start.bottom
         val cardWidth = start.right - start.left
         val heights = onPhone.map { it.lineHeight }.sorted()
-        val line = maxOf(MIN_LINE, heights[heights.size / 2])
+        val line = maxOf(MIN_LINE * minOf(MAX_SCALE, maxOf(MIN_SCALE, textScale)), heights[heights.size / 2])
         val pad = cardWidth * 0.05
         val padY = line * 0.4
         val spacing = line * BUBBLE_SPACING
@@ -229,7 +271,7 @@ object ScreenPhoneCard {
         // Her satırın kartta kaplayacağı yer: genişliği rolünden, yüksekliği Türkçenin o genişlikte kaç satır tuttuğundan.
         val rows = body.map { item ->
             val given = item.phone!!.role
-            val role = if (given == Role.MESSAGE) (if (isBlue(item.surface)) Role.OUTGOING else Role.INCOMING) else given
+            val role = if (given == Role.MESSAGE) (if (isOutgoing(item.surface)) Role.OUTGOING else Role.INCOMING) else given
             val bubble = role == Role.INCOMING || role == Role.OUTGOING
             val widest = (if (bubble) BUBBLE_SHARE else 1.0) * cardWidth - (if (bubble) 0.0 else 2 * pad)
             val inner = widest - 2 * pad
@@ -239,11 +281,17 @@ object ScreenPhoneCard {
             val surface = when (role) {
                 Role.OUTGOING -> OUTGOING
                 Role.INCOMING -> INCOMING
+                Role.NOTE -> NOTE
                 else -> CARD
+            }
+            val part = when (role) {
+                Role.OUTGOING -> PanelPart.MINE
+                Role.INCOMING -> PanelPart.THEIRS
+                else -> PanelPart.NOTE
             }
             val side = if (role == Role.OUTGOING) "right" else if (role == Role.NOTE) "center" else "left"
             val placed = item.copy(unchanged = false, lineHeight = line, surface = surface,
-                look = flat(side, role == Role.CONTACT || role == Role.HEADING))
+                look = flat(side, role == Role.CONTACT || role == Role.HEADING), panel = part)
             val inside = line * (if (bubble) BUBBLE_PADDING else 0.3)
             Row(placed, width, lines.size * line * LINE_SPACING + inside, side)
         }.toMutableList()
@@ -268,12 +316,12 @@ object ScreenPhoneCard {
             val left = if (cardOnLeft) card.left - GAP - width else card.right + GAP
             if (left >= 0 && left + width <= 1) item.copy(box = TextBox(left, item.box.top, left + width, item.box.bottom)) else item
         }.toMutableList()
-        result.add(ScreenTranslation.Item("", BACKDROP_TEXT, card, line, surface = CARD, look = flat("left", false)))
+        result.add(ScreenTranslation.Item("", BACKDROP_TEXT, card, line, surface = CARD, look = flat("left", false), panel = PanelPart.CARD))
 
         var bodyTop = card.top + padY
         if (header != null) {
             val placed = header.copy(box = TextBox(card.left + pad, bodyTop, card.right - pad, bodyTop + line * 1.4), lineHeight = line,
-                surface = CARD, look = flat("center", true), unchanged = false)
+                surface = CARD, look = flat("center", true), unchanged = false, panel = PanelPart.TITLE)
             result.add(placed)
             bodyTop = placed.box.bottom + spacing
         }
@@ -320,6 +368,42 @@ object ScreenPhoneCard {
             lines.add(current)
         }
         return lines
+    }
+
+    /** Çizilecek sohbet paneli: zemin, kişinin adı, mesajlar telefondaki sırasıyla ve panel dışındaki öğeler. */
+    data class Panel(
+        val card: ScreenTranslation.Item,
+        val title: ScreenTranslation.Item?,
+        val messages: List<ScreenTranslation.Item>,
+        val outside: List<ScreenTranslation.Item>,
+    )
+
+    /** Öğelerde panel varsa parçaları; yoksa null (Mac: ScreenPhoneCard.panel). */
+    fun panel(items: List<ScreenTranslation.Item>): Panel? {
+        val card = items.firstOrNull { it.panel == PanelPart.CARD } ?: return null
+        val parts = items.filter { it.panel != null && it.panel != PanelPart.CARD }
+        return Panel(card, parts.firstOrNull { it.panel == PanelPart.TITLE },
+            parts.filter { it.panel != PanelPart.TITLE }.sortedBy { it.box.top }, items.filter { it.panel == null })
+    }
+
+    /** Altyazı boyutu ayarının (TV pikseli, 1080p) panel yazısına çarpanı: varsayılan boyda 1. */
+    fun textScale(fontSize: Int): Double = minOf(MAX_SCALE, maxOf(MIN_SCALE, fontSize / DEFAULT_FONT_SIZE.toDouble()))
+
+    /**
+     * Tarafı hizadan belli olmayan balon oyuncunun mu: zemini belirgin mavi, doygun bir renk ya da açık mavimsi (GTA 6'nın
+     * giden balonu #D3DCF4; gelen balon kremdir).
+     */
+    internal fun isOutgoing(surface: TextSurface?): Boolean {
+        if (isBlue(surface)) return true
+        val hex = surface?.background ?: return false
+        if (hex.length != 7 || !hex.startsWith("#")) return false
+        val value = hex.substring(1).toIntOrNull(16) ?: return false
+        val r = (value shr 16) and 0xFF
+        val g = (value shr 8) and 0xFF
+        val b = value and 0xFF
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        return (max - min >= 70 && max >= 90) || (b - r >= 20 && b >= g)
     }
 
     /** Balonun okunan rengi belirgin mavi mi (giden mesaj balonu): mavi kanal kırmızı ve yeşilin ortalamasından en az 40 fazla. */

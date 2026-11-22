@@ -179,7 +179,10 @@ class PhoneSubtitleActivity : ComponentActivity() {
                     // "Ekranı çevir" sonuçları: her çeviri kendi yazısının yerinde, aynı boyda ve özgün yazının stilinde
                     // (TV'deki gibi); GTA 6 telefonunun yazıları yanında mesaj kartı olarak gelir.
                     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
-                        status.screen.forEach { item ->
+                        // GTA 6 telefonunun sohbet paneli akışla çizilir (PhonePanel; Mac, iPhone, Windows, TV ile aynı).
+                        val screenPanel = com.couchsubs.mobile.core.ScreenPhoneCard.panel(status.screen)
+                        screenPanel?.let { PhonePanelInFrame(it, maxWidth, maxHeight) }
+                        (screenPanel?.outside ?: status.screen).forEach { item ->
                             if (item.surface != null) {
                                 StyledBlock(item, maxWidth, maxHeight, fill = com.couchsubs.mobile.core.ScreenPhoneCard.isBackdrop(item))
                                 return@forEach
@@ -199,6 +202,16 @@ class PhoneSubtitleActivity : ComponentActivity() {
                     // Ek alanların (görev, telefon, bildirim) çevirisi oyundaki yerinde küçük kutuda (TV ve iPhone'daki gibi).
                     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
                         status.regions.forEach { region ->
+                            // Yanda Panel: GTA 6 telefonunun mesajları telefonun yanındaki sohbet panelinde (Mac, iPhone,
+                            // Windows, TV ile aynı); "Ekranı çevir"in paneli ekrandayken o çizilir. Panel dışındaki yazılar yerinde.
+                            val regionPanel = region.blocks?.let { com.couchsubs.mobile.core.ScreenPhoneCard.panel(it) }
+                            if (regionPanel != null) {
+                                if (status.screen.none { it.panel == com.couchsubs.mobile.core.ScreenPhoneCard.PanelPart.CARD })
+                                    PhonePanelInFrame(regionPanel, maxWidth, maxHeight)
+                                com.couchsubs.mobile.core.ScreenTranslation.uncovered(regionPanel.outside.filter { it.surface != null }, status.screen)
+                                    .forEach { item -> StyledBlock(item, maxWidth, maxHeight) }
+                                return@forEach
+                            }
                             // Ekran yazısı blokları özgün yerinde ve stilinde (zemin, yazı rengi, kalınlık, hizalama; TV'deki gibi).
                             // "Ekranı çevir" ekrandayken onun yazılarının yerindeki bloklar çizilmez (#827).
                             val styled = region.blocks?.filter { it.surface != null }

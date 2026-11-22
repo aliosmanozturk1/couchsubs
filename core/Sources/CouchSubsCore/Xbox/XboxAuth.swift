@@ -137,6 +137,15 @@ public actor XboxAuth {
         home = nil
     }
 
+    /// Ev yayını hizmeti jetonu süresinden önce reddedildi (HTTP 401): bellekteki jetonlar bırakılır, sonraki istek
+    /// yenilerini alır. Kullanıcı jetonu (yenileme jetonu) korunur; eskiden önbellekteki geçersiz jetonla her yeniden
+    /// deneme 401 alıyor ve "yeniden giriş yapın" deyip duruyordu.
+    public func invalidateHomeToken() {
+        xblUser = nil
+        xsts = [:]
+        home = nil
+    }
+
     /// Microsoft erişim jetonu; 60 sn'den az kaldıysa yenilenir.
     public func userAccessToken() async throws -> String {
         guard let current = userToken else { throw XboxError(.signInRequired, "Microsoft girişi gerekiyor") }

@@ -223,14 +223,29 @@ internal static class PhoneChat
     /// </summary>
     internal static IReadOnlyList<TextLine> WithoutAppNames(IReadOnlyList<TextLine> lines)
     {
-        if (lines.Count == 0 || !lines.All(line => line.PhoneBox.HasValue)) return lines;
-        List<Row> single = [.. lines.Select(line => new Row([line], line.PhoneBox!.Value, Clean(line.Text)))
-            .Where(row => row.Text.Count(char.IsLetter) >= 2).OrderBy(row => row.Spot.Top)];
-        var rows = JoinedRows(single, HomeJoin);
-        if (rows.Count == 0 || !IsHome(rows, lines)) return lines;
+        if (!IsHomeScreen(lines)) return lines;
+        var rows = HomeRows(lines);
         var median = rows.Select(row => row.Height).OrderBy(h => h).ElementAt(rows.Count / 2);
         var names = HomeBlocks(rows, median).Where(IsAppName).SelectMany(block => block[0].Lines).ToList();
         return [.. lines.Where(line => !names.Any(name => name.Text == line.Text && name.PhoneBox == line.PhoneBox))];
+    }
+
+    /// <summary>
+    /// Satırlar (düz ekrandaki yerleri bilinen) telefonun ana ekranı mı; sohbet panelinde ana ekran yazıları kendi yerinde
+    /// kalır (<see cref="GamePhoneText.Roles"/>; Mac ile aynı).
+    /// </summary>
+    internal static bool IsHomeScreen(IReadOnlyList<TextLine> lines)
+    {
+        if (lines.Count == 0 || !lines.All(line => line.PhoneBox.HasValue)) return false;
+        var rows = HomeRows(lines);
+        return rows.Count > 0 && IsHome(rows, lines);
+    }
+
+    private static List<Row> HomeRows(IReadOnlyList<TextLine> lines)
+    {
+        List<Row> single = [.. lines.Select(line => new Row([line], line.PhoneBox!.Value, Clean(line.Text)))
+            .Where(row => row.Text.Count(char.IsLetter) >= 2).OrderBy(row => row.Spot.Top)];
+        return [.. JoinedRows(single, HomeJoin)];
     }
 
     /// <summary>

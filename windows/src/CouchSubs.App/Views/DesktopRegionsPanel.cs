@@ -35,11 +35,18 @@ internal sealed class DesktopRegionsPanel : DockPanel
         if (phoneLayer is null) phone.Child = phoneBlocks;
     }
 
+    /// <summary>Saydam pencerede sohbet panelinin yazı boyu (<see cref="PhoneBlocksCanvas.PanelFont"/>).</summary>
+    public double? PanelFont
+    {
+        get => phoneBlocks.PanelFont;
+        set => phoneBlocks.PanelFont = value;
+    }
+
     public void ShowRegions(Dictionary<string, (string Text, RegionBox? Box, IReadOnlyList<CouchSubs.Core.ScreenTranslation.Item>? Blocks)> regions,
                             Func<string, RegionBox?, IReadOnlyList<CouchSubs.Core.ScreenTranslation.Item>?, Border> makeBox)
     {
         hud.Children.Clear();
-        IReadOnlyList<CouchSubs.Core.ScreenTranslation.Item>? messages = null;
+        IReadOnlyList<CouchSubs.Core.ScreenTranslation.Item>? messages = null, screenPanel = null;
         // "Ekranı çevir" ekrandayken onun yerindeki otomatik ekran yazısı blokları çizilmez (#827).
         foreach (var (id, region) in CouchSubs.Core.ScreenRegions.Visible(regions).OrderBy(pair => pair.Value.Box?.Top ?? 0))
         {
@@ -50,8 +57,15 @@ internal sealed class DesktopRegionsPanel : DockPanel
                 messages = blocks;
                 continue;
             }
+            // "Ekranı çevir"in telefon sohbet paneli de otomatik telefon okumasındaki gibi çizilir; diğer yazıları kutuda.
+            if (region.Blocks is { Count: > 0 } screen && CouchSubs.Core.ScreenPhoneCard.PanelOf(screen) is { } panel)
+            {
+                screenPanel = [.. screen.Where(item => item.Panel is not null)];
+                if (panel.Outside.Count > 0) hud.Children.Add(makeBox(region.Text, region.Box, panel.Outside));
+                continue;
+            }
             hud.Children.Add(makeBox(region.Text, region.Box, region.Blocks));
         }
-        phoneBlocks.Show(messages);
+        phoneBlocks.Show(screenPanel ?? messages);
     }
 }

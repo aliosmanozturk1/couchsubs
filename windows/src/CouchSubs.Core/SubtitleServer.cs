@@ -483,7 +483,9 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
         if (blocks is { Count: > 0 })
         {
             var kept = blocks.Where(item => Area(item.Box) <= MaxBoxArea).ToList();
-            if (kept.Sum(item => Area(item.Box)) > MaxBoxArea) return ("", null);
+            // Sohbet panelinin balonları panelin zemininin içindedir: toplam alana bir kez (zemin olarak) girer (Mac ile aynı).
+            if (kept.Where(item => item.Panel is null or ScreenPhoneCard.PanelPart.Card).Sum(item => Area(item.Box)) > MaxBoxArea)
+                return ("", null);
             if (kept.Count > 0) return (text, kept.Count == blocks.Count ? blocks : kept);
             blocks = null;
         }
@@ -544,6 +546,8 @@ public sealed class SubtitleServer(int port = 8787, TimeSpan? pingInterval = nul
             };
         // Telefon mesajı kendi balonunda: TV çeviriyi balona sığdırır (eski TV yok sayar, özgün stilde çizer).
         if (item.Bubble) json["bubble"] = true;
+        // Telefonun yanındaki sohbet panelinin parçası: yeni TV paneli akışla çizer; eski TV alanı yok sayar.
+        if (item.Panel is { } panel) json["panel"] = panel.Json();
         return json;
     }
 

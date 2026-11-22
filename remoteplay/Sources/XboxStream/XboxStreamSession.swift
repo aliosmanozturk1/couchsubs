@@ -30,6 +30,7 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
     private static let iceGatherMs = 5000
     private static let keepaliveSeconds: UInt64 = 30
     private static let firstFrameSeconds = TimeInterval(XboxFirstFrameWatch.firstFrameLimitMs / 1000)
+    private static let connectSeconds = TimeInterval(XboxConnectWatch.connectLimitMs / 1000)
     private static let reconnectReason = "Yeniden bağlanılıyor"
     /// Okuma saniyede birkaç kez yapılır; her kareyi CGImage'a çevirmeye gerek yok.
     private static let frameInterval: TimeInterval = 0.066
@@ -51,7 +52,12 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
     private var localCandidates: [XboxIceCandidate] = []
     private var gatheringComplete = false
     private var endReason: String?
+    /// Bağlantıyı bitiren olayın türü (`endReason` ile birlikte yazılır): kapanma nedenini ve ekrandaki metni seçer.
+    private var endKind: XboxErrorKind?
     private var sessionId: String?
+    /// Kapatılamayan (DELETE başarısız) oturum: bir sonraki `play`dan önce yeniden kapatılır. Kapatılmadan yenisi
+    /// açılınca Xbox eski oturumu açık sayıp yeni oturumu reddediyordu.
+    private var staleSessionId: String?
     private var lastConverted: TimeInterval = 0
     public private(set) var framesReceived = 0
     /// Kare onayı (Windows'taki xbox-xcloud-player her gösterilen karede yapar): Xbox onay gelmeyen yayını kısa sürede
@@ -161,6 +167,15 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
 
     private var stopped: Bool { locked { machine.phase == .stopped } }
 
+    /// Bağlantıyı bitiren ilk olay kaydedilir (neden ve türü); sonrakiler ilkinin yerine geçmez.
+    private func end(_ reason: String, _ kind: XboxErrorKind) {
+        locked {
+            guard endReason == nil else { return }
+            endReason = reason
+            endKind = kind
+        }
+    }
+
     private func run() async {
         log("konsol: \(console.name)")
         while !Task.isCancelled && !stopped {
@@ -169,6 +184,10 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
             var decided: XboxSessionMachine.Action?
             onState?(.connecting)
             do {
+                if let stale = locked({ () -> String? in defer { staleSessionId = nil }; return staleSessionId }) {
+                    log("önceki oturum Xbox'ta açık kalmış olabilir: yeni oturumdan önce kapatılıyor")
+                    await closeRemote(stale)
+                }
                 log("oturum açılıyor: \(console.name)")
                 let id = try await home.play(consoleId: console.id)
                 log("play yanıtı: oturum \(id.prefix(8))…")
@@ -198,9 +217,9 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
                     }
                 }
                 if !Task.isCancelled && !stopped {
-                    let (reason, noFirstFrame) = locked { (endReason, connectedAt > 0 && framesReceived == 0 && endReason != Self.reconnectReason) }
+                    let (reason, kind, noFirstFrame) = locked { (endReason, endKind, connectedAt > 0 && framesReceived == 0 && endReason != Self.reconnectReason) }
                     // Bağlantı kuruldu ama Xbox tek kare göndermeden kapattı: "görüntü gelmedi" sayılır (iki bağlantıda durulur).
-                    throw XboxError(noFirstFrame ? .noFirstFrame : .network, reason ?? "Xbox görüntü bağlantısı kapandı")
+                    throw XboxError(noFirstFrame ? .noFirstFrame : kind ?? .network, reason ?? "Xbox görüntü bağlantısı kapandı")
                 }
             } catch is CancellationError {
             } catch let error as XboxError {
@@ -225,18 +244,24 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
 
     /// Bağlantı bitince: kaç kare geldi, kaç onay gitti, ilk kareden kaç saniye sonra ve neden bitti.
     private func summarize() {
-        let (frames, sent, first, reason, error) = locked { (framesReceived, acksSent, firstFrameAt, endReason, lastError) }
+        let (frames, sent, first, reason, error, kind) = locked { (framesReceived, acksSent, firstFrameAt, endReason, lastError, lastKind) }
         guard frames > 0 || reason != nil || error != nil else { return }
         log(XboxStop.summary(reason: reason ?? error, frames: frames, acks: sent,
-                             secondsSinceFirstFrame: first > 0 ? Int(ProcessInfo.processInfo.systemUptime - first) : nil))
+                             secondsSinceFirstFrame: first > 0 ? Int(ProcessInfo.processInfo.systemUptime - first) : nil,
+                             cause: kind.map(XboxEndCause.of)))
     }
 
     private var lastError: String?
+    private var lastKind: XboxErrorKind?
 
     private func report(_ kind: XboxErrorKind, _ detail: String) {
-        locked { lastError = "\(kind.rawValue): \(detail)" }
+        locked {
+            lastError = "\(kind.rawValue): \(detail)"
+            lastKind = kind
+        }
         guard !stopped else { return }
         log("kopma (\(kind.rawValue)): \(detail)")
+        log(XboxEndCause.line(kind, detail))
         if kind == .noFirstFrame {
             log("Xbox görüntü göndermedi: bağlantı kuruldu ama tek kare gelmedi. Xbox'ta Ayarlar › Cihazlar ve bağlantılar › "
                 + "Uzak özellikler açık mı, Xbox kablolu mu? Tanı satırlarında video bayt 0 ise Xbox hiç görüntü kodlamıyor")
@@ -279,7 +304,19 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         channels.forEach { $0.delegate = nil; $0.close() }
         peer?.close()
         Self.setAudio(false)
-        if let id { try? await home.stop(id) }
+        if let id { await closeRemote(id) }
+    }
+
+    /// Oturumu Xbox hizmetinde kapatır (birkaç deneme). Kapanmazsa bir sonraki `play`dan önce yeniden denenir; sonuç
+    /// günlüğe yazılır (eskiden hata sessizce yutuluyordu).
+    private func closeRemote(_ id: String) async {
+        let result = await home.close(id)
+        if result.closed {
+            log("oturum kapatıldı: \(id.prefix(8))…")
+            return
+        }
+        locked { staleSessionId = id }
+        log("oturum kapatılamadı (\(XboxSessionClose.delaysMs.count) deneme): \(XboxStop.shorten(result.error)); yeni oturumdan önce yeniden denenecek")
     }
 
     // MARK: - WebRTC
@@ -287,6 +324,8 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
     private func negotiate(_ id: String) async throws {
         locked {
             endReason = nil
+            endKind = nil
+            lastKind = nil
             localCandidates = []
             gatheringComplete = false
             framesReceived = 0
@@ -370,10 +409,16 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         }
         log("ICE: Xbox'tan \(remote.count) aday, \(added) eklendi")
 
-        let negotiatedAt = Date()
+        let negotiatedAt = ProcessInfo.processInfo.systemUptime
         while !Task.isCancelled && !stopped {
             if locked({ endReason }) != nil { return }
-            if locked({ framesReceived }) == 0 && Date().timeIntervalSince(negotiatedAt) > Self.firstFrameSeconds {
+            let (frames, connected) = locked { (framesReceived, connectedAt) }
+            let now = ProcessInfo.processInfo.systemUptime
+            // Görüntü kanalı açılmadı (ICE Wi-Fi'da kurulamadı): ilk kare sınırı kanal açılınca başlar.
+            if connected == 0 && now - negotiatedAt > Self.connectSeconds {
+                throw XboxError(.timeout, "Xbox ile görüntü bağlantısı \(Int(Self.connectSeconds)) sn içinde kurulamadı (ICE)")
+            }
+            if frames == 0 && connected > 0 && now - connected > Self.firstFrameSeconds {
                 throw XboxError(.noFirstFrame, "Xbox'tan \(Int(Self.firstFrameSeconds)) sn içinde görüntü gelmedi")
             }
             try checkPicture()
@@ -420,7 +465,7 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         case ("input", .open):
             startKeepalive()
             startWatch()
-        case ("input", .closed): locked { if endReason == nil { endReason = "Xbox görüntü bağlantısı kapandı" } }
+        case ("input", .closed): end("Xbox görüntü kanalını kapattı", .serverClosed)
         default: break
         }
     }
@@ -501,8 +546,13 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
                     let end = keepalive.failed()
                     let detail = (error as? XboxError)?.message ?? error.localizedDescription
                     self.log("canlı tutma başarısız (\(keepalive.failures)/\(XboxKeepalive.maxFailures)): \(XboxStop.shorten(detail))")
+                    // Oturum Xbox hizmetinde yok (404/410): Xbox yayını kapatmış, beklemek boşuna.
+                    if XboxKeepalive.sessionGone(detail) {
+                        self.end("Xbox oturumu kapattı (canlı tutma: \(XboxStop.shorten(detail, limit: 60)))", .serverClosed)
+                        return
+                    }
                     if end {
-                        self.locked { if self.endReason == nil { self.endReason = "Xbox canlı tutma isteklerine yanıt vermiyor" } }
+                        self.end("Xbox canlı tutma isteklerine yanıt vermiyor", .timeout)
                         return
                     }
                 }
@@ -637,9 +687,9 @@ extension XboxStreamSession: RTCPeerConnectionDelegate {
     public func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {}
     public func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
         log("bağlantı: \(newState.rawValue)")
-        if newState == .failed || newState == .closed {
-            locked { if endReason == nil { endReason = "Xbox WebRTC bağlantısı kesildi" } }
-        }
+        guard locked({ peer === peerConnection }) else { return }
+        if newState == .failed { end("Xbox WebRTC bağlantısı kesildi (ICE failed)", .network) }
+        else if newState == .closed { end("Xbox WebRTC bağlantısını kapattı", .serverClosed) }
     }
 }
 

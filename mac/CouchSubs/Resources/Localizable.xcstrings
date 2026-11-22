@@ -418,8 +418,10 @@
     "Using the saved areas for %@.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Using the saved areas for %@."}},"tr":{"stringUnit":{"state":"translated","value":"%@ için kayıtlı alanlar kullanılıyor."}}}},
     "Areas for this game": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Areas for this game"}},"tr":{"stringUnit":{"state":"translated","value":"Bu oyunun alanları"}}}},
     "Automatically translate the GTA 6 phone (experimental)": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Automatically translate the GTA 6 phone (experimental)"}},"tr":{"stringUnit":{"state":"translated","value":"GTA 6'daki telefonu otomatik çevir (deneysel)"}}}},
-    "Show GTA 6 phone translations in a card next to the phone": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Show GTA 6 phone translations in a card next to the phone"}},"tr":{"stringUnit":{"state":"translated","value":"GTA 6 telefonunun çevirisini telefonun yanında kartta göster"}}}},
-    "Off: each message is translated on top of its own bubble, in the bubble's colours.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Off: each message is translated on top of its own bubble, in the bubble's colours."}},"tr":{"stringUnit":{"state":"translated","value":"Kapalıyken her mesaj kendi balonunun üstünde, balonun renginde çevrilir."}}}},
+    "GTA 6 Phone Messages": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"GTA 6 Phone Messages"}},"tr":{"stringUnit":{"state":"translated","value":"GTA 6 Telefon Mesajları"}}}},
+    "Side Panel": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Side Panel"}},"tr":{"stringUnit":{"state":"translated","value":"Yanda Panel"}}}},
+    "On the Bubbles": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"On the Bubbles"}},"tr":{"stringUnit":{"state":"translated","value":"Balonların Üstünde"}}}},
+    "Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble."}},"tr":{"stringUnit":{"state":"translated","value":"Yanda Panel: sohbet telefonun yanında gösterilir; karşı taraf solda, siz sağdasınız. Balonların Üstünde: her mesaj kendi balonunun üstünde çevrilir."}}}},
     "Delete profile": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Delete profile"}},"tr":{"stringUnit":{"state":"translated","value":"Profili sil"}}}},
     "These areas are saved for %@.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"These areas are saved for %@."}},"tr":{"stringUnit":{"state":"translated","value":"Bu alanlar %@ için kayıtlı."}}}},
     "These are your general areas.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"These are your general areas."}},"tr":{"stringUnit":{"state":"translated","value":"Bunlar genel alanlarınız."}}}},
@@ -1110,6 +1112,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Xbox bağlantısı koptu. Yeniden bağlanılıyor…"
+          }
+        }
+      }
+    },
+    "The Xbox closed the stream. Reconnecting…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The Xbox closed the stream. Reconnecting…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox yayını kapattı. Yeniden bağlanılıyor…"
           }
         }
       }

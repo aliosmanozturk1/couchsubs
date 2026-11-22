@@ -83,6 +83,10 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
     /// <summary>İlk karenin anı (yayın ne kadar sağlıklı sürdü).</summary>
     private long streamingSince;
     private string? endReason;
+    /// <summary>Bağlantıyı bitiren olayın türü (<see cref="endReason"/> ile birlikte yazılır, bkz. <see cref="End"/>).</summary>
+    private XboxEndCause? endCause;
+    /// <summary>ICE değişiminden görüntü kanalı açılana kadar süre sınırı (bkz. <see cref="XboxConnectWatch"/>).</summary>
+    private DispatcherTimer? connectTimer;
 
     private static void Log(string line) => SubtitleLog.Write("[Xbox] " + line);
 
@@ -108,6 +112,7 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
         while (!cancel.IsCancellationRequested)
         {
             string? reason = null;
+            var cause = XboxEndCause.Network;
             var permanent = false;
             // WebRTC bağlandı ama Xbox'tan tek kare gelmeden bitti (Xbox kapattı ya da ilk kare sınırı doldu).
             var noFirstFrame = false;
@@ -118,6 +123,9 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                 var startedSession = await bridge.CallAsync("start", new { consoleId = console.Id });
                 RememberToken(startedSession);
                 Log($"play yanıtı: oturum {Mask(startedSession.TryGetProperty("sessionId", out var sid) ? sid.GetString() : null)}");
+                if (startedSession.TryGetProperty("closedStale", out var stale) && stale.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    Log(stale.GetBoolean() ? "önceki oturum Xbox'ta açık kalmıştı: yeni oturumdan önce kapatıldı"
+                        : "önceki oturum Xbox'ta açık kalmış olabilir ve kapatılamadı; bir sonraki denemede yeniden kapatılacak");
                 string? lastState = null;
                 for (var attempt = 0; attempt < 90 && !cancel.IsCancellationRequested; attempt++)
                 {
@@ -148,6 +156,7 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
             catch (Exception error)
             {
                 reason = error.Message;
+                cause = endCause ?? CauseOf(error);
                 Log($"kopma: {reason}");
             }
             finally
@@ -156,15 +165,18 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                 {
                     var first = Interlocked.Exchange(ref firstFrameAt, 0);
                     noFirstFrame = connectedAt != 0 && first == 0 && !cancel.IsCancellationRequested;
+                    if (noFirstFrame) cause = XboxEndCause.Timeout;
                     Log(XboxStop.Summary(cancel.IsCancellationRequested ? null : reason ?? endReason, Interlocked.Exchange(ref connectionFrames, 0),
-                        first == 0 ? null : TimeSpan.FromMilliseconds(Environment.TickCount64 - first)));
+                        first == 0 ? null : TimeSpan.FromMilliseconds(Environment.TickCount64 - first), cancel.IsCancellationRequested ? null : cause));
                 }
                 ClosePlayer();
-                try { await bridge.CallAsync("stop"); } catch { /* A lost connection has no session to stop. */ }
+                await StopRemoteAsync();
             }
             if (cancel.IsCancellationRequested) break;
+            Log(XboxEndCauses.Line(cause, reason));
             var since = Interlocked.Exchange(ref streamingSince, 0);
             endReason = null;
+            endCause = null;
             var delay = retries.Failed(permanent, noFirstFrame, since == 0 ? null : Environment.TickCount64 - since, reason);
             if (noFirstFrame)
                 Log($"Xbox görüntü göndermedi: bağlantı kuruldu ama tek kare gelmedi ({retries.Failures}. bağlantı; neden: {XboxStop.Shorten(reason)}). " +
@@ -179,10 +191,78 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                 break;
             }
             Log($"yeniden deneme {retries.Failures}/{XboxRetryPlan.DelaysMs.Length}: {delay / 1000} sn sonra");
-            StateChanged?.Invoke(SessionState.Disconnected(DisconnectKind.Other, noFirstFrame ? Localizer.Current[XboxStop.NoPictureRetrying] : reason));
+            // Ekranda kapanmanın türü kısa metinle (sunucu kapattı / yanıt yok / bağlantı koptu); ham neden günlükte.
+            StateChanged?.Invoke(SessionState.Disconnected(DisconnectKind.Other,
+                Localizer.Current[noFirstFrame ? XboxStop.NoPictureRetrying : XboxEndCauses.RetryMessage(cause)]));
             try { await Task.Delay(delay.Value, cancel.Token); }
             catch (OperationCanceledException) { break; }
         }
+    }
+
+    /// <summary>Bağlantıyı bitiren olay belli değilse hatanın türünden: konsolun reddi sunucu, süre dolması zaman aşımı, gerisi iletiden.</summary>
+    private static XboxEndCause CauseOf(Exception error) => error switch
+    {
+        TimeoutException => XboxEndCause.Timeout,
+        InvalidOperationException => XboxEndCause.Server,
+        _ => XboxEndCauses.FromMessage(error.Message),
+    };
+
+    /// <summary>
+    /// Bağlantıyı bitiren ilk olay kaydedilir (neden ve türü) ve oynatıcı kapatılır; sonrakiler ilkinin yerine geçmez.
+    /// Kapanmış ya da eski bir bağlantıdan gelen geç olay yeni bağlantının nedenini yazmaz. Arayüz iş parçacığında çağrılır.
+    /// </summary>
+    private void End(string reason, XboxEndCause cause, TaskCompletionSource<bool>? ended = null)
+    {
+        var target = ended ?? browserEnded;
+        if (target is null || target != browserEnded || target.Task.IsCompleted) return;
+        endReason ??= reason;
+        endCause ??= cause;
+        target.TrySetResult(true);
+    }
+
+    /// <summary>
+    /// Oturumu Xbox hizmetinde kapatır (köprü birkaç kez dener; kapanmazsa bir sonraki "start"tan önce yeniden dener).
+    /// Sonuç günlüğe yazılır; eskiden hata sessizce yutuluyordu ve Xbox eski oturumu açık sayabiliyordu.
+    /// </summary>
+    private async Task StopRemoteAsync()
+    {
+        try
+        {
+            var result = await bridge.CallAsync("stop");
+            if (result.ValueKind == JsonValueKind.Object && result.TryGetProperty("closed", out _)) Log("oturum kapatıldı");
+        }
+        catch (Exception error)
+        {
+            Log($"oturum kapatılamadı: {XboxStop.Shorten(error.Message)}; yeni oturumdan önce yeniden denenecek");
+        }
+    }
+
+    /// <summary>
+    /// ICE adayları değişildi: görüntü kanalı <see cref="XboxConnectWatch.ConnectLimit"/> içinde açılmazsa (ICE Wi-Fi'da
+    /// kurulamadı) bağlantı zaman aşımıyla kapatılır. Eskiden sınır yoktu, oturum Xbox kapatana kadar "bağlanıyor"da kalıyordu.
+    /// </summary>
+    private void StartConnectWatch()
+    {
+        StopConnectWatch();
+        var started = Environment.TickCount64;
+        var ended = browserEnded;
+        connectTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        connectTimer.Tick += (_, _) =>
+        {
+            if (browserEnded != ended || connectedAt != 0) { StopConnectWatch(); return; }
+            if (Environment.TickCount64 - started < (long)XboxConnectWatch.ConnectLimit.TotalMilliseconds) return;
+            var limit = $"Xbox ile görüntü bağlantısı {(long)XboxConnectWatch.ConnectLimit.TotalSeconds} sn içinde kurulamadı (ICE)";
+            Log($"bağlantı sınırı: {limit}; bağlantı kapatılıyor");
+            StopConnectWatch();
+            End(limit, XboxEndCause.Timeout, ended);
+        };
+        connectTimer.Start();
+    }
+
+    private void StopConnectWatch()
+    {
+        connectTimer?.Stop();
+        connectTimer = null;
     }
 
     private async Task OpenPlayerAsync()
@@ -245,9 +325,24 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                     if (Interlocked.Exchange(ref frameBusy, 1) != 0) return;
                     OfferFrame(message.GetProperty("image").GetString()!);
                     break;
+                case "ice":
+                    // RTCPeerConnection.iceConnectionState: görüntü bekçisi asıl ICE durumunu görür (Mac/iPhone, Android gibi).
+                    var ice = message.GetProperty("state").GetString();
+                    Log($"ICE: {ice}");
+                    pictureWatch?.IceChanged(XboxPictureWatch.IceFrom(ice), Environment.TickCount64);
+                    break;
+                case "peer":
+                    var peer = message.GetProperty("state").GetString();
+                    Log($"bağlantı: {peer}");
+                    if (peer == "failed") End("Xbox WebRTC bağlantısı kesildi (ICE failed)", XboxEndCause.Network);
+                    else if (peer == "closed") End("Xbox WebRTC bağlantısını kapattı", XboxEndCause.Server);
+                    break;
+                case "negotiated":
+                    StartConnectWatch();
+                    break;
                 case "state":
+                    // xCloudPlayer'ın 'connectionstate' olayı: görüntü kanalının (input) durumu; ICE durumu "ice" iletisinde.
                     var state = message.GetProperty("state").GetString();
-                    pictureWatch?.IceChanged(XboxPictureWatch.IceFrom(state), Environment.TickCount64);
                     if (state == "connected" && connectedAt != 0)
                     {
                         // Takılan bağlantı toparlandı: ilk kare saati ve canlı tutma baştan başlatılmaz.
@@ -259,6 +354,7 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                         // ilk karede). Eskiden burada "bağlandı" deniyor, Xbox görüntü göndermeyince ekran bir dakika
                         // "bağlı" görünüp altyazı hiç gelmiyordu.
                         Log("WebRTC bağlandı; ilk kare bekleniyor");
+                        StopConnectWatch();
                         StartWatch();
                         StartKeepalive();
                     }
@@ -267,12 +363,18 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                         // Geçici olabilir (Wi-Fi takılması): oturum bitmez; oynatıcı o anki ağ tanısını da gönderir.
                         Log("WebRTC disconnected: bağlantı takıldı, toparlanması bekleniyor");
                     }
-                    else if (state is "closed" or "failed" or "error")
+                    else if (state == "closed")
                     {
+                        // Görüntü kanalı kapandı: bağlantı yerelde kapatılmadıysa Xbox kapatmıştır.
+                        Log("WebRTC closed: Xbox görüntü kanalını kapattı");
+                        End("Xbox görüntü kanalını kapattı", XboxEndCause.Server);
+                    }
+                    else if (state is "failed" or "error")
+                    {
+                        // Oynatıcı sayfasındaki el sıkışma hatası (SDP/ICE değişimi): Xbox hizmetinin yanıtıysa sunucu, süre dolduysa zaman aşımı.
                         var detail = message.TryGetProperty("detail", out var value) ? value.GetString() : Localizer.Current["The Xbox WebRTC connection was lost"];
                         Log($"WebRTC {state}: {detail}");
-                        endReason ??= detail;
-                        browserEnded?.TrySetResult(true);
+                        End(detail ?? state, XboxEndCauses.FromMessage(detail));
                     }
                     break;
                 case "keyframeReady":
@@ -373,9 +475,8 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                 // Gerekçe yalnız günlüğe girer; ekranda XboxStop.NoPictureRetrying / NoPictureStopped görünür.
                 var limit = $"Xbox'tan {(long)XboxFirstFrameWatch.FirstFrameLimit.TotalSeconds} sn içinde görüntü gelmedi";
                 Log($"ilk kare sınırı: {limit}; bağlantı kapatılıyor");
-                endReason ??= limit;
                 StopWatch();
-                browserEnded?.TrySetResult(true);
+                End(limit, XboxEndCause.Timeout);
                 return;
             }
             if (watch.FrameSeen) StopWatch();
@@ -416,9 +517,8 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                     break;
                 case XboxPictureVerdictKind.Stalled:
                     Log($"{verdict.Reason}; oturum yeniden kuruluyor");
-                    endReason ??= Localizer.Current["No picture from the Xbox. Reconnecting…"];
                     StopPictureWatch();
-                    ended?.TrySetResult(true);
+                    End(verdict.Reason ?? Localizer.Current["No picture from the Xbox. Reconnecting…"], XboxEndCause.Network, ended);
                     break;
             }
         };
@@ -506,9 +606,15 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
                     {
                         var end = keepalive.Failed();
                         Log($"canlı tutma başarısız ({keepalive.Failures}/{XboxKeepalive.MaxFailures}): {XboxStop.Shorten(error.Message)}");
-                        if (!end) continue;
-                        endReason ??= Localizer.Current["The Xbox stopped answering keep-alive requests."];
-                        ended?.TrySetResult(true);
+                        // Oturum Xbox hizmetinde yok (404/410): Xbox yayını kapatmış, beklemek boşuna.
+                        var gone = XboxKeepalive.SessionGone(error.Message);
+                        if (!end && !gone) continue;
+                        var why = gone ? $"Xbox oturumu kapattı (canlı tutma: {XboxStop.Shorten(error.Message, 60)})"
+                            : Localizer.Current["The Xbox stopped answering keep-alive requests."];
+                        // Arayüz iş parçacığında: endReason ve oynatıcı orada değişir.
+                        if (Application.Current?.Dispatcher is { } dispatcher)
+                            _ = dispatcher.InvokeAsync(() => End(why, gone ? XboxEndCause.Server : XboxEndCause.Timeout, ended));
+                        else ended?.TrySetResult(true);
                         return;
                     }
                 }
@@ -529,6 +635,7 @@ internal sealed class XboxStreamSession(XboxBridge bridge, XboxConsole console, 
         keepaliveCancel?.Cancel();
         keepaliveCancel = null;
         connectedAt = 0;
+        StopConnectWatch();
         StopWatch();
         watch = null;
         StopPictureWatch();

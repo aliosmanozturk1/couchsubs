@@ -177,11 +177,28 @@ struct StreamWindowView: View {
 }
 
 /// Yayın katmanının koordinatları telefondaki kaynak kutularıyla aynı, sol üst köşeye göre 0…1 aralığındadır.
+/// Yanda Panel'de telefonun mesajları sohbet panelinde (`PhonePanelView`; TV ve Windows ile aynı çizim), panel dışındaki
+/// yazılar (ana ekran) kendi yerinde. `panelFont` verilirse (saydam pencere: alan oyun karesi değil, kullanıcının seçtiği
+/// altyazı yeri) panel alanın telefon tarafındaki kenarına yaslanır, yazısı altyazı boyundan gelir.
 struct GamePhoneBlocks: View {
     let items: [ScreenTranslation.Item]
+    var panelFont: CGFloat? = nil
 
     var body: some View {
+        let panel = ScreenPhoneCard.panel(items)
+        let items = panel?.outside ?? items
         GeometryReader { proxy in
+            if let panel {
+                if let font = panelFont {
+                    let width = min(proxy.size.width * 0.45, font * 20)
+                    let right = (panel.card.box.left + panel.card.box.right) / 2 > 0.5
+                    PhonePanelView(panel, fontSize: font, radius: max(8, font * 0.7))
+                        .frame(width: width, height: proxy.size.height)
+                        .frame(maxWidth: .infinity, alignment: right ? .trailing : .leading)
+                } else {
+                    PhonePanelInFrame(panel, size: proxy.size)
+                }
+            }
             ForEach(items.indices, id: \.self) { i in
                 let item = items[i]
                 let box = item.box
@@ -264,10 +281,14 @@ struct ScreenTextBlocks: View {
     }
 
     var body: some View {
+        // "Ekranı çevir"in GTA 6 telefon paneli de otomatik telefon okumasındaki gibi akışla çizilir (`PhonePanelView`).
+        let panel = ScreenPhoneCard.panel(items)
+        let blocks = panel?.outside ?? items
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
-                ForEach(items.indices, id: \.self) { i in
-                    block(items[i], size: proxy.size)
+                if let panel { PhonePanelInFrame(panel, size: proxy.size) }
+                ForEach(blocks.indices, id: \.self) { i in
+                    block(blocks[i], size: proxy.size)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)

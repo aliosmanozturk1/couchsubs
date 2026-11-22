@@ -364,12 +364,14 @@ class AppSettings(context: Context) : AreaStore {
         set(value) = prefs.edit().putBoolean("autoReadGamePhone", value).apply()
 
     /**
-     * "Ekranı çevir"de GTA 6 telefonunun mesajları telefonun yanındaki kartta gösterilir. Kapalıyken (varsayılan) her
-     * mesajın çevirisi kendi balonunun üstünde, balonun renginde, yerindedir (Mac/Windows phoneChatCard).
+     * "GTA 6 Telefon Mesajları": açıkken (Yanda Panel, varsayılan) telefonun mesajları telefonun yanındaki sohbet panelinde
+     * (karşı taraf solda, oyuncu sağda), kapalıyken (Balonların Üstünde) her mesajın çevirisi kendi balonunun üstünde
+     * gösterilir. Otomatik telefon okuması ve "Ekranı çevir" aynı ayarı kullanır. Eski "phoneChatCard" kaydı (varsayılanı
+     * kapalıydı) okunmaz; herkes panelle başlar (Mac/Windows phoneMessagesPanel).
      */
-    var phoneChatCard: Boolean
-        get() = prefs.getBoolean("phoneChatCard", false)
-        set(value) = prefs.edit().putBoolean("phoneChatCard", value).apply()
+    var phoneMessagesPanel: Boolean
+        get() = prefs.getBoolean("phoneMessagesPanel", true)
+        set(value) = prefs.edit().putBoolean("phoneMessagesPanel", value).apply()
 
     /** Bu PS5'te son seçilen oyun ("Hangi oyunu oynuyorsunuz?" kartının ilk önerisi). */
     fun lastGame(console: String): String? = prefs.getString("lastGame.$console", null)

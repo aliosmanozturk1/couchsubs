@@ -524,6 +524,10 @@ kartı: "%lld SN SESSİZ", neden başlığı, açıklama, çözüm düğmeleri v
 Solda 240 genişlikte gezinme kartı: üstte üç bölüm (64 yükseklik, başlık + gri ipucu), ayraç, altında altı sayfa
 (44 yükseklik). En altta gri not "Ayarlar tek yerde. Profil sayfası kaldırıldı." Sağda iki sütun kartlar.
 
+Gelişmiş › Deneysel kartında "GTA 6 Telefonunu Otomatik Çevir" satırının altında **GTA 6 Telefon Mesajları** seçicisi
+(`DSTabs`: Yanda Panel / Balonların Üstünde, varsayılan Yanda Panel; ayar Mac `phoneMessagesPanel`, Windows
+`PhoneMessagesPanel`) ve altında gri açıklaması. Otomatik telefon okumasına ve "Ekranı Çevir"e birlikte uygulanır.
+
 | EN | TR |
 |---|---|
 | Basics | Temel |
@@ -612,6 +616,10 @@ Solda 240 genişlikte gezinme kartı: üstte üç bölüm (64 yükseklik, başl�
 | Objectives, menus and other text on the screen. | Görev, menü ve ekrandaki diğer yazılar. |
 | Translate the GTA 6 Phone Automatically | GTA 6 Telefonunu Otomatik Çevir |
 | Each message is translated over its own bubble. | Her mesaj kendi balonunun üstünde çevrilir. |
+| GTA 6 Phone Messages | GTA 6 Telefon Mesajları |
+| Side Panel | Yanda Panel |
+| On the Bubbles | Balonların Üstünde |
+| Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble. | Yanda Panel: sohbet telefonun yanında gösterilir; karşı taraf solda, siz sağdasınız. Balonların Üstünde: her mesaj kendi balonunun üstünde çevrilir. |
 | Restore Defaults | Varsayılana Dön |
 | Appearance | Görünüm |
 | Follow System | Sisteme Uy |
@@ -833,7 +841,7 @@ TV'ye giden `style` olayına (`SubtitleStyle`) eklenen alanlar; eski TV uygulama
 | `backgroundColor` | `"#RRGGBB"`, varsayılan `"#101014"` | Altyazı zemininin rengi; koyuluğu `background` (0–100). |
 | `textHex` | `"#RRGGBB"` ya da yok | Yazı rengi; varsa `textColor`'ın yerine geçer (`textColor` eski TV için white/yellow olarak da gönderilir). |
 | `nameOnly` | Bool | true: konuşan rengi yalnız adı boyar (yeni arayüz); false/yok: eski davranış (ad ve satır). |
-| `hdmiInput` | 1–4 ya da yok | Kurulumun TV Girişi adımında seçilen giriş; TV uygulaması (0.9.75+) değer değişince o girişi açar, aynı değer yeniden gelince TV'de elle seçilen girişi ezmez. |
+| `hdmiInput` | 1–4 ya da yok | Kurulumun TV Girişi adımında seçilen giriş; TV uygulaması (0.9.76+) değer değişince o girişi açar, aynı değer yeniden gelince TV'de elle seçilen girişi ezmez. |
 
 Kayıtta (`SubtitleStyle`) tutulan, TV'ye ayrıca gitmeyen alanlar: `nameColorMode` (`text`/`single`/`speaker`), `nameHex`
 (Tek Renk), `characterColors` (küçük harfli ad → renk). Sunucu bunları `SpeakerColorBook.configure` ile uygular;
@@ -852,5 +860,5 @@ Eşleşme kodu (TV'de görünen kod) mevcut `SubtitlePairing` biletinde zaten va
 - "Oyun Penceresi" seçilirse görüntü seçilen pencereden okunur ve kurulum biter (pencere Ayarlar › Konsol ve Kaynak'ta).
 - Açılış animasyonu yalnız ilk kurulumda (`introPlayed`); ses tuvaldeki Web Audio tarifinin aynısı uygulamada üretilir
   (dosya yok). TV eşleşme kodu sihirbazda kartta gösterilir ("TV'de Bu Kodu Görüyorum"), ana pencerede onay penceresi.
-- TV uygulaması 0.9.75: `backgroundColor`, `textHex`, `nameOnly`, `hdmiInput` alanlarını uygular (OBS katmanı ve ikinci
+- TV uygulaması 0.9.76: `backgroundColor`, `textHex`, `nameOnly`, `hdmiInput` alanlarını uygular (OBS katmanı ve ikinci
   ekran sayfası da renkleri).

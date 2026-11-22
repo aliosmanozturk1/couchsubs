@@ -28,6 +28,7 @@ public sealed partial class RegionWatcher
             if (area.PanelLifetime is { IsCancellationRequested: true }) return;
             if (!map.TryGetValue(area.Id, out state!)) map[area.Id] = state = new State();
         }
+        state.PhoneAspect = frame.Width / (double)Math.Max(1, frame.Height);
         var moved = state.ReadRegion is { } region && !area.Region.IsClose(region, 0.01);
         var changed = moved || state.Signature is not { } previous || ReadScheduler.Changed(previous, signature, ReadScheduler.ChangeThreshold)
             || state.ReadPhonePage?.Changed(frame, area.Region) == true;
@@ -244,6 +245,10 @@ public sealed partial class RegionWatcher
         if (state.PhoneTranslations is { } known)
             for (var i = 0; i < result.Length; i++)
                 if (result[i] is null && PhoneSteady.Translation(candidate.Paragraphs[i], known) is { } cached) result[i] = cached;
+        // Kişinin adı (sohbet başlığı) çevrilmez: "Rose" "Gül" olmasın; panelin başlığında aslıyla görünür (Mac ile aynı).
+        foreach (var block in candidate.Blocks ?? [])
+            if (block.Phone?.Role.KeepsText() == true)
+                for (var i = block.Start; i < block.Start + block.Count && i < result.Length; i++) result[i] = candidate.Paragraphs[i];
         // Zaten Türkçe olan parça çevrilmez: aslı kalır, tümü öyleyse kutu gösterilmez.
         for (var i = 0; i < result.Length; i++)
             if (result[i] is null && SkipsTurkish && TurkishText.IsSure(candidate.Paragraphs[i])) result[i] = candidate.Paragraphs[i];

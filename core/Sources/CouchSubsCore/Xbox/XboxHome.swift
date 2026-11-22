@@ -78,8 +78,14 @@ public final class XboxHome: Sendable {
         + "\"dev\":{\"hw\":{\"make\":\"Microsoft\",\"model\":\"Surface Pro\",\"sdktype\":\"native\"},"
         + "\"os\":{\"name\":\"Windows 11\",\"ver\":\"22631.2715\",\"platform\":\"desktop\"},"
         + "\"displayInfo\":{\"dimensions\":{\"widthInPixels\":1920,\"heightInPixels\":1080},\"pixelDensity\":{\"dpiX\":1,\"dpiY\":1}}}}"
-    public static let exchangeAttempts = 30
+    /// SDP/ICE yanıtı ilk 5 sn 250 ms'de bir, sonra saniyede bir, toplam 30 sn sorulur. Eskiden 7,5 sn'de bırakılıyordu:
+    /// Wi-Fi'daki Xbox yanıtı geç verince oturum Xbox'ta "uzaktan oynatma başladı"dan birkaç saniye sonra kapanıyordu.
+    public static let exchangeFastAttempts = 20
     public static let exchangeIntervalMs = 250
+    public static let exchangeSlowIntervalMs = 1000
+    public static let exchangeAttempts = exchangeFastAttempts + 25
+
+    static func exchangeDelayMs(attempt: Int) -> Int { attempt < exchangeFastAttempts ? exchangeIntervalMs : exchangeSlowIntervalMs }
 
     private let auth: XboxAuth
     private let http: XboxHTTP
@@ -142,13 +148,22 @@ public final class XboxHome: Sendable {
 
     @discardableResult
     func api(_ path: String, method: String = "GET", data: JSON? = nil) async throws -> JSON? {
-        let endpoint = try await auth.homeEndpoint()
-        let response = try await http.request(method, endpoint.baseURL + path, headers: [
-            "Accept": "application/json", "Content-Type": "application/json", "Authorization": "Bearer \(endpoint.token)",
-            "X-Gssv-Client": "XboxComBrowser", "X-MS-Device-Info": Self.deviceInfo], body: data.map(jsonText))
+        var response = try await send(path, method: method, data: data)
+        // Hizmet jetonu süresinden önce reddedildi: jeton bir kez yenilenip istek yinelenir.
+        if response.status == 401 {
+            await auth.invalidateHomeToken()
+            response = try await send(path, method: method, data: data)
+        }
         guard response.ok else { throw Self.serviceError(response) }
         if response.status == 204 || response.body.isEmpty { return nil }
         return try parseJSON(response.body)
+    }
+
+    private func send(_ path: String, method: String, data: JSON?) async throws -> XboxHTTPResponse {
+        let endpoint = try await auth.homeEndpoint()
+        return try await http.request(method, endpoint.baseURL + path, headers: [
+            "Accept": "application/json", "Content-Type": "application/json", "Authorization": "Bearer \(endpoint.token)",
+            "X-Gssv-Client": "XboxComBrowser", "X-MS-Device-Info": Self.deviceInfo], body: data.map(jsonText))
     }
 
     public static func serviceError(_ response: XboxHTTPResponse) -> XboxError {
@@ -182,11 +197,11 @@ public final class XboxHome: Sendable {
 
     private func exchange(_ path: String, _ payload: JSON) async throws -> String {
         try await api(path, method: "POST", data: payload)
-        for _ in 0..<Self.exchangeAttempts {
+        for attempt in 0..<Self.exchangeAttempts {
             if let text = try await api(path)?["exchangeResponse"] as? String, !text.isEmpty { return text }
-            try await sleep(Self.exchangeIntervalMs)
+            try await sleep(Self.exchangeDelayMs(attempt: attempt))
         }
-        throw XboxError(.timeout, "Xbox WebRTC exchange timed out")
+        throw XboxError(.timeout, "Xbox WebRTC exchange timed out (\(path.hasSuffix("/ice") ? "ICE" : "SDP"), 30 sn)")
     }
 
     public func sdp(_ sessionId: String, offer: String) async throws -> String {
@@ -209,5 +224,23 @@ public final class XboxHome: Sendable {
 
     public func stop(_ sessionId: String) async throws {
         try await api("/v5/sessions/home/\(sessionId)", method: "DELETE")
+    }
+
+    /// Oturumu kapatır; olmazsa `XboxSessionClose.delaysMs` aralıklarıyla yineler. Oturum Xbox hizmetinde zaten yoksa
+    /// (404/410) kapanmış sayılır. Dönen değer: kapandı mı, olmadıysa son hata.
+    public func close(_ sessionId: String) async -> (closed: Bool, error: String?) {
+        var last: String?
+        for delay in XboxSessionClose.delaysMs {
+            if delay > 0 { try? await sleep(delay) }
+            do {
+                try await stop(sessionId)
+                return (true, nil)
+            } catch {
+                let message = (error as? XboxError)?.message ?? error.localizedDescription
+                if XboxKeepalive.sessionGone(message) { return (true, nil) }
+                last = message
+            }
+        }
+        return (false, last)
     }
 }

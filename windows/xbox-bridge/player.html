@@ -113,8 +113,21 @@
       channel?.addEventListener('open', () => log('kanal ' + name + ': open'));
       channel?.addEventListener('close', () => log('kanal ' + name + ': closed'));
     }
-    player.getDataChannel('message')?.addEventListener('message', event => {
-      if (typeof event.data === 'string' && event.data.includes('"HandshakeAck"')) log('kanal message: HandshakeAck');
+    // Xbox'ın metin iletileri (kapatma bildirimi gibi) telefonlardaki "kanal …" satırları gibi günlüğe girer; kapanmanın
+    // nedeni Xbox'tan geliyorsa burada görünür.
+    for (const name of ['message', 'control']) {
+      player.getDataChannel(name)?.addEventListener('message', event => {
+        if (typeof event.data !== 'string') return;
+        log(event.data.includes('"HandshakeAck"') ? 'kanal message: HandshakeAck' : 'kanal ' + name + ': ' + event.data.slice(0, 300));
+      });
+    }
+    // xCloudPlayer'ın 'connectionstate' olayı görüntü kanalının (input) durumudur; ICE ve WebRTC bağlantısının asıl
+    // durumu ayrıca bildirilir (eskiden ICE kurulamazsa ya da koparsa Windows bunu hiç görmüyordu).
+    const peer = player._webrtcClient;
+    peer?.addEventListener('iceconnectionstatechange', () => send({ kind: 'ice', state: peer.iceConnectionState }));
+    peer?.addEventListener('connectionstatechange', () => {
+      if (peer.connectionState === 'failed') sendStats();
+      send({ kind: 'peer', state: peer.connectionState });
     });
     player.setSdpHandler(async (_, offer) => {
       try {
@@ -177,6 +190,8 @@
         sdpMid: candidate.sdpMid,
       }));
       player.setIceCandidates(await rpc('ice', { candidates }));
+      // Uygulama bu andan bağlantının kurulma süresini sayar (XboxConnectWatch).
+      send({ kind: 'negotiated' });
     } catch (error) { fail(error); }
   }
   function stop() {
