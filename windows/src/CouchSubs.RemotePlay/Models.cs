@@ -171,4 +171,9 @@ public interface IStreamSession : IDisposable
     /// açılmaz (#871; Mac, iPhone ve Android ile aynı).
     /// </summary>
     void SetPlayAudio(bool enabled) { }
+    /// <summary>
+    /// PS5: bağlanırken son adım; "Bağlanıyor…" 30 sn'yi geçince ana ekranda nedeni söylenir (<see cref="ConnectingHint"/>;
+    /// Xbox ve pencereden okumada yok). Her iş parçacığından okunur.
+    /// </summary>
+    ConnectStep? LastConnectStep => null;
 }

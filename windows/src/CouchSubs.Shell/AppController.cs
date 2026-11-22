@@ -566,12 +566,36 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// </summary>
     public bool DemoMode { get => demoMode; private set => Set(ref demoMode, value, [nameof(ConsoleTitle), nameof(Ps5StatusText), nameof(ShowsMainAccountTip)]); }
     private bool demoMode;
-    public SessionState SessionState { get => sessionState; private set => Set(ref sessionState, value, [nameof(Ps5StatusText), nameof(Ps5Tone), nameof(ShowsMainAccountTip)]); }
+    public SessionState SessionState
+    {
+        get => sessionState;
+        private set
+        {
+            if (Set(ref sessionState, value, [nameof(Ps5StatusText), nameof(Ps5Tone), nameof(ShowsMainAccountTip)])) UpdateConnectingHint();
+        }
+    }
     public string Ps5StatusText => demoMode ? text["Sample pictures"]
         : ReadsCaptureWindow ? CaptureWindowStatusText(sessionState, isRunning, text, settings.CaptureWindow)
         : IsXbox ? XboxStatusText()
         : ReadsRemotePlayWindow ? WindowStatusText(sessionState, isRunning, text, installed: !RemotePlayMissing)
-                : StatusText(sessionState, isRunning, text, console is null ? null : string.IsNullOrEmpty(console.Name) ? "PS5" : console.Name);
+                : StatusText(sessionState, isRunning, text, console is null ? null : string.IsNullOrEmpty(console.Name) ? "PS5" : console.Name,
+                    connectingHint);
+
+    /// <summary>"Bağlanıyor…"un başladığı an ve 30 sn geçince söylenen nedeni (<see cref="ConnectingHint"/>; Mac, iPhone ve
+    /// Android ile aynı). Ana ekranın birkaç saniyede bir çağırdığı <see cref="CheckConnectionsAsync"/> ve durum değişince
+    /// güncellenir.</summary>
+    private DateTime? connectingSince;
+    private string? connectingHint;
+
+    private void UpdateConnectingHint()
+    {
+        var connecting = sessionIsConsole && !IsXbox && sessionState.Phase == SessionPhase.Connecting;
+        connectingSince = connecting ? connectingSince ?? Clock() : null;
+        var hint = connectingSince is { } since ? ConnectingHint.Text(Clock() - since, session?.LastConnectStep, text) : null;
+        if (hint == connectingHint) return;
+        connectingHint = hint;
+        Changed(nameof(Ps5StatusText));
+    }
     private string XboxStatusText() => sessionState.Phase switch
     {
         SessionPhase.Streaming => text["Connected"],
@@ -2451,12 +2475,12 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         return state.Reason?.Detail is { Length: > 0 } detail ? detail : text[waiting];
     }
 
-    public static string StatusText(SessionState state, bool running, Localizer text, string? pairedName = null)
+    public static string StatusText(SessionState state, bool running, Localizer text, string? pairedName = null, string? connectingHint = null)
     {
         switch (state.Phase)
         {
             case SessionPhase.Streaming: return text["Connected"];
-            case SessionPhase.Connecting: return text["Connecting…"];
+            case SessionPhase.Connecting: return connectingHint is null ? text["Connecting…"] : text["Connecting…"] + "\n" + connectingHint;
         }
         if (!running)
             return pairedName is null ? text["Not connected"] : text.Format("Paired with %@. Connects when you start translating.", pairedName);
@@ -3765,6 +3789,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// </summary>
     public async Task CheckConnectionsAsync()
     {
+        UpdateConnectingHint();
         UpdateTroubleClocks();
         UpdateReconnectOffer();
         if (!isRunning || services.Firewall is not { } firewall) return;

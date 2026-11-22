@@ -422,6 +422,18 @@ public sealed class StreamSession : IStreamSession
     /// <summary>Oturum kuyruğunun iş parçacığında çağrılır.</summary>
     public event Action<RegisteredConsole>? ConsoleMoved;
 
+    /// <summary>Bağlanırken son adım (kuyrukta yazılır, her iş parçacığından okunur; -1: henüz yok).</summary>
+    private int connectStep = -1;
+    public ConnectStep? LastConnectStep
+    {
+        get
+        {
+            var value = Volatile.Read(ref connectStep);
+            return value < 0 ? null : (ConnectStep)value;
+        }
+    }
+    private void SetStep(ConnectStep step) => Volatile.Write(ref connectStep, (int)step);
+
     /// <summary>Tüm ağı taramak pahalı; PS5 kapalıyken her yeniden denemede yapılmaz.</summary>
     private static readonly TimeSpan RelocateInterval = TimeSpan.FromSeconds(30);
 
@@ -575,6 +587,7 @@ public sealed class StreamSession : IStreamSession
         if (search.Searched(answered: info is not null))
             RemotePlayLog.Note($"PS5 aranıyor: art arda {search.Unanswered}. yanıtsız arama; bu cihaz: {DeviceDiagnostics.Line()}");
         var action = wakePolicy.Decide(info?.IsAwake);
+        SetStep(info is null ? ConnectStep.NoAnswer : action == WakePolicy.Action.Wake ? ConnectStep.Waking : ConnectStep.Opening);
         RemotePlayLog.Note(info is null
             ? $"PS5 oturumu: {console.Host} aramaya yanıt vermedi, yine de bağlanılıyor"
             : $"PS5 oturumu: {info.Name} {info.Host} {(info.IsAwake ? "uyanık" : action == WakePolicy.Action.Wake ? "dinlenmede, uyandırılıyor" : "dinlenmede, açılması bekleniyor")}");
@@ -623,7 +636,10 @@ public sealed class StreamSession : IStreamSession
         {
             if (!IsCurrent(current)) return;
             if (ConsoleDiscovery.Discover(console.Host, TimeSpan.FromSeconds(2)).Any(c => c.IsAwake))
+            {
+                SetStep(ConnectStep.Opening);
                 OpenSession(current);
+            }
             else if (DateTime.UtcNow < deadline)
                 WaitForWake(current, deadline);
             else

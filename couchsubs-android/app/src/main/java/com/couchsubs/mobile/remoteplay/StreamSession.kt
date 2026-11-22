@@ -581,6 +581,10 @@ class StreamSession(
      * şifresi geçersiz); [reconnectNow] o zaman bir şey yapmaz, hizmet yeni oturum açmalıdır (Mac/iPhone ile aynı).
      */
     override val hasGivenUp: Boolean get() = synchronized(stateLock) { gaveUp }
+
+    /** Bağlanırken son adım (kuyrukta yazılır, her iş parçacığından okunur). */
+    override val connectStep: com.couchsubs.mobile.core.ConnectStep? get() = step
+    @Volatile private var step: com.couchsubs.mobile.core.ConnectStep? = null
     private var gaveUp = false
 
     /** Yeniden deneme bırakılır ([stop]'tan farkı: kullanıcı durdurmadı). */
@@ -607,6 +611,11 @@ class StreamSession(
             Backend.breadcrumb(text)
         }
         val action = wakePolicy.action(info?.isAwake)
+        step = when {
+            info == null -> com.couchsubs.mobile.core.ConnectStep.NO_ANSWER
+            action == WakePolicy.Action.WAKE -> com.couchsubs.mobile.core.ConnectStep.WAKING
+            else -> com.couchsubs.mobile.core.ConnectStep.OPENING
+        }
         Log.i(TAG, if (info == null) "PS5 ${console.host} aramaya yanıt vermedi, yine de bağlanılıyor"
             else "PS5 ${info.name} ${info.host} " + when {
                 info.isAwake -> "uyanık"
@@ -645,7 +654,10 @@ class StreamSession(
         queue.schedule({
             if (!isCurrent(current)) return@schedule
             when {
-                ConsoleDiscovery.discover(console.host, 2000).any { it.isAwake } -> openSession(current)
+                ConsoleDiscovery.discover(console.host, 2000).any { it.isAwake } -> {
+                    step = com.couchsubs.mobile.core.ConnectStep.OPENING
+                    openSession(current)
+                }
                 System.currentTimeMillis() < deadline -> waitForWake(current, deadline)
                 else -> scheduleReconnect(current, SessionState.Disconnected(DisconnectKind.CONSOLE_ASLEEP))
             }

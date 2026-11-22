@@ -152,10 +152,13 @@ protocol StreamControlling: AnyObject {
     var hasGivenUp: Bool { get }
     /// Xbox: "Xbox sesini bu bilgisayarda çal" çeviri sürerken değişti; yalnız yerel ses açılır/kısılır (#871).
     func setPlayAudio(_ enabled: Bool)
+    /// PS5: bağlanırken son adım; "Bağlanıyor…" 30 sn'yi geçince nedeni söylenir (Xbox ve pencereden okumada yok).
+    var connectStep: ConnectStep? { get }
 }
 
 extension StreamControlling {
     func setPlayAudio(_ enabled: Bool) {}
+    var connectStep: ConnectStep? { nil }
 }
 
 /// TV uygulamasını açık tutan görevli (gerçekte `TVKeeper`).
@@ -665,7 +668,12 @@ final class AppModel: ObservableObject {
     @Published var isStarting = false
     /// Deneme modu: konsol yerine uygulamadaki örnek kareler okunur (`DemoFrameSource`); kurulum gerekmez.
     @Published private(set) var demoMode = false
-    @Published var sessionState: SessionState = .disconnected(.stopped)
+    @Published var sessionState: SessionState = .disconnected(.stopped) {
+        didSet { connectingChanged(from: oldValue) }
+    }
+    /// "Bağlanıyor…" 30 sn'yi geçince durum satırının altındaki neden (`ConnectingHint`); yoksa nil.
+    @Published private(set) var connectingHint: String?
+    private var connectingWatch: Task<Void, Never>?
     /// Çeviri sürerken Mac'in boşta uykuya geçmesi engellenir (kullanıcı TV'de oynuyor, Mac'e dokunmuyor).
     var isPreventingSleep: Bool { sleepActivity != nil }
     @Published var tvClients = 0
@@ -2972,7 +2980,29 @@ final class AppModel: ObservableObject {
         if settings.frameSource == .remotePlayWindow {
             return Self.windowStatusText(sessionState, running: isRunning, installed: !remotePlayMissing)
         }
-        return Self.statusText(sessionState, running: isRunning, pairedName: console.map { $0.name.isEmpty ? "PS5" : $0.name })
+        return Self.statusText(sessionState, running: isRunning, pairedName: console.map { $0.name.isEmpty ? "PS5" : $0.name },
+                               connectingHint: connectingHint)
+    }
+
+    /// Bağlanma 30 sn'yi geçerse nedeni saniyede bir oturumun son adımından hesaplanır (iPhone, Windows, Android aynı).
+    private func connectingChanged(from old: SessionState) {
+        guard sessionState == .connecting else {
+            connectingWatch?.cancel()
+            connectingWatch = nil
+            if connectingHint != nil { connectingHint = nil }
+            return
+        }
+        guard old != .connecting || connectingWatch == nil else { return }
+        let since = Date()
+        connectingWatch = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled else { return }
+                let step = self.session?.connectStep.flatMap { ConnectingHint.Step(rawValue: $0.rawValue) }
+                let hint = ConnectingHint.text(seconds: Date().timeIntervalSince(since), step: step)
+                if hint != self.connectingHint { self.connectingHint = hint }
+            }
+        }
     }
 
     /// Görüntü bu Mac'teki Remote Play penceresinden okunurken durumun metni.
@@ -2992,10 +3022,12 @@ final class AppModel: ObservableObject {
     /// PS5 durumunun kullanıcıya gösterilecek metni. `pairedName`: eşleşmiş PS5'in adı; çeviri başlamamışken eşleşmiş
     /// PS5 için "Bağlı değil" yerine "eşleşti, başlatınca bağlanır" denir (eskiden eşleştirme başarılı olsa da ana ekran
     /// "Bağlı değil" diyordu).
-    static func statusText(_ state: SessionState, running: Bool, pairedName: String? = nil) -> String {
+    static func statusText(_ state: SessionState, running: Bool, pairedName: String? = nil, connectingHint: String? = nil) -> String {
         switch state {
         case .streaming: return String(localized: "Connected")
-        case .connecting: return String(localized: "Connecting…")
+        case .connecting:
+            guard let connectingHint else { return String(localized: "Connecting…") }
+            return String(localized: "Connecting…") + "\n" + connectingHint
         case .disconnected(let reason):
             guard running else {
                 guard let pairedName else { return String(localized: "Not connected") }

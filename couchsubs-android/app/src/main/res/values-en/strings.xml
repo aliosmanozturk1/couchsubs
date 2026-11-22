@@ -16,6 +16,9 @@
 
     <string name="phase_preparing">Preparing…</string>
     <string name="phase_connecting">Connecting to PS5…</string>
+    <string name="connecting_hint_waking">The PS5 is being woken from rest mode. This can take up to a minute.</string>
+    <string name="connecting_hint_opening">The PS5 answered, but the connection is taking long. If it doesn\'t connect, stop and start translating again.</string>
+    <string name="connecting_hint_no_answer">The PS5 is not answering. Make sure it is on and on the same network as this device.</string>
     <string name="phase_streaming">Reading subtitles</string>
     <string name="phase_reconnecting">Connection lost, reconnecting…</string>
     <string name="reconnect">Reconnect</string>
@@ -415,6 +418,8 @@
     <string name="settings_copyright">CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera</string>
     <string name="about_body">CouchSubs is free and open source (AGPL-3.0). Remote Play uses chiaki-ng (AGPL-3.0).</string>
     <string name="about_source">Source code</string>
+    <string name="share_logs">Share logs</string>
+    <string name="share_logs_note">Attach this file to your GitHub issue when reporting a problem, or send it to us.</string>
     <string name="main_packs_off">Off</string>
     <string name="packs_free">Free</string>
     <string name="packs_free_count">Free · %1$d games</string>

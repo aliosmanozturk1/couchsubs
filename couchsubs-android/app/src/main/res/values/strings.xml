@@ -16,6 +16,9 @@
     
     <string name="phase_preparing">Hazırlanıyor…</string>
     <string name="phase_connecting">PS5\'e bağlanılıyor…</string>
+    <string name="connecting_hint_waking">PS5 dinlenme modundan uyandırılıyor. Bu bir dakikayı bulabilir.</string>
+    <string name="connecting_hint_opening">PS5 yanıt verdi ama bağlantı uzun sürüyor. Bağlanmazsa çeviriyi durdurup yeniden başlatın.</string>
+    <string name="connecting_hint_no_answer">PS5 yanıt vermiyor. Açık ve bu cihazla aynı ağda olduğundan emin olun.</string>
     <string name="phase_streaming">Altyazılar okunuyor</string>
     <string name="phase_reconnecting">Bağlantı koptu, yeniden bağlanılıyor…</string>
     <string name="reconnect">Yeniden bağlan</string>
@@ -422,6 +425,8 @@
     <string name="settings_copyright">CouchSubs · © 2026 Sinan Yorulmaz · AGPL-3.0 · Enmera</string>
     <string name="about_body">CouchSubs ücretsiz ve açık kaynaklıdır (AGPL-3.0). Remote Play için chiaki-ng (AGPL-3.0) kullanılır.</string>
     <string name="about_source">Kaynak kodu</string>
+    <string name="share_logs">Günlükleri paylaş</string>
+    <string name="share_logs_note">Sorun bildirirken bu dosyayı GitHub\'a ekleyin ya da bize gönderin.</string>
     <string name="main_packs_off">Kapalı</string>
     <string name="packs_free">Ücretsiz</string>
     <string name="packs_free_count">Ücretsiz · %1$d oyun</string>

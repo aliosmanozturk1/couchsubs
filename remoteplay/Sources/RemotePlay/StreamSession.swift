@@ -446,6 +446,16 @@ public enum SessionState: Equatable, Sendable {
     case disconnected(DisconnectReason)
 }
 
+/// Bağlanırken son adım: "Bağlanıyor…" 30 sn'yi geçince ekranda nedeni söylenir (CouchSubsCore `ConnectingHint`).
+public enum ConnectStep: String, Sendable {
+    /// PS5 aramaya yanıt vermedi; yine de bağlanılıyor.
+    case noAnswer
+    /// PS5 dinlenmedeydi; uyandırma gönderildi.
+    case waking
+    /// PS5 yanıt verdi; oturum açılıyor.
+    case opening
+}
+
 /// Tek bir libchiaki oturumunun sahibi. Geri çağrılar bu kutuya gelir; kutu, oturum kapatılıp
 /// iş parçacığı beklenene (join) kadar yaşar, böylece geri çağrı serbest bırakılmış belleğe düşmez.
 ///
@@ -544,6 +554,11 @@ public final class StreamSession: @unchecked Sendable {
     public var onState: ((SessionState) -> Void)?
     /// PS5 ağda yeni bir adreste bulununca (oturum kuyruğunda) çağrılır; yeni adres kaydedilmelidir.
     public var onConsoleMoved: ((RegisteredConsole) -> Void)?
+    /// Bağlanırken son adım (her iş parçacığından okunur); arayüz "Bağlanıyor…" uzayınca nedenini buradan söyler.
+    public var connectStep: ConnectStep? { stepLock.lock(); defer { stepLock.unlock() }; return step }
+    private var step: ConnectStep?
+    private let stepLock = NSLock()
+    private func setStep(_ value: ConnectStep) { stepLock.lock(); step = value; stepLock.unlock() }
 
     /// Yalnız `queue` üzerinde değişir (PS5'in adresi değişirse; Windows'taki gibi).
     private var console: RegisteredConsole
@@ -687,6 +702,7 @@ public final class StreamSession: @unchecked Sendable {
             RemotePlayLog.write("PS5 aranıyor: art arda \(search.unanswered). yanıtsız arama; bu cihaz: \(DeviceDiagnostics.line())")
         }
         let action = wakePolicy.action(awake: info?.isAwake)
+        setStep(info == nil ? .noAnswer : action == .wake ? .waking : .opening)
         if let info {
             let detail = info.isAwake ? "uyanık" : action == .wake ? "dinlenmede, uyandırılıyor" : "dinlenmede, açılması bekleniyor"
             RemotePlayLog.write("PS5 oturumu: \(info.name) \(info.host) \(detail)")
@@ -735,6 +751,7 @@ public final class StreamSession: @unchecked Sendable {
         queue.asyncAfter(deadline: .now() + 2) { [weak self] in
             guard let self, self.isCurrent(current) else { return }
             if Console.blockingDiscover(timeout: 2, host: self.console.host).contains(where: \.isAwake) {
+                self.setStep(.opening)
                 self.openSession(current)
             } else if Date() < deadline {
                 self.waitForWake(current, deadline: deadline)

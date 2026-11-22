@@ -130,6 +130,32 @@ CAPABILITIES = {
         ("mac", "tools/frame-regression/Sources/frame-regression/ScreenCheck.swift", r"func checkScreen\("),
         ("android", _DROID_TESTS + "ScreenFramesTest.kt", r"ocr/screen/"),
     ],
+    # Telefonda günlükler (iPhone: remoteplay.log + altyazi.log + tvinstall.log; Android: uygulamanın logcat'i +
+    # tvinstall.log) tek dosyada, kişisel veri maskelenmiş paylaşılır (Profil › Hakkında). Masaüstünde (Mac, Windows) aynı
+    # iş "Günlük dosyasını göster" düğmesidir (dosya kullanıcının kendi diskinde, Finder/Dosya Gezgini'nde seçili açılır).
+    "Günlük paylaşma (telefonda maskelenmiş dosya, masaüstünde \"Günlük dosyasını göster\")": [
+        ("mac", "mac/CouchSubs/UI/Onboarding/ConsoleStep.swift", r"private func showLogFile\(\)"),
+        ("windows", "windows/src/CouchSubs.App/Views/Steps/LogFile.cs", r"public static void Show\(\)"),
+        ("ios", _CORE + "LogShare.swift", r"public static func redact\("),
+        ("ios", "couchsubs-ios/CouchSubs/UI/Profile.swift", r"ShareLink\(item: PhoneLogs\(\)"),
+        ("android", _DROID + "LogShare.kt", r"fun redact\("),
+        ("android", "couchsubs-android/app/src/main/java/com/couchsubs/mobile/ui/ProfileScreens.kt", r"shareLogs\(context\)"),
+    ],
+    "Ortak deneme dosyası log-redaction.json": [
+        ("ios", _CORE_TESTS + "LogShareTests.swift", r"log-redaction\.json"),
+        ("android", _DROID_TESTS + "LogShareTest.kt", r"log-redaction\.json"),
+    ],
+    # Sinan Bey'in iPhone'u (1.0.4) PS5'te 1 dk "Bağlanıyor…"da kaldı, neden görünmüyordu: 30 sn'den sonra durum satırının
+    # altında PS5 uyandırılıyor / yanıt vermiyor (aynı ağda mı) / yanıt verdi ama açılmıyor yazar.
+    "\"Bağlanıyor…\" 30 sn'yi geçince nedeni (ConnectingHint)": [
+        ("mac", _CORE + "ConnectingHint.swift", r"public static func text\(seconds:"),
+        ("mac", "mac/CouchSubs/AppModel.swift", r"ConnectingHint\.text\("),
+        ("ios", "couchsubs-ios/CouchSubs/PhoneModel.swift", r"ConnectingHint\.text\("),
+        ("windows", _WIN + "ConnectingHint.cs", r"public static string\? Text\("),
+        ("windows", "windows/src/CouchSubs.Shell/AppController.cs", r"ConnectingHint\.Text\("),
+        ("android", _DROID + "ConnectingHint.kt", r"fun reason\("),
+        ("android", "couchsubs-android/app/src/main/java/com/couchsubs/mobile/service/TranslationService.kt", r"ConnectingHint\.reason\("),
+    ],
 }
 
 

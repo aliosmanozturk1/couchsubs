@@ -18,10 +18,13 @@ protocol StreamControlling: AnyObject {
     var hasGivenUp: Bool { get }
     /// Xbox: "Xbox sesini bu cihazda çal" çeviri sürerken değişti; yalnız yerel ses açılır/kısılır, yeni oturum açılmaz (#871).
     func setPlayAudio(_ enabled: Bool)
+    /// PS5: bağlanırken son adım; "Bağlanıyor…" 30 sn'yi geçince nedeni söylenir (Xbox ve deneme modunda yok).
+    var connectStep: ConnectStep? { get }
 }
 
 extension StreamControlling {
     func setPlayAudio(_ enabled: Bool) {}
+    var connectStep: ConnectStep? { nil }
 }
 
 /// TV uygulamasını açık tutan görevli (gerçekte `TVKeeper`).

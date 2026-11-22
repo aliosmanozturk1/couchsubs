@@ -599,6 +599,10 @@ private fun AboutDialog(onDismiss: () -> Unit) {
             Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(Tokens.Space.inline)) {
                 Text("Copyright © 2026 Sinan Yorulmaz", style = Tokens.Type.caption, color = Tokens.Color.secondary)
                 Text(stringResource(R.string.about_body), style = Tokens.Type.body, color = Tokens.Color.secondary)
+                // Uygulamanın günlükleri tek dosyada, kişisel veri maskelenmiş (iPhone'da da aynı; masaüstünde "Günlük
+                // dosyasını göster").
+                androidx.compose.material3.OutlinedButton({ shareLogs(context) }) { Text(stringResource(R.string.share_logs)) }
+                Text(stringResource(R.string.share_logs_note), style = Tokens.Type.caption, color = Tokens.Color.secondary)
             }
         },
         confirmButton = {

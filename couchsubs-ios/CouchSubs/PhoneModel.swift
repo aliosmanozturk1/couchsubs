@@ -84,7 +84,13 @@ final class PhoneModel: ObservableObject {
     @Published private(set) var isStarting = false
     /// Deneme modu: konsol yerine uygulamadaki örnek kareler okunur (`DemoFrameSource`); kurulum gerekmez.
     @Published private(set) var demoMode = false
-    @Published private(set) var sessionState: SessionState = .disconnected(.stopped)
+    @Published private(set) var sessionState: SessionState = .disconnected(.stopped) {
+        didSet {
+            if sessionState != .connecting { connectingSince = nil } else if oldValue != .connecting { connectingSince = Date() }
+        }
+    }
+    /// "Bağlanıyor…"un başladığı an; 30 sn geçince durum satırında nedeni söylenir (`ConnectingHint`).
+    private(set) var connectingSince: Date?
     /// Bağlantının ne zamandan beri gittiği: "Yeniden bağlan" düğmesi için (bkz. `offersReconnect`).
     @Published private(set) var reconnectOffer = ReconnectOffer()
     @Published private(set) var tvClients = 0
@@ -317,6 +323,8 @@ final class PhoneModel: ObservableObject {
         if !testing {
             RemotePlayLog.enable()
             RemotePlayLog.write("CouchSubs iOS \(AppIdentity.version)")
+            // altyazi.log Mac'teki gibi yazılır; Profil › Hakkında › "Günlükleri paylaş" ile gönderilir.
+            SubtitleLog.enable()
         }
         let poolFile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(AppIdentity.name, isDirectory: true).appendingPathComponent("pool.json")
@@ -1777,7 +1785,14 @@ final class PhoneModel: ObservableObject {
     var ps5StatusText: String {
         switch sessionState {
         case .streaming: return String(localized: "Connected")
-        case .connecting: return String(localized: "Connecting…")
+        case .connecting:
+            // 30 sn'den uzun sürerse nedeni (PS5 uyandırılıyor / yanıt vermiyor / yanıt verdi ama açılmıyor); Mac,
+            // Windows ve Android'de de aynı.
+            guard let since = connectingSince, !isXbox, !demoMode,
+                  let hint = ConnectingHint.text(seconds: Date().timeIntervalSince(since),
+                                                 step: session?.connectStep.flatMap { ConnectingHint.Step(rawValue: $0.rawValue) })
+            else { return String(localized: "Connecting…") }
+            return String(localized: "Connecting…") + "\n" + hint
         case .disconnected(let reason):
             guard isRunning else { return String(localized: "Not connected") }
             switch reason {

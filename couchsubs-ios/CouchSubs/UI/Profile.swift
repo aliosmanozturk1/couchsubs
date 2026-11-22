@@ -674,8 +674,36 @@ struct AboutScreen: View {
                     .font(Mobile.TypeScale.body).foregroundStyle(Mobile.Palette.secondary)
                 Link("Source code", destination: AppIdentity.sourceURL).font(Mobile.TypeScale.headline).tint(Mobile.Palette.accent)
             }
+            // remoteplay.log, altyazi.log ve varsa tvinstall.log tek dosyada, kişisel veri maskelenmiş (Android'de de aynı;
+            // masaüstünde "Günlük dosyasını göster").
+            Tile {
+                ShareLink(item: PhoneLogs(), preview: SharePreview(LogShare.fileName)) {
+                    Label("Share logs", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(MobileButtonStyle(kind: .secondary, compact: true))
+                Text("Attach this file to your GitHub issue when reporting a problem, or send it to us.")
+                    .font(Mobile.TypeScale.caption).foregroundStyle(Mobile.Palette.secondary)
+            }
         } bottom: {
             EmptyView()
         }
+    }
+}
+
+/// "Günlükleri paylaş"ın dosyası: paylaşım sayfası açılınca günlükler birleştirilip maskelenir (CouchSubsCore `LogShare`).
+struct PhoneLogs: Transferable {
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .plainText) { _ in SentTransferredFile(try PhoneLogs.file()) }
+    }
+
+    static func file() throws -> URL {
+        RemotePlayLog.flush()
+        SubtitleLog.flush()
+        let header = "CouchSubs iOS \(AppIdentity.version) · \(ProcessInfo.processInfo.operatingSystemVersionString)"
+        return try LogShare.write(header: header, logs: [
+            ("remoteplay.log", RemotePlayLog.defaultFile),
+            ("altyazi.log", SubtitleLog.defaultFile),
+            ("tvinstall.log", InstallLog.shared.file),
+        ], to: FileManager.default.temporaryDirectory.appendingPathComponent("logs", isDirectory: true))
     }
 }

@@ -20,6 +20,8 @@ import com.couchsubs.mobile.Services
 import com.couchsubs.mobile.account.Backend
 import com.couchsubs.mobile.account.SessionHealth
 import com.couchsubs.mobile.account.Telemetry
+import com.couchsubs.mobile.core.ConnectStep
+import com.couchsubs.mobile.core.ConnectingHint
 import com.couchsubs.mobile.core.CropRegion
 import com.couchsubs.mobile.core.PhoneChatMemory
 import com.couchsubs.mobile.core.ScreenPhoneFollow
@@ -879,6 +881,7 @@ class TranslationService : Service() {
                 reconnectOffer.update(state == SessionState.Streaming, now)
                 session?.hasGivenUp == true
             }
+            connectingHandler.post { connectingChanged(state) }
             LiveState.update {
                 it.withStreaming(state == SessionState.Streaming)
                     .copy(phase = describe(state), notLiveSince = reconnectOffer.notLiveSince, gaveUp = gaveUp)
@@ -1362,8 +1365,46 @@ class TranslationService : Service() {
         if (state is SessionState.Disconnected && state.kind == DisconnectKind.OTHER && settings.xbox && state.detail != null) state.detail
         else describePs(state)
 
+    /**
+     * "Bağlanıyor…"un başladığı an (ms; bağlanmıyorsa 0). 30 sn geçince durum satırında nedeni söylenir
+     * ([ConnectingHint]; Mac, iPhone ve Windows ile aynı); metin saniyede bir [connectingTick] ile yenilenir.
+     */
+    @Volatile private var connectingSince = 0L
+    private val connectingHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val connectingTick = object : Runnable {
+        override fun run() {
+            if (connectingSince == 0L) return
+            val phase = describe(SessionState.Connecting)
+            LiveState.update { if (it.streaming || it.phase == phase) it else it.copy(phase = phase) }
+            connectingHandler.postDelayed(this, 1000)
+        }
+    }
+
+    private fun connectingChanged(state: SessionState) {
+        val connecting = state == SessionState.Connecting && !settings.xbox && !demo
+        if (!connecting) {
+            connectingSince = 0L
+            connectingHandler.removeCallbacks(connectingTick)
+        } else if (connectingSince == 0L) {
+            connectingSince = System.currentTimeMillis()
+            connectingHandler.postDelayed(connectingTick, 1000)
+        }
+    }
+
+    private fun connectingText(): String {
+        val base = getString(R.string.phase_connecting)
+        val since = connectingSince
+        if (since == 0L) return base
+        val reason = ConnectingHint.reason(System.currentTimeMillis() - since, session?.connectStep) ?: return base
+        return base + "\n" + getString(when (reason) {
+            ConnectStep.WAKING -> R.string.connecting_hint_waking
+            ConnectStep.OPENING -> R.string.connecting_hint_opening
+            ConnectStep.NO_ANSWER -> R.string.connecting_hint_no_answer
+        })
+    }
+
     private fun describePs(state: SessionState): String = when (state) {
-        SessionState.Connecting -> getString(R.string.phase_connecting)
+        SessionState.Connecting -> connectingText()
         SessionState.Streaming -> getString(R.string.phase_streaming)
         is SessionState.Disconnected -> when (state.kind) {
             DisconnectKind.IN_USE -> getString(R.string.phase_in_use)
@@ -1463,6 +1504,7 @@ class TranslationService : Service() {
         regionReader = null
         session?.dispose()
         session = null
+        connectingHandler.post { connectingChanged(SessionState.Disconnected(DisconnectKind.STOPPED)) }
         sourceFactory = null
         pipeline?.reset()
         pipeline?.shutdown()

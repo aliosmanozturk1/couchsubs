@@ -252,7 +252,10 @@ struct RunningScreen: View {
                 DemoModeHeader()
             } else {
                 if model.sessionState != .streaming {
-                    MobileNote(text: model.ps5StatusText, tone: Mobile.Palette.secondary)
+                    // Saniyede bir yenilenir: "Bağlanıyor…" 30 sn'yi geçince altında nedeni çıkar.
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        MobileNote(text: model.ps5StatusText, tone: Mobile.Palette.secondary)
+                    }
                     // Oturum yeniden denemeyi bıraktıysa hemen, süren denemelerde 45 sn sonra: uygulamayı kapatıp açmadan
                     // bağlantı baştan kurulur (ReconnectOffer; Android ile aynı).
                     TimelineView(.periodic(from: .now, by: 1)) { context in
