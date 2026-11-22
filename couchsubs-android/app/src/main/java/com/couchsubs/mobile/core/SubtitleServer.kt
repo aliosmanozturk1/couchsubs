@@ -116,6 +116,15 @@ class SubtitleServer(
         /** Oyun içi telefonun çevirisini taşıyan ek alanın kimliği (Mac/iPhone ve Windows ile aynı). */
         const val GAME_PHONE_ID = "game-phone"
 
+        /**
+         * Eski TV uygulamaları (0.9.7'den önce) `clear` gelir gelmez satırı kaldırır. Oyundaki satır ekrandan ~1 sn'de
+         * kalkınca çevirisi TV'de yalnız bir an görünüyordu: "TV'de test et" yazısı (8 sn, `clear` yok) görünüyor, oyun
+         * altyazıları hiç görünmüyordu. Yeni TV uygulaması satırı kendisi `min(5000, 2000 + 60 × harf)` ms tutar
+         * (tv-webos/app.js `holdUntil`); sürüm bildirmeyen bağlantılara `clear` bu süre dolunca gider, arada yeni satır
+         * gelirse hiç gitmez (Mac/iPhone ve Windows ile aynı kural).
+         */
+        fun legacyClearHoldMs(textLength: Int): Long = minOf(5000, 2000 + 60 * maxOf(0, textLength)).toLong()
+
         /** `v` parametresi: yalnız rakam ve nokta, en çok 20 karakter; yoksa ya da bozuksa boş (eski TV sayılır). */
         fun tvAppVersion(value: String?): String =
             value?.takeIf { it.isNotEmpty() && it.length <= 20 && it.all { c -> c in '0'..'9' || c == '.' } } ?: ""
@@ -271,7 +280,8 @@ class SubtitleServer(
         )
     }
 
-    private class Client(val socket: Socket, val viewer: Boolean) {
+    /** [legacy]: sürüm bildirmeyen (0.9.69'den eski) TV uygulaması; `clear` ona geciktirilerek gider ([legacyClearHoldMs]). */
+    private class Client(val socket: Socket, val viewer: Boolean, val legacy: Boolean = false) {
         val output: OutputStream = socket.getOutputStream()
     }
 
@@ -348,13 +358,36 @@ class SubtitleServer(
     }
 
     override fun sendSubtitle(text: String, durationMs: Int, box: TextBox?, replaces: Boolean) {
+        synchronized(lock) {
+            legacyHoldGeneration++
+            legacyHoldUntil = System.currentTimeMillis() + legacyClearHoldMs(text.length)
+        }
         broadcast(subtitleFrame(text, durationMs, box, clock(), replaces = replaces, speakerColors = speakerColors), subtitle = true)
         onEvent?.invoke(SubtitleEvent.Subtitle(text, durationMs, replaces, box))
     }
 
     override fun clear() {
-        broadcast(clearFrame(), subtitle = true)
+        val frame = clearFrame()
+        val (wait, generation) = synchronized(lock) { (legacyHoldUntil - System.currentTimeMillis()) to legacyHoldGeneration }
+        if (wait <= 0 || !sendsToTv) {
+            broadcast(frame, subtitle = true)
+        } else {
+            // Eski TV'ler satırı kendileri tutmaz: `clear` onlara satırın en az görünme süresi dolunca gider.
+            broadcast(frame, subtitle = true, legacy = false)
+            try {
+                legacyTimer.schedule({
+                    if (synchronized(lock) { generation == legacyHoldGeneration }) broadcast(frame, subtitle = true, legacy = true)
+                }, wait, TimeUnit.MILLISECONDS)
+            } catch (error: java.util.concurrent.RejectedExecutionException) {
+            }
+        }
         onEvent?.invoke(SubtitleEvent.Cleared)
+    }
+
+    private var legacyHoldUntil = 0L
+    private var legacyHoldGeneration = 0
+    private val legacyTimer = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "CouchSubs legacy clear").apply { isDaemon = true }
     }
 
     override fun sendRegion(id: String, text: String, box: TextBox?, lineHeight: Double?) = sendRegion(id, text, box, lineHeight, null)
@@ -484,12 +517,14 @@ class SubtitleServer(
                     val notify = synchronized(lock) { (access.legacy && !obs && !hasLegacyClient).also { if (it) hasLegacyClient = true } }
                     if (notify) onLegacyClient?.invoke()
                     if (!obs) hdmiPort(request.parameter("hdmi"))?.let { consolePort = it }
+                    var unreported = false
                     if (!obs) {
                         val version = tvAppVersion(request.parameter("v"))
                         tvAppVersion = version
+                        unreported = version.isEmpty()
                         onTvAppVersion?.invoke(version)
                     }
-                    openStream(socket, obs, cors, checkedKey)
+                    openStream(socket, obs, cors, checkedKey, unreported)
                 }
                 // TV uygulaması ağdaki CouchSubs'ı bu yanıtla tanır.
                 method == "GET" && path == "/obs" && obsOverlay.isNotEmpty() -> respondAndClose(socket, "200 OK", obsOverlay, cors, "text/html; charset=utf-8")
@@ -529,7 +564,7 @@ class SubtitleServer(
         closeQuietly(socket)
     }
 
-    private fun openStream(socket: Socket, viewer: Boolean, cors: String, checkedKey: String) {
+    private fun openStream(socket: Socket, viewer: Boolean, cors: String, checkedKey: String, legacy: Boolean = false) {
         val head = StringBuilder()
             .append("HTTP/1.1 200 OK\r\n")
             .append("Content-Type: text/event-stream; charset=utf-8\r\n")
@@ -537,7 +572,7 @@ class SubtitleServer(
             .append("Connection: keep-alive\r\n")
             .append(cors).append("\r\n")
             .append("retry: 2000\n\n")
-        val client = Client(socket, viewer)
+        val client = Client(socket, viewer, legacy)
         // Başlık, listeye girdikten sonra gelebilecek ilk olaydan önce yazılır (istemci kilidi tutulurken eklenir).
         val count = synchronized(client) {
             val count = synchronized(lock) {
@@ -574,9 +609,10 @@ class SubtitleServer(
      * Gönderim hatası alan bağlantı kopmuş sayılır. Altyazı TV'ye gitmiyorsa yalnız izleyiciler (OBS) alır. Yazma tek bir
      * gönderim iş parçacığında, sırayla yapılır: yavaş bir TV okuma hattını bekletmez.
      */
-    private fun broadcast(frame: String, subtitle: Boolean = false) {
+    /** [legacy]: null herkes; false sürüm bildirmeyen TV'ler dışındakiler; true yalnız onlar. */
+    private fun broadcast(frame: String, subtitle: Boolean = false, legacy: Boolean? = null) {
         val toTvs = !subtitle || sendsToTv
-        val targets = synchronized(lock) { clients.filter { toTvs || it.viewer } }
+        val targets = synchronized(lock) { clients.filter { (toTvs || it.viewer) && (legacy == null || it.legacy == legacy) } }
         if (targets.isEmpty()) return
         try {
             sender.execute { for (client in targets) if (!write(client, frame)) remove(client) }

@@ -84,6 +84,47 @@ final class SubtitleServerTests: XCTestCase {
         XCTAssertFalse(SubtitleServer.isTVAppOutdated(reported: "", bundled: ""))
     }
 
+    /// Eski TV uygulaması (sürüm bildirmeyen; 0.9.7'den önceki sürümler `clear` gelir gelmez satırı kaldırır): `clear`
+    /// ona satırın en az görünme süresi dolunca gider, yeni TV'ye hemen. Arada yeni satır gelirse eski `clear` hiç gitmez.
+    func testClearReachesOldTVAppsOnlyAfterTheLineWasReadable() async throws {
+        let server = SubtitleServer(port: 0)
+        let port = try await server.start()
+        defer { server.stop() }
+        let (old, _) = try await URLSession.shared.bytes(from: URL(string: "http://127.0.0.1:\(port)/events")!)
+        let (fresh, _) = try await URLSession.shared.bytes(from: URL(string: "http://127.0.0.1:\(port)/events?v=0.9.71")!)
+        try await waitUntil { server.connectedClients == 2 }
+        func clears(_ bytes: URLSession.AsyncBytes) -> Task<[(String, Date)], Error> {
+            Task {
+                var seen: [(String, Date)] = []
+                for try await line in bytes.lines where line.hasPrefix("event: ") {
+                    seen.append((line, Date()))
+                    if line == "event: clear" { break }
+                }
+                return seen
+            }
+        }
+        let oldEvents = clears(old)
+        let freshEvents = clears(fresh)
+        let start = Date()
+        server.sendSubtitle("Selam", durationMs: 4000)
+        server.clear()
+        // Satır kalkmadan yeni satır geldi: eski TV'ye bekleyen `clear` gitmez, yenisininki süresi dolunca gider.
+        try await Task.sleep(nanoseconds: 500_000_000)
+        server.sendSubtitle("Yeni", durationMs: 4000)
+        server.clear()
+        let freshSeen = try await freshEvents.value
+        let oldSeen = try await oldEvents.value
+        let freshClear = try XCTUnwrap(freshSeen.first { $0.0 == "event: clear" })
+        XCTAssertLessThan(freshClear.1.timeIntervalSince(start), 1, "Yeni TV satırı kendisi tutar: clear hemen gider")
+        XCTAssertEqual(oldSeen.map(\.0).filter { $0 == "event: subtitle" }.count, 2, "Eski TV iki satırı da alır")
+        let oldClear = try XCTUnwrap(oldSeen.first { $0.0 == "event: clear" })
+        // İkinci satır 0,5 sn'de geldi; 4 harf → 2,24 sn tutulur.
+        XCTAssertGreaterThan(oldClear.1.timeIntervalSince(start), 2.5)
+        XCTAssertEqual(SubtitleServer.legacyClearHold(textLength: 4), 2.24, accuracy: 0.001)
+        XCTAssertEqual(SubtitleServer.legacyClearHold(textLength: 500), 5)
+        old.task.cancel(); fresh.task.cancel()
+    }
+
     /// Konuşana göre renk açıkken adlı satır `speakers` alanını taşır; adsız satırda ve ayar kapalıyken alan yoktur.
     func testSubtitleCarriesSpeakerColorsWhenEnabled() async throws {
         let server = SubtitleServer(port: 0)

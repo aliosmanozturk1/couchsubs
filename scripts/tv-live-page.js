@@ -239,8 +239,9 @@ function startPage(options) {
     get(target, key) { return key in target ? target[key] : context[key]; }
   });
   for (const [key, value] of Object.entries(window)) if (!(key in context)) context[key] = value;
+  // options.root: başka bir sürümün klasörü (eski TV uygulaması; git archive ile çıkarılır). Yoksa COUCHSUBS_TV_ROOT ya da bu depo.
   for (const name of SOURCES) {
-    vm.runInContext(fs.readFileSync(path.join(root, name), 'utf8'), context, { filename: name });
+    vm.runInContext(fs.readFileSync(path.join(options.root || root, name), 'utf8'), context, { filename: name });
   }
   const text = (id) => document.getElementById(id).textContent;
   return {

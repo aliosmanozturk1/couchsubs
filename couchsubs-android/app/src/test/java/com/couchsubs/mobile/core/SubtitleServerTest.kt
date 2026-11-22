@@ -108,6 +108,60 @@ class SubtitleServerTest {
         }
     }
 
+    /**
+     * Eski TV uygulaması (sürüm bildirmeyen; 0.9.7'den önceki sürümler `clear` gelir gelmez satırı kaldırır): `clear` ona
+     * satırın en az görünme süresi dolunca gider, yeni TV'ye hemen. Arada yeni satır gelirse eski `clear` hiç gitmez
+     * (Mac ve Windows ile aynı).
+     */
+    @Test
+    fun clearReachesOldTvAppsOnlyAfterTheLineWasReadable() {
+        val server = SubtitleServer(0)
+        val port = server.start()
+        try {
+            fun open(path: String): BufferedReader {
+                val socket = Socket("127.0.0.1", port)
+                socket.soTimeout = 8000
+                socket.getOutputStream().write("GET $path HTTP/1.1\r\nHost: x\r\n\r\n".toByteArray())
+                return BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8)).also { reader ->
+                    while (reader.readLine() != "retry: 2000") Unit
+                }
+            }
+            val old = open("/events")
+            val fresh = open("/events?v=0.9.71")
+            val deadline = System.currentTimeMillis() + 3000
+            while (server.connectedClients != 2 && System.currentTimeMillis() < deadline) Thread.sleep(10)
+            assertEquals(2, server.connectedClients)
+            fun events(reader: BufferedReader): MutableList<Pair<String, Long>> {
+                val seen = mutableListOf<Pair<String, Long>>()
+                while (true) {
+                    val line = reader.readLine() ?: return seen
+                    if (!line.startsWith("event: ")) continue
+                    seen.add(line to System.currentTimeMillis())
+                    if (line == "event: clear") return seen
+                }
+            }
+            var oldSeen: List<Pair<String, Long>> = emptyList()
+            val reading = Thread { oldSeen = events(old) }.apply { start() }
+            val start = System.currentTimeMillis()
+            server.sendSubtitle("Selam", 4000, null)
+            server.clear()
+            val freshSeen = events(fresh)
+            assertTrue("Yeni TV satırı kendisi tutar: clear hemen gider", freshSeen.last().second - start < 1000)
+            // Satır kalkmadan yeni satır geldi: eski TV'ye bekleyen clear gitmez, yenisininki süresi dolunca gider.
+            Thread.sleep(500 - (System.currentTimeMillis() - start).coerceAtMost(500))
+            server.sendSubtitle("Yeni", 4000, null)
+            server.clear()
+            reading.join(8000)
+            assertEquals(2, oldSeen.count { it.first == "event: subtitle" })
+            // İkinci satır 0,5 sn'de geldi; 4 harf → 2,24 sn tutulur.
+            assertTrue(oldSeen.last().first == "event: clear" && oldSeen.last().second - start > 2500)
+            assertEquals(2240L, SubtitleServer.legacyClearHoldMs(4))
+            assertEquals(5000L, SubtitleServer.legacyClearHoldMs(500))
+        } finally {
+            server.stop()
+        }
+    }
+
     @Test
     fun subtitlesStayOffTheTvWhenShownOnThePhone() {
         val server = SubtitleServer(0)

@@ -56,6 +56,48 @@ public class SubtitleServerTests
         Assert.Contains(lines, l => l.StartsWith("data:") && l.Contains("\"text\":\"Merhaba dostum\"") && l.Contains("\"replace\":true"));
     }
 
+    /// <summary>Eski TV uygulaması (sürüm bildirmeyen; 0.9.7'den önceki sürümler <c>clear</c> gelir gelmez satırı kaldırır):
+    /// <c>clear</c> ona satırın en az görünme süresi dolunca gider, yeni TV'ye hemen. Arada yeni satır gelirse eski
+    /// <c>clear</c> hiç gitmez (Mac ve Android ile aynı).</summary>
+    [Fact]
+    public async Task ClearReachesOldTvAppsOnlyAfterTheLineWasReadable()
+    {
+        using var server = new SubtitleServer(0);
+        var port = await server.StartAsync();
+        using var old = await Http.GetAsync($"http://127.0.0.1:{port}/events", HttpCompletionOption.ResponseHeadersRead);
+        using var fresh = await Http.GetAsync($"http://127.0.0.1:{port}/events?v=0.9.71", HttpCompletionOption.ResponseHeadersRead);
+        await WaitUntil(() => server.ConnectedClients == 2);
+        static async Task<List<(string Line, DateTime At)>> Events(HttpResponseMessage response)
+        {
+            using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
+            var seen = new List<(string, DateTime)>();
+            while (await reader.ReadLineAsync() is { } line)
+            {
+                if (!line.StartsWith("event: ")) continue;
+                seen.Add((line, DateTime.UtcNow));
+                if (line == "event: clear") break;
+            }
+            return seen;
+        }
+        var oldEvents = Events(old);
+        var freshEvents = Events(fresh);
+        var start = DateTime.UtcNow;
+        server.SendSubtitle("Selam", 4000);
+        server.Clear();
+        // Satır kalkmadan yeni satır geldi: eski TV'ye bekleyen clear gitmez, yenisininki süresi dolunca gider.
+        await Task.Delay(500);
+        server.SendSubtitle("Yeni", 4000);
+        server.Clear();
+        var freshSeen = await freshEvents;
+        var oldSeen = await oldEvents;
+        Assert.True((freshSeen.First(e => e.Line == "event: clear").At - start).TotalSeconds < 1, "Yeni TV satırı kendisi tutar");
+        Assert.Equal(2, oldSeen.Count(e => e.Line == "event: subtitle"));
+        // İkinci satır 0,5 sn'de geldi; 4 harf → 2,24 sn tutulur.
+        Assert.True((oldSeen.First(e => e.Line == "event: clear").At - start).TotalSeconds > 2.5);
+        Assert.Equal(TimeSpan.FromMilliseconds(2240), SubtitleServer.LegacyClearHold(4));
+        Assert.Equal(TimeSpan.FromSeconds(5), SubtitleServer.LegacyClearHold(500));
+    }
+
     /// TV uygulaması gösterdiği HDMI girişini akışa bağlanırken bildirir; bekçi PS tuşunu bununla tanır.
     [Fact]
     public async Task RemembersTheHdmiInputTheTvAppShows()
