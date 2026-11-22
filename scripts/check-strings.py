@@ -34,7 +34,7 @@ def keys():
 
 # Desenlere takılan ama ekran metni olmayan dizgiler: günlük satırları (Türkçe yazılır), protokol/XML değerleri, tarih
 # biçimleri, renk kodları, adresler.
-NOT_UI = {"Bad Request", "Not Found", "TLS", "The TV closed the connection", "Remote Play penceresi", "Kurulum tamam.",
+NOT_UI = {"Xbox (Beta)", "Bad Request", "Not Found", "TLS", "The TV closed the connection", "Remote Play penceresi", "Kurulum tamam.",
           "düz", "açık", "kapalı", "geçerli", "onaylandı", "seçilen pencere", "Seçilen pencere"}
 
 def not_ui(key):

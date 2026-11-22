@@ -804,7 +804,6 @@ install CouchSubs?", "Remove And Install", "Cancel".
 | Set On-Screen Text Apart from Subtitles | Ekran Yazılarını Altyazıdan Ayır |
 | Choose Dark under Subtitle Appearance to fully hide the English subtitle in the game. A full-width band also covers the sides. | Oyundaki İngilizce altyazıyı tamamen gizlemek için Altyazı Görünümü'nde Koyu'yu seçin. Tam genişlik bant yanları da örter. |
 | Xbox · Beta | Xbox · Beta |
-| Xbox (Beta) | Xbox (Beta) |
 | Beta | Beta |
 
 ## Ayar alanları ve TV protokolü (geriye uyumlu)

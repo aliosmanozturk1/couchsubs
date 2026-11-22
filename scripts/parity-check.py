@@ -120,7 +120,7 @@ CAPABILITIES = {
         ("windows", _WIN + "SubtitleServer.cs", r"public static bool IsTvAppOutdated\("),
         ("android", _DROID + "SubtitleServer.kt", r"fun isTvAppOutdated\("),
         ("mac", "mac/CouchSubs/AppModel.swift", r"func tvAppReported\("),
-        ("mac", "mac/CouchSubs/UI/MainView.swift", r"model\.updateTVApp\(\)"),
+        ("mac", "mac/CouchSubs/UI/Yeni/HomeStatus.swift", r"model\.updateTVApp\(\)"),
         ("windows", "windows/src/CouchSubs.Shell/AppController.cs", r"public void TvAppReported\("),
         ("windows", "windows/src/CouchSubs.App/Views/MainView.xaml.cs", r"controller\.UpdateTvAppAsync\(\)"),
         ("ios", "couchsubs-ios/CouchSubs/PhoneModel.swift", r"func tvAppReported\("),
