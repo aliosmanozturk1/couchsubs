@@ -10,19 +10,333 @@
 </script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>CouchSubs: PS5 oyunlarına Türkçe yama</title>
-<meta name="description" content="PS5 oyunlarına Türkçe yama: CouchSubs, Türkçe dil desteği olmayan PS5 oyunlarının İngilizce altyazısını okur, Türkçeye çevirir ve TV'nde oyunun üstünde gösterir. Ücretsiz ve açık kaynak.">
+<title>CouchSubs: PS5 ve Xbox Oyunlarına Türkçe Altyazı ve Yama</title>
+<meta name="description" content="PS5 ve Xbox oyunlarına Türkçe altyazı ve Türkçe yama: CouchSubs İngilizce altyazıyı okur, Türkçeye çevirir, TV&#x27;nde oyunun üstünde gösterir. Ücretsiz.">
 <meta name="theme-color" content="#141518">
 <link rel="canonical" href="https://couchsubs.enmeraapps.com/">
 <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="img/og.png">
 <meta property="og:type" content="website">
-<meta property="og:title" content="CouchSubs: PS5 oyunlarına Türkçe yama">
-<meta property="og:description" content="Türkçe dil desteği olmayan PS5 oyunlarına anında Türkçe yama. Ücretsiz, hesap istemez, açık kaynak.">
+<meta property="og:title" content="CouchSubs: PS5 ve Xbox Oyunlarına Türkçe Altyazı ve Yama">
+<meta property="og:description" content="Türkçe dil desteği olmayan PS5 ve Xbox oyunlarına Türkçe altyazı. Hazır Türkçe yamalar, ücretsiz oyun çevirisi, açık kaynak.">
 <meta property="og:url" content="https://couchsubs.enmeraapps.com/">
 <meta property="og:image" content="https://couchsubs.enmeraapps.com/img/og.png">
 <meta property="og:locale" content="tr_TR">
+<meta property="og:site_name" content="CouchSubs">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="CouchSubs: PS5 ve Xbox Oyunlarına Türkçe Altyazı ve Yama">
+<meta name="twitter:description" content="Türkçe dil desteği olmayan PS5 ve Xbox oyunlarına Türkçe altyazı. Hazır Türkçe yamalar, ücretsiz oyun çevirisi, açık kaynak.">
+<meta name="twitter:image" content="https://couchsubs.enmeraapps.com/img/og.png">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "WebSite",
+   "@id": "https://couchsubs.enmeraapps.com/#site",
+   "url": "https://couchsubs.enmeraapps.com/",
+   "name": "CouchSubs",
+   "inLanguage": "tr-TR",
+   "publisher": {
+    "@id": "https://couchsubs.enmeraapps.com/#enmera"
+   }
+  },
+  {
+   "@type": "Organization",
+   "@id": "https://couchsubs.enmeraapps.com/#enmera",
+   "name": "Enmera",
+   "url": "https://enmera.com.tr"
+  },
+  {
+   "@type": "SoftwareApplication",
+   "@id": "https://couchsubs.enmeraapps.com/#app",
+   "name": "CouchSubs",
+   "url": "https://couchsubs.enmeraapps.com/",
+   "description": "PS5 ve Xbox oyunlarına Türkçe altyazı ve Türkçe yama: CouchSubs İngilizce altyazıyı okur, Türkçeye çevirir, TV'nde oyunun üstünde gösterir. Ücretsiz.",
+   "applicationCategory": "UtilitiesApplication",
+   "applicationSubCategory": "GameApplication",
+   "operatingSystem": "Windows, macOS, iOS, Android",
+   "inLanguage": "tr-TR",
+   "image": "https://couchsubs.enmeraapps.com/img/og.png",
+   "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+   "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "TRY"
+   },
+   "publisher": {
+    "@id": "https://couchsubs.enmeraapps.com/#enmera"
+   },
+   "downloadUrl": [
+    "https://apps.apple.com/app/id6833558947",
+    "https://play.google.com/store/apps/details?id=com.couchsubs.mobile",
+    "https://github.com/yorulmazsinan/couchsubs/releases/latest"
+   ],
+   "sameAs": [
+    "https://apps.apple.com/app/id6833558947",
+    "https://play.google.com/store/apps/details?id=com.couchsubs.mobile",
+    "https://github.com/yorulmazsinan/couchsubs"
+   ]
+  },
+  {
+   "@type": "FAQPage",
+   "@id": "https://couchsubs.enmeraapps.com/#sss",
+   "url": "https://couchsubs.enmeraapps.com/#sss",
+   "inLanguage": "tr-TR",
+   "mainEntity": [
+    {
+     "@type": "Question",
+     "name": "Ücretli mi?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Hayır. CouchSubs tamamen ücretsiz; abonelik ya da hesap yok. Daha iyi çeviri istersen kendi Gemini veya DeepL anahtarını girebilirsin, o da isteğe bağlı."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Hangi oyunlarda çalışır?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Ekranda İngilizce altyazı gösteren her PS5 oyununda. GTA 6, GTA V, Red Dead Redemption 2, Elden Ring gibi hazır yaması olan oyunlarda satırlar yamadan anında gelir; diğerlerini seçtiğin çeviri motoru çevirir."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "PS5'e ya da oyuna bir şey kuruluyor mu?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Hayır. CouchSubs, PS5'in kendi Uzaktan Oynatma özelliğiyle görüntünün bir kopyasını alır ve altyazıyı bilgisayarda okur. Konsola ve oyuna dokunmaz."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Oyun görüntüm gecikir mi?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Hayır. TV'de oyun yine doğrudan PS5'ten gelir; CouchSubs yalnız altyazıyı üstüne yazar. Çeviri motoruna giden satırlar bir an sonra görünebilir, paketteki satırlar beklemeden çıkar."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Oynarken bilgisayar ya da telefon açık kalmalı mı?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Evet. Okuma ve çeviri bilgisayarda ya da telefonda yapılır; TV yalnız altyazıyı gösterir. Bilgisayarla kullanıyorsan CouchSubs arka planda açık kalmalı; bilgisayarın TV'nin yanında olması gerekmez, aynı ev ağında olması yeter. Telefonla kullanıyorsan çeviri sürerken uygulama açık ve ekran açık kalmalı: iPhone arka plana alınınca ya da kilitlenince altyazı durur, CouchSubs bunu bildirimle haber verir; uygulamaya dönünce kendiliğinden devam eder."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Telefonda ya da iPhone'da çalışır mı?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Evet. Android uygulaması yalnız Google Play'de: Play Store'da \"CouchSubs\" diye arat ya da İndir bölümündeki düğmeye bas. iPhone uygulaması App Store'da: App Store'da \"CouchSubs\" diye arat. Sonra CouchSubs'ı açıp PS5'i eşle. Altyazı ekranında yatayla dik arasında geçmek için Ekranı döndür düğmesi var. İki telefonda da bilgisayar gerekmez; telefon PS5'e kendisi bağlanır, Samsung, LG ve Android TV'ye TV uygulamasını da kendisi kurar."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Xbox'ta çalışır mı?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Evet, Beta olarak: Windows uygulaması, Android telefon ve iPhone Xbox'a da bağlanır. Mac uygulaması Xbox'a bağlanmaz. Bağlandıktan sonra görüntü gelmezse CouchSubs Xbox'tan görüntüyü yeniden ister; yine gelmezse nedeni altyazı günlüğüne (altyazi.log) yazılır. Sorun sürerse bu dosyayla GitHub'da bildir."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Monitörde oynuyorum; uygulama monitöre kurulur mu?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Akıllı olmayan bir monitöre uygulama kurulamaz. Altyazı bilgisayar ekranında, oyunun üstünde duran pencerede ya da telefonda gösterilir. Samsung'un akıllı monitörlerine TV uygulaması Samsung TV'deki gibi kurulur."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "\"Hazır çeviriden 0 / 0\" yazıyor, altyazı gelmiyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "İkinci sayı okunan satır sayısıdır; 0 ise CouchSubs ekrandan altyazı okuyamıyor demektir. Oyunun ayarlarından İngilizce altyazıyı aç; CouchSubs yalnız ekranda yazan altyazıyı okur. Altyazı açıksa Ayarlar › Altyazı alanı'ndan alanı oyunda altyazının çıktığı yere getir."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Android telefonda paket listesi eksik ya da boş.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Oyun paketleri'nde Paketleri güncelle'ye bas. Bazı ağlar paket sunucusuna ulaşamıyor: güncelleme hata verirse ya da liste yine eksikse Wi-Fi'ı kapatıp mobil veriyle bir kez daha dene. Uygulamanın Google Play'de güncel olduğuna da bak."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Mac'te uygulama içi güncelleme yeni sürümü bulmuyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Mac uygulamasının güncelleme imzası yenilendi; eski bir sürüm yenisini bulamayabilir. İndir bölümünden DMG'yi bir kez indirip üstüne kur. Sonraki güncellemeler yine kendiliğinden gelir."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Neden ikinci bir PSN hesabı gerekiyor?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Kendi hesabınla Uzaktan Oynatma'ya bağlanılırsa senin kolun kapanır. Ücretsiz ikinci hesapla CouchSubs aynı konsola bağlanır, sen oynamaya devam edersin. Bir kez eklenir."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Hangi TV'ler destekleniyor?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "webOS 4 ve üstü LG'ler (eski webOS 3.x modeller de aramada bulunur; kullanıcılar webOS 3.4'te (49UH770V), 2015 model webOS 2.2'de ve webOS 1.x'te (webOS Dev Manager ile elle kurulumla) da çalıştırdı). Samsung'da 2019 ve sonrası desteklenir; 2017–2018 modelleri deneysel, 2016 modelleri (Tizen 2.4) yalnız telefondan kurulumla ve deneysel, 2015 modelleri (Tizen 2.3) yalnız elle kurulumla ve deneysel. Vestel, Arçelik, Beko, Grundig, Philips, TCL gibi Android TV, Google TV'ler (elle kurulan APK Android 5.1'de de çalışır). Odyssey G8/G9 gibi Samsung ultra geniş monitörlerde Samsung uygulamaya yalnız 16:9 alan veriyor; görüntünün ekranı doldurması için monitörün kendi Görüntü Boyutu (Ekrana sığdır) ayarı kullanılabilir. TV listede çıkmazsa IP adresini elle yazabilirsin."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Hangi TV'ler desteklenmiyor?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Philips'in Titan OS ve Saphi'li modelleri, Vidaa'lı TV'ler ve Vestel, Arçelik, Beko, Grundig'in Android olmayan (Linux) modelleri: bu sistemler için CouchSubs TV uygulaması yok. Ana ekranda Google Play Store ya da Google TV yazıyorsa TV Android'dir ve desteklenir. TV'n desteklenmiyorsa ya da yoksa altyazı bilgisayar ekranında ya da telefonda gösterilir."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Windows \"bilgisayarınızı korudu\" diyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Ek bilgi › Yine de çalıştır'a bas. Yeni uygulamalarda Windows bu uyarıyı gösterir; kurulum yönetici izni istemez."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "TV'de altyazı çıkmıyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Oyunda altyazının açık olduğuna, TV'de CouchSubs uygulamasının açık olduğuna ve TV'nin bilgisayarla aynı ağda olduğuna bak. Altyazı okunmuyorsa Ayarlar › Altyazı alanı'ndan alanı ayarla. Olmazsa uygulamadaki altyazı günlüğüyle GitHub'da sorun bildir."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "TV'de 6 haneli bir kod çıktı; nereye yazacağım?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Hiçbir yere: kod yazılmaz, onaylanır. Bu TV eşleştirmesi: TV yeni bir bilgisayar ya da telefon bulunca aynı 6 haneli kod bilgisayarda ya da telefonda açılan pencerede de görünür. Kodlar aynıysa o pencerede Onayla'ya bas; tanımadığın isteği reddet. İstek iki dakika geçerlidir. Pencere açılmadıysa Çeviriyi başlat'a bas ya da Ayarlar'daki TV eşleştir'i aç. Android TV'de kod görünmüyorsa CouchSubs'ı güncelle; TV uygulaması da kendiliğinden güncellenir."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Samsung TV'de \"Sunucu bakım altında (1544007)\" yazıyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Bu uyarı TV'de CouchSubs kurulu değilken çıkar; bir sunucu arızası değildir. Önce TV kurulumunu tamamla: bilgisayarda kurulumdaki TV adımı, telefonda Ayarlar › TV uygulaması › TV uygulamasını bu telefondan kur. Samsung'un mağazasında CouchSubs yok; TV uygulaması yalnız bu yolla kurulur."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Samsung kurulumunda \"26101\" ya da \"Connection refused\" hatası.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "TV, kurulumu yapan cihazı kabul etmiyor. Üç şeye bak: geliştirici modu penceresinde Developer mode On olmalı; Host PC IP kurulumu yaptığın bilgisayarın ya da telefonun adresi olmalı (CouchSubs bu adresi kurulum ekranında gösterir); ayardan sonra TV tam yeniden başlamalı. Bunun için kumandanın güç tuşunu TV kapanıp Samsung logosuyla yeniden açılana kadar (yaklaşık 5 saniye) bırakmadan basılı tut; TV kapanınca bırakırsan yalnız bekleme moduna geçer ve ayar uygulanmaz. Logo görünmezse fişini 30 saniye çek. TV ile cihaz aynı ağda olmalı."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "iPhone'dan LG kurulumunda \"TV anahtarları yeniden değiştirmek istedi (desteklenmiyor)\" yazıyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "iPhone uygulamasının App Store'daki ilk sürümünde bilinen bir hata; düzeltmesi uygulama güncellemesiyle gelir. O zamana kadar LG'ye TV uygulamasını Windows'taki CouchSubs'tan ya da Android telefondan kurabilirsin."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Windows'ta TV aranırken CouchSubs kapanıyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Eski sürümlerde olan bir hataydı: CouchSubs'ı güncelle (uygulama içinden ya da İndir bölümünden). Bazı ağlarda cihazların verdiği \"bağlantı zorla kapatıldı\" yanıtı TV aramasında uygulamayı kapatıyordu; artık atlanıyor ve arama sürüyor."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Android TV'de \"Eşleştirme tamamlanmadı\" yazıyor, \"TV'de test et\" yazısı gelmiyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Eski sürümlerde olan bir hataydı: bilgisayardaki CouchSubs'ı güncelle; TV uygulaması da kendiliğinden güncellenir. Güncel sürümde \"TV'de test et\" eşleştirme onayını kendisi açar; TV'de 6 haneli kod çıkınca bilgisayarda ya da telefonda \"Bu TV eşleştirilsin mi?\" sorusunu onayla. \"Yeniden kur\" ya da Geri tuşu bunu çözmez. LG ve Samsung etkilenmez."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Android TV'de (Philips, TCL vb.) ekran siyah kalıyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Sırayla dene: telefonda ya da bilgisayarda çeviriyi durdur; TV'de Ayarlar › Uygulamalar › CouchSubs › Durmaya zorla'yı seçip kumandadan PS5'in HDMI girişine geç; düzelmezse TV'yi kumandadan değil fişten kapat, bir dakika bekleyip tak. Sık oluyorsa CouchSubs'ta Ayarlar'daki Görüntü modu'nu Katman yap: TV, PS5'i kendi HDMI girişinde gösterir, CouchSubs yalnız altyazıyı üstüne çizer. Sorun sürerse TV modelinle GitHub'da bildir."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Çeviri başlayınca TV'de oyunun sesi gidiyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Kullanıcı bildirimlerinde PS5 Uzaktan Oynatma sürerken TV'den ses geliyor; CouchSubs da PS5'e ses için bir şey göndermez. Ses çoğunlukla TV uygulamasının içinde açılan HDMI'da, TV sesi soundbar, ev sinema sistemi ya da Bluetooth'a verirken kesiliyor. TV'nin ses çıkışını TV Hoparlörü yap; LG'de Dijital Ses Çıkışı'nı Otomatik ya da PCM, PS5'te Ayarlar › Ses › Ses Çıkışı › Ses Biçimi (Öncelik)'yi Linear PCM yap. Ayırt etmek için altyazı hedefini Bu telefonda yapıp çeviriyi başlat ve TV'yi PS5'in HDMI girişine al: ses burada geliyorsa sorun TV uygulamasının ses yolunda. Xbox ise uzaktan oynatma sürerken TV'nin sesini kendisi kapatır, ses bağlanan cihazdan gelir."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "OBS'de altyazı gelmiyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Altyazı adresi artık bir erişim anahtarı içeriyor. OBS'deki tarayıcı kaynağına Ayarlar › OBS katmanı'ndaki yeni adresi (sonunda ?k=… olan) kopyalayıp yapıştır. Bu adresi yayında ya da ekran görüntüsünde paylaşma."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Evde iki PS5 ya da iki TV var.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Sorun değil. CouchSubs PS5'i adıyla tanır, başka PS5'e geçmez; ağda birden çok Android TV varsa hangisine kurulacağını sorar. Her TV kendi bilgisayarına ya da telefonuna bağlanır."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "PS5 bağlantısı sık kopuyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Bağlantı sık koparsa CouchSubs görüntüyü kendiliğinden 720p'ye düşürür; hata kodunun ne demek olduğunu da ekranda yazar. Wi-Fi zayıfsa PS5'i ağa kabloyla bağlamak da işe yarar."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Samsung TV kendiliğinden HDMI'ya geçiyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "TV'de Ayarlar › Tüm Ayarlar › Bağlantı › Harici Cihaz Yöneticisi'nde Anynet+ (HDMI-CEC) ve Otomatik Kaynak Değiştirme'yi kapat."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Ekranda \"Uzaktan Oynatma bağlandı\" bildirimi çıkıyor.",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Bu PS5'in kendi bildirimi. PS5'te Ayarlar › Sistem › Uzaktan Oynatma'ya girip en alttaki seçeneği kapatınca bildirim gelmiyor (ipucu: @1907FNRB1907)."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "LG'de geliştirici modu kapanır mı?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "LG geliştirici modunu en çok 1000 saat açık tutar. CouchSubs her kullanışta süreyi baştan başlatır; uzun süre kullanmazsan Developer Mode uygulamasından EXTEND ile uzat."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Bir sorun yaşarsam?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "GitHub'da sorun bildir ya da X ve Instagram'dan yaz. Uygulamadaki altyazı günlüğünü eklersen sorunu daha hızlı buluruz."
+     }
+    }
+   ]
+  }
+ ]
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;700&family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&display=swap" rel="stylesheet">
