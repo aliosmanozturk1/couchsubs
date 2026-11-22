@@ -187,6 +187,14 @@ public struct StickyRows {
         }
     }
 
+    /// Satır ne kadar süredir değişmeden okunuyor (milisaniye; son büyümesinden bu yana). Satır bilinmiyorsa (yeni ya da
+    /// en az üç harfli değil) nil. `Reading.subtitleBlock` sabit bloğu (haber bandı) bununla ayırır (GitHub #933).
+    public func unchangedMs(_ line: String, at time: Int) -> Int? {
+        let text = TextMatch.normalize(line)
+        guard text.count >= 3, let row = rows.first(where: { TextMatch.isSimilar(text, $0.text) }) else { return nil }
+        return time - row.grown
+    }
+
     public mutating func reset() {
         rows.removeAll()
         previous = []

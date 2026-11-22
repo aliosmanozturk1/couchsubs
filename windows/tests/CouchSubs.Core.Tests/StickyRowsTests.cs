@@ -147,4 +147,14 @@ public class StickyRowsTests
         Assert.True(clearsWhileObjectiveAlone > 0);
         Assert.Equal(new[] { Objective, "Yeah!", "Okay." }, translator.Requested);
     }
+
+    [Fact]
+    public void ReportsHowLongALineIsUnchanged()
+    {
+        var rows = new StickyRows();
+        rows.Filter(Reading.FromText("STORM HITS VICE CITY COAST"), 0);
+        rows.Filter(Reading.FromText("STORM HITS VICE CITY COAST"), 1000);
+        Assert.Equal(1000L, rows.UnchangedMs("STORM HITS VICE CITY COAST", 1000));
+        Assert.Null(rows.UnchangedMs("Something else entirely here", 1000));
+    }
 }

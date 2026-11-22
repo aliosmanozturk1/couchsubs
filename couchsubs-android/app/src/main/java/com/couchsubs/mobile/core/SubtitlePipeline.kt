@@ -125,6 +125,8 @@ class SubtitlePipeline(
     private val subtitleBand = SubtitleBand()
     /** Günlüğe yazılmış son sahne yazıları (her karede yeniden yazılmasın). */
     private val loggedSceneText = ArrayDeque<String>()
+    /** Son günlüğe yazılan sabit blok ([logStale]; aynı bant her karede yazılmasın). */
+    private var loggedStale = ""
 
     /** Altyazı günlüğü (Mac/iPhone `onLog`, Windows `Log`): şimdilik sahne yazısı sayılıp atılan bloklar. */
     var onLog: ((String) -> Unit)? = null
@@ -166,6 +168,16 @@ class SubtitlePipeline(
         val time = now()
         if (time - quiet.since < QuietReads.REPORT_AFTER_MS) return null
         return quiet.summary(time).also { quiet = QuietReads(time) }
+    }
+
+    /** Uzun süredir değişmeyen ortalı blok (haber bandı) yeni beliren bloğun yanında altyazı sayılmadı (GitHub #933). */
+    private fun logStale(texts: List<String>) {
+        val key = texts.joinToString("\n")
+        if (key == loggedStale) return
+        loggedStale = key
+        if (texts.isEmpty()) return
+        val excerpt = key.replace('\n', ' ').let { if (it.length > 120) it.take(120) + "…" else it }
+        onLog?.invoke("sabit blok atlandı: \"$excerpt\" ${Reading.STALE_MS / 1000} sn'dir değişmiyor, yanında yeni ortalı blok var")
     }
 
     /** Sahne yazısı sayılıp atılan blok günlüğe nedeniyle bir kez yazılır (GitHub #822). */
@@ -309,9 +321,14 @@ class SubtitlePipeline(
             }
             // Bu oturumda altyazının okunduğu yükseklikteki kısa satır tabela sayılmaz; atılan blok günlüğe (GitHub #822).
             val edge = mutableListOf<Reading>()
+            val staleTexts = mutableListOf<String>()
+            val readAt = now()
             filtered.subtitleBlock(area, subtitleBand, notices = { block ->
                 edge.add(Reading(block.lines.map { it.copy(box = it.box?.placedIn(area)) }))
-            }) { block, reason -> logSceneText(block.text, reason) }.also {
+            }, age = { stickyRows.unchangedMs(it, readAt) }, stale = { block -> staleTexts += block.lines.map { it.text } }) {
+                block, reason -> logSceneText(block.text, reason)
+            }.also {
+                logStale(staleTexts)
                 subtitleBand.record(it, area)
                 if (notices.observe(edge, now())) {
                     noticesChanged = true
@@ -765,6 +782,7 @@ class SubtitlePipeline(
         stickyRows.reset()
         subtitleBand.reset()
         loggedSceneText.clear()
+        loggedStale = ""
         mission.reset()
         notices.reset()
         echo?.reset()

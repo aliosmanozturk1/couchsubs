@@ -161,10 +161,14 @@ public sealed class Reading
     /// altyazının okunduğu yükseklikler; <paramref name="dropped"/>: sahne yazısı sayılıp atılan her blok ve nedeni
     /// (altyazı günlüğü için). "Tam ekran" alanda ekranın kenarındaki bildirim kartı (<see cref="ScreenNotices.IsNotice(TextBox)"/>)
     /// altyazı bloğu sayılmaz, <paramref name="notices"/> ile bildirilir (satır kutuları alana oranlı); kendi yerinde
-    /// çevrilir. Önceden ortalanmış blok yokken altyazı seçilip ekranın ortasında çiziliyordu.
+    /// çevrilir. Önceden ortalanmış blok yokken altyazı seçilip ekranın ortasında çiziliyordu. <paramref name="age"/>:
+    /// satırın ne kadar süredir değişmeden okunduğu (<see cref="StickyRows.UnchangedMs"/>); verilirse
+    /// <see cref="StaleMs"/>'dir değişmeyen ortalı blok, yanında yeni beliren ortalı blok varken seçilmez, atlanan blok
+    /// <paramref name="stale"/> ile bildirilir.
     /// </summary>
     public Reading SubtitleBlock(TextBox area, SubtitleBand? band = null, Action<Reading, string>? dropped = null,
-                                 Action<Reading>? notices = null)
+                                 Action<Reading>? notices = null, Func<string, long?>? age = null,
+                                 Action<Reading>? stale = null)
     {
         if (Lines.Count == 0 || Lines.Any(line => line.Box is null)) return IsActionLabel ? Empty : this;
         var blocks = new List<List<TextLine>>();
@@ -195,6 +199,7 @@ public sealed class Reading
         }).ToList();
         // Görev satırı altyazıyla aynı anda belirince ayrı blok olur (aralık ya da yazı boyu farkı): konuşan adı taşıyan
         // blok altyazıdır ("Lucia: …" görevin üstünde de dursa).
+        centered = WithoutStale(centered, age, stale);
         if (centered.FirstOrDefault(reading => SpeakerPrefix.Parse(reading.Lines[0].Text) is not null) is { } spoken) return spoken;
         if (centered.Count > 0)
         {
@@ -224,6 +229,40 @@ public sealed class Reading
     }
 
     private static int Letters(string text) => text.Count(char.IsLetter);
+
+    /// <summary>
+    /// Ortalı blok bu kadar süredir hiç değişmediyse ve yanında ondan en az <see cref="StickyRows.YoungerByMs"/> daha yeni
+    /// (kırıntı olmayan) ortalı blok varsa altyazı sayılmaz. Kullanıcı bildirimi (GitHub #933, GTA 6): karakter TV izlerken
+    /// haber programının alt bandı konuşma altyazısının altında duruyor, en alttaki ortalı blok olarak her karede bant
+    /// seçiliyor, konuşma hiç çevrilmiyordu. Bant çoğu zaman "EXCLUSIVE: …", "BREAKING NEWS: …" diye başlıyor, konuşan adı
+    /// sanılıp her zaman altyazı seçiliyordu. Tek ortalı blok (değişmeyen uzun cümle) seçilmeye devam eder. Konuşan adlı
+    /// sabit blok yalnız yanındaki yeni blok en az üç sözcüklü bir cümleyse atlanır: kısa görev/HUD yazısı uzun konuşmayı
+    /// geçmez (Mac: Reading.staleMs, Android: Reading.STALE_MS).
+    /// </summary>
+    public const int StaleMs = 5000;
+
+    /// <summary>Ortalı blokların sabit olanları (<see cref="StaleMs"/>) çıkarılmış hali; satır yaşı bilinmiyorsa aynen kalır.</summary>
+    private static List<Reading> WithoutStale(List<Reading> centered, Func<string, long?>? age, Action<Reading>? skipped)
+    {
+        if (age is null || centered.Count < 2) return centered;
+        var ages = centered.Select(block => block.Lines.Select(line => age(line.Text)).Where(value => value is not null)
+            .Select(value => value!.Value).DefaultIfEmpty(0).Min()).ToList();
+        var fresh = Enumerable.Range(0, centered.Count)
+            .Where(i => ages[i] < StaleMs && !OcrNoise.IsCrumb(centered[i].Text)).ToList();
+        if (fresh.Count == 0) return centered;
+        long youngest = fresh.Min(i => ages[i]);
+        var sentences = fresh.Where(i => WordCount(centered[i].Text) >= 3).ToList();
+        long? sentence = sentences.Count > 0 ? sentences.Min(i => ages[i]) : null;
+        var stale = Enumerable.Range(0, centered.Count).Where(i =>
+        {
+            if (ages[i] < StaleMs) return false;
+            var rival = SpeakerPrefix.Parse(centered[i].Lines[0].Text) is null ? youngest : sentence;
+            return rival is { } value && ages[i] - value >= StickyRows.YoungerByMs;
+        }).ToHashSet();
+        if (stale.Count == 0) return centered;
+        foreach (var i in stale.Order()) skipped?.Invoke(centered[i]);
+        return Enumerable.Range(0, centered.Count).Where(i => !stale.Contains(i)).Select(i => centered[i]).ToList();
+    }
 
     /// <summary>
     /// Bloğun son satırının hemen altında ve yatayda onunla üst üste binen satır o bloğa aittir. Aradaki boşluk satır

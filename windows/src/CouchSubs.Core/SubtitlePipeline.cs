@@ -86,6 +86,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     private readonly SubtitleBand subtitleBand = new();
     /// <summary>Günlüğe yazılmış son sahne yazıları (her karede yeniden yazılmasın).</summary>
     private readonly List<string> loggedSceneText = [];
+    /// <summary>Son günlüğe yazılan sabit blok (<see cref="LogStale"/>; aynı bant her karede yazılmasın).</summary>
+    private string loggedStale = "";
     /// <summary>Oturumun (hat kurulunca ya da sıfırlanınca) başladığı an; ilk karenin ne kadar sonra geldiği günlüğe yazılır.</summary>
     private long sessionStart = (clock ?? DefaultClock)();
     private bool sawFrame;
@@ -259,6 +261,16 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         Write($"sahne yazısı: {SubtitleLog.Excerpt(text)} altyazı sayılmadı ({reason})");
     }
 
+    /// <summary>Uzun süredir değişmeyen ortalı blok (haber bandı) yeni beliren bloğun yanında altyazı sayılmadı (GitHub #933).</summary>
+    private void LogStale(List<string> texts)
+    {
+        var key = string.Join("\n", texts);
+        if (key == loggedStale) return;
+        loggedStale = key;
+        if (texts.Count == 0) return;
+        Write($"sabit blok atlandı: {SubtitleLog.Excerpt(key)} {Reading.StaleMs / 1000} sn'dir değişmiyor, yanında yeni ortalı blok var");
+    }
+
     private void Write(Request request, string message) => Log?.Invoke($"#{request.Number} {message}");
 
     /// <summary>Okuma çeviriyi beklemez; böylece çeviri sürerken gelen satırlar da yakalanır.</summary>
@@ -410,8 +422,13 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         IReadOnlyList<WatchedArea> noticeAreas;
         lock (gate)
         {
+            var staleTexts = new List<string>();
+            var readAt = now();
             reading = rows.SubtitleBlock(area, subtitleBand, (block, reason) => LogSceneText(block.Text, reason),
-                                         block => edge.Add(block.PlacedIn(area)));
+                                         block => edge.Add(block.PlacedIn(area)),
+                                         line => stickyRows.UnchangedMs(line, readAt),
+                                         block => staleTexts.AddRange(block.Lines.Select(line => line.Text)));
+            LogStale(staleTexts);
             subtitleBand.Record(reading, area);
             noticesMoved = notices.Observe(edge, now());
             noticeAreas = notices.Areas;
@@ -1240,6 +1257,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             stickyRows.Reset();
             subtitleBand.Reset();
             loggedSceneText.Clear();
+            loggedStale = "";
             mission.Reset();
             notices.Reset();
             Echo?.Reset();

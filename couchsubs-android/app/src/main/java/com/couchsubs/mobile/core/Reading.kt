@@ -64,6 +64,17 @@ class Reading(lines: List<TextLine>) {
         /** [isMenu]: menü satırlarının sol ya da sağ kenarı bu kadar içinde hizalı (okunan alana oranla). */
         const val MENU_EDGE = 0.012
 
+        /**
+         * Ortalı blok bu kadar süredir hiç değişmediyse ve yanında ondan en az [StickyRows.YOUNGER_BY_MS] daha yeni (kırıntı
+         * olmayan) ortalı blok varsa altyazı sayılmaz. Kullanıcı bildirimi (GitHub #933, GTA 6): karakter TV izlerken haber
+         * programının alt bandı konuşma altyazısının altında duruyor, en alttaki ortalı blok olarak her karede bant
+         * seçiliyor, konuşma hiç çevrilmiyordu. Bant çoğu zaman "EXCLUSIVE: …", "BREAKING NEWS: …" diye başlıyor, konuşan
+         * adı sanılıp her zaman altyazı seçiliyordu. Tek ortalı blok (değişmeyen uzun cümle) seçilmeye devam eder. Konuşan
+         * adlı sabit blok yalnız yanındaki yeni blok en az üç sözcüklü bir cümleyse atlanır: kısa görev/HUD yazısı uzun
+         * konuşmayı geçmez (Mac: Reading.staleMs, Windows: Reading.StaleMs).
+         */
+        const val STALE_MS = 5000L
+
         /** [joiningRows]: aynı satırdaki iki parça arasındaki en büyük boşluk (alan genişliğine oranla). */
         const val ROW_GAP = 0.05
 
@@ -175,10 +186,13 @@ class Reading(lines: List<TextLine>) {
      * bloğu sayılmaz. [band]: bu oturumda altyazının okunduğu yükseklikler; [dropped]: sahne yazısı sayılıp atılan her
      * blok ve nedeni (altyazı günlüğü için). "Tam ekran" alanda ekranın kenarındaki bildirim kartı ([ScreenNotices.isNotice])
      * altyazı bloğu sayılmaz, [notices] ile bildirilir (satır kutuları alana oranlı); kendi yerinde çevrilir. Önceden
-     * ortalanmış blok yokken altyazı seçilip ekranın ortasında çiziliyordu.
+     * ortalanmış blok yokken altyazı seçilip ekranın ortasında çiziliyordu. [age]: satırın ne kadar süredir değişmeden
+     * okunduğu ([StickyRows.unchangedMs]); verilirse [STALE_MS]'dir değişmeyen ortalı blok, yanında yeni beliren ortalı
+     * blok varken seçilmez, atlanan blok [stale] ile bildirilir.
      */
     fun subtitleBlock(
         area: TextBox, band: SubtitleBand? = null, notices: ((Reading) -> Unit)? = null,
+        age: ((String) -> Long?)? = null, stale: ((Reading) -> Unit)? = null,
         dropped: ((Reading, String) -> Unit)? = null,
     ): Reading {
         if (lines.isEmpty() || lines.any { it.box == null }) return if (isActionLabel) Empty else this
@@ -199,12 +213,13 @@ class Reading(lines: List<TextLine>) {
             notices?.invoke(block)
             false
         }
-        val centered = candidates.filter { reading ->
+        val middle = candidates.filter { reading ->
             val placed = reading.box!!.placedIn(area)
             abs((placed.left + placed.right) / 2 - 0.5) <= 0.12
         }
         // Görev satırı altyazıyla aynı anda belirince ayrı blok olur (aralık ya da yazı boyu farkı): konuşan adı taşıyan
         // blok altyazıdır ("Lucia: …" görevin üstünde de dursa).
+        val centered = withoutStale(middle, age, stale)
         centered.firstOrNull { SpeakerPrefix.split(it.lines[0].text) != null }?.let { return it }
         if (centered.isNotEmpty()) {
             val lowest = centered.indices.maxBy { centered[it].box!!.bottom }
@@ -233,6 +248,23 @@ class Reading(lines: List<TextLine>) {
     }
 
     private fun letters(text: String) = text.count { it.isLetter() }
+
+    /** [centered] blokların sabit olanları ([STALE_MS]) çıkarılmış hali; satır yaşı bilinmiyorsa olduğu gibi kalır. */
+    private fun withoutStale(centered: List<Reading>, age: ((String) -> Long?)?, skipped: ((Reading) -> Unit)?): List<Reading> {
+        if (age == null || centered.size < 2) return centered
+        val ages = centered.map { block -> block.lines.mapNotNull { age(it.text) }.minOrNull() ?: 0L }
+        val fresh = centered.indices.filter { ages[it] < STALE_MS && !OcrNoise.isCrumb(centered[it].text) }
+        val youngest = fresh.minOfOrNull { ages[it] } ?: return centered
+        val sentence = fresh.filter { wordCount(centered[it].text) >= 3 }.minOfOrNull { ages[it] }
+        val stale = centered.indices.filter { index ->
+            if (ages[index] < STALE_MS) return@filter false
+            val rival = if (SpeakerPrefix.split(centered[index].lines[0].text) == null) youngest else sentence
+            rival != null && ages[index] - rival >= StickyRows.YOUNGER_BY_MS
+        }.toSet()
+        if (stale.isEmpty()) return centered
+        stale.sorted().forEach { skipped?.invoke(centered[it]) }
+        return centered.indices.filter { it !in stale }.map { centered[it] }
+    }
 
     /**
      * Bloğun son satırının hemen altında ve yatayda onunla üst üste binen satır o bloğa aittir. Aradaki boşluk satır

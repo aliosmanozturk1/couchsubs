@@ -143,6 +143,8 @@ public final class SubtitlePipeline {
     private var silence = SilenceWatch()
     /// Günlüğe yazılmış son "altyazı sayılmadı" kümesi (`logLeftOut`).
     private var loggedLeftOut = ""
+    /// Son günlüğe yazılan sabit blok (`logStale`; aynı bant her karede yazılmasın).
+    private var loggedStale = ""
     /// Karede açık GTA 6 telefonunun ekranındaki satırlar altyazı sayılmaz (`ScreenPhoneCard.holds`); telefonun çevirisi
     /// kendi yerindedir (telefon okuyucusu, "Ekranı çevir"). Kullanıcı bildirimleri (X, beta.79, üç kişi): telefonun alt
     /// kısmındaki mesajlar (telefon ortaya yakın tutulunca bütün sohbet) altyazı sanılıp ekranın ortasında tek uzun satır
@@ -327,11 +329,15 @@ public final class SubtitlePipeline {
         }
         var edge: [Reading] = []
         var sceneTexts: [String] = []
+        var staleTexts: [String] = []
+        let sticky = stickyRows, readAt = now()
         let reading = rows.subtitleBlock(in: place, band: subtitleBand, dropped: { [weak self] block, reason in
             sceneTexts += block.lines.map(\.text)
             self?.logSceneText(block.text, reason)
-        }, notices: { edge.append($0.placed(in: place)) })
-        logLeftOut(rows, chosen: reading, logged: sceneTexts + edge.flatMap { $0.lines.map(\.text) })
+        }, notices: { edge.append($0.placed(in: place)) },
+           age: { sticky.unchangedMs($0, at: readAt) }, stale: { staleTexts += $0.lines.map(\.text) })
+        logStale(staleTexts)
+        logLeftOut(rows, chosen: reading, logged: sceneTexts + staleTexts + edge.flatMap { $0.lines.map(\.text) })
         // Kenardaki bildirim kartı altyazının yerinde (ekranın ortasında) değil, kendi yerinde çevrilir.
         if notices.observe(edge, at: now()) {
             log(notices.areas.isEmpty ? "kenar bildirimi kalktı" : "kenar bildirimi kendi yerinde gösteriliyor (\(notices.areas.count))")
@@ -864,6 +870,15 @@ public final class SubtitlePipeline {
         log("sahne yazısı: \(SubtitleLog.excerpt(text)) altyazı sayılmadı (\(reason))")
     }
 
+    /// Uzun süredir değişmeyen ortalı blok (haber bandı) yeni beliren bloğun yanında altyazı sayılmadı (GitHub #933).
+    private func logStale(_ texts: [String]) {
+        let key = texts.joined(separator: "\n")
+        guard key != loggedStale else { return }
+        loggedStale = key
+        guard !texts.isEmpty else { return }
+        log("sabit blok atlandı: \(SubtitleLog.excerpt(key)) \(Reading.staleMs / 1000) sn'dir değişmiyor, yanında yeni ortalı blok var")
+    }
+
     /// Alanda okunup altyazı bloğu seçilmeyen satırlar (menü, HUD etiketi, seçilmeyen alt/üst blok) günlüğe yazılır;
     /// sahne yazısı ve kenar bildirimi kendi satırıyla yazıldığı için burada yoktur. Eskiden sessizce atılıyordu: iPhone
     /// 1.0.6'da (2026-11-22) altyazı hiç çevrilmeyince günlükte nedeni görünmüyordu. Aynı küme art arda yazılmaz.
@@ -906,6 +921,7 @@ public final class SubtitlePipeline {
         phone = nil
         phoneLookedAt = nil
         loggedLeftOut = ""
+        loggedStale = ""
         loggedPhone = nil
         silence = SilenceWatch()
         session += 1

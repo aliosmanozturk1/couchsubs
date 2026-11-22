@@ -198,6 +198,19 @@ public sealed class StickyRows
         if (Late(last, LingerMs) && !Reading.Continues(reading.Lines[live[^2]].Text, reading.Lines[last].Text)) result[last] = true;
     }
 
+    /// <summary>
+    /// Satır ne kadar süredir değişmeden okunuyor (milisaniye; son büyümesinden bu yana). Satır bilinmiyorsa (yeni ya da
+    /// en az üç harfli değil) null. <see cref="Reading.SubtitleBlock"/> sabit bloğu (haber bandı) bununla ayırır
+    /// (GitHub #933; Mac: StickyRows.unchangedMs, Android: StickyRows.unchangedMs).
+    /// </summary>
+    public long? UnchangedMs(string line, long time)
+    {
+        var text = TextMatch.Normalize(line);
+        if (text.Length < 3) return null;
+        var row = rows.FirstOrDefault(r => TextMatch.IsSimilar(text, r.Text));
+        return row is null ? null : time - row.Grown;
+    }
+
     public void Reset()
     {
         rows.Clear();

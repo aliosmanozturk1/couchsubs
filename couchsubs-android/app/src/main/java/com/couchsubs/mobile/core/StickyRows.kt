@@ -186,6 +186,18 @@ class StickyRows {
         }
     }
 
+    /**
+     * Satır ne kadar süredir değişmeden okunuyor (milisaniye; son büyümesinden bu yana). Satır bilinmiyorsa (yeni ya da en
+     * az üç harfli değil) null. [Reading.subtitleBlock] sabit bloğu (haber bandı) bununla ayırır (GitHub #933; Mac:
+     * StickyRows.unchangedMs, Windows: StickyRows.UnchangedMs).
+     */
+    fun unchangedMs(line: String, time: Long): Long? {
+        val text = TextMatch.normalize(line)
+        if (text.length < 3) return null
+        val row = rows.firstOrNull { TextMatch.isSimilar(text, it.text) } ?: return null
+        return time - row.grown
+    }
+
     fun reset() {
         rows.clear()
         previous = emptyList()

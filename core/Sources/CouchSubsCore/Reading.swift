@@ -176,10 +176,14 @@ public struct Reading: Equatable, Sendable {
     /// (`SubtitleBand`); `dropped`: sahne yazısı sayılıp atılan her blok ve nedeni (altyazı günlüğü için).
     /// "Tam ekran" alanda ekranın kenarındaki bildirim kartı (`ScreenNotices.isNotice`) altyazı bloğu sayılmaz, `notices`
     /// ile bildirilir (satır kutuları alana oranlı); kendi yerinde çevrilir. Önceden ortalanmış blok yokken altyazı seçilip
-    /// ekranın ortasında çiziliyordu.
+    /// ekranın ortasında çiziliyordu. `age`: satırın ne kadar süredir değişmeden okunduğu (`StickyRows.unchangedMs`);
+    /// verilirse `staleMs`'dir değişmeyen ortalı blok, yanında yeni beliren ortalı blok varken seçilmez (`withoutStale`),
+    /// atlanan blok `stale` ile bildirilir.
     public func subtitleBlock(in area: TextBox, band: SubtitleBand = SubtitleBand(),
                               dropped: ((Reading, String) -> Void)? = nil,
-                              notices: ((Reading) -> Void)? = nil) -> Reading {
+                              notices: ((Reading) -> Void)? = nil,
+                              age: ((String) -> Int?)? = nil,
+                              stale: ((Reading) -> Void)? = nil) -> Reading {
         guard !lines.isEmpty, lines.allSatisfy({ $0.box != nil }) else { return isActionLabel ? .empty : self }
         var blocks: [[TextLine]] = []
         for line in lines.sorted(by: { $0.box!.top < $1.box!.top }) {
@@ -202,10 +206,11 @@ public struct Reading: Equatable, Sendable {
             notices?(block)
             return false
         }
-        let centered = candidates.filter { reading in
+        let middle = candidates.filter { reading in
             guard let box = reading.box?.placed(in: area) else { return false }
             return abs((box.left + box.right) / 2 - 0.5) <= 0.12
         }
+        let centered = Self.withoutStale(middle, age: age, skipped: stale)
         // Görev satırı altyazıyla aynı anda belirince ayrı blok olur (aralık ya da yazı boyu farkı): konuşan adı taşıyan
         // blok altyazıdır ("Lucia: …" görevin üstünde de dursa).
         if let spoken = centered.first(where: { SpeakerPrefix.split($0.lines[0].text) != nil }) { return spoken }
@@ -235,6 +240,33 @@ public struct Reading: Equatable, Sendable {
     }
 
     private static func letters(_ text: String) -> Int { text.filter(\.isLetter).count }
+
+    /// Ortalı blok bu kadar süredir hiç değişmediyse ve yanında ondan en az `StickyRows.youngerByMs` daha yeni (kırıntı
+    /// olmayan) ortalı blok varsa altyazı sayılmaz. Kullanıcı bildirimi (GitHub #933, GTA 6): karakter TV izlerken haber
+    /// programının alt bandı konuşma altyazısının altında duruyor, en alttaki ortalı blok olarak her karede bant seçiliyor,
+    /// konuşma hiç çevrilmiyordu. Bant çoğu zaman "EXCLUSIVE: …", "BREAKING NEWS: …" diye başlıyor, konuşan adı sanılıp
+    /// her zaman altyazı seçiliyordu. Tek ortalı blok (değişmeyen uzun cümle) seçilmeye devam eder. Konuşan adlı sabit
+    /// blok yalnız yanındaki yeni blok en az üç sözcüklü bir cümleyse atlanır: kısa görev/HUD yazısı uzun konuşmayı
+    /// geçmez (Windows: Reading.StaleMs, Android: Reading.STALE_MS).
+    static let staleMs = 5000
+
+    /// `centered` blokların sabit olanları (`staleMs`) çıkarılmış hali; satır yaşı bilinmiyorsa olduğu gibi kalır.
+    private static func withoutStale(_ centered: [Reading], age: ((String) -> Int?)?,
+                                     skipped: ((Reading) -> Void)?) -> [Reading] {
+        guard let age, centered.count >= 2 else { return centered }
+        let ages = centered.map { block in block.lines.compactMap { age($0.text) }.min() ?? 0 }
+        let fresh = centered.indices.filter { ages[$0] < staleMs && !OcrNoise.isCrumb(centered[$0].text) }
+        guard let youngest = fresh.map({ ages[$0] }).min() else { return centered }
+        let sentence = fresh.filter { wordCount(centered[$0].text) >= 3 }.map { ages[$0] }.min()
+        let stale = Set(centered.indices.filter { index in
+            guard ages[index] >= staleMs else { return false }
+            let rival = SpeakerPrefix.split(centered[index].lines[0].text) == nil ? youngest : sentence
+            return rival.map { ages[index] - $0 >= StickyRows.youngerByMs } ?? false
+        })
+        guard !stale.isEmpty else { return centered }
+        stale.sorted().forEach { skipped?(centered[$0]) }
+        return centered.indices.filter { !stale.contains($0) }.map { centered[$0] }
+    }
 
     /// Bloğun son satırının hemen altında ve yatayda onunla üst üste binen satır o bloğa aittir. Aradaki boşluk satır
     /// yüksekliğinin `lineGap` katından (devam satırında `continuationGap`) büyükse ya da yazı boyları 1,25 kattan çok farklıysa ayrı bloktur (altyazıya bitişik görev
