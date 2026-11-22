@@ -90,7 +90,8 @@ public partial class ShellWindow : Window
     /// </summary>
     private void OnTvPairing(SubtitlePairing.Ticket ticket)
     {
-        if (pairingShown) return;
+        // Kurulumun TV adımında kod kartta onaylanır; açılır kart ayrıca sorulmaz.
+        if (pairingShown || Views.Steps.TvCodeCard.Showing) return;
         pairingShown = true;
         try
         {
