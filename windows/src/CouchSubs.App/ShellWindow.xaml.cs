@@ -64,8 +64,11 @@ public partial class ShellWindow : Window
             StartupGuard.Log("Altyazı penceresi kurulamadı", error);
             StartupGuard.Show(Application.Current, StartupGuard.OverlayFailedMessage(error));
         }
+        // Sistem tepsisi simgesi ve açılır penceresi (Mac'teki menü çubuğunun karşılığı).
+        var tray = TrayPopup.Attach(controller);
         Closed += (_, _) =>
         {
+            tray?.Detach();
             ThemeManager.Changed -= PaintCaption;
             if (current == this) current = null;
             controller.PcResultReady -= PcResultWindow.Display;
@@ -119,6 +122,8 @@ public partial class ShellWindow : Window
             or nameof(AppController.Step) or nameof(AppController.Ps5Tone) or nameof(AppController.TvTone) or nameof(AppController.SessionState)
             or nameof(AppController.Settings))
             ShowStatus();
+        if (e.PropertyName is nameof(AppController.IsRunning) && !controller.IsRunning && showingMain)
+            PopupAdWindow.Offer(this, controller, PopupAdMoment.TranslationStopped);
         if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.HotkeysPaused) or nameof(AppController.Settings))
             ApplyHotkeys();
     }
@@ -164,6 +169,8 @@ public partial class ShellWindow : Window
             return;
         }
         home = new MainView(controller);
+        // Açılır reklam: yalnız açılışta ya da çeviri durunca, günde en fazla bir kez (PopupAdPolicy).
+        Dispatcher.BeginInvoke(() => PopupAdWindow.Offer(this, controller, PopupAdMoment.AppLaunch), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         tab = ShellTab.Home;
         Show(home);
         SelectTab(ShellTab.Home, null);

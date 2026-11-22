@@ -12,7 +12,8 @@ namespace CouchSubs.App.Services;
 /// </summary>
 public static class UiPreferences
 {
-    public sealed record Values(bool StartupSound = true, bool TransitionAnimations = true);
+    /// <param name="LastPopupAd">Açılır reklamın son gösterildiği an (günde en fazla bir kez).</param>
+    public sealed record Values(bool StartupSound = true, bool TransitionAnimations = true, DateTime? LastPopupAd = null);
 
     private static readonly string FilePath = Path.Combine(AppPaths.Data, "ui.json");
     private static Values? current;
