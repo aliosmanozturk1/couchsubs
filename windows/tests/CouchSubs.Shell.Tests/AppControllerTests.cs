@@ -1864,6 +1864,20 @@ public class AppControllerRunTests
         controller.Dispose();
     }
 
+    /// DeepL 429 (çok sık istek) anahtarı reddetmez: anahtar kaydedilir (Mac, iPhone ve Android ile aynı); görünmez
+    /// karakterler denemeden önce silinir.
+    [Fact]
+    public async Task RateLimitedDeepLKeyIsSavedAndCleaned()
+    {
+        var services = new FakeServices { KeyCheck = new OnlineKeyCheck(OnlineKeyState.Busy, Reason: OnlineKeyReason.RateLimited, Code: 429) };
+        var (controller, _, _) = Ready(services);
+        var check = await controller.SetDeepLKeyAsync("ab c​:fx\n");
+        Assert.Equal(OnlineKeyState.Busy, check.State);
+        Assert.Equal(["abc:fx"], services.CheckedKeys);
+        Assert.True(controller.HasDeepLKey);
+        controller.Dispose();
+    }
+
     /// Geçerli anahtarla çeviri DeepL'e geçer; cihaz üstü model inmemiş olsa da çeviri hazır sayılır.
     [Fact]
     public async Task AcceptedDeepLKeyTurnsOnlineTranslationOn()

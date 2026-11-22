@@ -602,6 +602,11 @@
     <string name="deepl_quota_used_up">This month\'s DeepL limit is used up. Until it renews, the free translation on this phone translates.</string>
     <string name="deepl_key_not_accepted">DeepL did not accept this key. Copy it again from your DeepL account page.</string>
     <string name="deepl_unreachable">DeepL could not be reached. Check your internet connection.</string>
+    <string name="deepl_usage_unlimited">This month: %1$s characters used (no limit).</string>
+    <string name="deepl_usage_unknown">DeepL accepted the key. This month\'s usage could not be read.</string>
+    <string name="deepl_key_malformed">The key contains characters a DeepL key cannot have. Copy it again from your DeepL account page.</string>
+    <string name="deepl_rate_limited">DeepL is receiving too many requests right now (HTTP 429). The key is saved; DeepL translates again in a few minutes.</string>
+    <string name="deepl_server_error">DeepL answered with an error (HTTP %1$d). Try again in a few minutes.</string>
     <string name="metrics_ocr">OCR %1$d ms</string>
     <string name="metrics_pack">Ready pack</string>
     <string name="metrics_translation">Translation %1$d ms</string>

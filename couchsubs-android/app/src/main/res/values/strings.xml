@@ -611,6 +611,11 @@
     <string name="deepl_quota_used_up">Bu ayın DeepL sınırı doldu. Sınır yenilenene kadar bu telefondaki ücretsiz çeviri çevirir.</string>
     <string name="deepl_key_not_accepted">DeepL bu anahtarı kabul etmedi. Anahtarı DeepL hesap sayfanızdan yeniden kopyalayın.</string>
     <string name="deepl_unreachable">DeepL\'e ulaşılamadı. İnternet bağlantınızı kontrol edin.</string>
+    <string name="deepl_usage_unlimited">Bu ay: %1$s karakter kullanıldı (sınır yok).</string>
+    <string name="deepl_usage_unknown">DeepL anahtarı kabul etti. Bu ayki kullanım okunamadı.</string>
+    <string name="deepl_key_malformed">Anahtarda DeepL anahtarında olamayacak karakterler var. Anahtarı DeepL hesap sayfanızdan yeniden kopyalayın.</string>
+    <string name="deepl_rate_limited">DeepL şu an çok fazla istek aldığını bildiriyor (HTTP 429). Anahtar kaydedildi; birkaç dakika içinde DeepL yeniden çevirir.</string>
+    <string name="deepl_server_error">DeepL hata koduyla yanıt verdi (HTTP %1$d). Birkaç dakika sonra yeniden deneyin.</string>
     <string name="metrics_ocr">OCR %1$d ms</string>
     <string name="metrics_pack">Hazır paket</string>
     <string name="metrics_translation">Çeviri %1$d ms</string>

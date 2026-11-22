@@ -919,14 +919,21 @@ public partial class SettingsWindow : Window
     private void ShowDeepLStatus(OnlineKeyCheck check)
     {
         var text = Localizer.Current;
+        // Mac/iPhone'daki DeepLUsageText ile aynı metinler: her hata kendi nedeniyle (geçersiz karakter, 429, HTTP kodu, ağ yok).
         ShowStatus(check.State switch
         {
+            OnlineKeyState.Valid when check.Limit >= OnlineKeyCheck.Unlimited => text.Format("This month: %@ characters used (no limit).", check.Used.ToString("N0")),
+            OnlineKeyState.Valid when check.Limit <= 0 => text["DeepL accepted the key. This month's usage could not be read."],
             OnlineKeyState.Valid => text.Format("This month: %1$@ of %2$@ characters used.", check.Used.ToString("N0"), check.Limit.ToString("N0")),
             OnlineKeyState.QuotaExceeded => text["This month's DeepL limit is used up. Until it renews, the translation model on this computer translates."],
+            OnlineKeyState.Invalid when check.Reason == OnlineKeyReason.MalformedKey =>
+                text["The key contains characters a DeepL key cannot have. Copy it again from your DeepL account page."],
             OnlineKeyState.Invalid => text["DeepL did not accept this key. Copy it again from your DeepL account page."],
             OnlineKeyState.KeychainWriteFailed => text["The API key could not be saved to this computer's secure storage."],
+            OnlineKeyState.Busy => text["DeepL is receiving too many requests right now (HTTP 429). The key is saved; DeepL translates again in a few minutes."],
+            _ when check.Reason == OnlineKeyReason.HttpStatus => text.Format("DeepL answered with an error (HTTP %lld). Try again in a few minutes.", check.Code),
             _ => text["DeepL could not be reached. Check your internet connection."],
-        }, check.State is not (OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded));
+        }, check.State is not (OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded or OnlineKeyState.Busy));
     }
 
     private void ShowAiResult(AiTestResult result, TranslationEngine engine)

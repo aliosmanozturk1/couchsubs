@@ -2674,11 +2674,14 @@ final class AppModel: ObservableObject {
     /// Kayıtlı bir DeepL anahtarı var mı.
     var hasDeepLKey: Bool { hasKey(.deepL) }
 
-    /// Anahtar denenir; geçerliyse (kotası bitmiş olsa da) Anahtarlık'a yazılır ve DeepL seçilir.
+    /// Anahtar denenir; geçerliyse (kotası bitmiş ya da DeepL o an çok sık istek aldığını bildirmiş olsa da) Anahtarlık'a
+    /// yazılır ve DeepL seçilir. Görünmez karakterler silinir; sonuç nedeniyle günlüğe yazılır (anahtarın kendisi yazılmaz).
     func setDeepLKey(_ key: String) async -> OnlineKeyCheck {
-        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = DeepLKey.clean(key)
+        SubtitleLog.write("API anahtarı testi başladı: deepl")
         let check = await services.checkOnlineKey(key)
-        if check.state == .valid || check.state == .quotaExceeded {
+        if check.state != .valid { SubtitleLog.write("API anahtarı testi sonucu: deepl \(check.logDescription)") }
+        if check.state == .valid || check.state == .quotaExceeded || check.state == .busy {
             guard saveKey(key, for: .deepL) else { return OnlineKeyCheck(state: .keychainWriteFailed) }
         }
         return check

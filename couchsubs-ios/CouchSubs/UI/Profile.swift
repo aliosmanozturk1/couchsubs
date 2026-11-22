@@ -530,7 +530,12 @@ struct SettingsScreen: View {
             keyResult = nil
             key = ""
         case .rejected:
-            keyResult = String(localized: "The key did not work. Check it and try again.")
+            // DeepL'de neden ayrı yazılır (geçersiz anahtar, geçersiz karakter, sunucu hatası, ağ yok); Mac ile aynı metinler.
+            if engine == .deepL, let check = model.lastDeepLCheck {
+                keyResult = DeepLUsageText.describe(check, quotaUsedUp: String(localized: "This month's DeepL limit is used up. Until it renews, the free translation on this phone translates."))
+            } else {
+                keyResult = String(localized: "The key did not work. Check it and try again.")
+            }
         case .notStored:
             keyResult = String(localized: "The API key could not be saved to this iPhone's keychain.")
         }

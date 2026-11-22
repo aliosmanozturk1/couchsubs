@@ -1412,10 +1412,15 @@ final class PhoneModel: ObservableObject {
     /// Anahtar kaydının sonucu: hizmet kabul etmediyse `rejected`, Anahtarlık'a yazılamadıysa (geri okunamadı) `notStored`.
     enum KeySaveResult: Equatable { case saved, rejected, notStored }
 
+    /// Son DeepL anahtar denemesinin sonucu: reddedilince Ayarlar nedenini (geçersiz karakter, 5xx, ağ yok…) gösterir.
+    private(set) var lastDeepLCheck: OnlineKeyCheck?
+
     /// Anahtar denenir; kabul edildiyse Anahtarlık'a yazılır ve motor seçilir. Anahtarlık'tan geri okunamazsa kayıt
     /// başarılı sayılmaz (Mac'teki `saveKey` ile aynı kural).
     func saveKey(_ key: String, for engine: TranslationEngine) async -> KeySaveResult {
-        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        // DeepL anahtarındaki görünmez karakterler (araya giren boşluk, bölünmez boşluk, satır sonu…) her yerden silinir.
+        let key = engine == .deepL ? DeepLKey.clean(key) : key.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastDeepLCheck = nil
         guard !key.isEmpty, let storeKey = engine.storeKey else { return .rejected }
         let accepted: Bool
         SubtitleLog.write("API anahtarı testi başladı: \(engine.rawValue)")
@@ -1427,9 +1432,11 @@ final class PhoneModel: ObservableObject {
             case .failure: accepted = false
             }
         } else {
-            let state = await services.checkDeepLKey(key).state
-            if state != .valid { SubtitleLog.write("API anahtarı testi sonucu: \(engine.rawValue) \(state)") }
-            accepted = state == .valid || state == .quotaExceeded
+            // 429 (çok sık istek) anahtarı reddetmez: Mac, Windows ve Android'deki gibi kaydedilir.
+            let check = await services.checkDeepLKey(key)
+            lastDeepLCheck = check
+            if check.state != .valid { SubtitleLog.write("API anahtarı testi sonucu: \(engine.rawValue) \(check.logDescription)") }
+            accepted = check.state == .valid || check.state == .quotaExceeded || check.state == .busy
         }
         guard accepted else { return .rejected }
         store.save(key, for: storeKey)

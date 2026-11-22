@@ -3466,14 +3466,17 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Kayıtlı bir DeepL anahtarı var mı.</summary>
     public bool HasDeepLKey => HasKey(TranslationEngine.DeepL);
 
-    /// <summary>Anahtar denenir; geçerliyse (kotası bitmiş olsa da) şifreli depoya yazılır ve DeepL seçilir.</summary>
+    /// <summary>
+    /// Anahtar denenir; geçerliyse (kotası bitmiş ya da DeepL o an çok sık istek aldığını bildirmiş olsa da) şifreli depoya
+    /// yazılır ve DeepL seçilir. Görünmez karakterler silinir; sonuç nedeniyle günlüğe yazılır (anahtarın kendisi yazılmaz).
+    /// </summary>
     public async Task<OnlineKeyCheck> SetDeepLKeyAsync(string key)
     {
-        key = key.Trim();
+        key = DeepLKey.Clean(key);
         SubtitleLog.Write("API anahtarı testi başladı: deepl");
         var check = await services.CheckOnlineKeyAsync(key);
-        if (check.State != OnlineKeyState.Valid) SubtitleLog.Write($"API anahtarı testi sonucu: deepl {check.State}");
-        if (check.State is OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded && !SaveKey(TranslationEngine.DeepL, key))
+        if (check.State != OnlineKeyState.Valid) SubtitleLog.Write($"API anahtarı testi sonucu: deepl {check.LogDescription}");
+        if (check.State is OnlineKeyState.Valid or OnlineKeyState.QuotaExceeded or OnlineKeyState.Busy && !SaveKey(TranslationEngine.DeepL, key))
             return new OnlineKeyCheck(OnlineKeyState.KeychainWriteFailed);
         return check;
     }

@@ -58,6 +58,7 @@ import com.couchsubs.mobile.settings.SubtitleTarget
 import com.couchsubs.mobile.translation.AiModel
 import com.couchsubs.mobile.translation.AiRequest
 import com.couchsubs.mobile.translation.AiProvider
+import com.couchsubs.mobile.translation.DeepLKey
 import com.couchsubs.mobile.translation.KeyCheck
 import com.couchsubs.mobile.translation.OnlineKeyState
 import com.couchsubs.mobile.translation.aiProvider
@@ -223,6 +224,8 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
     var checking by remember { mutableStateOf(false) }
     var keyRejected by remember(engine) { mutableStateOf(false) }
     var keyNotStored by remember(engine) { mutableStateOf(false) }
+    // Reddedilen DeepL anahtarının nedeni (geçersiz karakter, HTTP kodu, ağ yok); Mac ve iPhone ile aynı metinler.
+    var deepLRejection by remember(engine) { mutableStateOf<KeyCheck.DeepLUsage?>(null) }
     val scope = rememberCoroutineScope()
     var scale by remember { mutableStateOf(settings.subtitleScale.toFloat()) }
     var color by remember { mutableStateOf(settings.textColor) }
@@ -319,26 +322,30 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
                     // Mac ve Windows'taki kullanım satırı (#625): kayıtlı DeepL anahtarının bu ayki karakter kullanımı.
                     if (engine == EngineChoice.DEEPL) DeepLUsageNote(settings)
                 } else {
-                    Field(key, { key = it; keyRejected = false; keyNotStored = false }, stringResource(R.string.settings_key), secret = true)
+                    Field(key, { key = it; keyRejected = false; keyNotStored = false; deepLRejection = null }, stringResource(R.string.settings_key), secret = true)
                     SecondaryButton(stringResource(if (checking) R.string.settings_key_checking else R.string.settings_key_save),
                         enabled = !checking && key.isNotBlank()) {
                         val choice = engine
-                        val typed = key.trim()
+                        // DeepL anahtarındaki görünmez karakterler (araya giren boşluk, bölünmez boşluk…) her yerden silinir.
+                        val typed = if (choice == EngineChoice.DEEPL) DeepLKey.clean(key) else key.trim()
                         checking = true
                         keyRejected = false
                         keyNotStored = false
+                        deepLRejection = null
                         scope.launch {
                             val logName = choice.aiProvider?.id ?: "deepl"
                             Backend.breadcrumb("API anahtarı testi başladı: $logName")
+                            var deepL: KeyCheck.DeepLUsage? = null
                             val state = withContext(Dispatchers.IO) {
                                 val provider = choice.aiProvider
-                                if (provider == null) KeyCheck.deepL(typed)
+                                if (provider == null) KeyCheck.deepLUsage(typed).also { deepL = it }.state
                                 else {
                                     val model = AiModel.selected(AiModel.load(context)[provider.id].orEmpty(), settings.aiModel(provider))
                                     if (model == null) OnlineKeyState.UNREACHABLE else KeyCheck.ai(provider, typed, model)
                                 }
                             }
-                            if (state != OnlineKeyState.VALID) Backend.breadcrumb("API anahtarı testi sonucu: $logName $state")
+                            if (state != OnlineKeyState.VALID) Backend.breadcrumb("API anahtarı testi sonucu: $logName ${deepL?.logDescription ?: state}")
+                            if (!KeyCheck.accepted(state)) deepLRejection = deepL
                             // Hizmet kabul etse de Keystore'a yazılamayan anahtar kayıtlı sayılmaz (Mac ile aynı).
                             val stored = KeyCheck.accepted(state) && withContext(Dispatchers.IO) { settings.storeApiKey(choice, typed) }
                             if (KeyCheck.accepted(state) && !stored) Backend.breadcrumb("API anahtarı gizli depoya kaydedilemedi: $logName")
@@ -355,7 +362,7 @@ fun SettingsScreen(onBack: () -> Unit, onPacks: () -> Unit, onTarget: () -> Unit
                     }
                     AnimatedNote(when {
                         keyNotStored -> stringResource(R.string.settings_key_not_stored)
-                        keyRejected -> stringResource(R.string.settings_key_rejected)
+                        keyRejected -> deepLRejection?.let { deepLUsageText(it) } ?: stringResource(R.string.settings_key_rejected)
                         else -> null
                     })
                 }
@@ -662,10 +669,17 @@ private fun DeepLUsageNote(settings: AppSettings) {
 }
 
 @Composable
-private fun deepLUsageText(usage: KeyCheck.DeepLUsage): String = when (usage.state) {
-    OnlineKeyState.VALID -> stringResource(R.string.deepl_usage, "%,d".format(usage.used), "%,d".format(usage.limit))
-    OnlineKeyState.QUOTA_EXCEEDED -> stringResource(R.string.deepl_quota_used_up)
-    OnlineKeyState.INVALID -> stringResource(R.string.deepl_key_not_accepted)
+private fun deepLUsageText(usage: KeyCheck.DeepLUsage): String = when {
+    // Mac/iPhone'daki DeepLUsageText ve Windows'taki ShowDeepLStatus ile aynı metinler.
+    usage.state == OnlineKeyState.VALID && usage.limit >= KeyCheck.UNLIMITED ->
+        stringResource(R.string.deepl_usage_unlimited, "%,d".format(usage.used))
+    usage.state == OnlineKeyState.VALID && usage.limit <= 0 -> stringResource(R.string.deepl_usage_unknown)
+    usage.state == OnlineKeyState.VALID -> stringResource(R.string.deepl_usage, "%,d".format(usage.used), "%,d".format(usage.limit))
+    usage.state == OnlineKeyState.QUOTA_EXCEEDED -> stringResource(R.string.deepl_quota_used_up)
+    usage.state == OnlineKeyState.INVALID && usage.reason == KeyCheck.Reason.MALFORMED_KEY -> stringResource(R.string.deepl_key_malformed)
+    usage.state == OnlineKeyState.INVALID -> stringResource(R.string.deepl_key_not_accepted)
+    usage.state == OnlineKeyState.BUSY -> stringResource(R.string.deepl_rate_limited)
+    usage.reason == KeyCheck.Reason.HTTP_STATUS -> stringResource(R.string.deepl_server_error, usage.code)
     else -> stringResource(R.string.deepl_unreachable)
 }
 
