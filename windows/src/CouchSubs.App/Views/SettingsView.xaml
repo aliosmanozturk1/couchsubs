@@ -12,7 +12,7 @@
          not), sağda seçili sayfa; sayfa taşarsa kendi içinde kayar. Profil sayfası yok; tüm ayarlar burada. -->
     <Grid Margin="24">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="{DynamicResource size.sidebarWidth}" />
+            <ColumnDefinition Width="240" />
             <ColumnDefinition Width="24" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
