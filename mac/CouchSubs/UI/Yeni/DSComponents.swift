@@ -34,11 +34,7 @@ struct DSCard<Content: View>: View {
         }
         .background(Color.dsSurface, in: shape)
         .overlay(alignment: .leading) {
-            if let accent {
-                accent.frame(width: 4).clipShape(shape)
-                    .mask(shape)
-                    .allowsHitTesting(false)
-            }
+            if let accent { accent.frame(width: 4).allowsHitTesting(false) }
         }
         .overlay(shape.strokeBorder(highlighted ? Color.dsAmber : Color.dsBorder, lineWidth: highlighted ? 2 : 1))
         .clipShape(shape)
@@ -56,6 +52,12 @@ struct DSCardHeader<Trailing: View>: View {
     let title: LocalizedStringKey
     var color: Color = .dsMuted
     @ViewBuilder var trailing: Trailing
+
+    init(_ title: LocalizedStringKey, color: Color = .dsMuted, @ViewBuilder trailing: () -> Trailing) {
+        self.title = title
+        self.color = color
+        self.trailing = trailing()
+    }
 
     var body: some View {
         // Başlık + sağda düğme satırında alt boşluk satırın kendisindedir; ikisi dikeyde ortalıdır.
@@ -89,7 +91,7 @@ struct DSDivider: View {
 /// kare ya da atan nokta), küçük koyu (reklam bandındaki İncele). Hepsi tam yuvarlak, 48 yükseklik, alt çizgisiz.
 /// İşlem sürerken çağıran `.disabled(true)` verir ve "…ıyor…" yazar: düğme soluklaşır, tekrar basılamaz.
 struct DSButtonStyle: ButtonStyle {
-    enum Kind { case primary, dark, secondary, stop, live, small }
+    enum Kind { case primary, dark, secondary, stop, live, small, danger }
     var kind: Kind = .secondary
     var fullWidth = false
     /// Yazı ile sağdaki ok arası boşluk (ör. "Altyazı Görünümünü Düzenle →").
@@ -142,7 +144,7 @@ private struct DSButtonBody: View {
     @ViewBuilder private var ring: some View {
         switch kind {
         case .secondary: Capsule().strokeBorder(Color.dsBorder)
-        case .stop, .live: Capsule().strokeBorder(Color.dsLiveRing)
+        case .stop, .live, .danger: Capsule().strokeBorder(Color.dsLiveRing)
         default: EmptyView()
         }
     }
@@ -152,7 +154,7 @@ private struct DSButtonBody: View {
         case .primary: .dsOnAmber
         case .dark, .small: .dsOnCharcoal
         case .secondary: .dsText
-        case .stop, .live: .dsLiveText
+        case .stop, .live, .danger: .dsLiveText
         }
     }
 
@@ -161,7 +163,7 @@ private struct DSButtonBody: View {
         case .primary: hovered || pressed ? .dsAmberHover : .dsAmber
         case .dark, .small: .dsCharcoal
         case .secondary: hovered || pressed ? .dsField : .dsSurface
-        case .stop, .live: hovered || pressed ? Color.dsLive.opacity(0.18) : .dsLiveSoft
+        case .stop, .live, .danger: hovered || pressed ? Color.dsLive.opacity(0.18) : .dsLiveSoft
         }
     }
 }
@@ -255,7 +257,7 @@ struct DSTabs<Value: Hashable>: View {
                         .foregroundStyle(on ? Color.dsText : Color.dsMuted)
                         .lineLimit(1)
                         .padding(.horizontal, DS.space("m"))
-                        .frame(minWidth: fill ? 88 : DS.size("tabMin"), maxWidth: fill ? .infinity : nil)
+                        .frame(minWidth: fill ? 0 : DS.size("tabMin"), maxWidth: fill ? .infinity : nil)
                         .frame(height: DS.size("tab"))
                         .background {
                             if on {

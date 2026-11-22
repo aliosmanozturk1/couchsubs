@@ -5,6 +5,19 @@ import SwiftUI
 // Ortak bileşenler. Ölçü ve renkler Theme'den (design/tokens.json) gelir; ekranlar sabit değer kullanmaz.
 // Bileşenlerin tarifi docs/TASARIM.md'de; Windows sürümü aynı bileşenleri aynı adlarla kurar.
 
+/// Mac'in yeni arayüzü (design/yeni-arayuz) içinde true: eski kartlar yeni sayfalara gömülünce aynı dilde çizilir
+/// (düğme, karo, alan, ipucu). iPhone bu değeri hiç vermez; görünümü değişmez.
+private struct CSNewLookKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var csNewLook: Bool {
+        get { self[CSNewLookKey.self] }
+        set { self[CSNewLookKey.self] = newValue }
+    }
+}
+
 /// Uygulamanın logosu (kanepe + altyazı).
 struct LogoView: View {
     var size: CGFloat = 40
@@ -35,7 +48,28 @@ struct CSButtonStyle: ButtonStyle {
     var height = "buttonHeight"
 
     func makeBody(configuration: Configuration) -> some View {
+        CSButtonSwitch(configuration: configuration, kind: kind, fullWidth: fullWidth, height: height)
+    }
+}
+
+/// Yeni arayüzde (yalnız Mac) düğme yeni dilde çizilir; değilse eski görünüm.
+private struct CSButtonSwitch: View {
+    let configuration: ButtonStyleConfiguration
+    let kind: CSButtonStyle.Kind
+    let fullWidth: Bool
+    let height: String
+    @Environment(\.csNewLook) private var newLook
+
+    var body: some View {
+        #if os(macOS)
+        if newLook {
+            NewLookButton(configuration: configuration, kind: kind, fullWidth: fullWidth)
+        } else {
+            CSButtonBody(configuration: configuration, kind: kind, fullWidth: fullWidth, height: height)
+        }
+        #else
         CSButtonBody(configuration: configuration, kind: kind, fullWidth: fullWidth, height: height)
+        #endif
     }
 }
 
@@ -112,7 +146,26 @@ struct CSTextFieldStyle: TextFieldStyle {
     var height: CGFloat = Theme.size("buttonHeight")
 
     func _body(configuration: TextField<Self._Label>) -> some View {
-        CSTextFieldBody(field: configuration.textFieldStyle(.plain), font: font, height: height)
+        CSTextFieldSwitch(field: configuration.textFieldStyle(.plain), font: font, height: height)
+    }
+}
+
+private struct CSTextFieldSwitch<Field: View>: View {
+    let field: Field
+    let font: Font
+    let height: CGFloat
+    @Environment(\.csNewLook) private var newLook
+
+    var body: some View {
+        #if os(macOS)
+        if newLook {
+            DSFieldChrome { field }
+        } else {
+            CSTextFieldBody(field: field, font: font, height: height)
+        }
+        #else
+        CSTextFieldBody(field: field, font: font, height: height)
+        #endif
     }
 }
 
@@ -147,6 +200,35 @@ struct TileBackground: ViewModifier {
     var fill: Color = .csSurface
 
     func body(content: Content) -> some View {
+        TileBody(content: content, style: style, padding: padding, fill: fill)
+    }
+}
+
+private struct TileBody<Content: View>: View {
+    let content: Content
+    let style: TileStyle
+    let padding: CGFloat
+    let fill: Color
+    @Environment(\.csNewLook) private var newLook
+
+    var body: some View {
+        #if os(macOS)
+        if newLook {
+            // Yeni arayüzde gömülü karo: kart içinde alan zemini, 16 köşe, ince halka (etkin: 2 pt amber).
+            let shape = RoundedRectangle(cornerRadius: DS.radius("tile"), style: .continuous)
+            content
+                .padding(padding)
+                .background(fill == .csSurface ? Color.dsSurface : Color.dsField, in: shape)
+                .overlay(shape.strokeBorder(style == .active ? Color.dsAmber : Color.dsBorder, lineWidth: style == .active ? 2 : 1))
+        } else {
+            legacy
+        }
+        #else
+        legacy
+        #endif
+    }
+
+    private var legacy: some View {
         let shape = RoundedRectangle(cornerRadius: Theme.radius("card"), style: .continuous)
         return content
             .padding(padding)
@@ -166,11 +248,18 @@ struct Card<Content: View>: View {
     var title: LocalizedStringKey?
     var style: TileStyle = .plain
     @ViewBuilder var content: Content
+    @Environment(\.csNewLook) private var newLook
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.space("m")) {
             if let title {
-                Text(title).font(.csHeadline)
+                if newLook {
+                    // Yeni arayüzde kart başlığı mono bölüm etiketi (büyük harf, dile göre: i → İ); altına 8 ek boşluk.
+                    Text(title).font(.system(size: 12, weight: .medium, design: .monospaced)).tracking(0.96)
+                        .textCase(.uppercase).foregroundStyle(Color.csSecondary).padding(.bottom, 8)
+                } else {
+                    Text(title).font(.csHeadline)
+                }
             }
             content
         }
@@ -543,8 +632,21 @@ struct DoneLabel: View {
 /// İkincil açıklama metni.
 struct HintText: View {
     let text: LocalizedStringKey
+    @Environment(\.csNewLook) private var newLook
 
     var body: some View {
+        #if os(macOS)
+        if newLook {
+            Text(text).dsMuted()
+        } else {
+            legacy
+        }
+        #else
+        legacy
+        #endif
+    }
+
+    private var legacy: some View {
         Text(text)
             .font(.csCallout)
             .foregroundStyle(Color.csSecondary)

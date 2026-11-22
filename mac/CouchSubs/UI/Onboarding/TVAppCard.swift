@@ -136,7 +136,14 @@ struct TVAppCard: View {
         // silinmez; kartta aynı metin ve "Yeniden dene" kalır (Windows, iPhone ve Android ile aynı).
         .onAppear { askForeign(model.tvApp) }
         .onChange(of: model.tvApp) { state in askForeign(state) }
-        .alert("Another App Is Installed", isPresented: $foreignPrompt) {
+        // Yeni arayüzde açılır kart: "Kaldırıp Kur" amber ana eylem, "Vazgeç" ikincil (design/yeni-arayuz/METINLER.md).
+        .sheet(isPresented: Binding(get: { foreignPrompt && newLook }, set: { foreignPrompt = $0 })) {
+            ForeignTVAppPrompt { replace in
+                foreignPrompt = false
+                if replace { Task { await model.replaceForeignTVApp() } }
+            }
+        }
+        .alert("Another App Is Installed", isPresented: Binding(get: { foreignPrompt && !newLook }, set: { foreignPrompt = $0 })) {
             Button("Remove And Install", role: .destructive) { Task { await model.replaceForeignTVApp() } }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -145,6 +152,7 @@ struct TVAppCard: View {
     }
 
     @State private var foreignPrompt = false
+    @Environment(\.csNewLook) private var newLook
 
     private func askForeign(_ state: TVAppState) {
         if case .failed(.foreignApp, _) = state { foreignPrompt = true }

@@ -27,22 +27,26 @@ final class ScreenshotTests: XCTestCase {
         setup.accountId = Data(repeating: 1, count: 8)
         setup.step = .console
 
-        let width = Theme.size("windowWidth"), height = Theme.size("windowHeight")
-        let settingsSize = CGSize(width: width - 2 * Theme.space("screen"), height: height - 2 * Theme.space("screen"))
-        let screens: [(String, AnyView, CGSize)] = [
-            ("ana", AnyView(MainView().environmentObject(main)), CGSize(width: width, height: height)),
-            ("ayarlar-ceviri", AnyView(SettingsView(section: .translation).environmentObject(main)), settingsSize),
-            ("ayarlar-paketler", AnyView(SettingsView(section: .packs).environmentObject(main)), settingsSize),
-            ("kurulum", AnyView(OnboardingView().environmentObject(setup)), CGSize(width: width, height: height)),
+        // Yeni arayüz: her ekran sırayla aynı modelle açılır (sekme ve bölüm modelin bayraklarında).
+        let size = CGSize(width: DS.size("windowWidth"), height: DS.size("windowHeight"))
+        var screens: [(String, () -> Void)] = [
+            ("ana", { main.showSettings = false; main.showHistory = false }),
+            ("gecmis", { main.showHistory = true }),
         ]
-        let shown = screens.enumerated().map { index, screen in
-            (screen.0, show(screen.1, size: screen.2, offset: CGFloat(index) * 40))
+        for section in SettingsSection.allCases {
+            screens.append(("ayarlar-\(section)", { main.showHistory = false; main.settingsSection = section; main.showSettings = true }))
         }
-        // Görevler (PS5 arama, paket yükleme) ve çizim bitsin.
-        try await Task.sleep(for: .seconds(3))
-        for (name, window) in shown {
+        let only = ProcessInfo.processInfo.environment["COUCHSUBS_SCREENSHOT_ONLY"].flatMap { $0.isEmpty ? nil : $0 }
+        for (name, prepare) in screens where only == nil || name.hasPrefix(only!) {
+            prepare()
+            let window = show(AnyView(RootView().environmentObject(main)), size: size, offset: 0)
+            try await Task.sleep(for: .seconds(1.5))
             try capture(window).write(to: folder.appendingPathComponent("\(name).png"))
+            window.close()
         }
+        let setupWindow = show(AnyView(OnboardingView().environmentObject(setup)), size: size, offset: 40)
+        try await Task.sleep(for: .seconds(1.5))
+        try capture(setupWindow).write(to: folder.appendingPathComponent("kurulum.png"))
         windows.forEach { $0.close() }
     }
 
@@ -87,8 +91,8 @@ final class ScreenshotTests: XCTestCase {
         window.isReleasedWhenClosed = false
         window.title = "CouchSubs"
         window.titlebarAppearsTransparent = true
-        window.appearance = NSAppearance(named: .darkAqua)
-        window.backgroundColor = NSColor(Color.csBackground)
+        window.appearance = NSAppearance(named: (ProcessInfo.processInfo.environment["COUCHSUBS_SCREENSHOT_DARK"] ?? "").isEmpty ? .aqua : .darkAqua)
+        window.backgroundColor = NSColor(Color.dsBackground)
         window.contentView = NSHostingView(rootView: view.appSurface().frame(width: size.width, height: size.height))
         window.setFrameTopLeftPoint(NSPoint(x: 80 + offset, y: (NSScreen.main?.visibleFrame.maxY ?? 900) - 40 - offset))
         window.orderFrontRegardless()

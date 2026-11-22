@@ -485,6 +485,7 @@ kartı: "%lld SN SESSİZ", neden başlığı, açıklama, çözüm düğmeleri v
 | Export | Dışa Aktar |
 | Report a Wrong Translation | Hatalı Çeviriyi Bildir |
 | Clear History | Geçmişi Temizle |
+| Copy All | Tümünü Kopyala |
 | Free | Ücretsiz |
 | Apple | Apple |
 | AI | Yapay Zekâ |
@@ -781,25 +782,61 @@ Her işin iki tuşu: sayı tuş takımı rakamı ve ⌃⇧rakam. Tuşa tıklayı
 | TV INPUT (HDMI) | TV GİRİŞİ (HDMI) |
 | Demo Mode | Deneme Modu |
 
+## TV kurulumu: başka uygulama (#976)
+
+TV'de CouchSubs'ın kimliğini kullanan başka uygulama bulununca açılır kart (TV adımı ve Çıkış Ekranları › TV kartı):
+mono "TV", başlık, açıklama; sağda amber ana eylem "Kaldırıp Kur", ikincil "Vazgeç" (kırmızı tehlikeli eylem değil).
+Mevcut anahtarlar: "Another App Is Installed", "Another app on this TV is using the CouchSubs identity. Remove it and
+install CouchSubs?", "Remove And Install", "Cancel".
+
+## Ek metinler (kodda geçen)
+
+| EN | TR |
+|---|---|
+| PROBLEM | SORUN |
+| The TV app isn't connected. | TV uygulaması bağlı değil. |
+| The language pack isn't downloaded. | Dil paketi indirilmemiş. |
+| Translation isn't available on this Mac. | Bu Mac'te çeviri yok. |
+| Search History | Geçmişte Ara |
+| With your own key. | Kendi anahtarınızla. |
+| Characters you meet while playing appear here. | Oynarken karşılaştığınız karakterler burada görünür. |
+| Check Unchanged Subtitle Areas More Often | Değişmeyen Altyazı Alanını Daha Sık Oku |
+| Set On-Screen Text Apart from Subtitles | Ekran Yazılarını Altyazıdan Ayır |
+| Choose Dark under Subtitle Appearance to fully hide the English subtitle in the game. A full-width band also covers the sides. | Oyundaki İngilizce altyazıyı tamamen gizlemek için Altyazı Görünümü'nde Koyu'yu seçin. Tam genişlik bant yanları da örter. |
+| Xbox · Beta | Xbox · Beta |
+| Xbox (Beta) | Xbox (Beta) |
+| Beta | Beta |
+
 ## Ayar alanları ve TV protokolü (geriye uyumlu)
 
 Yeni ayarlar `UserSettings`'e (core `Pipeline/AppSettings.swift`, Windows `CouchSubs.Shell/Contracts.cs`) **aynı adla**
-eklenir; eski kayıtta yoksa varsayılan kullanılır.
+eklendi; eski kayıtta yoksa varsayılan kullanılır.
 
 | Alan | Tür / varsayılan | Anlamı |
 |---|---|---|
 | `startupSound` | Bool, `true` | Ayarlar › Temel › Açılış Sesi (yalnız ilk kurulumun açılış adımında çalar). |
 | `transitionAnimations` | Bool, `true` | Ayarlar › Temel › Geçiş Animasyonları; kapalıyken yalnız 100 ms solma. |
-| `translationPace` | `"fast"` / `"balanced"` / `"accurate"`, `"balanced"` | Ayarlar › Temel › Çeviri (Hızlı/Dengeli/Doğru). |
+
+- **Hızlı / Dengeli / Doğru** yeni alan değildir: mevcut iki beklemenin hazır değerleridir (`misreadWaitMs`/`partialWaitMs`):
+  Hızlı 400/0, Dengeli 800/300 (varsayılan), Doğru 1000/800. Değerler başka bir şeyse hiçbir sekme seçili görünmez
+  (Gelişmiş'teki kaydırıcılar).
+- **Yazı Boyutu 16–50 kaydırıcısı** TV'nin yazı boyuna (`fontSize`, 1920'de 16–90 piksel) doğrusal eşlenir:
+  `fontSize = round(16 + (d − 16) · 74 / 34)`, gösterilen `d = round(16 + (fontSize − 16) · 34 / 74)`. Eski büyük boylar kaybolmaz.
+- **Koyuluk** Açık/Orta/Koyu = `background` 45/75/100 (Koyu tam örter); "Zeminsiz" = `background` 0.
+- **Karakter Adı**: "Yazıyla Aynı" `speakerColors` kapalı; "Tek Renk" ve "Karaktere Göre" açık.
+- Ek alan sınırı 3'ten 50'ye çıktı (`ExtraArea.maxCount`); ilk üçünün kısayolu var, sonrakiler "Kısayol Yok".
+- Yeni arayüz ilk açılışta bir kez: kayıtlı görünüm Koyu ise Açık yapılır (onaylı tasarım açık), `style.nameOnly` true olur.
 
 TV'ye giden `style` olayına (`SubtitleStyle`) eklenen alanlar; eski TV uygulaması tanımaz, eskisi gibi davranır:
 
 | Alan | Değer | Anlamı |
 |---|---|---|
-| `backgroundColor` | `"#RRGGBB"`, varsayılan `"#101014"` | Altyazı zemininin rengi; koyuluk `background` (0–100) ile. Zeminsiz: `background` 0. Koyuluk Açık/Orta/Koyu = 45/75/95. |
-| `textHex` | `"#RRGGBB"` ya da yok | Yazı rengi; varsa `textColor`'ın yerine geçer (`textColor` eski TV için en yakın white/yellow olarak da gönderilir). |
-| `nameColorMode` | `"text"` / `"single"` / `"speaker"` | Karakter adı rengi: yazıyla aynı / tek renk / karaktere göre (`speakerColors` ile aynı anlam). |
-| `nameHex` | `"#RRGGBB"` | `single` modunda karakter adının rengi. |
-| `hdmiInput` | 1–4 ya da yok | Kurulumda seçilen TV girişi; TV uygulaması bu girişi açar. |
+| `backgroundColor` | `"#RRGGBB"`, varsayılan `"#101014"` | Altyazı zemininin rengi; koyuluğu `background` (0–100). |
+| `textHex` | `"#RRGGBB"` ya da yok | Yazı rengi; varsa `textColor`'ın yerine geçer (`textColor` eski TV için white/yellow olarak da gönderilir). |
+| `nameOnly` | Bool | true: konuşan rengi yalnız adı boyar (yeni arayüz); false/yok: eski davranış (ad ve satır). |
 
-Eşleşme kodu (TV'de görünen 4–6 haneli kod) mevcut `SubtitlePairing` biletinde zaten var; yeni arayüz onu iki ekranda gösterir.
+Kayıtta (`SubtitleStyle`) tutulan, TV'ye ayrıca gitmeyen alanlar: `nameColorMode` (`text`/`single`/`speaker`), `nameHex`
+(Tek Renk), `characterColors` (küçük harfli ad → renk). Sunucu bunları `SpeakerColorBook.configure` ile uygular;
+renkler satırın mevcut `speakers` alanıyla TV'ye gider.
+
+Eşleşme kodu (TV'de görünen kod) mevcut `SubtitlePairing` biletinde zaten var; yeni arayüz onu iki ekranda gösterir.

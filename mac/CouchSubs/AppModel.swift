@@ -778,12 +778,26 @@ final class AppModel: ObservableObject {
         get { framePreview.image }
         set { framePreview.image = newValue }
     }
+    /// Gelen kare sayısı ve son karenin anı (ana ekrandaki "Kare/sn" ve "Görüntü Durdu"); yayınlanmaz, ekran saniyede
+    /// bir okur.
+    private(set) var frameCount = 0
+    private(set) var lastFrameAt: Date?
     @Published var showAbout = false
     @Published var showSettings = false {
         didSet { if showSettings, !oldValue { usage.record(.screen("settings")) } }
     }
     /// Ayarlar açılınca gösterilen bölüm (ana ekrandaki "Çeviri" satırı Çeviri'yi açar); sayfa kapanınca başa döner.
-    @Published var settingsSection: SettingsSection = .appearance
+    @Published var settingsSection: SettingsSection = .basics
+
+    /// Yeni arayüz ilk kez açıldı (bir kez): onaylı tasarım açık temalıdır, eski varsayılan koyu tema açığa çevrilir
+    /// (kullanıcı sonra Ayarlar › Temel › Görünüm'den değiştirebilir); konuşan rengi yeni dildeki gibi yalnız adı boyar.
+    func adoptNewDesign() {
+        let key = "newDesignAdopted"
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        if settings.appearance == .dark { settings.appearance = .light }
+        settings.style.nameOnly = true
+    }
 
     /// Ayarları verilen bölümle açar.
     func openSettings(_ section: SettingsSection) {
@@ -3234,6 +3248,8 @@ final class AppModel: ObservableObject {
 
     private func handle(_ frame: CGImage, capturedAt: Int) async {
         lastFrame = frame
+        frameCount &+= 1
+        lastFrameAt = Date()
         subtitleOffTip.frameArrived(at: Date(), streaming: sessionState == .streaming)
         updateSubtitleOffTip()
         // Num 0 ile duraklatıldı: altyazı da ek alanlar da okunmaz (kare yine alınır: kısayolla tek seferlik okuma ve

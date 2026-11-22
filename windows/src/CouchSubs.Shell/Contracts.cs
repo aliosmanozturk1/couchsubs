@@ -433,6 +433,10 @@ public sealed record UserSettings
     public bool SpeakerColors { get; init; } = true;
     /// <summary>Koyu, açık ya da sistemle aynı. Eski ayar dosyalarında yoktur; onlar da koyu açılır.</summary>
     public AppAppearance Appearance { get; init; } = AppAppearance.Dark;
+    /// <summary>Ayarlar › Temel › Açılış Sesi: ilk kurulumun açılış adımındaki marka sesi (design/yeni-arayuz/METINLER.md). Eski ayar dosyalarında yoktur; açık.</summary>
+    public bool StartupSound { get; init; } = true;
+    /// <summary>Ayarlar › Temel › Geçiş Animasyonları: kapalıyken yeni arayüzde yalnız kısa solma. Eski ayar dosyalarında yoktur; açık.</summary>
+    public bool TransitionAnimations { get; init; } = true;
     /// <summary>Görüntü PS5 bağlantısından mı, bu bilgisayardaki Remote Play penceresinden mi okunur.</summary>
     public FrameSource FrameSource { get; init; } = FrameSource.Ps5;
     /// <summary>Xbox seçiliyken görüntü Xbox bağlantısından mı, seçilen pencereden mi okunur (bkz. <see cref="Shell.XboxFrameSource"/>).</summary>

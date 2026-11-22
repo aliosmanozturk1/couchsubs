@@ -220,6 +220,10 @@ public struct UserSettings: Codable, Equatable {
     public var xboxAudioOnDevice = true
     /// Koyu, açık ya da sistemle aynı. Eski kayıtlarda yoktur; onlar da koyu açılır.
     public var appearance = AppAppearance.dark
+    /// Ayarlar › Temel › Açılış Sesi: ilk kurulumun açılış adımındaki marka sesi (yalnız orada çalar). Eski kayıtlarda yoktur; açık.
+    public var startupSound = true
+    /// Ayarlar › Temel › Geçiş Animasyonları: kapalıyken yeni arayüzde yalnız kısa solma kullanılır. Eski kayıtlarda yoktur; açık.
+    public var transitionAnimations = true
     /// Görüntü PS5 bağlantısından mı, bu bilgisayardaki PS Remote Play penceresinden mi okunur.
     public var frameSource = FrameSource.ps5
     /// Xbox seçiliyken görüntü Xbox bağlantısından mı, seçilen pencereden mi okunur (bkz. `XboxFrameSource`).
@@ -289,6 +293,8 @@ public struct UserSettings: Codable, Equatable {
         screenTextOther = try values.decodeIfPresent(Bool.self, forKey: .screenTextOther) ?? defaults.screenTextOther
         xboxAudioOnDevice = try values.decodeIfPresent(Bool.self, forKey: .xboxAudioOnDevice) ?? defaults.xboxAudioOnDevice
         appearance = (try? values.decodeIfPresent(AppAppearance.self, forKey: .appearance)) ?? defaults.appearance
+        startupSound = (try? values.decodeIfPresent(Bool.self, forKey: .startupSound)) ?? defaults.startupSound
+        transitionAnimations = (try? values.decodeIfPresent(Bool.self, forKey: .transitionAnimations)) ?? defaults.transitionAnimations
         frameSource = (try? values.decodeIfPresent(FrameSource.self, forKey: .frameSource)) ?? defaults.frameSource
         xboxFrameSource = (try? values.decodeIfPresent(XboxFrameSource.self, forKey: .xboxFrameSource)) ?? defaults.xboxFrameSource
         remotePlayApp = (try? values.decodeIfPresent(RemotePlayApp.self, forKey: .remotePlayApp)) ?? defaults.remotePlayApp

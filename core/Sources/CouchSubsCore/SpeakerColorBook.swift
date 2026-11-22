@@ -18,13 +18,34 @@ public final class SpeakerColorBook: @unchecked Sendable {
     private let lock = NSLock()
     private var people: [(key: String, color: String)] = []
 
+    /// Altyazı Görünümü › Karakter Adı: "Tek Renk"te herkesin rengi (`fixed`), "Karaktere Göre"de kullanıcının seçtiği
+    /// kişi renkleri (`overrides`, anahtar küçük harfli ad). Seçilmeyen kişilere sırayla palet rengi verilir.
+    private var fixed: String?
+    private var overrides: [String: String] = [:]
+
     public init() {}
+
+    public func configure(fixed: String?, overrides: [String: String]) {
+        let normalized = Dictionary(overrides.map { (Self.key($0.key), $0.value) }, uniquingKeysWith: { $1 })
+        lock.withLock {
+            self.fixed = fixed
+            self.overrides = normalized
+        }
+    }
+
+    /// Bu oturumda rengi verilmiş kişiler (adın anahtarı ve rengi), ilk görülen önce.
+    public var known: [(key: String, color: String)] { lock.withLock { people } }
 
     /// Adın rengi; bilinmeyen kişi eklenir. Ad boşsa nil.
     public func color(_ name: String) -> String? {
         let key = Self.key(name)
         guard !key.isEmpty else { return nil }
         return lock.withLock {
+            if let fixed { return fixed }
+            if let chosen = overrides[key] ?? overrides.first(where: { Self.samePerson($0.key, key) })?.value {
+                if !people.contains(where: { Self.samePerson($0.key, key) }) { people.append((key, chosen)) }
+                return chosen
+            }
             if let known = people.first(where: { Self.samePerson($0.key, key) }) { return known.color }
             let palette = SpeakerColors.palette
             let base = Int(SpeakerColors.hash(key) % UInt32(palette.count))

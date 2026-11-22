@@ -512,14 +512,20 @@ final class RegionWatcherTests: XCTestCase {
         XCTAssertEqual(reader.count, 0)
     }
 
-    func testSettingsHaveNoExtraAreasByDefaultAndKeepAtMostThree() throws {
+    /// Yeni arayüzde ek alan sınırı 3'ten kaldırıldı: dördüncü ve sonrakiler eklenir (kısayolu yok), kayıt yine de üst
+    /// sınırda durur.
+    func testSettingsHaveNoExtraAreasByDefaultAndAcceptMoreThanThree() throws {
         XCTAssertTrue(UserSettings().extraAreas.isEmpty)
         var settings = UserSettings()
         for preset in ExtraAreaPreset.allCases { XCTAssertNotNil(settings.addExtraArea(preset, name: preset.rawValue)) }
-        XCTAssertNil(settings.addExtraArea(.quest, name: "fourth"))
+        XCTAssertNotNil(settings.addExtraArea(.quest, name: "fourth"))
+        XCTAssertEqual(settings.extraAreas.count, 4)
+        while settings.canAddExtraArea { settings.addExtraArea(.quest, name: "more") }
         XCTAssertEqual(settings.extraAreas.count, ExtraArea.maxCount)
+        XCTAssertNil(settings.addExtraArea(.quest, name: "over"))
+        settings.extraAreas = Array(settings.extraAreas.prefix(4))
         settings.updateExtraArea(id: settings.extraAreas[1].id) { $0.enabled = false }
-        XCTAssertEqual(settings.activeExtraAreas.map(\.name), ["quest", "phone"])
+        XCTAssertEqual(settings.activeExtraAreas.map(\.name), ["quest", "phone", "fourth"])
         let decoded = try JSONDecoder().decode(UserSettings.self, from: JSONEncoder().encode(settings))
         XCTAssertEqual(decoded.extraAreas, settings.extraAreas)
         // Eski kayıt: alan yok.

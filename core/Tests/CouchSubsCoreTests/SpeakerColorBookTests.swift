@@ -51,4 +51,42 @@ final class SpeakerColorBookTests: XCTestCase {
         XCTAssertEqual(SpeakerColors.speakers(in: "Boobie: Gel.", book: server.speakerBook).map(\.color), ["#FFD54F"])
         XCTAssertEqual(SpeakerColors.segments(in: "Mattla: Gidelim.", book: server.speakerBook).map(\.color), ["#90CAF9"])
     }
+
+    /// Altyazı Görünümü › Karakter Adı: "Tek Renk" herkesi aynı renkle, "Karaktere Göre"de seçilen renk otomatik paletin
+    /// önüne geçer; seçilmeyenlere palet sırayla verilir. Stil sunucuya gidince defter ayarlanır.
+    func testChosenNameColorsWin() {
+        let book = SpeakerColorBook()
+        book.configure(fixed: nil, overrides: ["Jason": "#4FD1C5"])
+        XCTAssertEqual(book.color("JASON"), "#4FD1C5")
+        XCTAssertNotNil(book.color("Lucia"))
+        XCTAssertNotEqual(book.color("Lucia"), "#4FD1C5")
+        book.configure(fixed: "#F5B83D", overrides: [:])
+        XCTAssertEqual(book.color("Lucia"), "#F5B83D")
+        XCTAssertEqual(book.color("Cal"), "#F5B83D")
+
+        let server = SubtitleServer(port: 0)
+        server.sendStyle(SubtitleStyle(nameColorMode: .single, nameHex: "#B794F6"))
+        XCTAssertEqual(server.speakerBook.color("Brian"), "#B794F6")
+    }
+
+    /// Yeni stil alanları eski kayıtta yoktur; geçersiz renk yok sayılır, TV'ye yalnız geçerli alanlar gider.
+    func testStyleColorFieldsDecodeAndEncode() throws {
+        let old = try JSONDecoder().decode(SubtitleStyle.self, from: Data(#"{"fontSize":58}"#.utf8))
+        XCTAssertEqual(old.backgroundColor, SubtitleStyle.defaultBackgroundColor)
+        XCTAssertNil(old.textHex)
+        XCTAssertEqual(old.nameColorMode, .speaker)
+        XCTAssertFalse(old.nameOnly)
+        let bad = try JSONDecoder().decode(SubtitleStyle.self, from: Data(##"{"textHex":"red","backgroundColor":"#0e1a30"}"##.utf8))
+        XCTAssertNil(bad.textHex)
+        XCTAssertEqual(bad.backgroundColor, "#0E1A30")
+        var style = SubtitleStyle()
+        style.textHex = "#FFE066"
+        style.nameOnly = true
+        let json = style.json
+        XCTAssertEqual(json["textHex"] as? String, "#FFE066")
+        XCTAssertEqual(json["backgroundColor"] as? String, "#101014")
+        XCTAssertEqual(json["nameOnly"] as? Bool, true)
+        let round = try JSONDecoder().decode(SubtitleStyle.self, from: JSONEncoder().encode(style))
+        XCTAssertEqual(round, style)
+    }
 }

@@ -31,7 +31,10 @@ struct CouchSubsApp: App {
 
     /// Testler uygulamanın içinde çalışır. Gerçek Anahtarlığa dokunmazlar: imza farklı olunca macOS parola sorar ve test takılır.
     private static func makeModel() -> AppModel {
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil ? AppModel() : AppModel(store: EphemeralStore())
+        // Testlerde ayarlar da gerçek kayda (com.couchsubs.mac) yazılmaz.
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+            ? AppModel()
+            : AppModel(store: EphemeralStore(), defaults: UserDefaults(suiteName: "couchsubs-test-host") ?? .standard)
     }
 
     var body: some Scene {
@@ -49,12 +52,13 @@ struct CouchSubsApp: App {
                     #endif
                 }
                 .appSurface()
-                .frame(minWidth: Theme.size("windowWidth"), idealWidth: Theme.size("windowWidth"), maxWidth: Theme.size("windowWidth") * 1.25,
-                       minHeight: Theme.size("windowHeight"), idealHeight: Theme.size("windowHeight"))
+                // Yeni arayüz: en küçük 1200 × 760, büyüyünce sütunlar oransal genişler (içerik en fazla 1680, ortalı).
+                .frame(minWidth: DS.size("windowWidth"), idealWidth: DS.size("windowWidth"), maxWidth: .infinity,
+                       minHeight: DS.size("windowHeight"), idealHeight: DS.size("windowHeight"), maxHeight: .infinity)
                 // Başlık çubuğu da pencere zemininin rengini alır (macOS 15 ve sonrası; öncesinde sistem rengi).
-                .windowBackground(Color.csBackground)
+                .windowBackground(Color.dsBackground)
         }
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About CouchSubs") { model.showAbout = true }
@@ -88,8 +92,9 @@ struct RootView: View {
     var body: some View {
         Group {
             // Deneme modu kurulumdan bağımsızdır: sihirbazın hangi adımından açılırsa açılsın ana pencere görünür.
-            if model.step == .done || model.demoMode { MainView() } else { OnboardingView() }
+            if model.step == .done || model.demoMode { AppShell() } else { OnboardingView() }
         }
+        .onAppear { model.adoptNewDesign() }
         .sheet(isPresented: $model.showAbout) { AboutView().appSurface() }
     }
 }

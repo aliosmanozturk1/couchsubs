@@ -6,195 +6,13 @@ import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Ayarların bölümleri; solda kenar çubuğunda listelenir, sağda seçili olan gösterilir.
-enum SettingsSection: CaseIterable, Identifiable {
-    case appearance, dubbing, translation, packs, language, area, shortcuts, obs, console, source, ps5, about
-
-    var id: Self { self }
-
-    var title: LocalizedStringKey {
-        switch self {
-        case .appearance: "Subtitle appearance"
-        case .dubbing: "Turkish dubbing"
-        case .translation: "Translation"
-        case .packs: "Game packs"
-        case .language: "Language"
-        case .area: "Subtitle area"
-        case .shortcuts: "Keyboard shortcuts"
-        case .obs: "OBS overlay"
-        case .console: "Console"
-        case .source: "Picture source"
-        case .ps5: "PS5 login passcode"
-        case .about: "About CouchSubs"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .appearance: "captions.bubble"
-        case .dubbing: "waveform"
-        case .translation: "globe"
-        case .packs: "shippingbox"
-        case .language: "character.bubble"
-        case .area: "rectangle.dashed"
-        case .shortcuts: "keyboard"
-        case .obs: "dot.radiowaves.left.and.right"
-        case .console: "gamecontroller"
-        case .source: "rectangle.on.rectangle"
-        case .ps5: "lock"
-        case .about: "info.circle"
-        }
-    }
-}
-
-struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var section: SettingsSection
-
-    init(section: SettingsSection = .appearance) {
-        _section = State(initialValue: section)
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: Theme.space("gap")) {
-            SettingsSidebar(section: $section)
-            VStack(alignment: .leading, spacing: Theme.space("gap")) {
-                ScrollView {
-                    SettingsPage(section: section)
-                        .padding(Theme.space("m"))
-                        .id(section)
-                }
-                .padding(-Theme.space("m"))
-                HStack {
-                    Spacer()
-                    Button("Done") { dismiss() }
-                        .buttonStyle(CSButtonStyle(kind: .primary, height: "buttonLarge"))
-                        .keyboardShortcut(.defaultAction)
-                }
-            }
-        }
-        .padding(Theme.space("screen"))
-        .frame(width: Theme.size("windowWidth") - 2 * Theme.space("screen"), height: Theme.size("windowHeight") - 2 * Theme.space("screen"))
-    }
-}
-
-/// Bölüm listesi: seçili satır yüzey-2 zeminli ve yarı kalın (sarı değil).
-private struct SettingsSidebar: View {
-    @Binding var section: SettingsSection
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.space("xs")) {
-            Text("Settings")
-                .font(.csTitle)
-                .padding(.horizontal, Theme.space("m"))
-                .padding(.bottom, Theme.space("s"))
-            ForEach(SettingsSection.allCases) { item in
-                SidebarRow(title: item.title, symbol: item.symbol, selected: item == section) { section = item }
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(width: Theme.size("sidebarWidth"), alignment: .leading)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .tile(padding: Theme.space("m"))
-    }
-}
-
-/// Kenar çubuğundaki bir satır (ayarlar bölümü ya da kurulum adımı): seçiliyken yüzey-2 zemin ve yarı kalın yazı,
-/// üzerine gelince de yüzey-2 zemin.
-struct SidebarRow: View {
-    let title: LocalizedStringKey
-    let symbol: String
-    let selected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: Theme.space("m")) {
-                Image(systemName: symbol)
-                    .frame(width: 20)
-                    .foregroundStyle(selected ? Color.csText : Color.csSecondary)
-                Text(title)
-                    .font(selected ? .csBody.weight(.semibold) : .csBody)
-                    .foregroundStyle(Color.csText)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, Theme.space("m"))
-            .frame(minHeight: Theme.size("rowHeight"))
-            .background(selected ? Color.csSurface2 : Color.clear, in: RoundedRectangle(cornerRadius: Theme.radius("control"), style: .continuous))
-        }
-        .buttonStyle(RowButtonStyle(radius: "control"))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// Seçili bölümün başlığı ve karoları.
-private struct SettingsPage: View {
-    @EnvironmentObject private var model: AppModel
-    let section: SettingsSection
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.space("gap")) {
-            if section != .packs {
-                Text(section.title).font(.csDisplay)
-            }
-            switch section {
-            case .appearance:
-                SubtitleOutputCard(detailed: true)
-                SecondScreenCard()
-                AppearanceCard()
-                TVAppCard()
-            case .dubbing: DubbingCard()
-            case .translation: TranslationCard()
-            case .packs: GamePacksPage()
-            case .language: LanguageCard()
-            case .area: AreaCards()
-            case .shortcuts: ShortcutsCard()
-            case .obs: OBSCard()
-            case .console: ConsoleSettingsCard()
-            case .source:
-                // Xbox'ta (Beta) görüntü Xbox'ın ev yayınından ya da seçilen pencereden (#853) gelir; Xbox bağlantısında oyun
-                // sesi ayarı da durur.
-                if model.isXbox {
-                    XboxFrameSourceCard()
-                    if !model.readsXboxWindow { XboxSoundCard() }
-                } else {
-                    FrameSourceCard()
-                }
-                DemoModeCard()
-            case .ps5: LoginPasscodeCard()
-            case .about:
-                AppThemeCard()
-                AboutCard()
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
 /// Yazı boyutu, yeri, arka planı, rengi; görünüm ayarları bilgisayar ekranındaki pencereye de uygulanır.
-private struct AppearanceCard: View {
+struct AppearanceCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        Card(title: model.settings.output == .tv ? "On the TV" : "Subtitle appearance") {
-            // 1920 piksellik TV ekranında yazı yüksekliği (Windows ile aynı aralık: 16–90); sürüklerken TV'de örnek altyazı görünür. Sağda değer (piksel),
-            // sabit genişlikte rakamlarla: sürüklerken kaydırıcı oynamaz.
-            HStack(spacing: Theme.space("m")) {
-                Slider(value: Binding(get: { Double(model.settings.style.fontSize) },
-                                      set: { model.settings.style.fontSize = Int($0.rounded()) }), in: 16...90) {
-                    Text("Text size")
-                } minimumValueLabel: {
-                    Text("Small").font(.csCallout).foregroundStyle(Color.csSecondary)
-                } maximumValueLabel: {
-                    Text("Large").font(.csCallout).foregroundStyle(Color.csSecondary)
-                } onEditingChanged: { editing in
-                    if editing { model.sendTestSubtitle() }
-                }
-                Text(verbatim: "\(model.settings.style.fontSize)")
-                    .font(.csCallout.monospacedDigit())
-                    .foregroundStyle(Color.csSecondary)
-                    .accessibilityHidden(true)
-            }
+        // Yeni arayüzde yazı boyutu, zemin ve renkler Ayarlar › Altyazı Görünümü'nde; burada yer ve biçim kalır.
+        Card {
             // Yer ayarları TV ve OBS katmanı içindir; bilgisayar ekranındaki altyazı penceresi sürüklenerek taşınır (Genzo, 2026-11-13:
             // "ekrandaki konum ayarı işlemiyor").
             if model.settings.output.showsOnTV || model.settings.output == .obs {
@@ -221,41 +39,22 @@ private struct AppearanceCard: View {
                     HintText(text: "The translation follows where the game shows its own subtitle.")
                 }
             }
-            if model.settings.output.showsOnComputer {
-                HintText(text: "On the computer screen, move and resize the subtitle with the mouse: press Position the subtitles.")
-                Button("Position the subtitles") { model.overlayAdjusting = true }.buttonStyle(.secondary)
-            }
-            Slider(value: Binding(get: { Double(model.settings.style.background) },
-                                  set: { model.settings.style.background = Int($0.rounded()) }), in: 0...100) {
-                Text("Background")
-            } minimumValueLabel: {
-                Text("None").font(.csCallout).foregroundStyle(Color.csSecondary)
-            } maximumValueLabel: {
-                Text("Solid").font(.csCallout).foregroundStyle(Color.csSecondary)
-            } onEditingChanged: { editing in
-                if editing { model.sendTestSubtitle() }
-            }
             Picker("Background area", selection: $model.settings.style.backgroundShape) {
                 Text("Fit the text").tag(SubtitleBackgroundShape.fit)
                 Text("Full-width band").tag(SubtitleBackgroundShape.band)
             }
-            HintText(text: "Drag Background all the way to Solid to fully hide the English subtitle in the game. A full-width band also covers the sides.")
+            HintText(text: "Choose Dark under Subtitle Appearance to fully hide the English subtitle in the game. A full-width band also covers the sides.")
             SwitchRow(title: "Bold text", isOn: $model.settings.style.bold)
             SwitchRow(title: "Keep previous lines above in fast dialogue", isOn: $model.settings.style.stackPrevious)
             HintText(text: "When off, each new line replaces the previous one. Needs TV app 0.9.16 or later.")
-            Picker("Text color", selection: $model.settings.style.textColor) {
-                Text("White").tag(SubtitleTextColor.white)
-                Text("Yellow").tag(SubtitleTextColor.yellow)
-            }
             if model.settings.output.showsOnTV, model.tv?.brand == .androidTV {
                 AndroidDisplayModePicker(mode: $model.settings.style.displayMode)
             }
-            Button("Send test subtitle") { model.sendTestSubtitle() }.buttonStyle(.secondary)
         }
     }
 }
 
-private struct LanguageCard: View {
+struct LanguageCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -272,7 +71,7 @@ private struct LanguageCard: View {
 }
 
 /// Bölge önizlemesi, son PS5 karesiyle (kare değişince yalnız bu görünüm yeniden çizilir).
-private struct LiveRegionPreview: View {
+struct LiveRegionPreview: View {
     @Binding var settings: UserSettings
     @ObservedObject var preview: FramePreview
 
@@ -282,7 +81,7 @@ private struct LiveRegionPreview: View {
 }
 
 /// Altyazı bölgesi (hazır seçimler, canlı önizleme, Özel'de kaydırıcılar) ve ekranı çevirme kısayolu.
-private struct AreaCards: View {
+struct AreaCards: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -343,7 +142,7 @@ private struct AreaCards: View {
 
 /// "Bu oyunun alanları": alanlar oynanan oyuna kaydedilir, o oyun yeniden oynanınca kendiliğinden gelir. Profil etkinse
 /// hangi oyunun alanları olduğu ve kaydedilmemiş değişiklikte "Profile kaydet" (Windows, iPhone ve Android ile aynı).
-private struct AreaProfileCard: View {
+struct AreaProfileCard: View {
     @ObservedObject var areas: GameAreas
     /// Alanlar değişince (kaydedilmemiş değişiklik) kart yenilenir.
     @EnvironmentObject private var model: AppModel
@@ -396,7 +195,7 @@ private struct AreaProfileCard: View {
 
 /// "Oyun profilleri": her oyunun kendi alanları. Listede olmayan oyun adı yazılarak eklenir; profil seçilir, yeniden
 /// adlandırılır, çoğaltılır, silinir. Profil seçmek oynanan oyunu da o yapar (Windows, iPhone ve Android ile aynı).
-private struct GameProfilesCard: View {
+struct GameProfilesCard: View {
     @ObservedObject var areas: GameAreas
     @EnvironmentObject private var model: AppModel
     @State private var editing: GameProfileEditing?
@@ -501,18 +300,20 @@ private struct GameProfilesCard: View {
 }
 
 /// Oyun profilleri kartında hangi işlem için ad yazılıyor.
-private enum GameProfileEditing: Equatable {
+enum GameProfileEditing: Equatable {
     case new, rename(String), duplicate(String)
 }
 
 /// Altyazının yanında sürekli okunan ek alanlar (en çok üç): görev yazısı, bildirim, telefon mesajı. Her biri
 /// adlandırılır, açılıp kapatılır; çerçevesi canlı önizlemede sürüklenir.
-private struct ExtraAreasCard: View {
+struct ExtraAreasCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        Card(title: "Extra areas") {
-            HintText(text: "Besides the subtitle, CouchSubs can keep reading up to three small areas, like a quest, a phone message or a notification. Each area is read about once a second and translated again only when its text changes. The translation shows on the TV next to the original text.")
+        Card(title: "EXTRA AREAS") {
+            // Sınır 3'ten kaldırıldı; ilk üçünün kısayolu var (Num 1–3), sonrakiler kısayolsuz.
+            HintText(text: "Also reads small text next to the subtitle, such as objectives, phone messages or notifications. Each area is read once a second and translated again when the text changes; the translation appears on the TV next to that text.")
+            if model.settings.extraAreas.isEmpty { HintText(text: "No extra areas yet.") }
             // Tam ekranda ek alanlar okunmaz (bkz. activeExtraAreas); ayarları korunur, düzenlenebilir.
             if model.settings.extraAreasPausedByFullScreen, !model.settings.extraAreas.isEmpty {
                 HintText(text: "Extra areas aren't read while the subtitle area is Full screen, because the whole screen is already read. They're read again when you pick another area.")
@@ -522,7 +323,7 @@ private struct ExtraAreasCard: View {
                     .opacity(model.settings.extraAreasPausedByFullScreen ? 0.5 : 1)
             }
             if model.settings.canAddExtraArea {
-                Menu("Add extra area") {
+                Menu("Add Extra Area") {
                     ForEach(ExtraAreaPreset.allCases, id: \.self) { preset in
                         Button(preset.title) { model.settings.addExtraArea(preset, name: preset.defaultName) }
                     }
@@ -533,7 +334,7 @@ private struct ExtraAreasCard: View {
     }
 }
 
-private struct ExtraAreaEditor: View {
+struct ExtraAreaEditor: View {
     let id: String
     @Binding var settings: UserSettings
     /// Önizleme ayrı görünümde izlenir: her yeni karede yalnız önizleme yeniden çizilir, ad alanı ve seçimler değil.
@@ -571,6 +372,9 @@ private struct ExtraAreaEditor: View {
                    let action = HotkeyAction.areaActions.dropFirst(number - 1).first {
                     HintText(text: LocalizedStringKey(HotkeyText.sentence(settings, action,
                         String(localized: "Draw the area to translate, for example a quest panel. While you play, press its shortcut (%@) to read and translate it once. Choose where the result shows. It works even when CouchSubs is in the background."))))
+                } else {
+                    // Dördüncü ve sonraki alanlar sürekli okunur ama kısayolları yok.
+                    Text("No Shortcut").font(.system(size: 12, weight: .medium, design: .monospaced)).foregroundStyle(Color.csSecondary)
                 }
             }
             .padding(Theme.space("m"))
@@ -580,7 +384,7 @@ private struct ExtraAreaEditor: View {
 }
 
 /// "Sonucu göster": kısayolla bir kez okunan alanın çevirisi TV'de, bu Mac'te ya da ikisinde de (Windows ile aynı seçim).
-private struct ResultTargetPicker: View {
+struct ResultTargetPicker: View {
     @Binding var target: ResultTarget
 
     var body: some View {
@@ -599,7 +403,7 @@ private struct ResultTargetPicker: View {
 }
 
 /// Ek alanın önizlemesi, son PS5 karesiyle (kare değişince yalnız bu görünüm yeniden çizilir).
-private struct ExtraAreaPreview: View {
+struct ExtraAreaPreview: View {
     let region: CropRegion
     @ObservedObject var preview: FramePreview
     let onChange: (CropRegion) -> Void
@@ -629,7 +433,7 @@ extension ExtraAreaPreset {
     }
 }
 
-private struct OBSCard: View {
+struct OBSCard: View {
     @EnvironmentObject private var model: AppModel
     @State private var obsCopied = false
 
@@ -697,7 +501,7 @@ struct AddressRow: View {
 }
 
 /// Şeffaflık tanımayan yayın programları için düz zeminli altyazı penceresi (bkz. StreamWindow.swift).
-private struct StreamWindowCard: View {
+struct StreamWindowCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -719,7 +523,7 @@ private struct StreamWindowCard: View {
 }
 
 /// İkinci hesabın PS5 giriş şifresi (isteğe bağlı, 4 hane, Anahtarlık'ta). PS5 isterse oturum açılırken gönderilir.
-private struct LoginPasscodeCard: View {
+struct LoginPasscodeCard: View {
     @EnvironmentObject private var model: AppModel
     @State private var passcode = ""
     @State private var invalid = false
@@ -754,7 +558,7 @@ private struct LoginPasscodeCard: View {
 /// Görüntünün nereden okunduğu: CouchSubs PS5'e kendisi bağlanır (ikinci hesap) ya da oyun bu Mac'teki Sony PS Remote
 /// Play uygulamasında oynanır ve CouchSubs onun penceresini okur (bkz. `RemotePlayWindowStream`). Çeviri sürerken
 /// değiştirilirse yeni kaynakla yeniden başlar.
-private struct FrameSourceCard: View {
+struct FrameSourceCard: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
 
@@ -814,7 +618,7 @@ private struct FrameSourceCard: View {
 /// Xbox seçiliyken "Görüntüyü al" (#853; Windows'taki Görüntü kaynağı kartının Xbox seçenekleri): CouchSubs Xbox'a kendisi
 /// bağlanır ya da oyun Xbox uygulamasında / play.xbox.com'da / capture card ile OBS'te oynanır ve CouchSubs yalnız seçilen
 /// pencereyi okur; o zaman Xbox'a hiç bağlanmaz (Xbox aynı anda tek bağlantıya izin verir, kullanıcının oturumu düşerdi).
-private struct XboxFrameSourceCard: View {
+struct XboxFrameSourceCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -830,7 +634,7 @@ private struct XboxFrameSourceCard: View {
 }
 
 /// Uygulamanın görünümü: koyu (varsayılan, onaylı tasarım), açık ya da sistemle aynı. Tüm pencerelere anında uygulanır.
-private struct AppThemeCard: View {
+struct AppThemeCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -844,7 +648,7 @@ private struct AppThemeCard: View {
     }
 }
 
-private struct AboutCard: View {
+struct AboutCard: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var confirmReset = false
@@ -870,7 +674,7 @@ private struct AboutCard: View {
 
 /// Oyun paketleri: masaüstünde ücretsiz; kurulu paketler karolar hâlinde, altta paket ve ortak havuz anahtarları
 /// (Windows'taki ayarlarla aynı düzen).
-private struct GamePacksPage: View {
+struct GamePacksPage: View {
     @EnvironmentObject private var model: AppModel
     @State private var choosingImport = false
     @State private var readingImport = false
@@ -1008,13 +812,13 @@ private struct GamePacksPage: View {
     }
 }
 
-private struct GamePackImportSelection: Identifiable, Sendable {
+struct GamePackImportSelection: Identifiable, Sendable {
     let id = UUID()
     let sourceURL: URL
     let preview: GamePackImportPreview
 }
 
-private struct GamePackImportSheet: View {
+struct GamePackImportSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let selection: GamePackImportSelection
@@ -1117,7 +921,7 @@ private struct GamePackImportSheet: View {
 }
 
 /// Paket karosu: oyunun kısaltması, adı ve satır sayısı.
-private struct PackTile: View {
+struct PackTile: View {
     let pack: PackShelfItem
     /// Kapak değişince karo yeniden çizilir (dosya aynı adla değişir).
     @State private var coverVersion = 0
@@ -1243,8 +1047,25 @@ struct ScreenTextKindRows: View {
 struct SwitchRow: View {
     let title: LocalizedStringKey
     @Binding var isOn: Bool
+    @Environment(\.csNewLook) private var newLook
 
     var body: some View {
+        // Yeni arayüzde anahtar satırın başında, yazının solunda (amber).
+        if newLook {
+            HStack(spacing: DS.space("m")) {
+                DSSwitch(isOn: $isOn).accessibilityLabel(Text(title))
+                Text(title).font(.dsBody.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { isOn.toggle() }
+            }
+            .frame(minHeight: 40)
+        } else {
+            legacy
+        }
+    }
+
+    private var legacy: some View {
         HStack(spacing: Theme.space("m")) {
             Text(title).font(.csBody).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: Theme.space("m"))
@@ -1259,7 +1080,7 @@ struct SwitchRow: View {
 /// Çeviri motoru: ücretsiz cihaz üstü çeviri ya da kullanıcının kendi anahtarıyla DeepL, Gemini, OpenAI, Claude
 /// (Windows'taki ayarlarla aynı düzen).
 /// Android TV'de PS5 görüntüsünün nasıl gösterileceği; bazı TV'lerde (ör. TCL) uygulama içindeki görüntü siyah kalıyor.
-private struct AndroidDisplayModePicker: View {
+struct AndroidDisplayModePicker: View {
     @Binding var mode: TVDisplayMode
 
     var body: some View {
@@ -1364,7 +1185,7 @@ struct TranslationCard: View {
 }
 
 /// Çeviri motoru seçimi: altı karo (iki sıra), seçili olan sarı çerçeveli ve parlak.
-private struct EngineTiles: View {
+struct EngineTiles: View {
     @Binding var engine: TranslationEngine
     private let columns = Array(repeating: GridItem(.flexible(), spacing: Theme.space("m"), alignment: .top), count: 3)
 
@@ -1377,7 +1198,7 @@ private struct EngineTiles: View {
     }
 }
 
-private struct EngineTile: View {
+struct EngineTile: View {
     let option: TranslationEngine
     let selected: Bool
     let action: () -> Void
@@ -1415,7 +1236,7 @@ private struct EngineTile: View {
 }
 
 /// DeepL anahtarı: kaydedilince bu ayki kullanım görünür.
-private struct DeepLKeySection: View {
+struct DeepLKeySection: View {
     @EnvironmentObject private var model: AppModel
     @State private var key = ""
     @State private var checking = false
@@ -1461,7 +1282,7 @@ private struct DeepLKeySection: View {
 }
 
 /// Yapay zekâ modeli (yalnız listedekiler), anahtar ve örnek satırla deneme.
-private struct AIKeySection: View {
+struct AIKeySection: View {
     @EnvironmentObject private var model: AppModel
     let provider: AIProvider
     @State private var key = ""
@@ -1541,7 +1362,7 @@ private struct AIKeySection: View {
 /// çeviri hattı yeniden kurulmasın.
 /// Ayarlardaki "Ek talimat" (#306): yapay zekâ çevirmeninin talimatının sonuna eklenir. Alandan çıkınca kaydedilir; her
 /// tuşta çeviri hattı yeniden kurulmaz (Windows ile aynı).
-private struct AIInstructionSection: View {
+struct AIInstructionSection: View {
     @EnvironmentObject private var model: AppModel
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -1570,7 +1391,7 @@ private struct AIInstructionSection: View {
     }
 }
 
-private struct LocalAISection: View {
+struct LocalAISection: View {
     @EnvironmentObject private var model: AppModel
     @State private var address = ""
     @State private var modelName = ""
@@ -1676,7 +1497,7 @@ private struct LocalAISection: View {
 }
 
 /// Özel bölgenin dikey konumu ve yüksekliği (yüzde).
-private struct CustomAreaSliders: View {
+struct CustomAreaSliders: View {
     @Binding var settings: UserSettings
 
     var body: some View {
@@ -1704,7 +1525,7 @@ private struct CustomAreaSliders: View {
 }
 
 /// Bekleme süresi kaydırıcısı: 0–1 sn, 0,1 sn adım; sağda değer ("0,8 sn"). Değer milisaniye olarak saklanır.
-private struct WaitSlider: View {
+struct WaitSlider: View {
     let title: LocalizedStringKey
     @Binding var ms: Int
 
