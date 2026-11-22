@@ -82,13 +82,6 @@ private struct SettingsNav: View {
                 NavRow(item: item, selected: item == section, height: 44) { section = item }
             }
             Spacer(minLength: DS.space("s"))
-            Text("All settings in one place. The Profile page is gone.")
-                .font(.dsCaption)
-                .foregroundStyle(Color.dsFaint)
-                .tracking(DS.mutedTracking)
-                .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(DS.space("s"))
         }
         .frame(maxHeight: .infinity)
     }
@@ -184,7 +177,7 @@ private struct BasicsSettings: View {
         HStack(alignment: .top, spacing: DS.space("l")) {
             VStack(spacing: DS.space("l")) {
                 DSCard {
-                    DSCardHeader("TRANSLATION")
+                    DSCardHeader("Translation")
                     let pace = Binding<TranslationPace?>(get: { TranslationPace.of(model.settings) }, set: { value in
                         guard let value else { return }
                         model.settings.misreadWaitMs = value.waits.misread
@@ -202,7 +195,7 @@ private struct BasicsSettings: View {
                     }
                 }
                 DSCard(spacing: DS.space("xs")) {
-                    DSCardHeader("SOUND")
+                    DSCardHeader("Sound")
                     DSSwitchRow(title: "Startup Sound", subtitle: "Plays only on the first launch.", isOn: $model.settings.startupSound)
                     DSSwitchRow(title: "Transition Animations", subtitle: "When off, only a short fade is used.",
                                 isOn: $model.settings.transitionAnimations)
@@ -216,7 +209,7 @@ private struct BasicsSettings: View {
             }
             .frame(maxWidth: .infinity)
             DSCard {
-                DSCardHeader("SUBTITLE APPEARANCE")
+                DSCardHeader("Subtitle appearance")
                 SubtitlePreviewBox(lines: [SubtitleSample.lines[0]], height: 180).frame(maxWidth: .infinity)
                 Text("Text size, background, text and character name colors. The settings apply the same on the TV, phone and computer screen.")
                     .dsMuted(.system(size: 14))
@@ -351,7 +344,7 @@ private struct SubtitleLookSettings: View {
         let style = model.settings.style
         HStack(alignment: .top, spacing: DS.space("l")) {
             DSCard {
-                DSCardHeader("SUBTITLES ON THE TV")
+                DSCardHeader("Subtitles on the TV")
                 SubtitlePreviewBox(lines: SubtitleSample.lines)
                 if SubtitlePalette.lowContrast(style) {
                     Text("The text color is too close to the background; it may be hard to read on the TV.")
@@ -389,15 +382,11 @@ private struct SubtitleLookSettings: View {
                 Spacer()
                 Text(String(format: String(localized: "%lld px"), Int(size.rounded()))).font(.system(size: 13, weight: .medium, design: .monospaced))
             }
-            HStack(spacing: DS.space("s")) {
-                Text(verbatim: "A").font(.dsSmall).foregroundStyle(Color.dsMuted)
-                Slider(value: $size, in: 16...50) { editing in
-                    if editing { model.sendTestSubtitle() }
-                }
-                .onChange(of: size) { value in update { $0.fontSize = SubtitlePalette.fontSize(Int(value.rounded())) } }
-                .accessibilityLabel(Text("Text Size"))
-                Text(verbatim: "A").font(.system(size: 20, weight: .semibold)).foregroundStyle(Color.dsMuted)
+            DSSlider(value: $size, range: 16...50, step: 1) { editing in
+                if editing { model.sendTestSubtitle() }
             }
+            .onChange(of: size) { value in update { $0.fontSize = SubtitlePalette.fontSize(Int(value.rounded())) } }
+            .accessibilityLabel(Text("Text Size"))
             HStack {
                 Text(verbatim: "16")
                 Spacer()
@@ -560,7 +549,7 @@ private struct AdvancedSettings: View {
     var body: some View {
         TwoColumns {
             DSCard(spacing: DS.space("xs"), scrolls: false) {
-                DSCardHeader("TRANSLATION ENGINE")
+                DSCardHeader("Translation engine")
                 ForEach(TranslationEngine.allCases, id: \.self) { engine in
                     Button { model.settings.translationEngine = engine } label: {
                         DSTitleBlock(title: title(engine), subtitle: subtitle(engine), titleFont: .dsBodyStrong)
@@ -571,7 +560,7 @@ private struct AdvancedSettings: View {
             }
         } right: {
             DSCard(spacing: DS.space("xs"), accent: .dsLive, scrolls: false) {
-                DSCardHeader("EXPERIMENTAL", color: .dsLive)
+                DSCardHeader("Experimental", color: .dsLive)
                 Text("These settings may slow down or interrupt translation. If there's a problem, go back to the defaults.").dsMuted()
                 DSSwitchRow(title: "Translate On-Screen Text Automatically", subtitle: "Objectives, menus and other text on the screen.",
                             isOn: $model.settings.autoScreenText)
@@ -583,11 +572,13 @@ private struct AdvancedSettings: View {
                 DSSwitchRow(title: "Check Unchanged Subtitle Areas More Often",
                             subtitle: "When the subtitle area looks unchanged, read it again after 2 frames instead of 20. Uses more CPU.",
                             isOn: $model.settings.fastSubtitleDetection)
-                VStack(alignment: .leading, spacing: DS.space("s")) {
-                    WaitSlider(title: "Wait for a misread line", ms: $model.settings.misreadWaitMs)
-                    HintText(text: "When a line is read with words that are not in the dictionary, a better reading is awaited for at most this long. Measured in GTA V, translations from misread lines compared with 0 s: 0.2 s → 77%, 0.4 s → 49%, 0.6 s → 41%, 0.8 s (recommended) → 34%, 1.0 s → 31%.")
-                    WaitSlider(title: "Wait for a half-read line", ms: $model.settings.partialWaitMs)
-                    HintText(text: "When a line looks cut off (no sentence ending, such as a mission text with a colored word), the full line is awaited for at most this long. Its effect is small: at 0 s a few more lines arrive cut off. Recommended: 0.3 s.")
+                VStack(alignment: .leading, spacing: DS.space("l")) {
+                    WaitSlider(title: "Wait for a Misread Line",
+                               hint: "If the text is misread, a better reading is awaited for at most this long. Recommended: 0.8 s.",
+                               ms: $model.settings.misreadWaitMs)
+                    WaitSlider(title: "Wait for a Half-Read Line",
+                               hint: "If a line shows only in part, the whole line is awaited for at most this long. Recommended: 0.3 s.",
+                               ms: $model.settings.partialWaitMs)
                 }
                 .padding(.vertical, DS.space("s"))
                 Button("Restore Defaults") { restoreDefaults() }
@@ -668,7 +659,7 @@ private struct AreaSettings: View {
     var body: some View {
         TwoColumns {
             DSCard(scrolls: false) {
-                DSCardHeader("SUBTITLE AREA") {
+                DSCardHeader("Subtitle area") {
                     Button("Refresh Picture") { model.requestSnapshot() }
                         .buttonStyle(.dsSecondary)
                         .help(Text(HotkeyText.title(model.settings, .snapshot, String(localized: "Refresh picture (%@)"))))
@@ -685,17 +676,20 @@ private struct AreaSettings: View {
                 Button("Reset Areas") { model.settings.selectAreaPreset(.bottom) }
                     .buttonStyle(DSButtonStyle(kind: .secondary, fullWidth: true))
             }
-            Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .screen, String(localized: "Translate the screen (%@)")))) {
+            DSCard(scrolls: false) {
+                DSCardHeader("Translate the screen")
                 HintText(text: LocalizedStringKey(HotkeyText.sentence(model.settings, .screen,
                     String(localized: "Press %@ while playing: every text on the screen is translated once and shown on the TV in its own place. Press again to remove the translations."))))
             }
             // Otomatik telefon okumasına ve "Ekranı çevir"e uygulanır; varsayılan Yanda Panel (dört platformda aynı).
             DSCard(scrolls: false) {
-                Text("GTA 6 Phone Messages").font(.dsBodyStrong)
+                DSCardHeader("GTA 6 phone messages")
                 DSTabs(selection: $model.settings.phoneMessagesPanel, items: [(true, "Side Panel"), (false, "On the Bubbles")])
                 Text("Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble.").dsMuted()
             }
-            Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .freeArea, String(localized: "Free area (%@)")))) {
+            // Kısayol başlıkta değil, açıklamada (diğer kart başlıkları gibi yalnız ad).
+            DSCard(scrolls: false) {
+                DSCardHeader("Free area")
                 HintText(text: LocalizedStringKey(HotkeyText.sentence(model.settings, .freeArea,
                     String(localized: "Press %@ while playing: the picture freezes on the PC, drag over any part of it to translate that part once. Esc closes."))))
                 ResultTargetPicker(target: $model.settings.freeAreaTarget)
@@ -737,7 +731,7 @@ private struct OutputSettings: View {
     var body: some View {
         TwoColumns {
             DSCard(scrolls: false) {
-                DSCardHeader("SHOW SUBTITLES ON")
+                DSCardHeader("Show subtitles on")
                 DSTabs(selection: $model.settings.output, items: [(SubtitleOutput.tv, "TV"), (.computer, "Computer Screen"),
                                                                   (.both, "Both"), (.obs, "OBS Only (Streaming)")])
                 if model.settings.output.showsOnTV { tvSection }
@@ -748,7 +742,7 @@ private struct OutputSettings: View {
             }
             if model.settings.output.showsOnComputer {
                 DSCard(scrolls: false) {
-                    DSCardHeader("COMPUTER SCREEN")
+                    DSCardHeader("Computer screen")
                     Text("Subtitles appear on this computer in a window over the game or PS Remote Play.").dsMuted()
                     Button("Place the Subtitles") { model.overlayAdjusting = true }
                         .buttonStyle(.dsSecondary)
@@ -824,14 +818,14 @@ private struct ConsoleSettings: View {
             ConsoleSettingsCard()
             if !model.isXbox {
                 DSCard(scrolls: false) {
-                    DSCardHeader("PS5 LOGIN PASSCODE")
+                    DSCardHeader("PS5 login passcode")
                     LoginPasscodeCard()
                 }
             }
             AboutCard()
         } right: {
             DSCard(scrolls: false) {
-                DSCardHeader("READ THE PICTURE FROM")
+                DSCardHeader("Read the picture from")
                 if model.isXbox {
                     XboxFrameSourceCard()
                     if !model.readsXboxWindow { XboxSoundCard() }
@@ -842,7 +836,7 @@ private struct ConsoleSettings: View {
             if model.asksTVInput {
                 // Kurulumda seçilen TV girişi; değişince TV uygulaması o girişi açar (style.hdmiInput).
                 DSCard(scrolls: false) {
-                    DSCardHeader("TV INPUT (HDMI)")
+                    DSCardHeader("TV input (HDMI)")
                     DSTabs(selection: Binding(get: { model.settings.style.hdmiInput }, set: { value in
                         model.settings.style.hdmiInput = value
                         model.sendTestSubtitle()
@@ -850,7 +844,7 @@ private struct ConsoleSettings: View {
                 }
             }
             DSCard(scrolls: false) {
-                DSCardHeader("LANGUAGE")
+                DSCardHeader("Language")
                 LanguageCard()
                 Text("Online engines only translate English games. Other game languages use the free translation.").dsMuted()
             }

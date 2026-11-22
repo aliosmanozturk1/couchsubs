@@ -166,7 +166,7 @@ private struct XboxSideColumn: View {
     var body: some View {
         VStack(spacing: DS.space("l")) {
             DSCard(spacing: DS.space("xs"), scrolls: false) {
-                DSCardHeader("SOUND")
+                DSCardHeader("Sound")
                 DSSwitchRow(title: "Play Xbox Sound on This Computer", subtitle: "When off, sound comes only from the TV.",
                             isOn: $model.settings.xboxAudioOnDevice, divider: false)
             }
@@ -281,7 +281,7 @@ struct ConsoleSettingsCard: View {
 
     var body: some View {
         DSCard(scrolls: false) {
-            DSCardHeader("CONSOLE")
+            DSCardHeader("Console")
             DSTabs(selection: Binding(get: { model.platform }, set: { model.choosePlatform($0) }),
                    items: [(ConsolePlatform.playstation, LocalizedStringKey("PlayStation 5")), (ConsolePlatform.xbox, LocalizedStringKey("Xbox"))])
             if model.isXbox {

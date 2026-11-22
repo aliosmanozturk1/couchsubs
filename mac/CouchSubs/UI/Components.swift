@@ -271,9 +271,8 @@ struct Card<Content: View>: View {
         VStack(alignment: .leading, spacing: Theme.space("m")) {
             if let title {
                 if newLook {
-                    // Yeni arayüzde kart başlığı mono bölüm etiketi (büyük harf, dile göre: i → İ); altına 8 ek boşluk.
-                    Text(title).font(.system(size: 12, weight: .medium, design: .monospaced)).tracking(0.96)
-                        .textCase(.uppercase).foregroundStyle(Color.csSecondary).padding(.bottom, 8)
+                    // Yeni arayüzde kart başlığı: sistem yazısı, cümle düzeni, 17 orta kalın (DSCardHeader ile aynı); altına 8 ek boşluk.
+                    Text(title).font(.system(size: 17, weight: .medium)).padding(.bottom, 8)
                 } else {
                     Text(title).font(.csHeadline)
                 }

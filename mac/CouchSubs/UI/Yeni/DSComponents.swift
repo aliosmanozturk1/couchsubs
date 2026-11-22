@@ -33,9 +33,7 @@ struct DSCard<Content: View>: View {
             }
         }
         .background(Color.dsSurface, in: shape)
-        .overlay(alignment: .leading) {
-            if let accent { accent.frame(width: 4).allowsHitTesting(false) }
-        }
+        .dsAccentStripe(accent, cornerRadius: DS.radius("card"))
         .overlay(shape.strokeBorder(highlighted ? Color.dsAmber : Color.dsBorder, lineWidth: highlighted ? 2 : 1))
         .clipShape(shape)
     }
@@ -48,7 +46,8 @@ struct DSCard<Content: View>: View {
     }
 }
 
-/// Kart başlığı (mono etiket) ile içerik arasında 24 pt kalsın diye etiketin altına 8 pt ek boşluk.
+/// Kart başlığı: sistem yazısı, cümle düzeni ("Başka bir cihazda göster" gibi), 17 orta kalın; içerikle arası 24 pt kalsın
+/// diye altına 8 pt ek boşluk. Mono büyük harf başlık kullanılmaz (Sinan Bey, 22 Kas).
 struct DSCardHeader<Trailing: View>: View {
     let title: LocalizedStringKey
     var color: Color = .dsMuted
@@ -63,7 +62,11 @@ struct DSCardHeader<Trailing: View>: View {
     var body: some View {
         // Başlık + sağda düğme satırında alt boşluk satırın kendisindedir; ikisi dikeyde ortalıdır.
         HStack(alignment: .center, spacing: DS.space("s")) {
-            DSMonoLabel(title, color: color)
+            Text(title)
+                .font(.dsCardTitle)
+                .foregroundStyle(color == .dsMuted ? Color.dsText : color)
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
             Spacer(minLength: DS.space("s"))
             trailing
         }
@@ -257,7 +260,8 @@ struct DSTabs<Value: Hashable>: View {
                         .font(.dsTab)
                         .foregroundStyle(on ? Color.dsText : Color.dsMuted)
                         .lineLimit(1)
-                        .padding(.horizontal, DS.space("m"))
+                        .minimumScaleFactor(0.85)
+                        .padding(.horizontal, fill ? DS.space("xs") : DS.space("m"))
                         .frame(minWidth: fill ? 0 : DS.size("tabMin"), maxWidth: fill ? .infinity : nil)
                         .frame(height: DS.size("tab"))
                         .background {
@@ -757,4 +761,298 @@ extension View {
     func dsScroll() -> some View {
         ScrollView(.vertical) { self }.scrollIndicators(.automatic)
     }
+}
+
+// MARK: Kaydırıcı
+
+/// Kaydırıcı: 4 pt ince iz (kapalı anahtar rengi), dolu kısmı amber, 20 pt beyaz gölgeli düğmecik; nokta (tick) yok.
+/// Tam genişlik; `step` verilirse değer o adıma oturur. Windows: Styles.xaml › Slider (aynı ölçüler).
+struct DSSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    var step: Double?
+    var onEditingChanged: (Bool) -> Void = { _ in }
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dragging = false
+
+    private static let knob: CGFloat = 20
+    private static let track: CGFloat = 4
+
+    var body: some View {
+        GeometryReader { geometry in
+            let knob = Self.knob
+            let travel = max(geometry.size.width - knob, 1)
+            let offset = travel * fraction
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.dsSwitchOff)
+                    .frame(width: travel, height: Self.track)
+                    .offset(x: knob / 2)
+                Capsule().fill(Color.dsAmber)
+                    .frame(width: offset, height: Self.track)
+                    .offset(x: knob / 2)
+                Circle().fill(Color.white)
+                    .frame(width: knob, height: knob)
+                    .overlay(Circle().strokeBorder(Color.black.opacity(0.06)))
+                    .shadow(color: .black.opacity(0.22), radius: 2, y: 1)
+                    .scaleEffect(dragging && !reduceMotion ? 1.08 : 1)
+                    .offset(x: offset)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        if !dragging {
+                            dragging = true
+                            onEditingChanged(true)
+                        }
+                        set(fraction: (gesture.location.x - knob / 2) / travel)
+                    }
+                    .onEnded { _ in
+                        dragging = false
+                        onEditingChanged(false)
+                    }
+            )
+        }
+        .frame(height: 24)
+        .opacity(isEnabled ? 1 : 0.5)
+        .animation(DS.animation(.short, reduced: reduceMotion), value: dragging)
+        .accessibilityElement()
+        .accessibilityValue(Text(verbatim: value.formatted(.number.precision(.fractionLength(step.map { $0 < 1 ? 1 : 0 } ?? 0)))))
+        .accessibilityAdjustableAction { direction in
+            let delta = step ?? (range.upperBound - range.lowerBound) / 20
+            switch direction {
+            case .increment: value = clamp(value + delta)
+            case .decrement: value = clamp(value - delta)
+            @unknown default: break
+            }
+        }
+    }
+
+    private var fraction: CGFloat {
+        let span = range.upperBound - range.lowerBound
+        guard span > 0 else { return 0 }
+        return CGFloat((clamp(value) - range.lowerBound) / span)
+    }
+
+    private func set(fraction: CGFloat) {
+        let raw = range.lowerBound + Double(min(max(fraction, 0), 1)) * (range.upperBound - range.lowerBound)
+        let snapped = step.map { (raw / $0).rounded() * $0 } ?? raw
+        let next = clamp(snapped)
+        if next != value { value = next }
+    }
+
+    private func clamp(_ x: Double) -> Double { min(max(x, range.lowerBound), range.upperBound) }
+}
+
+/// Kaydırıcı satırı: başlık solda kendi satırında, değer sağda (mono); altında tam genişlikte kaydırıcı, en altta tek
+/// cümlelik açıklama. Ayarlar'daki bütün kaydırıcılar bunu kullanır (Windows: SliderRow, aynı düzen).
+struct DSSliderRow: View {
+    let title: LocalizedStringKey
+    let valueText: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    var step: Double?
+    var hint: LocalizedStringKey?
+    var onEditingChanged: (Bool) -> Void = { _ in }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.space("xs")) {
+            HStack(alignment: .firstTextBaseline, spacing: DS.space("s")) {
+                Text(title).font(.dsBodyStrong).foregroundStyle(Color.dsText)
+                Spacer(minLength: DS.space("s"))
+                Text(verbatim: valueText)
+                    .font(.system(size: 13, weight: .medium, design: .monospaced).monospacedDigit())
+                    .foregroundStyle(Color.dsText)
+            }
+            DSSlider(value: $value, range: range, step: step, onEditingChanged: onEditingChanged)
+                .accessibilityLabel(Text(title))
+            if let hint { Text(hint).dsMuted() }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: Kısayol rozeti
+
+/// Klavye kısayolu rozeti (kbd): mono 12, alan zemini, ince halka, 8 köşe; birden çok tuş "ya da" ile ayrılır.
+struct DSKeys: View {
+    let keys: [String]
+
+    var body: some View {
+        HStack(spacing: DS.space("xxs")) {
+            ForEach(Array(keys.enumerated()), id: \.offset) { index, key in
+                if index > 0 { Text("or").font(.dsCaption).foregroundStyle(Color.dsFaint) }
+                Text(verbatim: key)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.dsText)
+                    .lineLimit(1)
+                    .padding(.horizontal, DS.space("xs"))
+                    .frame(height: 24)
+                    .background(Color.dsField, in: RoundedRectangle(cornerRadius: DS.radius("chip"), style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: DS.radius("chip"), style: .continuous).strokeBorder(Color.dsBorder))
+            }
+        }
+        .fixedSize()
+    }
+}
+
+// MARK: Küçük metin düğmesi
+
+/// Küçük metin düğmesi (ör. ek alandaki Kaldır): simge + yazı, gri; üzerine gelince `hoverTint` renginde ve açık zeminli.
+struct DSTextButtonStyle: ButtonStyle {
+    var hoverTint: Color = .dsLiveText
+    var hoverFill: Color = .dsLiveSoft
+
+    func makeBody(configuration: Configuration) -> some View {
+        DSTextButtonBody(configuration: configuration, hoverTint: hoverTint, hoverFill: hoverFill)
+    }
+}
+
+private struct DSTextButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let hoverTint: Color
+    let hoverFill: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovering = false
+
+    var body: some View {
+        let active = hovering || configuration.isPressed
+        configuration.label
+            .font(.dsRow)
+            .labelStyle(.titleAndIcon)
+            .foregroundStyle(active ? hoverTint : Color.dsMuted)
+            .padding(.horizontal, DS.space("s"))
+            .frame(height: DS.size("chip"))
+            .background(active ? hoverFill : Color.clear, in: Capsule())
+            .contentShape(Capsule())
+            .onHover { hovering = $0 }
+            .animation(DS.animation(.short, reduced: reduceMotion), value: active)
+    }
+}
+
+// MARK: Vurgu şeridi
+
+extension View {
+    /// Kartın solundaki renk şeridi (Deneysel kırmızı, bildirim amber): kenarın içinde 4 pt, uçları yuvarlak; kartın yuvarlak
+    /// köşesine girmesin diye üstten ve alttan köşe yarıçapı kadar içeride biter.
+    func dsAccentStripe(_ color: Color?, cornerRadius: CGFloat) -> some View {
+        overlay(alignment: .leading) {
+            if let color {
+                Capsule().fill(color)
+                    .frame(width: 4)
+                    .padding(.vertical, cornerRadius)
+                    .padding(.leading, 1)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
+// MARK: Açılır seçim kutusu
+
+/// Açılır seçim kutusu (selectbox): giriş kutusu yüzeyi (yüzey zemini, ince halka, 12 köşe, 40 yükseklik), koyu yazı,
+/// sağda tek küçük aşağı ok; tıklanınca sistemin kendi menüsü açılır, seçili satır tikli. Ayarlar'daki bütün açılır
+/// seçimler bunu kullanır (eski Picker'ın soluk sarı görünümü yerine).
+struct DSSelect<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(Value, String)]
+    @State private var anchor = DSMenuAnchor()
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: DS.radius("control"), style: .continuous)
+        Button(action: open) {
+            HStack(spacing: DS.space("xs")) {
+                Text(verbatim: options.first { $0.0 == selection }?.1 ?? "")
+                    .font(.dsBody)
+                    .foregroundStyle(Color.dsText)
+                    .lineLimit(1)
+                Spacer(minLength: DS.space("xs"))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.dsMuted)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
+            .frame(height: DS.size("tab"))
+            .background(hovering && isEnabled ? Color.dsField : Color.dsSurface, in: shape)
+            .overlay(shape.strokeBorder(Color.dsBorder))
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.5)
+        .onHover { hovering = $0 }
+        .background(DSMenuAnchorView(anchor: anchor))
+        .accessibilityValue(Text(verbatim: options.first { $0.0 == selection }?.1 ?? ""))
+    }
+
+    private func open() {
+        guard let view = anchor.view else { return }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        var current: NSMenuItem?
+        for (value, title) in options {
+            let item = DSMenuAnchor.Item(title: title) { selection = value }
+            item.state = value == selection ? .on : .off
+            if value == selection { current = item }
+            menu.addItem(item)
+        }
+        menu.minimumWidth = view.bounds.width
+        // Seçili satır kutunun üstüne gelir (sistem açılır menüsü gibi).
+        menu.popUp(positioning: current, at: NSPoint(x: 0, y: view.isFlipped ? view.bounds.height - 4 : 4), in: view)
+    }
+}
+
+/// Başlıklı seçim kutusu: başlık üstte (15 orta kalın), 8 pt altında kutu; isteğe bağlı tek cümle açıklama.
+struct DSSelectRow<Value: Hashable>: View {
+    let title: LocalizedStringKey
+    @Binding var selection: Value
+    let options: [(Value, String)]
+    var hint: LocalizedStringKey?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.space("xs")) {
+            Text(title).font(.dsBodyStrong).foregroundStyle(Color.dsText)
+            DSSelect(selection: $selection, options: options).accessibilityLabel(Text(title))
+            if let hint { Text(hint).dsMuted() }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Menünün açılacağı görünüm (AppKit) ve menü satırının eylemi.
+final class DSMenuAnchor {
+    weak var view: NSView?
+
+    final class Item: NSMenuItem {
+        private let handler: () -> Void
+
+        init(title: String, handler: @escaping () -> Void) {
+            self.handler = handler
+            super.init(title: title, action: #selector(run), keyEquivalent: "")
+            target = self
+        }
+
+        @available(*, unavailable)
+        required init(coder: NSCoder) { fatalError("init(coder:) kullanılmaz") }
+
+        @objc private func run() { handler() }
+    }
+}
+
+private struct DSMenuAnchorView: NSViewRepresentable {
+    let anchor: DSMenuAnchor
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        anchor.view = view
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) { anchor.view = view }
 }

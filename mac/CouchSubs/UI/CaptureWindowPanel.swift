@@ -12,7 +12,7 @@ struct CaptureWindowPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.space("s")) {
-            DSRow(title: "SELECTED WINDOW", subtitle: nil, divider: false) {
+            DSRow(title: "Selected window", subtitle: nil, divider: false) {
                 if let target = model.settings.captureWindow {
                     DSBadge(text: LocalizedStringKey(target.title.isEmpty ? target.processName : target.title), tone: .ok)
                 } else {
@@ -43,7 +43,7 @@ struct GameWindowPicker: View {
     var body: some View {
         HStack(alignment: .top, spacing: DS.space("l")) {
             DSCard(spacing: DS.space("xs")) {
-                DSCardHeader("OBS PROJECTOR OR GAME WINDOW") {
+                DSCardHeader("OBS projector or game window") {
                     Button("Refresh Windows") { Task { await refresh() } }.buttonStyle(.dsSecondary)
                 }
                 ForEach(CaptureWindows.options(saved: model.settings.captureWindow, open: open)) { option in
@@ -76,7 +76,7 @@ struct GameWindowPicker: View {
             }
             .frame(width: 440)
             DSCard(scrolls: false) {
-                DSCardHeader("SELECTED WINDOW") {
+                DSCardHeader("Selected window") {
                     if let selected {
                         DSBadge(text: LocalizedStringKey(selected.title.isEmpty ? selected.processName : selected.title), tone: .ok)
                     }

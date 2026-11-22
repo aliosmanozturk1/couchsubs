@@ -94,7 +94,7 @@ private struct StatusChips: View {
         if model.demoMode {
             StatusChip(key: "Demo Mode", value: String(localized: "Sample pictures"), detail: nil, tone: tone) { model.openSettings(.console) }
         } else if model.readsCaptureWindow {
-            StatusChip(key: "WINDOW", value: model.settings.captureWindow?.title ?? model.pictureSourceName,
+            StatusChip(key: "Window", value: model.settings.captureWindow?.title ?? model.pictureSourceName,
                        detail: shortState, tone: tone) { model.openSettings(.console) }
         } else if model.isXbox {
             StatusChip(key: "Xbox · Beta", value: model.xboxConsole?.name ?? "Xbox", detail: shortState, tone: tone) {
@@ -202,13 +202,17 @@ private struct PreviewCard: View {
 
     var body: some View {
         DSCard(padding: DS.space("m"), spacing: DS.space("m"), scrolls: false) {
+            // Önizleme ile düğme satırı aynı genişlikte ve kenarları hizalı: önce 16:9 kutu sığdırılır, düğmeler onun eninde.
             GeometryReader { geometry in
-                let size = Self.fit(geometry.size)
-                preview.frame(width: size.width, height: size.height)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                let gap = DS.space("m")
+                let size = Self.fit(CGSize(width: geometry.size.width, height: geometry.size.height - DS.size("button") - gap))
+                VStack(spacing: gap) {
+                    preview.frame(width: size.width, height: size.height)
+                    HomeButtons().frame(width: size.width)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxHeight: .infinity)
-            HomeButtons()
         }
         .frame(maxHeight: .infinity)
     }
@@ -235,9 +239,10 @@ private struct PreviewCard: View {
                             .id(model.lastTranslation)
                             .transition(.opacity.combined(with: .offset(y: -8)))
                     }
-                    HStack {
-                        LivePill(running: running)
+                    // Durum hapı sağ üstte: örnek karenin sol üstündeki görev yazısıyla çakışmasın.
+                    HStack(spacing: DS.space("xs")) {
                         Spacer()
+                        LivePill(running: running)
                         if running {
                             OverlayPill(text: String(format: String(localized: "%lld Frames/s"), ticker.fps), mono: true,
                                         prefix: model.isXbox ? "Xbox" : model.readsCaptureWindow ? nil : "PS5")
@@ -433,7 +438,7 @@ private struct StatusCard: View {
         let percent = entries.isEmpty ? 0 : Int((Double(packCount) / Double(entries.count) * 100).rounded())
         let perMinute = entries.filter { ticker.now.timeIntervalSince($0.date) <= 60 }.count
         DSCard(scrolls: false) {
-            DSCardHeader("STATUS")
+            DSCardHeader("Status")
             Text(model.isRunning ? (entries.isEmpty ? "Waiting for Subtitles" : "Subtitles Flowing") : "Translation Stopped")
                 .font(.dsH3)
             HStack(spacing: DS.space("xs")) {
@@ -607,7 +612,7 @@ private struct LiveFeedCard: View {
     var body: some View {
         let entries = Array(model.sessionHistory.prefix(30))
         DSCard(spacing: DS.space("xs"), scrolls: false) {
-            DSCardHeader("LIVE FEED") {
+            DSCardHeader("Live feed") {
                 Button("History →") { model.showHistory = true }
                     .buttonStyle(.plain)
                     .font(.dsSmall)

@@ -76,6 +76,9 @@ final class ScreenshotTests: XCTestCase {
         store.save("tv-key", for: StoreKey.tvKey)
         let model = AppModel(services: FakeServices(), store: store, defaults: .isolated())
         model.settings.translationEngine = .deepL
+        // Ayarlar › Altyazı Alanı'nda bir ek alan, Seslendirme'de açık dublaj görünsün.
+        model.settings.addExtraArea(.quest, name: String(localized: "Quest"))
+        model.settings.dubbing.enabled = true
         model.isRunning = true
         model.sessionState = .streaming
         model.tvClients = 1

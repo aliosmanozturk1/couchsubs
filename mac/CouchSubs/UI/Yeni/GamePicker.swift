@@ -36,7 +36,7 @@ private struct GamePickerCard: View {
 
     var body: some View {
         DSCard(scrolls: false) {
-            DSCardHeader("GAME BEING PLAYED")
+            DSCardHeader("Game being played")
             Text("Which Game Are You Playing?").font(.dsH2)
             TextField("Search Games", text: $query)
                 .textFieldStyle(DSTextFieldStyle())

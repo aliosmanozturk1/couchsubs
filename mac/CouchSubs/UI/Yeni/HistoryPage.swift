@@ -78,10 +78,10 @@ struct HistoryPage: View {
 
     private var header: some View {
         HStack(spacing: DS.space("m")) {
-            DSMonoLabel("TIME").frame(width: Self.columns.time, alignment: .leading)
-            DSMonoLabel("TURKISH").frame(maxWidth: .infinity, alignment: .leading)
-            DSMonoLabel("ENGLISH").frame(maxWidth: .infinity, alignment: .leading)
-            DSMonoLabel("SOURCE").frame(width: Self.columns.source, alignment: .leading)
+            DSMonoLabel("Time").frame(width: Self.columns.time, alignment: .leading)
+            DSMonoLabel("Turkish").frame(maxWidth: .infinity, alignment: .leading)
+            DSMonoLabel("English").frame(maxWidth: .infinity, alignment: .leading)
+            DSMonoLabel("Source").frame(width: Self.columns.source, alignment: .leading)
         }
         .padding(.horizontal, DS.space("l"))
         .padding(.vertical, DS.space("m"))

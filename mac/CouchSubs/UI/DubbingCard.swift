@@ -9,16 +9,16 @@ struct DubbingCard: View {
 
     var body: some View {
         Card(title: "Turkish dubbing") {
-            SwitchRow(title: "Voice the translation in Turkish", isOn: $model.settings.dubbing.enabled)
-            HintText(text: "In the game's audio settings, turn the dialogue (voice) volume down; keep music and effects. If the game can show speaker names in subtitles, turn them on: every character then speaks with its own voice.")
+            DSSwitchRow(title: "Voice the Translation in Turkish",
+                        subtitle: "In the game's audio settings, turn the dialogue (voice) volume down; keep music and effects. If the game can show speaker names in subtitles, turn them on: every character then speaks with its own voice.",
+                        isOn: $model.settings.dubbing.enabled, divider: false)
 
             if model.settings.dubbing.enabled {
                 // "Ses: Doğal / Hızlı" (Windows ile aynı): Hızlı, Mac'in kendi Türkçe sesidir; indirme gerekmez.
-                Picker("Voice", selection: $model.settings.dubbing.engine) {
-                    Text("Natural").tag(DubbingEngine.natural)
-                    Text("Fast").tag(DubbingEngine.fast)
+                VStack(alignment: .leading, spacing: DS.space("xs")) {
+                    Text("Voice").font(.dsBodyStrong).foregroundStyle(Color.dsText)
+                    DSTabs(selection: $model.settings.dubbing.engine, items: [(DubbingEngine.natural, "Natural"), (.fast, "Fast")])
                 }
-                .pickerStyle(.segmented)
                 HintText(text: model.settings.dubbing.engine == .fast
                     ? "This Mac's own Turkish voice: speaks at once, nothing to download. Sounds more mechanical."
                     : "Natural voices, downloaded once. Each line takes a moment to prepare, so the voice can come a little after the subtitle.")
@@ -30,23 +30,24 @@ struct DubbingCard: View {
                         Text("Downloading voices… \(Int(progress * 100))%")
                     }
                 } else if !model.dubbingReady {
-                    HStack {
-                        Text("The voices are downloaded once (440 MB).").foregroundStyle(Color.csSecondary)
-                        Spacer()
-                        Button("Download voices") { Task { await model.downloadDubbingModel() } }.buttonStyle(.primary)
+                    HStack(alignment: .center, spacing: DS.space("m")) {
+                        Text("The voices are downloaded once (440 MB).").dsMuted(.dsBody)
+                        Spacer(minLength: DS.space("s"))
+                        Button("Download Voices") { Task { await model.downloadDubbingModel() } }
+                            .buttonStyle(DSButtonStyle(kind: .primary))
+                            .fixedSize()
                     }
                 } else {
-                    Picker("Play the voice on", selection: $model.settings.dubbing.output) {
-                        Text("TV").tag(DubbingOutput.tv)
-                        Text("This Mac").tag(DubbingOutput.computer)
+                    VStack(alignment: .leading, spacing: DS.space("xs")) {
+                        Text("Play the Voice On").font(.dsBodyStrong).foregroundStyle(Color.dsText)
+                        DSTabs(selection: $model.settings.dubbing.output, items: [(DubbingOutput.tv, "TV"), (.computer, "This Mac")])
                     }
-                    .pickerStyle(.segmented)
                     VoiceRow(title: Text("Narrator and unnamed lines"), voice: $model.settings.dubbing.cast.narrator)
                     VoiceRow(title: Text("Second speaker in dialogue"), voice: $model.settings.dubbing.cast.partner)
                     let names = model.settings.dubbing.cast.assignments.keys.sorted()
                     if !names.isEmpty {
                         Divider().overlay(Color.csBorder)
-                        Text("Characters").font(.csHeadline)
+                        Text("Characters").font(.dsCardTitle)
                         ForEach(names, id: \.self) { name in
                             VoiceRow(title: Text(verbatim: Self.displayName(name)),
                                      voice: Binding(get: { model.settings.dubbing.cast.assignments[name] ?? .male1 },
@@ -76,15 +77,11 @@ private struct VoiceRow: View {
     @Binding var voice: DubbingVoice
 
     var body: some View {
-        HStack {
-            Picker(selection: $voice) {
-                ForEach(DubbingVoice.allCases, id: \.self) { voice in
-                    Text(voice.label).tag(voice)
-                }
-            } label: {
-                title
-            }
-            Button("Listen") { Task { await model.previewVoice(voice) } }.buttonStyle(.secondary)
+        HStack(alignment: .center, spacing: DS.space("s")) {
+            title.font(.dsBodyStrong).foregroundStyle(Color.dsText).frame(maxWidth: .infinity, alignment: .leading)
+            DSSelect(selection: $voice, options: DubbingVoice.allCases.map { ($0, $0.text) })
+                .frame(width: 240)
+            Button("Listen") { Task { await model.previewVoice(voice) } }.buttonStyle(DSButtonStyle(kind: .secondary)).fixedSize()
         }
     }
 }

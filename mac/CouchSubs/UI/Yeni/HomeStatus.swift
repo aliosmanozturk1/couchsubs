@@ -70,7 +70,7 @@ struct ProblemCard: View {
     }
 
     private var silenceLabel: LocalizedStringKey {
-        model.isRunning ? LocalizedStringKey(String(format: String(localized: "%lld S SILENT"), silence)) : "PROBLEM"
+        model.isRunning ? LocalizedStringKey(String(format: String(localized: "%lld s silent"), silence)) : "Issue"
     }
 
     private var title: LocalizedStringKey {
@@ -307,7 +307,7 @@ private extension View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.dsSurface, in: shape)
             .overlay(shape.strokeBorder(Color.dsBorder))
-            .overlay(alignment: .leading) { Color.dsAmber.frame(width: 4).clipShape(shape).allowsHitTesting(false) }
+            .dsAccentStripe(.dsAmber, cornerRadius: DS.radius("tile"))
             .clipShape(shape)
     }
 }

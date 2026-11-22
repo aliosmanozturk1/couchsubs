@@ -17,7 +17,7 @@ struct SecondScreenPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.space("m")) {
-            Text("Show on another device").font(.csHeadline)
+            Text("Show on another device").font(.dsCardTitle)
             if let address {
                 if let code = SecondScreen.qrImage(for: address) {
                     // Koyu temada da okunsun diye kod beyaz zeminde; büyütülürken yumuşatılmaz.

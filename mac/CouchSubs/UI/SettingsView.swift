@@ -16,33 +16,23 @@ struct AppearanceCard: View {
             // Yer ayarları TV ve OBS katmanı içindir; bilgisayar ekranındaki altyazı penceresi sürüklenerek taşınır (Genzo, 2026-11-13:
             // "ekrandaki konum ayarı işlemiyor").
             if model.settings.output.showsOnTV || model.settings.output == .obs {
-                Picker("Placement", selection: $model.settings.style.placement) {
-                    Text("Over the English subtitle").tag(SubtitlePlacement.cover)
-                    Text("Above the English subtitle").tag(SubtitlePlacement.above)
-                    Text("Below the English subtitle").tag(SubtitlePlacement.below)
-                    Text("Fixed position").tag(SubtitlePlacement.fixed)
-                }
+                DSSelectRow(title: "Placement", selection: $model.settings.style.placement,
+                            options: [(SubtitlePlacement.cover, String(localized: "Over the English subtitle")), (SubtitlePlacement.above, String(localized: "Above the English subtitle")), (SubtitlePlacement.below, String(localized: "Below the English subtitle")), (SubtitlePlacement.fixed, String(localized: "Fixed position"))])
                 if model.settings.style.placement == .fixed {
                     // Sürüklerken TV'de örnek altyazı görünür; böylece yeri doğrudan ekranda ayarlanır.
-                    Slider(value: Binding(get: { Double(model.settings.style.bottomPercent) },
-                                          set: { model.settings.style.bottomPercent = Int($0.rounded()) }), in: 0...85) {
-                        Text("Position on screen")
-                    } minimumValueLabel: {
-                        Text("Bottom").font(.csCallout).foregroundStyle(Color.csSecondary)
-                    } maximumValueLabel: {
-                        Text("Top").font(.csCallout).foregroundStyle(Color.csSecondary)
-                    } onEditingChanged: { editing in
+                    DSSliderRow(title: "Position on Screen", valueText: percentText(Double(model.settings.style.bottomPercent)),
+                                value: Binding(get: { Double(model.settings.style.bottomPercent) },
+                                               set: { model.settings.style.bottomPercent = Int($0.rounded()) }),
+                                range: 0...85, step: 1,
+                                hint: "The left end is the bottom of the screen. You can also move subtitles with the ▲ and ▼ buttons on the TV remote.") { editing in
                         if editing { model.sendTestSubtitle() }
                     }
-                    HintText(text: "In fixed position you can also move subtitles with the ▲ and ▼ buttons on the TV remote.")
                 } else {
                     HintText(text: "The translation follows where the game shows its own subtitle.")
                 }
             }
-            Picker("Background area", selection: $model.settings.style.backgroundShape) {
-                Text("Fit the text").tag(SubtitleBackgroundShape.fit)
-                Text("Full-width band").tag(SubtitleBackgroundShape.band)
-            }
+            DSSelectRow(title: "Background area", selection: $model.settings.style.backgroundShape,
+                        options: [(SubtitleBackgroundShape.fit, String(localized: "Fit the text")), (SubtitleBackgroundShape.band, String(localized: "Full-width band"))])
             HintText(text: "Choose Dark under Subtitle Appearance to fully hide the English subtitle in the game. A full-width band also covers the sides.")
             SwitchRow(title: "Bold text", isOn: $model.settings.style.bold)
             SwitchRow(title: "Keep previous lines above in fast dialogue", isOn: $model.settings.style.stackPrevious)
@@ -59,13 +49,8 @@ struct LanguageCard: View {
 
     var body: some View {
         Card {
-            Picker("Game language", selection: $model.settings.sourceLanguage) {
-                Text("English").tag("en")
-                Text("Japanese").tag("ja")
-                Text("German").tag("de")
-                Text("French").tag("fr")
-                Text("Spanish").tag("es")
-            }
+            DSSelectRow(title: "Game language", selection: $model.settings.sourceLanguage,
+                        options: [("en", String(localized: "English")), ("ja", String(localized: "Japanese")), ("de", String(localized: "German")), ("fr", String(localized: "French")), ("es", String(localized: "Spanish"))])
         }
     }
 }
@@ -88,11 +73,8 @@ struct AreaCards: View {
         AreaProfileCard(areas: model.gameAreas)
         GameProfilesCard(areas: model.gameAreas)
         Card {
-            Picker("Area preset", selection: Binding(get: { model.settings.areaPreset }, set: { model.settings.selectAreaPreset($0) })) {
-                ForEach(AreaPreset.allCases, id: \.self) { preset in Text(preset.title).tag(preset) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            DSTabs(selection: Binding(get: { model.settings.areaPreset }, set: { model.settings.selectAreaPreset($0) }),
+                   items: AreaPreset.allCases.map { ($0, $0.newTitle) })
             LiveRegionPreview(settings: $model.settings, preview: model.framePreview)
             if model.settings.areaPreset == .custom { CustomAreaSliders(settings: $model.settings) }
             SwitchRow(title: "Keep centered", isOn: $model.settings.keepAreaCentered)
@@ -122,10 +104,7 @@ struct AreaCards: View {
             SwitchRow(title: "Automatically translate the GTA 6 phone (experimental)", isOn: $model.settings.autoReadGamePhone)
             // Dört platformda aynı ad ve seçenekler (iPhone: Profile, Windows: SettingsWindow, Android: ProfileScreens);
             // otomatik telefon okumasına ve "Ekranı çevir"e uygulanır, varsayılan Yanda Panel.
-            Picker("GTA 6 Phone Messages", selection: $model.settings.phoneMessagesPanel) {
-                Text("Side Panel").tag(true)
-                Text("On the Bubbles").tag(false)
-            }
+            DSTabs(selection: $model.settings.phoneMessagesPanel, items: [(true, "Side Panel"), (false, "On the Bubbles")])
             HintText(text: "Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble.")
         }
         Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .screen, String(localized: "Translate the screen (%@)")))) {
@@ -308,16 +287,15 @@ enum GameProfileEditing: Equatable {
     case new, rename(String), duplicate(String)
 }
 
-/// Altyazının yanında sürekli okunan ek alanlar (en çok üç): görev yazısı, bildirim, telefon mesajı. Her biri
-/// adlandırılır, açılıp kapatılır; çerçevesi canlı önizlemede sürüklenir.
+/// Altyazının yanında sürekli okunan ek alanlar: görev yazısı, bildirim, telefon mesajı. Her biri adlandırılır, açılıp
+/// kapatılır; çerçevesi canlı önizlemede sürüklenir (Windows: SettingsView.xaml › EXTRA AREAS, aynı düzen).
 struct ExtraAreasCard: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        Card(title: "EXTRA AREAS") {
+        Card(title: "Extra areas") {
             // Sınır 3'ten kaldırıldı; ilk üçünün kısayolu var (Num 1–3), sonrakiler kısayolsuz.
             HintText(text: "Also reads small text next to the subtitle, such as objectives, phone messages or notifications. Each area is read once a second and translated again when the text changes; the translation appears on the TV next to that text.")
-            if model.settings.extraAreas.isEmpty { HintText(text: "No extra areas yet.") }
             // Tam ekranda ek alanlar okunmaz (bkz. activeExtraAreas); ayarları korunur, düzenlenebilir.
             if model.settings.extraAreasPausedByFullScreen, !model.settings.extraAreas.isEmpty {
                 HintText(text: "Extra areas aren't read while the subtitle area is Full screen, because the whole screen is already read. They're read again when you pick another area.")
@@ -326,18 +304,37 @@ struct ExtraAreasCard: View {
                 ExtraAreaEditor(id: area.id, settings: $model.settings, preview: model.framePreview)
                     .opacity(model.settings.extraAreasPausedByFullScreen ? 0.5 : 1)
             }
-            if model.settings.canAddExtraArea {
-                Menu("Add Extra Area") {
-                    ForEach(ExtraAreaPreset.allCases, id: \.self) { preset in
-                        Button(preset.title) { model.settings.addExtraArea(preset, name: preset.defaultName) }
-                    }
+            HStack(spacing: DS.space("m")) {
+                if model.settings.extraAreas.isEmpty {
+                    Text("No extra areas yet.").dsMuted()
+                    Spacer(minLength: DS.space("s"))
                 }
-                .fixedSize()
+                if model.settings.canAddExtraArea {
+                    // Menü yok: yeni alan boş bir köşenin hazır yeriyle eklenir; yeri alanın içindeki seçiciden değişir.
+                    Button {
+                        let preset = Self.nextPreset(model.settings.extraAreas)
+                        model.settings.addExtraArea(preset, name: preset.defaultName)
+                    } label: {
+                        HStack(spacing: DS.space("xs")) {
+                            Image(systemName: "plus").font(.system(size: 13, weight: .semibold)).accessibilityHidden(true)
+                            Text("Add Extra Area")
+                        }
+                    }
+                    .buttonStyle(DSButtonStyle(kind: .secondary))
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// Henüz kullanılmayan ilk hazır yer (görev, bildirim, telefon); hepsi kullanıldıysa görev (Windows: NextPreset).
+    static func nextPreset(_ areas: [ExtraArea]) -> ExtraAreaPreset {
+        ExtraAreaPreset.allCases.first { preset in !areas.contains { preset.region.isClose(to: $0.region) } } ?? .quest
     }
 }
 
+/// Bir ek alanın düzenleyicisi: üstte ad (sade giriş) + kısayol rozeti + küçük Kaldır; altında Sürekli Oku anahtarı,
+/// yer seçici, önizleme ve Sonucu Göster seçici. Açıklamalar ilgili denetimin altında, birer kısa cümle.
 struct ExtraAreaEditor: View {
     let id: String
     @Binding var settings: UserSettings
@@ -346,62 +343,105 @@ struct ExtraAreaEditor: View {
 
     var body: some View {
         if let area = settings.extraAreas.first(where: { $0.id == id }) {
-            VStack(alignment: .leading, spacing: Theme.space("m")) {
-                HStack(spacing: Theme.space("m")) {
-                    TextField("Area name", text: Binding(get: { area.name }, set: { name in settings.updateExtraArea(id: id) { $0.name = name } }))
-                        .textFieldStyle(CSTextFieldStyle())
-                    Toggle("Keep reading this area", isOn: Binding(get: { area.enabled },
-                                                                   set: { on in settings.updateExtraArea(id: id) { $0.enabled = on } }))
-                        .toggleStyle(.switch)
-                        .tint(Color.csAccent)
-                        .fixedSize()
-                    Button("Remove") { settings.removeExtraArea(id: id) }.buttonStyle(.secondary)
+            let shape = RoundedRectangle(cornerRadius: DS.radius("tile"), style: .continuous)
+            let preset = ExtraAreaPreset.matching(area.region)
+            VStack(alignment: .leading, spacing: DS.space("m")) {
+                HStack(spacing: DS.space("s")) {
+                    ExtraAreaNameField(name: Binding(get: { area.name }, set: { name in settings.updateExtraArea(id: id) { $0.name = name } }))
+                    if let keys = shortcutKeys { DSKeys(keys: keys) } else { DSBadge(text: "No Shortcut") }
+                    Button { settings.removeExtraArea(id: id) } label: {
+                        Label("Remove", systemImage: "trash")
+                    }
+                    .buttonStyle(DSTextButtonStyle())
                 }
-                Picker("Area preset", selection: Binding(get: { ExtraAreaPreset.matching(area.region) },
-                                                         set: { preset in
-                    guard let preset else { return }
-                    settings.updateExtraArea(id: id) { $0.region = preset.region }
-                })) {
-                    ForEach(ExtraAreaPreset.allCases, id: \.self) { preset in Text(preset.title).tag(Optional(preset)) }
-                    Text("Custom").tag(ExtraAreaPreset?.none)
+                DSSwitchRow(title: "Keep Reading This Area", subtitle: "Read about once a second while translating.",
+                            isOn: Binding(get: { area.enabled }, set: { on in settings.updateExtraArea(id: id) { $0.enabled = on } }),
+                            divider: false)
+                VStack(alignment: .leading, spacing: DS.space("xs")) {
+                    DSTabs(selection: Binding(get: { preset }, set: { next in
+                        guard let next else { return }
+                        settings.updateExtraArea(id: id) { area in
+                            // Ad hâlâ eski yerin hazır adıysa (ör. "Görev") yeni yerin adı verilir; kullanıcının adı korunur.
+                            let old = ExtraAreaPreset.matching(area.region)
+                            if area.name.isEmpty || area.name == old?.defaultName { area.name = next.defaultName }
+                            area.region = next.region
+                        }
+                    }), items: Self.presetTabs)
+                    Text(placeHint(preset)).dsMuted()
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
                 ExtraAreaPreview(region: area.region, preview: preview) { region in
                     settings.updateExtraArea(id: id) { $0.region = region }
                 }
-                // Sürekli okunmayan alan kısayolla bir kez okunur; sonucun yeri seçilir (Windows: ek bölgenin "Sonucu göster"i).
-                ResultTargetPicker(target: Binding(get: { area.target }, set: { target in settings.updateExtraArea(id: id) { $0.target = target } }))
-                if let number = settings.extraAreas.firstIndex(where: { $0.id == id }).map({ $0 + 1 }),
-                   let action = HotkeyAction.areaActions.dropFirst(number - 1).first {
-                    HintText(text: LocalizedStringKey(HotkeyText.sentence(settings, action,
-                        String(localized: "Draw the area to translate, for example a quest panel. While you play, press its shortcut (%@) to read and translate it once. Choose where the result shows. It works even when CouchSubs is in the background."))))
-                } else {
-                    // Dördüncü ve sonraki alanlar sürekli okunur ama kısayolları yok.
-                    Text("No Shortcut").font(.system(size: 12, weight: .medium, design: .monospaced)).foregroundStyle(Color.csSecondary)
-                }
+                // Kısayolla bir kez okunan alanın sonucunun yeri (Windows: ek bölgenin "Sonucu Göster"i).
+                ResultTargetPicker(target: Binding(get: { area.target }, set: { target in settings.updateExtraArea(id: id) { $0.target = target } }),
+                                   hint: shortcutKeys == nil ? nil : "Press its shortcut while playing to translate this area once, even with CouchSubs in the background.")
             }
-            .padding(Theme.space("m"))
-            .background(Color.csSurface2, in: RoundedRectangle(cornerRadius: Theme.radius("inner"), style: .continuous))
+            .padding(DS.space("m"))
+            .background(Color.dsSurface, in: shape)
+            .overlay(shape.strokeBorder(Color.dsTileBorder))
+        }
+    }
+
+    private static let presetTabs: [(ExtraAreaPreset?, LocalizedStringKey)] =
+        [(.quest, "Quest"), (.notification, "Notification"), (.phone, "Phone"), (nil, "Custom")]
+
+    /// İlk üç alanın kısayol tuşları (ör. "Num 1", "⌃⇧1"); dördüncü ve sonrakilerin kısayolu yok.
+    private var shortcutKeys: [String]? {
+        guard let number = settings.extraAreas.firstIndex(where: { $0.id == id }).map({ $0 + 1 }),
+              let action = HotkeyAction.areaActions.dropFirst(number - 1).first else { return nil }
+        let keys = HotkeyTable.keys(settings.hotkeys, action).map(\.label)
+        return keys.isEmpty ? nil : keys
+    }
+
+    private func placeHint(_ preset: ExtraAreaPreset?) -> LocalizedStringKey {
+        switch preset {
+        case .quest: "Top right of the screen."
+        case .notification: "Bottom left of the screen."
+        case .phone: "Bottom right of the screen."
+        case nil: "Drag the frame on the picture to place it."
         }
     }
 }
 
-/// "Sonucu göster": kısayolla bir kez okunan alanın çevirisi TV'de, bu Mac'te ya da ikisinde de (Windows ile aynı seçim).
-struct ResultTargetPicker: View {
-    @Binding var target: ResultTarget
+/// Ek alanın adı: kenarlıksız sade giriş (başlık gibi görünür); üzerine gelince ya da yazarken alan zemini ve ince halka.
+private struct ExtraAreaNameField: View {
+    @Binding var name: String
+    @FocusState private var focused: Bool
+    @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.space("s")) {
-            Text("Show the result").font(.csBody)
-            Picker("Show the result", selection: $target) {
-                Text("On the TV").tag(ResultTarget.tv)
-                Text("On this Mac").tag(ResultTarget.pc)
-                Text("On both").tag(ResultTarget.both)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+        let shape = RoundedRectangle(cornerRadius: DS.radius("control"), style: .continuous)
+        HStack(spacing: DS.space("xs")) {
+            TextField("Area Name", text: $name)
+                .textFieldStyle(.plain)
+                .font(.dsBodyStrong)
+                .foregroundStyle(Color.dsText)
+                .focused($focused)
+            Image(systemName: "pencil")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.dsFaint)
+                .opacity(hovering || focused ? 1 : 0)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, DS.space("s"))
+        .frame(height: DS.size("tab"))
+        .background(hovering || focused ? Color.dsField : Color.clear, in: shape)
+        .overlay(shape.strokeBorder(focused ? Color.dsAmber : hovering ? Color.dsBorder : Color.clear, lineWidth: focused ? 2 : 1))
+        .padding(.leading, -DS.space("s"))
+        .onHover { hovering = $0 }
+    }
+}
+
+/// "Sonucu Göster": kısayolla bir kez okunan alanın çevirisi TV'de, bu Mac'te ya da ikisinde de (Windows ile aynı seçim).
+struct ResultTargetPicker: View {
+    @Binding var target: ResultTarget
+    var hint: LocalizedStringKey?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.space("xs")) {
+            Text("Show the Result").font(.dsBodyStrong).foregroundStyle(Color.dsText)
+            DSTabs(selection: $target, items: [(ResultTarget.tv, "On the TV"), (.pc, "On This Mac"), (.both, "On Both")])
+            if let hint { Text(hint).dsMuted() }
         }
     }
 }
@@ -511,12 +551,11 @@ struct StreamWindowCard: View {
     var body: some View {
         Card(title: "Stream window") {
             HintText(text: "For streaming apps without a transparent browser source (TikTok LIVE Studio, Streamlabs and others): open the stream window, add it with Window capture (the window is called CouchSubs Stream) and remove its background with a Chroma key filter.")
-            Picker("Background", selection: $model.streamBackground) {
-                Text("Green").tag(StreamBackground.green)
-                Text("Black").tag(StreamBackground.black)
-                Text("Magenta").tag(StreamBackground.magenta)
+            VStack(alignment: .leading, spacing: DS.space("xs")) {
+                Text("Background").font(.dsBodyStrong).foregroundStyle(Color.dsText)
+                DSTabs(selection: $model.streamBackground,
+                       items: [(StreamBackground.green, "Green"), (.black, "Black"), (.magenta, "Magenta")])
             }
-            .pickerStyle(.segmented)
             Button(model.streamWindowOpen ? "Close the stream window" : "Open the stream window") {
                 model.streamWindowOpen.toggle()
             }
@@ -568,17 +607,11 @@ struct FrameSourceCard: View {
 
     var body: some View {
         Card {
-            Picker("Read the picture from", selection: $model.settings.frameSource) {
-                Text("The PS5 (second account)").tag(FrameSource.ps5)
-                Text("Remote Play window on this Mac").tag(FrameSource.remotePlayWindow)
-                Text("OBS projector or game window").tag(FrameSource.captureWindow)
-            }
+            DSSelectRow(title: "Read the picture from", selection: $model.settings.frameSource,
+                        options: [(FrameSource.ps5, String(localized: "The PS5 (second account)")), (FrameSource.remotePlayWindow, String(localized: "Remote Play window on this Mac")), (FrameSource.captureWindow, String(localized: "OBS projector or game window"))])
             if model.settings.frameSource == .remotePlayWindow {
-                Picker("Remote Play app", selection: $model.settings.remotePlayApp) {
-                    Text("Whichever is open").tag(RemotePlayApp.automatic)
-                    Text("PS Remote Play (Sony)").tag(RemotePlayApp.sony)
-                    Text("chiaki-ng").tag(RemotePlayApp.chiaki)
-                }
+                DSSelectRow(title: "Remote Play app", selection: $model.settings.remotePlayApp,
+                            options: [(RemotePlayApp.automatic, String(localized: "Whichever is open")), (RemotePlayApp.sony, String(localized: "PS Remote Play (Sony)")), (RemotePlayApp.chiaki, String(localized: "chiaki-ng"))])
                 HintText(text: "Play in PS Remote Play or chiaki-ng on this Mac; CouchSubs reads only that window, so no second account is needed. Show the subtitles on the computer screen, and allow Screen Recording for CouchSubs when macOS asks.")
                 // Kurulu olanlar "Kurulu", olmayanlar resmi indirme sayfasına giden düğmeyle (ikisi de denenebilir).
                 HStack {
@@ -627,10 +660,8 @@ struct XboxFrameSourceCard: View {
 
     var body: some View {
         Card {
-            Picker("Read the picture from", selection: $model.settings.xboxFrameSource) {
-                Text("Xbox (this app connects)").tag(XboxFrameSource.xbox)
-                Text("OBS projector or game window").tag(XboxFrameSource.captureWindow)
-            }
+            DSSelectRow(title: "Read the picture from", selection: $model.settings.xboxFrameSource,
+                        options: [(XboxFrameSource.xbox, String(localized: "Xbox (this app connects)")), (XboxFrameSource.captureWindow, String(localized: "OBS projector or game window"))])
             HintText(text: "If you play in the Xbox app, on play.xbox.com or with a capture card in OBS, choose this window; CouchSubs doesn't connect to the Xbox separately (the Xbox allows only one connection at a time).")
             if model.readsXboxWindow { CaptureWindowPanel() }
         }
@@ -643,11 +674,8 @@ struct AppThemeCard: View {
 
     var body: some View {
         Card {
-            Picker("Appearance", selection: $model.settings.appearance) {
-                Text("Dark").tag(AppAppearance.dark)
-                Text("Light").tag(AppAppearance.light)
-                Text("Same as system").tag(AppAppearance.system)
-            }
+            DSSelectRow(title: "Appearance", selection: $model.settings.appearance,
+                        options: [(AppAppearance.dark, String(localized: "Dark")), (AppAppearance.light, String(localized: "Light")), (AppAppearance.system, String(localized: "Same as system"))])
         }
     }
 }
@@ -743,8 +771,8 @@ struct GamePacksPage: View {
                         isOn: $model.settings.askGame, divider: false)
         }
         DSCard(spacing: DS.space("xxs"), scrolls: false) {
-            DSCardHeader(LocalizedStringKey(model.installedPacks.isEmpty ? "INSTALLED PACKS"
-                                            : String(format: String(localized: "INSTALLED PACKS · %lld"), GameCatalog.packShelf(model.installedPacks).count))) {
+            DSCardHeader(LocalizedStringKey(model.installedPacks.isEmpty ? "Installed packs"
+                                            : String(format: String(localized: "Installed packs · %lld"), GameCatalog.packShelf(model.installedPacks).count))) {
                 // Telefonlardaki "Paketleri şimdi güncelle" (Packs.swift): beklerken "Güncelleniyor…", sonuç uyarıda.
                 Button(updating ? "Updating Packs…" : "Update Packs Now", action: updateNow)
                     .buttonStyle(.dsSecondary)
@@ -1069,11 +1097,8 @@ struct AndroidDisplayModePicker: View {
     @Binding var mode: TVDisplayMode
 
     var body: some View {
-        Picker("Picture mode", selection: $mode) {
-            Text("Automatic (recommended)").tag(TVDisplayMode.auto)
-            Text("Inside the app").tag(TVDisplayMode.inApp)
-            Text("Overlay (for a black screen)").tag(TVDisplayMode.overlay)
-        }
+        DSSelectRow(title: "Picture mode", selection: $mode,
+                    options: [(TVDisplayMode.auto, String(localized: "Automatic (recommended)")), (TVDisplayMode.inApp, String(localized: "Inside the app")), (TVDisplayMode.overlay, String(localized: "Overlay (for a black screen)"))])
         HintText(text: "Automatic uses Overlay whenever the TV app allows it: the TV shows the PS5 on its own HDMI input and the subtitles appear on top. On some TVs the picture stays black inside the CouchSubs TV app. To show the PS5 inside the CouchSubs TV app instead, choose Inside the app; if no picture arrives there, the TV app switches to Overlay by itself. With Overlay the TV also keeps its picture mode, Game mode and HDR: inside the app the TV handles the PS5 picture as an app, not as its HDMI input.")
     }
 }
@@ -1278,12 +1303,9 @@ struct AIKeySection: View {
 
     var body: some View {
         // Model adı yazılamaz; yalnız ortak listedeki modeller seçilir.
-        Picker("Model", selection: Binding(get: { provider.model(model.settings.model(for: provider)).id },
-                                           set: { model.settings.setModel($0, for: provider) })) {
-            ForEach(provider.models, id: \.id) { option in
-                Text(LocalizedStringKey(option.label)).tag(option.id)
-            }
-        }
+        DSSelectRow(title: "Model", selection: Binding(get: { provider.model(model.settings.model(for: provider)).id },
+                                                    set: { model.settings.setModel($0, for: provider) }),
+                    options: provider.models.map { ($0.id, String(localized: String.LocalizationValue($0.label))) })
         if model.hasKey(engine) {
             HStack(spacing: Theme.space("m")) {
                 DoneLabel(text: String(localized: "Key saved"))
@@ -1481,51 +1503,37 @@ struct LocalAISection: View {
     }
 }
 
-/// Özel bölgenin dikey konumu ve yüksekliği (yüzde).
+/// Özel bölgenin dikey konumu ve yüksekliği (yüzde); yeni kaydırıcı satırıyla (Windows: CustomPanel, aynı düzen).
 struct CustomAreaSliders: View {
     @Binding var settings: UserSettings
 
     var body: some View {
         let percent = settings.region.verticalPercent
-        Grid(alignment: .leading, verticalSpacing: Theme.space("m")) {
-            GridRow {
-                Text("Vertical position")
-                Slider(value: Binding(get: { percent.position },
-                                      set: { settings.setCustomRegion(settings.region.withVertical(position: $0, height: percent.height)) }),
-                       in: 0...max(1, 100 - percent.height))
-                Text(verbatim: percentText(percent.position)).font(.csCallout.monospacedDigit()).foregroundStyle(Color.csSecondary)
-                    .frame(minWidth: 44, alignment: .trailing)
-            }
-            GridRow {
-                Text("Height")
-                Slider(value: Binding(get: { percent.height },
-                                      set: { settings.setCustomRegion(settings.region.withVertical(position: percent.position, height: $0)) }),
-                       in: CropRegion.minimumSize * 100...100)
-                Text(verbatim: percentText(percent.height)).font(.csCallout.monospacedDigit()).foregroundStyle(Color.csSecondary)
-                    .frame(minWidth: 44, alignment: .trailing)
-            }
+        VStack(alignment: .leading, spacing: DS.space("m")) {
+            DSSliderRow(title: "Vertical Position", valueText: percentText(percent.position),
+                        value: Binding(get: { percent.position },
+                                       set: { settings.setCustomRegion(settings.region.withVertical(position: $0, height: percent.height)) }),
+                        range: 0...max(1, 100 - percent.height))
+            DSSliderRow(title: "Height", valueText: percentText(percent.height),
+                        value: Binding(get: { percent.height },
+                                       set: { settings.setCustomRegion(settings.region.withVertical(position: percent.position, height: $0)) }),
+                        range: CropRegion.minimumSize * 100...100)
         }
-        Button("Reset area") { settings.selectAreaPreset(.bottom) }.buttonStyle(.secondary)
     }
 }
 
-/// Bekleme süresi kaydırıcısı: 0–1 sn, 0,1 sn adım; sağda değer ("0,8 sn"). Değer milisaniye olarak saklanır.
+/// Bekleme süresi kaydırıcısı: 0–1 sn, 0,1 sn adım; başlık solda, değer sağda ("0,8 sn"), altında tam genişlikte
+/// kaydırıcı ve tek cümlelik açıklama. Değer milisaniye olarak saklanır (Windows: MisreadWait/PartialWait, aynı düzen).
 struct WaitSlider: View {
     let title: LocalizedStringKey
+    var hint: LocalizedStringKey?
     @Binding var ms: Int
 
     var body: some View {
         let seconds = Double(min(max(ms, 0), UserSettings.waitSliderMaxMs)) / 1000
         let unit = String(localized: "sec")
-        HStack(spacing: Theme.space("m")) {
-            Slider(value: Binding(get: { seconds }, set: { ms = Int(($0 * 10).rounded()) * 100 }),
-                   in: 0...Double(UserSettings.waitSliderMaxMs) / 1000, step: 0.1) {
-                Text(title)
-            }
-            Text(verbatim: "\(seconds.formatted(.number.precision(.fractionLength(1)))) \(unit)")
-                .font(.csCallout.monospacedDigit())
-                .foregroundStyle(Color.csSecondary)
-                .frame(minWidth: 56, alignment: .trailing)
-        }
+        DSSliderRow(title: title, valueText: "\(seconds.formatted(.number.precision(.fractionLength(1)))) \(unit)",
+                    value: Binding(get: { seconds }, set: { ms = Int(($0 * 10).rounded()) * 100 }),
+                    range: 0...Double(UserSettings.waitSliderMaxMs) / 1000, step: 0.1, hint: hint)
     }
 }

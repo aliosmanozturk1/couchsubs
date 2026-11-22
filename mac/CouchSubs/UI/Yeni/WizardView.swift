@@ -212,7 +212,7 @@ private struct ProgressDots: View {
             }
         }
         .accessibilityElement()
-        .accessibilityLabel(Text(String(format: String(localized: "STEP %lld / %lld"), position, 4)))
+        .accessibilityLabel(Text(String(format: String(localized: "Step %lld / %lld"), position, 4)))
     }
 }
 
@@ -267,11 +267,11 @@ enum WizardText {
     }
 
     static func eyebrow(_ step: AppModel.Step, xbox: Bool) -> String {
-        let stepText = String(format: String(localized: "STEP %lld / %lld"), position(step), 4)
+        let stepText = String(format: String(localized: "Step %lld / %lld"), position(step), 4)
         switch step {
-        case .secondAccount, .psnLogin: return xbox ? stepText : String(localized: "SETUP · ACCOUNT")
-        case .hdmi: return stepText + " · " + String(localized: "TV INPUT")
-        case .betterTranslation: return String(localized: "SETUP · TRANSLATION")
+        case .secondAccount, .psnLogin: return xbox ? stepText : String(localized: "Setup · Account")
+        case .hdmi: return stepText + " · " + String(localized: "TV input")
+        case .betterTranslation: return String(localized: "Setup · Translation")
         default: return stepText
         }
     }
@@ -360,7 +360,7 @@ private struct ConsoleChoiceStep: View {
                 choice.window = false
                 model.choosePlatform(.xbox)
             }
-            option(badge: String(localized: "WINDOW"), title: "Game Window", sub: "Remote Play, OBS, Capture Card", selected: choice.window) {
+            option(badge: String(localized: "Window"), title: "Game Window", sub: "Remote Play, OBS, Capture Card", selected: choice.window) {
                 choice.window = true
             }
         }
@@ -412,7 +412,7 @@ private struct AccountStep: View {
     var body: some View {
         HStack(alignment: .top, spacing: DS.space("l")) {
             DSCard(spacing: DS.space("xs"), scrolls: false) {
-                DSCardHeader("DONE ONCE")
+                DSCardHeader("Done once")
                 ForEach(Array(items.enumerated()), id: \.offset) { index, text in
                     let isDone = done.contains(index)
                     Button {
@@ -566,7 +566,7 @@ private struct ConnectPS5Step: View {
 
     private var connectionCard: some View {
         DSCard(spacing: DS.space("s"), scrolls: false) {
-            DSCardHeader("CONNECTION")
+            DSCardHeader("Connection")
             ConnectionRow(title: "PlayStation Account", sub: "Signed in with the second account.", done: model.accountId != nil)
             ConnectionRow(title: model.console != nil || selected != nil ? "PS5 Found" : "Searching for the PS5",
                           sub: LocalizedStringKey(selected.map { host in String(format: String(localized: "%@ selected."), consoles.first { $0.host == host }?.name ?? host) } ?? ""),
@@ -681,7 +681,7 @@ private struct DiagnosticsView: View {
     var body: some View {
         HStack(alignment: .top, spacing: DS.space("l")) {
             DSCard(spacing: DS.space("xs"), scrolls: false) {
-                DSCardHeader("COULDN'T CONNECT TO THE PS5", color: .dsLive)
+                DSCardHeader("Couldn't connect to the PS5", color: .dsLive)
                 Text("Here's What We Checked").font(.dsH3)
                 Text("Fix the item with a problem and press Try Again. Things we couldn't read are shown as \"Unknown\".").dsMuted()
                 ForEach(checks) { check in
@@ -765,7 +765,7 @@ struct PairingCodeCard: View {
 
     var body: some View {
         DSCard(scrolls: false) {
-            DSCardHeader("CODE SHOWN ON THE TV")
+            DSCardHeader("Code shown on the TV")
             if let ticket = model.tvPairingRequest {
                 HStack(spacing: DS.space("xs")) {
                     ForEach(Array(ticket.code.enumerated()), id: \.offset) { _, digit in

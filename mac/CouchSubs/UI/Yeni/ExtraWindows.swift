@@ -29,7 +29,7 @@ struct NewAboutView: View {
     var body: some View {
         VStack(spacing: DS.space("s")) {
             HStack {
-                DSMonoLabel("ABOUT")
+                DSMonoLabel("About")
                 Spacer()
             }
             DSLogoMark(height: 64).padding(.top, DS.space("xs"))
@@ -113,7 +113,7 @@ struct ReleaseNotesView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.space("s")) {
-            DSCardHeader("RELEASE NOTES")
+            DSCardHeader("Release notes")
             DSTabs(selection: $which, items: [(0, "This Version"), (1, "Previous")])
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: DS.space("s")) {

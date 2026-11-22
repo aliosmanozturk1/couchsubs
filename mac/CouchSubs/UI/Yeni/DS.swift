@@ -149,6 +149,8 @@ extension Font {
     static let dsH2 = DS.font("h2")
     static let dsH3 = DS.font("h3")
     static let dsSubtitle = DS.font("subtitle")
+    static let dsCardTitle = DS.font("cardTitle")
+    static let dsLabel = DS.font("label")
     static let dsBody = DS.font("body")
     static let dsBodyStrong = DS.font("bodyStrong")
     static let dsButton = DS.font("button")
@@ -216,7 +218,8 @@ extension View {
     }
 }
 
-/// Kart içi bölüm etiketi: mono, büyük harf, 12 pt, +0.08em; altındaki içerikle arası en az 24 (kart boşluğu + 8).
+/// Küçük bölüm etiketi (tablo sütunu, kart üstü küçük ad): sistem yazısı 13 orta kalın, cümle düzeni, gri. Adı eski;
+/// mono büyük harf artık kullanılmaz (mono yalnız kısayol rozeti ve teknik değerde).
 struct DSMonoLabel: View {
     let text: LocalizedStringKey
     var color: Color = .dsMuted
@@ -228,8 +231,7 @@ struct DSMonoLabel: View {
 
     var body: some View {
         Text(text)
-            .font(.dsMono)
-            .tracking(DS.tracking("mono"))
+            .font(.dsLabel)
             .foregroundStyle(color)
             .lineLimit(1)
             .accessibilityAddTraits(.isHeader)
@@ -261,8 +263,7 @@ struct DSPageTitle: View {
         VStack(alignment: .leading, spacing: DS.space("xxs")) {
             if let eyebrow {
                 Text(verbatim: eyebrow)
-                    .font(.dsMono)
-                    .tracking(DS.tracking("mono"))
+                    .font(.dsLabel)
                     .foregroundStyle(Color.dsMuted)
                     .padding(.bottom, DS.space("xxs"))
             }
