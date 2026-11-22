@@ -20,7 +20,7 @@ namespace CouchSubs.App.Views;
 /// <summary>Ayarların doğrudan açılabilen bölümleri.</summary>
 public enum SettingsSection { Appearance, Translation, PictureSource }
 
-public partial class SettingsWindow : Window
+public partial class SettingsView : UserControl
 {
     private static readonly (string Code, string Name)[] Languages =
         [("en", "English"), ("ja", "Japanese"), ("de", "German"), ("fr", "French"), ("es", "Spanish")];
@@ -36,12 +36,12 @@ public partial class SettingsWindow : Window
     /// <summary>Kısayollar'daki düğmeler: iş ve yuvaya göre.</summary>
     private readonly Dictionary<(HotkeyAction, int), Button> shortcutButtons = [];
 
-    internal SettingsWindow(AppController controller)
+    internal SettingsView(AppController controller)
     {
         this.controller = controller;
         controller.NoteScreen("settings");
         InitializeComponent();
-        InstalledVersion.Text = Localizer.Current.Format("Installed version: %@", AppVersion.Current(typeof(SettingsWindow).Assembly));
+        InstalledVersion.Text = Localizer.Current.Format("Installed version: %@", AppVersion.Current(typeof(SettingsView).Assembly));
         var settings = controller.Settings;
         DataContext = controller;
         GeminiPaidTier.IsChecked = settings.GeminiPaidTier;
@@ -78,14 +78,14 @@ public partial class SettingsWindow : Window
         ShowGameProfiles();
         // Num 8: oyunun o anki görüntüsü önizlemeye alınır.
         controller.SnapshotRequested += OnSnapshot;
-        Closed += (_, _) => controller.SnapshotRequested -= OnSnapshot;
+        Unloaded += (_, _) => controller.SnapshotRequested -= OnSnapshot;
         Dubbing.Attach(controller);
         FirewallSettings.Attach(controller);
         OutputCard.Attach(controller);
         SecondScreenCard.Attach(controller);
         ShowStyleTitle();
         controller.PropertyChanged += OnControllerChanged;
-        Closed += (_, _) => controller.PropertyChanged -= OnControllerChanged;
+        Unloaded += (_, _) => controller.PropertyChanged -= OnControllerChanged;
         Engine.SelectedItem = Engine.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == settings.Engine.ToString());
         TranslationDeviceChoice.SelectedItem = TranslationDeviceChoice.Items.Cast<ComboBoxItem>()
             .First(item => (string)item.Tag == settings.TranslationDevice.ToString());
@@ -129,9 +129,9 @@ public partial class SettingsWindow : Window
         ShowShortcutTexts();
         PreviewKeyDown += OnShortcutKey;
         ShowStreamWindowToggle();
-        // Akış penceresi kendi düğmesiyle kapanmış olabilir; Ayarlar öne gelince düğme güncellenir.
-        Activated += (_, _) => ShowStreamWindowToggle();
-        Closed += (_, _) => StopRecording();
+        // Akış penceresi kendi düğmesiyle kapanmış olabilir; Ayarlar açılınca düğme güncellenir.
+        Loaded += (_, _) => ShowStreamWindowToggle();
+        Unloaded += (_, _) => StopRecording();
         loading = false;
     }
 
@@ -223,7 +223,7 @@ public partial class SettingsWindow : Window
     private void OnLinkXbox(object sender, RoutedEventArgs e)
     {
         controller.LinkXbox();
-        Close();
+        Leave();
     }
 
     private void OnSignOutXbox(object sender, RoutedEventArgs e)
@@ -235,7 +235,7 @@ public partial class SettingsWindow : Window
     private void OnLinkPs5(object sender, RoutedEventArgs e)
     {
         controller.LinkPs5Account();
-        Close();
+        Leave();
     }
 
     private void OnFrameSource(object sender, SelectionChangedEventArgs e)
@@ -399,7 +399,7 @@ public partial class SettingsWindow : Window
             AddButton("Duplicate", () => BeginProfileEdit((key, true), ""));
             AddButton("Delete profile", () =>
             {
-                if (MessageBox.Show(this, text.Format("Delete the saved areas for %@?", game), text["Delete profile"], MessageBoxButton.YesNo,
+                if (MessageBox.Show(Host, text.Format("Delete the saved areas for %@?", game), text["Delete profile"], MessageBoxButton.YesNo,
                                     MessageBoxImage.Question) == MessageBoxResult.Yes)
                     controller.DeleteAreaProfile(key);
             });
@@ -473,7 +473,7 @@ public partial class SettingsWindow : Window
     {
         if (controller.AreaProfileGame is not { } game) return;
         var text = Localizer.Current;
-        if (MessageBox.Show(this, text.Format("Delete the saved areas for %@?", game), text["Delete profile"], MessageBoxButton.YesNo,
+        if (MessageBox.Show(Host, text.Format("Delete the saved areas for %@?", game), text["Delete profile"], MessageBoxButton.YesNo,
                             MessageBoxImage.Question) == MessageBoxResult.Yes)
             controller.DeleteAreaProfile();
     }
@@ -481,7 +481,7 @@ public partial class SettingsWindow : Window
     private async void OnOpenTvPairing(object sender, RoutedEventArgs e)
     {
         try { await controller.OpenTvPairingAsync(); }
-        catch (Exception error) { MessageBox.Show(this, error.Message, "CouchSubs"); }
+        catch (Exception error) { MessageBox.Show(Host, error.Message, "CouchSubs"); }
     }
 
     private void OnRenewAccessKey(object sender, RoutedEventArgs e) => controller.RotateSubtitleKey();
@@ -603,7 +603,7 @@ public partial class SettingsWindow : Window
             try { GameCoverStore.Remove(pack.Id); ShowPacks(); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                MessageBox.Show(this, CoverText("The game cover could not be saved.", "Oyun kapağı kaydedilemedi."), text["Game packs"],
+                MessageBox.Show(Host, CoverText("The game cover could not be saved.", "Oyun kapağı kaydedilemedi."), text["Game packs"],
                     MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         };
@@ -629,7 +629,7 @@ public partial class SettingsWindow : Window
             Title = CoverText("Choose game cover…", "Oyun kapağı seç…"), CheckFileExists = true,
             Filter = $"{CoverText("Images", "Görseller")} (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg",
         };
-        if (picker.ShowDialog(this) != true) return;
+        if (picker.ShowDialog(Host) != true) return;
         try
         {
             if (new FileInfo(picker.FileName).Length > 8 * 1024 * 1024)
@@ -660,7 +660,7 @@ public partial class SettingsWindow : Window
         catch (Exception error) when (error is IOException or UnauthorizedAccessException
             or InvalidDataException or ArgumentException or FormatException or NotSupportedException)
         {
-            MessageBox.Show(this, CoverText("The game cover could not be saved.", "Oyun kapağı kaydedilemedi."), text["Game packs"],
+            MessageBox.Show(Host, CoverText("The game cover could not be saved.", "Oyun kapağı kaydedilemedi."), text["Game packs"],
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -702,10 +702,10 @@ public partial class SettingsWindow : Window
             if (outcome is null || !IsLoaded) return;
             if (outcome.Result != PackUpdateOutcome.Kind.Failed)
             {
-                MessageBox.Show(this, outcome.Message(text), outcome.Title(text), MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(Host, outcome.Message(text), outcome.Title(text), MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
-            var again = MessageBox.Show(this, outcome.Message(text) + "\n\n" + text["Try again"] + "?", outcome.Title(text),
+            var again = MessageBox.Show(Host, outcome.Message(text) + "\n\n" + text["Try again"] + "?", outcome.Title(text),
                 MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
             if (again != MessageBoxResult.Yes) return;
         }
@@ -719,7 +719,7 @@ public partial class SettingsWindow : Window
             Title = text["Import game pack"],
             Filter = $"{text["Translation files"]} (*.json, *.txt, *.srt)|*.json;*.txt;*.srt",
         };
-        if (picker.ShowDialog(this) != true) return;
+        if (picker.ShowDialog(Host) != true) return;
 
         var sourcePath = picker.FileName;
         ImportPack.IsEnabled = false;
@@ -735,14 +735,14 @@ public partial class SettingsWindow : Window
         catch (InvalidDataException)
         {
             if (IsLoaded)
-                MessageBox.Show(this, text["The translation file could not be imported. Check its format and encoding."],
+                MessageBox.Show(Host, text["The translation file could not be imported. Check its format and encoding."],
                     picker.Title, MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             if (IsLoaded)
-                MessageBox.Show(this, text["The translation file could not be read."], picker.Title,
+                MessageBox.Show(Host, text["The translation file could not be read."], picker.Title,
                     MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
@@ -751,7 +751,7 @@ public partial class SettingsWindow : Window
             ImportPack.IsEnabled = true;
         }
 
-        if (IsLoaded && new GamePackImportWindow(preview, sourcePath) { Owner = this }.ShowDialog() == true)
+        if (IsLoaded && new GamePackImportWindow(preview, sourcePath) { Owner = Host }.ShowDialog() == true)
             controller.ReloadGamePacks();
     }
 
@@ -1114,18 +1114,27 @@ public partial class SettingsWindow : Window
     private void OnLink(object sender, RequestNavigateEventArgs e) =>
         Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
 
-    public static void Open(Window? owner, AppController controller) =>
-        OwnedWindow.Show(owner, () => new SettingsWindow(controller));
+    /// <summary>Ayarların sahibi olan pencere (ileti kutuları ve dosya seçicileri bunun üstünde açılır).</summary>
+    private Window? Host => Window.GetWindow(this) ?? Application.Current?.MainWindow;
+
+    /// <summary>Ayarlardan bir işe geçilince (Xbox bağla, yeniden kur …) ana ekrana dönülür; eskiden ayar penceresi kapanırdı.</summary>
+    private void Leave() => ShellWindow.Navigate(ShellTab.Home);
+
+    /// <summary>Ayarlar sekmesini açar.</summary>
+    public static void Open(Window? owner, AppController controller) => ShellWindow.Navigate(ShellTab.Settings);
 
     /// <summary>Ayarları belli bir bölümde açar (ana ekrandaki bilgi karosunun "Çeviri" satırı).</summary>
-    public static void Open(Window? owner, AppController controller, SettingsSection section)
+    public static void Open(Window? owner, AppController controller, SettingsSection section) => ShellWindow.Navigate(ShellTab.Settings, section);
+
+    /// <summary>Kabuk Ayarlar sekmesini açınca istenen bölüm seçilir.</summary>
+    internal void Show(SettingsSection? section)
     {
-        var window = OwnedWindow.Show(owner, () => new SettingsWindow(controller));
-        window.Sections.SelectedItem = section switch
+        if (section is not { } wanted) return;
+        Sections.SelectedItem = wanted switch
         {
-            SettingsSection.Translation => window.TranslationSection,
-            SettingsSection.PictureSource => window.PictureSourceSection,
-            _ => window.Sections.SelectedItem,
+            SettingsSection.Translation => TranslationSection,
+            SettingsSection.PictureSource => PictureSourceSection,
+            _ => Sections.SelectedItem,
         };
     }
 
@@ -1467,19 +1476,18 @@ public partial class SettingsWindow : Window
 
     private void OnTest(object sender, RoutedEventArgs e) => controller.SendTestSubtitle();
 
-    private void OnAbout(object sender, RoutedEventArgs e) => AboutWindow.Open(this);
+    private void OnAbout(object sender, RoutedEventArgs e) => AboutWindow.Open(Host);
 
     private void OnReset(object sender, RoutedEventArgs e)
     {
         var text = Localizer.Current;
-        var answer = MessageBox.Show(this, text["The saved PS5, account and TV connection will be removed."], text["Set up again?"],
+        var answer = MessageBox.Show(Host, text["The saved PS5, account and TV connection will be removed."], text["Set up again?"],
             MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (answer != MessageBoxResult.OK) return;
         controller.ResetSetup();
-        Close();
+        Leave();
     }
 
-    private void OnDone(object sender, RoutedEventArgs e) => Close();
 
     private void OnObsCopy(object sender, RoutedEventArgs e)
     {
@@ -1640,7 +1648,7 @@ public partial class SettingsWindow : Window
     {
         var text = Localizer.Current;
         // Kısayollar bırakılmışken denenir: alınamıyorsa tuşu başka bir uygulama tutuyordur.
-        var busy = key is not null && !GlobalHotkeys.IsAvailable(new WindowInteropHelper(this).Handle, key);
+        var busy = key is not null && !GlobalHotkeys.IsAvailable(new WindowInteropHelper(Host).Handle, key);
         var choices = HotkeyTable.Assign(controller.Settings.Hotkeys, target.Action, target.Slot, key, out var displaced);
         recording = null;
         controller.Settings = controller.Settings with { Hotkeys = choices };

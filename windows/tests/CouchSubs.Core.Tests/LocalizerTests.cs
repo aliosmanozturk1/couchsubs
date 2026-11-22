@@ -31,7 +31,7 @@ public class LocalizerTests
         Assert.Contains("İngilizce", tr.Format("The %@–%@ language pack is not downloaded yet.", "İngilizce", "Türkçe"));
     }
 
-    /// Görüntü modu ipucu (SettingsWindow.xaml ile aynı anahtar): uygulama içinde oyun modu ya da HDR kaybolursa
+    /// Görüntü modu ipucu (SettingsView.xaml ile aynı anahtar): uygulama içinde oyun modu ya da HDR kaybolursa
     /// Katman önerilir (Sony Bravia, LG). Anahtar XAML'da değişip katalogda kalmazsa ipucu İngilizce görünürdü.
     [Fact]
     public void PictureModeHintSuggestsOverlayForLostGameModeAndHdr()
@@ -40,7 +40,7 @@ public class LocalizerTests
         var tr = Localizer.ForLanguage("tr")[key];
         Assert.NotEqual(key, tr);
         Assert.Contains("oyun modu ya da HDR", tr);
-        var xaml = File.ReadAllText(Path.Combine(RepoRoot(), "windows", "src", "CouchSubs.App", "Views", "SettingsWindow.xaml"));
+        var xaml = File.ReadAllText(Path.Combine(RepoRoot(), "windows", "src", "CouchSubs.App", "Views", "SettingsView.xaml"));
         Assert.Contains(key, xaml);
     }
 

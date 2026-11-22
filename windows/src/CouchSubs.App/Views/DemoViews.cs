@@ -109,12 +109,12 @@ public sealed class DemoModeButton : DemoView
     private async void OnClick(object sender, RoutedEventArgs e)
     {
         if (Controller is not { } controller) return;
-        // Mac'teki gibi: Ayarlar'dan başlatılınca ayar penceresi kapanır, deneme ana ekranda izlenir.
-        var settings = Window.GetWindow(this) as SettingsWindow;
+        // Mac'teki gibi: Ayarlar'dan başlatılınca ana ekrana dönülür, deneme ana ekranda izlenir.
+        var fromSettings = this.FindAncestor<SettingsView>() is not null;
         try
         {
             var starting = controller.StartDemoAsync();
-            settings?.Close();
+            if (fromSettings) ShellWindow.Navigate(ShellTab.Home);
             await starting;
         }
         catch (Exception error)

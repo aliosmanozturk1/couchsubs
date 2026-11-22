@@ -13,26 +13,26 @@ namespace CouchSubs.App.Views;
 /// Altyazı geçmişi: bu ve önceki oturumlarda çevrilen satırlar, en yenisi üstte. Pencere açıkken gelen satırlar hemen
 /// eklenir. Satır ya da hepsi kopyalanır ("Türkçe\nİngilizce"); geçmiş silinebilir.
 /// </summary>
-public partial class HistoryWindow : Window
+public partial class HistoryView : UserControl
 {
     /// <summary>Listedeki bir satır (saat yerel, kaynak etiketi çevrilmiş).</summary>
     public sealed record Row(string Time, string Translation, string Source, string Origin, SubtitleHistory.Entry Entry);
 
     private readonly AppController controller;
 
-    internal HistoryWindow(AppController controller)
+    internal HistoryView(AppController controller)
     {
         this.controller = controller;
         controller.NoteScreen("history");
         InitializeComponent();
         KeptHint.Text = Localizer.Current.Format("The last %lld translated lines are kept on this computer.", SubtitleHistory.DefaultLimit);
         controller.PropertyChanged += OnChanged;
-        Closed += (_, _) => controller.PropertyChanged -= OnChanged;
+        Unloaded += (_, _) => controller.PropertyChanged -= OnChanged;
         ShowEntries(controller.History);
     }
 
-    public static void Open(Window? owner, AppController controller) =>
-        OwnedWindow.Show(owner, () => new HistoryWindow(controller));
+    /// <summary>Geçmiş sekmesini açar.</summary>
+    public static void Open(Window? owner, AppController controller) => ShellWindow.Navigate(ShellTab.History);
 
     private void OnChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -85,10 +85,8 @@ public partial class HistoryWindow : Window
     private void OnClear(object sender, RoutedEventArgs e)
     {
         var text = Localizer.Current;
-        if (MessageBox.Show(this, text["All saved lines are removed from this computer."], text["Clear the history?"],
+        if (MessageBox.Show(Window.GetWindow(this) ?? Application.Current.MainWindow, text["All saved lines are removed from this computer."], text["Clear the history?"],
                             MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             controller.ClearHistory();
     }
-
-    private void OnClose(object sender, RoutedEventArgs e) => Close();
 }

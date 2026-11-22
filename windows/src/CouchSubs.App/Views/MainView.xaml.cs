@@ -241,13 +241,13 @@ public partial class MainView : UserControl
         }
     }
 
-    private void OnSettings(object sender, RoutedEventArgs e) => SettingsWindow.Open(Window.GetWindow(this), controller);
+    private void OnSettings(object sender, RoutedEventArgs e) => SettingsView.Open(Window.GetWindow(this), controller);
 
     private void OnTranslationSettings(object sender, RoutedEventArgs e) =>
-        SettingsWindow.Open(Window.GetWindow(this), controller, SettingsSection.Translation);
+        SettingsView.Open(Window.GetWindow(this), controller, SettingsSection.Translation);
 
     private void OnPictureSourceSettings(object sender, RoutedEventArgs e) =>
-        SettingsWindow.Open(Window.GetWindow(this), controller, SettingsSection.PictureSource);
+        SettingsView.Open(Window.GetWindow(this), controller, SettingsSection.PictureSource);
 
     /// <summary>Yeni canlı satır 0,18 sn'de belirir; Windows'ta animasyonlar kapalıysa geçiş yok (docs/TASARIM.md).</summary>
     private void FadeInLiveLine()
@@ -279,8 +279,6 @@ public partial class MainView : UserControl
         if (lines.Count > 0 && lines[0].Translation == controller.LastTranslation) lines.RemoveAt(0);
         PreviousLines.ItemsSource = lines.Take(PreviousLineCount).ToList();
     }
-
-    private void OnHistory(object sender, RoutedEventArgs e) => HistoryWindow.Open(Window.GetWindow(this), controller);
 
     /// <summary>Deneme altyazısı (çeviri başlamadıysa altyazı sunucusu da açılır).</summary>
     private async void OnTest(object sender, RoutedEventArgs e)

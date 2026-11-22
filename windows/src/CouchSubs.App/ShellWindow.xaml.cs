@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
+using CouchSubs.App.Controls;
 using CouchSubs.App.Services;
+using CouchSubs.App.Theme;
 using CouchSubs.App.Views;
 using CouchSubs.Shell;
 using CouchSubs.Core;
@@ -11,17 +15,31 @@ using Microsoft.Win32;
 
 namespace CouchSubs.App;
 
-/// <summary>Uygulamanın tek penceresi: kurulum bitmediyse sihirbaz, bittiyse ana ekran.</summary>
+/// <summary>Üst çubuktaki sekmeler (Profil sayfası yok; her şey Ayarlar'da).</summary>
+public enum ShellTab { Home, History, Settings }
+
+/// <summary>
+/// Uygulamanın tek penceresi: kurulum bitmediyse sihirbaz; bittiyse üst çubuk (logo, Ana Ekran / Geçmiş / Ayarlar,
+/// durum hapı), seçili sayfa ve reklam bandı. Eskiden Ayarlar ve Geçmiş ayrı pencerede açılıyordu.
+/// </summary>
 public partial class ShellWindow : Window
 {
     private readonly AppController controller;
     private bool showingMain;
     private GlobalHotkeys? hotkeys;
+    private ShellTab tab = ShellTab.Home;
+    private MainView? home;
+    private bool switching;
+    private static ShellWindow? current;
 
     public ShellWindow(AppController controller)
     {
         this.controller = controller;
+        current = this;
         InitializeComponent();
+        ApplyMinimumSize();
+        SourceInitialized += (_, _) => PaintCaption();
+        ThemeManager.Changed += PaintCaption;
         controller.PropertyChanged += OnChanged;
         controller.TvPairingRequested += OnTvPairing;
         // Bilgisayar uykudan uyanınca bağlantılar hemen yenilenir.
@@ -48,6 +66,8 @@ public partial class ShellWindow : Window
         }
         Closed += (_, _) =>
         {
+            ThemeManager.Changed -= PaintCaption;
+            if (current == this) current = null;
             controller.PcResultReady -= PcResultWindow.Display;
             overlay?.Detach();
             hotkeys?.Dispose();
@@ -90,6 +110,10 @@ public partial class ShellWindow : Window
     private void OnChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(AppController.Step) or nameof(AppController.DemoMode)) ShowScreen();
+        if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.IsStarting) or nameof(AppController.DemoMode)
+            or nameof(AppController.Step) or nameof(AppController.Ps5Tone) or nameof(AppController.TvTone) or nameof(AppController.SessionState)
+            or nameof(AppController.Settings))
+            ShowStatus();
         if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.HotkeysPaused) or nameof(AppController.Settings))
             ApplyHotkeys();
     }
@@ -121,10 +145,138 @@ public partial class ShellWindow : Window
     {
         // Deneme modunda kurulum bitmemiş olsa da ana ekran gösterilir; çıkınca kalınan adıma dönülür.
         var main = controller.Step == OnboardingStep.Done || controller.DemoMode;
+        ShowStatus();
         if (!force && main == showingMain) return;
         showingMain = main;
-        Host.Content = main ? new MainView(controller) : new OnboardingView(controller);
+        // Kurulumda üst çubuk ve reklam bandı yok (sihirbazın kendi çubuğu var).
+        TopBar.Visibility = main ? Visibility.Visible : Visibility.Collapsed;
+        Ads.Visibility = main && AdCatalog.Banners.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (!main)
+        {
+            home = null;
+            Show(new OnboardingView(controller));
+            return;
+        }
+        home = new MainView(controller);
+        tab = ShellTab.Home;
+        Show(home);
+        SelectTab(ShellTab.Home, null);
     }
+
+    /// <summary>Başka bir yerden sekme açar (ana ekrandaki "Ayarlar › Çeviri" satırı, menüler, kısayollar).</summary>
+    public static void Navigate(ShellTab tab, SettingsSection? section = null)
+    {
+        if (current is not { } window) return;
+        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+        window.Activate();
+        if (window.showingMain) window.SelectTab(tab, section);
+    }
+
+    private void OnTab(object sender, RoutedEventArgs e)
+    {
+        if (switching || !showingMain) return;
+        var chosen = sender == HistoryTab ? ShellTab.History : sender == SettingsTab ? ShellTab.Settings : ShellTab.Home;
+        SelectTab(chosen, null);
+    }
+
+    /// <summary>
+    /// Sekmeyi açar. Ana ekran bir kez kurulur ve saklanır (canlı altyazı, oyun durumu kaybolmasın); Geçmiş ve Ayarlar her
+    /// açılışta yeniden kurulur (eskiden pencere her açıldığında olduğu gibi güncel ayarlarla).
+    /// </summary>
+    private void SelectTab(ShellTab chosen, SettingsSection? section)
+    {
+        switching = true;
+        (chosen switch { ShellTab.History => HistoryTab, ShellTab.Settings => SettingsTab, _ => HomeTab }).IsChecked = true;
+        switching = false;
+        if (chosen == tab && Host.Content is FrameworkElement shown && shown is not OnboardingView)
+        {
+            if (section is { } wanted && shown is SettingsView open) open.Show(wanted);
+            return;
+        }
+        tab = chosen;
+        switch (chosen)
+        {
+            case ShellTab.History:
+                Show(new HistoryView(controller));
+                break;
+            case ShellTab.Settings:
+                var settings = new SettingsView(controller);
+                Show(settings);
+                settings.Show(section);
+                break;
+            default:
+                Show(home ??= new MainView(controller));
+                break;
+        }
+    }
+
+    /// <summary>Sayfa geçişi: yeni sayfa 8 px aşağıdan kayarak ve solarak gelir (hareket azaltılmışsa yalnız solma).</summary>
+    private void Show(FrameworkElement page)
+    {
+        Host.Content = page;
+        Motion.EnterFrom(page, 8, Motion.Page);
+    }
+
+    /// <summary>
+    /// Durum hapı: çeviri sürüyorsa yeşil "Çeviri Açık"; bağlanırken amber "Bağlanıyor…"; sorun varsa kırmızı "Sorun Var";
+    /// kurulum bitmediyse gri "Kurulum Eksik"; deneme modunda amber "Deneme Modu"; yoksa gri "Hazır" (Mac ile aynı).
+    /// </summary>
+    private void ShowStatus()
+    {
+        var kind = ShellStatus.For(controller.DemoMode, controller.Step == OnboardingStep.Done, controller.IsRunning, controller.IsStarting,
+            controller.Ps5Tone, controller.ShowsOnTv ? controller.TvTone : StatusTone.Good);
+        var (tone, key) = kind switch
+        {
+            ShellStatusKind.Demo => (PillTone.Attention, "Demo Mode"),
+            ShellStatusKind.SetupIncomplete => (PillTone.Idle, "Setup Incomplete"),
+            ShellStatusKind.NeedsAttention => (PillTone.Live, "Needs Attention"),
+            ShellStatusKind.Connecting => (PillTone.Attention, "Connecting…"),
+            ShellStatusKind.TranslationOn => (PillTone.Success, "Translation On"),
+            _ => (PillTone.Idle, "Ready"),
+        };
+        Status.Tone = tone;
+        Status.Text = Localizer.Current[key];
+    }
+
+    /// <summary>
+    /// En küçük boy 1200 × 760 (tasarım). Ekranın çalışma alanı bundan küçükse (1366 × 768 dizüstü) pencere ekrana
+    /// sığacak kadar küçülebilir; yoksa pencerenin altı görev çubuğunun arkasında kalırdı.
+    /// </summary>
+    private void ApplyMinimumSize()
+    {
+        var work = SystemParameters.WorkArea;
+        MinWidth = Math.Min(Palette.Size["windowWidth"], work.Width);
+        MinHeight = Math.Min(Palette.Size["windowHeight"], work.Height);
+        Width = Math.Max(MinWidth, Math.Min(Palette.Size["windowWidth"], work.Width));
+        Height = Math.Max(MinHeight, Math.Min(Palette.Size["windowHeight"], work.Height));
+    }
+
+    /// <summary>
+    /// Windows 11'de başlık çubuğu pencere zemininin rengini alır (koyu temada koyu başlık); üst çubukla bir bütün görünür.
+    /// Eski Windows'ta bu öznitelik yoktur, sistem başlığı kalır.
+    /// </summary>
+    private void PaintCaption()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero) return;
+        try
+        {
+            var dark = ThemeManager.IsDark ? 1 : 0;
+            DwmSetWindowAttribute(handle, DwmUseImmersiveDarkMode, ref dark, sizeof(int));
+            if (TryFindResource("backgroundColor") is Color background)
+            {
+                var colorRef = background.R | background.G << 8 | background.B << 16;
+                DwmSetWindowAttribute(handle, DwmCaptionColor, ref colorRef, sizeof(int));
+            }
+        }
+        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { }
+    }
+
+    private const int DwmUseImmersiveDarkMode = 20;
+    private const int DwmCaptionColor = 35;
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {

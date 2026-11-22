@@ -8,32 +8,7 @@
              xmlns:local="clr-namespace:CouchSubs.App.Views"
              xmlns:s="clr-namespace:CouchSubs.App.Views.Steps">
     <DockPanel Margin="{DynamicResource pad.screen}">
-        <!-- Başlık: logo, ad, ayarlar -->
-        <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
-            <StackPanel Orientation="Horizontal">
-                <Grid Width="36" Height="36">
-                    <Image Source="/Assets/logo.png" RenderOptions.BitmapScalingMode="HighQuality" />
-                    <!-- Koyu temada logonun kenarı zeminden ayrılsın. -->
-                    <Border BorderBrush="{DynamicResource borderBrush}" BorderThickness="1" CornerRadius="8.1" />
-                </Grid>
-                <TextBlock Text="CouchSubs" Style="{StaticResource TitleText}" Margin="12,0,0,0" VerticalAlignment="Center" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Padding="14,0" Margin="0,0,8,0" ToolTip="{t:T 'History'}" Click="OnHistory">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{x:Static c:Glyphs.History}" Style="{StaticResource GlyphText}" FontSize="16" Margin="0,0,8,0" />
-                        <TextBlock Text="{t:T 'History'}" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <Button Padding="14,0" ToolTip="{t:T 'Settings'}" Click="OnSettings">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{x:Static c:Glyphs.Settings}" Style="{StaticResource GlyphText}" FontSize="16" Margin="0,0,8,0" />
-                        <TextBlock Text="{t:T 'Settings'}" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-        </Grid>
-
+        <!-- Logo, sekmeler ve durum üst çubukta (ShellWindow); Geçmiş ve Ayarlar artık sekme. -->
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
