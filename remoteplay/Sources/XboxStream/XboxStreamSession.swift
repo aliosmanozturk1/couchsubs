@@ -3,8 +3,9 @@
 // XboxStreamSession.kt). iPhone ve Mac uygulamalarının ortak oturumu; protokol katmanı CouchSubsCore/Xbox'ta.
 // Görüntü yerel WebRTC'yle (stasel/WebRTC) alınır; VideoToolbox'ın verdiği kare CGImage olarak okuma hattına gider.
 // Oyun sesi ayar açıksa (varsayılan açık) bu cihazda çalınır: Xbox uzaktan oynatma sürerken sesi istemciye verip TV'yi
-// susturabilir. Yerel ses parçası eklenmez, Xbox'a ses gönderilmez. Ayar kapalıyken iPhone'da WebRTC ses birimi hiç
-// başlatılmaz, Mac'te ses parçası kapatılır. Kumanda girdisi gönderilmez.
+// susturabilir. Yerel ses parçası eklenmez, Xbox'a ses gönderilmez. iPhone'da ses mikrofonsuz, yalnız-çalma birimiyle
+// (XboxPlayoutDevice) medya sesi olarak seçili çıkıştan çalar; ayar kapalıyken birim hiç başlatılmaz, Mac'te ses
+// parçası kapatılır. Kumanda girdisi gönderilmez.
 // Sağlamlık kuralları Windows (#538, #611) ve Android ile aynı (CouchSubsCore XboxSessionHealth): ilk kare gelene kadar
 // anahtar kare istenir ve tanı satırı yazılır; tek başarısız canlı tutma isteği yayını bitirmez, ardışık üçü bitirir;
 // bağlantı bitince özet satırı yazılır; yayın durunca metin nedene göre seçilir. İlk kareden sonra görüntü kesilirse
@@ -89,32 +90,29 @@ public final class XboxStreamSession: NSObject, @unchecked Sendable {
         self.stopText = stopped
     }
 
+    #if os(iOS)
+    /// iPhone'da oyun sesi yalnız-çalma birimiyle çalınır (bkz. XboxPlayoutDevice, #907).
+    private static let playout = XboxPlayoutDevice()
+    #endif
+
     private static let factory: RTCPeerConnectionFactory = {
         RTCInitializeSSL()
         #if os(iOS)
-        // Ses birimi elle açılır: ayar kapalıyken hiç başlatılmaz (bkz. `setAudio`).
-        let audio = RTCAudioSession.sharedInstance()
-        audio.useManualAudio = true
-        audio.isAudioEnabled = false
-        #endif
+        return RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory(),
+                                        audioDevice: playout)
+        #else
         return RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
+        #endif
     }()
 
-    /// Oyun sesini açar ya da kapatır. Ses hoparlörden (ya da bağlı kulaklıktan) medya sesi gibi çalınır; WebRTC'nin
-    /// varsayılan görüşme ayarı (voiceChat) sesi kulaklık hoparlörüne verirdi. Yerel ses parçası olmadığından
-    /// mikrofondan Xbox'a hiçbir şey gönderilmez.
+    /// Oyun sesini açar ya da kapatır. Ses medya sesi gibi (.playback) kullanıcının seçtiği çıkıştan çalınır
+    /// (kulaklık, AirPods, Bluetooth hoparlör; yoksa hoparlör). WebRTC'nin varsayılan görüşme birimi (.playAndRecord +
+    /// .defaultToSpeaker, mikrofonlu VoiceProcessingIO) Bluetooth kulaklığı bırakıp sesi hoparlöre veriyordu (#907).
+    /// Mikrofon açılmaz, Xbox'a hiçbir şey gönderilmez.
     private static func setAudio(_ enabled: Bool) {
         // Mac'te ses oturumu yoktur: ses sistemin çıkışından çalınır, kapalıyken ses parçası kapatılır.
         #if os(iOS)
-        let session = RTCAudioSession.sharedInstance()
-        if enabled {
-            let config = RTCAudioSessionConfiguration.webRTC()
-            config.category = AVAudioSession.Category.playAndRecord.rawValue
-            config.categoryOptions = [.defaultToSpeaker, .allowBluetoothA2DP]
-            config.mode = AVAudioSession.Mode.default.rawValue
-            RTCAudioSessionConfiguration.setWebRTC(config)
-        }
-        session.isAudioEnabled = enabled
+        playout.setEnabled(enabled)
         #endif
     }
 
