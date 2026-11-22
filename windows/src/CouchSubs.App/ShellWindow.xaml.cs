@@ -95,8 +95,8 @@ public partial class ShellWindow : Window
             for (var current = ticket; ;)
             {
                 var message = text.Format("TV code: %@. You don't type this code anywhere: if your TV shows the same code, approve it here.", current.Code);
-                var approved = MessageBox.Show(this, message, text["Pair this TV?"], MessageBoxButton.YesNo,
-                    MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+                // Açılır kart: kod iki ekranda; onay amber ana eylem.
+                var approved = DesignDialog.Confirm(this, text["Pair this TV?"], message, text["I See This Code on the TV"], text["Cancel"]);
                 var resolved = controller.ResolveTvPairing(current.Id, approved);
                 if (controller.PendingTvPairing is { } next && next.Id != current.Id) { current = next; continue; }
                 if (!resolved && approved)

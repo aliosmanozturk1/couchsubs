@@ -150,29 +150,9 @@ public partial class TvAppCard : UserControl
         if (ReferenceEquals(askedForeign, state) || controller is null || !ReferenceEquals(controller.TvApp, state)) return;
         askedForeign = state;
         var text = Localizer.Current;
-        var replace = false;
-        var dialog = new Window
-        {
-            Title = text[TvAppMessages.ForeignAppTitle],
-            Owner = Window.GetWindow(this),
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            SizeToContent = SizeToContent.WidthAndHeight,
-            ResizeMode = ResizeMode.NoResize,
-            ShowInTaskbar = false,
-        };
-        var confirm = new Button { Content = text[TvAppMessages.ForeignAppConfirm], IsDefault = true, Style = TryFindResource("PrimaryButton") as Style };
-        var cancel = new Button { Content = text[TvAppMessages.ForeignAppCancel], IsCancel = true, Margin = new Thickness(8, 0, 0, 0) };
-        confirm.Click += (_, _) => { replace = true; dialog.Close(); };
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
-        buttons.Children.Add(confirm);
-        buttons.Children.Add(cancel);
-        var body = new StackPanel { Margin = new Thickness(20), MaxWidth = 420 };
-        body.Children.Add(new TextBlock { Text = text[TvAppMessages.ForeignAppMessage], TextWrapping = TextWrapping.Wrap });
-        body.Children.Add(buttons);
-        dialog.Content = body;
-        dialog.SetResourceReference(Control.BackgroundProperty, "windowBackgroundBrush");
-        dialog.SetResourceReference(Control.ForegroundProperty, "textPrimaryBrush");
-        dialog.ShowDialog();
+        // Açılır kart: "Kaldırıp Kur" amber ana eylem, "Vazgeç" ikincil.
+        var replace = Controls.DesignDialog.Confirm(Window.GetWindow(this), text[TvAppMessages.ForeignAppTitle], text[TvAppMessages.ForeignAppMessage],
+            text[TvAppMessages.ForeignAppConfirm], text[TvAppMessages.ForeignAppCancel]);
         if (replace && controller is not null) await controller.ReplaceForeignTvAppAsync();
     }
 
