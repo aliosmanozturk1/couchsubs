@@ -388,4 +388,40 @@ class ScreenPhoneCardTest {
         assertFalse(ScreenPhoneCard.holds(TextBox(0.46, 0.90, 0.54, 0.94), phone))
         assertFalse(ScreenPhoneCard.holds(TextBox(0.949, 0.93197, 0.99577, 0.95692), phone))
     }
+
+    /**
+     * Otomatik telefon okumasında Yanda Panel (varsayılan; Mac PhoneRegionSessionTests ve Windows ile aynı düzen): grupların
+     * rolü düz ekrandaki yerinden (başlık, sola yaslı karşı taraf, sağa yaslı oyuncu); panel telefonun yanında, parçaları
+     * JSON'da "panel" alanıyla; Balonların Üstünde'de aslıyla aynı ad çizilmez, balonlar yerinde.
+     */
+    @Test
+    fun automaticPhoneReadingShowsTheChatInASidePanel() {
+        fun spot(text: String, left: Double, top: Double, right: Double) = ScreenTranslation.Group(listOf(text),
+            TextBox(0.8, 0.2 + top * 0.6, 0.9, 0.22 + top * 0.6), 0.018,
+            phone = ScreenPhoneCard.Placement(ScreenPhoneCard.Role.MESSAGE, TextBox(left, top, right, top + 0.04)))
+        val groups = GamePhoneText.roles(listOf(spot("Lucia", 0.40, 0.05, 0.60), spot("Reply today.", 0.05, 0.30, 0.55),
+            spot("Open the camera.", 0.45, 0.50, 0.95)), home = false)
+        assertEquals(listOf(ScreenPhoneCard.Role.HEADER, ScreenPhoneCard.Role.INCOMING, ScreenPhoneCard.Role.OUTGOING),
+            groups.map { it.phone!!.role })
+        val items = listOf(
+            ScreenTranslation.Item("Lucia", "Lucia", groups[0].box, 0.018, unchanged = true, phone = groups[0].phone),
+            ScreenTranslation.Item("Reply today.", "Bugün yanıtla.", groups[1].box, 0.018, phone = groups[1].phone),
+            ScreenTranslation.Item("Open the camera.", "Kamerayı aç.", groups[2].box, 0.018, phone = groups[2].phone),
+        )
+        val pose = GamePhoneGeometry.Pose(upright[0], upright[1], upright[2], upright[3])
+        val panel = PhoneRegionSession.arranged(items, pose, 16.0 / 9, PhonePanelOptions())
+        assertEquals(listOf(ScreenPhoneCard.PanelPart.CARD, ScreenPhoneCard.PanelPart.TITLE, ScreenPhoneCard.PanelPart.THEIRS,
+            ScreenPhoneCard.PanelPart.MINE), panel.map { it.panel })
+        val card = panel[0].box
+        assertTrue(card.right <= pose.bounds.left || card.left >= pose.bounds.right)
+        assertEquals(ScreenPhoneCard.INCOMING, panel[2].surface)
+        assertEquals(ScreenPhoneCard.OUTGOING, panel[3].surface)
+        assertTrue(panel[2].box.left < panel[3].box.left && panel[2].box.top < panel[3].box.top)
+        assertEquals("card", ScreenPhoneCard.PanelPart.CARD.wire)
+
+        val bubbles = PhoneRegionSession.arranged(items, pose, 16.0 / 9, PhonePanelOptions(enabled = false))
+        assertEquals(listOf("Bugün yanıtla.", "Kamerayı aç."), bubbles.map { it.translation })
+        assertTrue(bubbles.all { it.panel == null })
+        assertEquals(1.5, ScreenPhoneCard.textScale(69), 1e-9)
+    }
 }

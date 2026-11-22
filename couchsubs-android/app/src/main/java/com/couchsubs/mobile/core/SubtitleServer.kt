@@ -233,7 +233,8 @@ class SubtitleServer(
             var rest = blocks
             if (!blocks.isNullOrEmpty()) {
                 val kept = blocks.filter { area(it.box) <= MAX_BOX_AREA }
-                if (kept.sumOf { area(it.box) } > MAX_BOX_AREA) return "" to null
+                // Sohbet panelinin balonları panelin zemininin içindedir: toplam alana bir kez (zemin olarak) girer (Mac ile aynı).
+                if (kept.filter { it.panel == null || it.panel == ScreenPhoneCard.PanelPart.CARD }.sumOf { area(it.box) } > MAX_BOX_AREA) return "" to null
                 if (kept.isNotEmpty()) return text to kept
                 rest = null
             }
@@ -257,6 +258,8 @@ class SubtitleServer(
             item.look?.let { json["style"] = mapOf("align" to it.align, "bold" to it.bold, "condensed" to it.condensed, "upper" to it.upper) }
             // Telefon mesajı kendi balonunda: TV çeviriyi balona sığdırır (eski TV yok sayar, özgün stilde çizer).
             if (item.bubble) json["bubble"] = true
+            // Telefonun yanındaki sohbet panelinin parçası: yeni TV paneli akışla çizer; eski TV alanı yok sayar.
+            item.panel?.let { json["panel"] = it.wire }
             return json
         }
 

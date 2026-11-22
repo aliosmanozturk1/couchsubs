@@ -213,6 +213,45 @@ final class XboxHomeTests: XCTestCase {
         XCTAssertNil(list[3].sdpLine)
     }
 
+    /// Wi-Fi'daki Xbox SDP/ICE yanıtını geç verince 7,5 sn'de bırakılıyordu; artık 30 sn beklenir.
+    func testExchangeWaitsThirtySeconds() {
+        let total = (0..<XboxHome.exchangeAttempts).map { XboxHome.exchangeDelayMs(attempt: $0) }.reduce(0, +)
+        XCTAssertEqual(total, 30_000)
+        XCTAssertEqual(XboxHome.exchangeDelayMs(attempt: 0), 250)
+        XCTAssertEqual(XboxHome.exchangeDelayMs(attempt: XboxHome.exchangeAttempts - 1), 1000)
+    }
+
+    /// Hizmet jetonu süresinden önce reddedilince bir kez yenilenip istek yinelenir; yeniden giriş istenmez.
+    func testUnauthorizedRefreshesTokenOnce() async throws {
+        let logins = Counter()
+        let keepalives = Counter()
+        let http = FakeHTTP { _, url, _ in
+            if url.contains("/v2/login/user") { _ = logins.next() }
+            if let t = self.tokens(url) { return t }
+            return keepalives.next() == 1 ? status(401) : status(204)
+        }
+        try await XboxHome(auth: try auth(http), http: http, sleep: { _ in }).keepalive("S")
+        XCTAssertEqual(logins.next(), 3)
+    }
+
+    /// Kapatma isteği bir kez başarısız olunca oturum Xbox'ta açık kalıyordu; yinelenir, 404 kapanmış sayılır.
+    func testCloseRetriesAndTreatsMissingAsClosed() async throws {
+        let deletes = Counter()
+        let flaky = FakeHTTP { method, url, _ in
+            if let t = self.tokens(url) { return t }
+            return method == "DELETE" && deletes.next() < 3 ? status(500) : status(204)
+        }
+        let closed = await XboxHome(auth: try auth(flaky), http: flaky, sleep: { _ in }).close("S")
+        XCTAssertTrue(closed.closed)
+        let gone = FakeHTTP { _, url, _ in self.tokens(url) ?? status(404) }
+        let missing = await XboxHome(auth: try auth(gone), http: gone, sleep: { _ in }).close("S")
+        XCTAssertTrue(missing.closed)
+        let down = FakeHTTP { _, url, _ in self.tokens(url) ?? status(503) }
+        let failed = await XboxHome(auth: try auth(down), http: down, sleep: { _ in }).close("S")
+        XCTAssertFalse(failed.closed)
+        XCTAssertEqual(down.calls.filter { $0.method == "DELETE" }.count, XboxSessionClose.delaysMs.count)
+    }
+
     func testBusyClassified() {
         XCTAssertEqual(XboxHome.serviceError(status(400, #"{"code":"ServerInUse"}"#)).kind, .busy)
         XCTAssertEqual(XboxHome.serviceError(status(401)).kind, .signInRequired)
@@ -376,6 +415,35 @@ final class XboxSessionMachineTests: XCTestCase {
         XCTAssertEqual(m.fail(.noPicture, "kesildi"), .retry(delayMs: 15000))
         _ = m.start(); _ = m.played(); _ = m.status("Provisioned", errorDetails: nil)
         XCTAssertEqual(m.fail(.noFirstFrame, "görüntü yok"), .retry(delayMs: 45000))
+    }
+
+    /// "Bir kez kopunca tekrar bağlanmıyor": görüntü gelmiş yayın koptuktan sonra Xbox eski oturumu bırakmadan yenisini
+    /// reddedebiliyor. Bu ret bir kez, uzun beklenip denenir; ikinci ret yayını durdurur.
+    func testRefusalAfterDropIsRetriedOnce() {
+        var m = XboxSessionMachine()
+        _ = m.start(); _ = m.played(); _ = m.status("Provisioned", errorDetails: nil); _ = m.streaming()
+        XCTAssertEqual(m.fail(.network, "kopma"), .retry(delayMs: 5000))
+        _ = m.start(); _ = m.played()
+        XCTAssertEqual(m.status("Failed", errorDetails: XboxSessionMachineTests.cloudServiceTimeout), .retry(delayMs: XboxSessionMachine.reconnectGraceMs))
+        _ = m.start(); _ = m.played()
+        XCTAssertEqual(m.status("Failed", errorDetails: #"{"code":"Conflict"}"#), .retry(delayMs: nil))
+        // Görüntü hiç gelmeden gelen ret eskisi gibi denenmez.
+        var fresh = XboxSessionMachine()
+        _ = fresh.start(); _ = fresh.played()
+        XCTAssertEqual(fresh.status("Failed", errorDetails: #"{"code":"Conflict"}"#), .retry(delayMs: nil))
+    }
+
+    func testEndCauseAndSummary() {
+        XCTAssertEqual(XboxEndCause.of(.serverClosed), .server)
+        XCTAssertEqual(XboxEndCause.of(.timeout), .timeout)
+        XCTAssertEqual(XboxEndCause.of(.noFirstFrame), .timeout)
+        XCTAssertEqual(XboxEndCause.of(.network), .network)
+        XCTAssertEqual(XboxEndCause.of(.noPicture), .network)
+        XCTAssertEqual(XboxEndCause.line(.serverClosed, "Xbox görüntü kanalını kapattı"), "kapanma nedeni: sunucu kapattı (Xbox görüntü kanalını kapattı)")
+        XCTAssertEqual(XboxStop.summary(reason: "x", frames: 3, acks: 2, secondsSinceFirstFrame: 1, cause: .network),
+                       "bağlantı bitti (ağ): x; kare 3, onay 2, ilk kareden sonra 1 sn")
+        XCTAssertTrue(XboxKeepalive.sessionGone("Xbox service HTTP 404: "))
+        XCTAssertFalse(XboxKeepalive.sessionGone("Xbox service HTTP 500: "))
     }
 
     func testOutOfOrderIgnored() {

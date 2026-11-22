@@ -315,6 +315,38 @@ class XboxHomeTest {
         assertEquals(1, sent.getJSONArray("candidate").length())
     }
 
+    /** Wi-Fi'daki Xbox SDP/ICE yanıtını geç verince 7,5 sn'de bırakılıyordu; artık 30 sn beklenir (iPhone/Mac ile aynı). */
+    @Test fun exchangeWaitsThirtySeconds() {
+        assertEquals(30_000L, (0 until XboxHome.EXCHANGE_ATTEMPTS).sumOf { XboxHome.exchangeDelayMs(it) })
+        assertEquals(250L, XboxHome.exchangeDelayMs(0))
+        assertEquals(1000L, XboxHome.exchangeDelayMs(XboxHome.EXCHANGE_ATTEMPTS - 1))
+    }
+
+    /** Hizmet jetonu süresinden önce reddedilince bir kez yenilenip istek yinelenir; yeniden giriş istenmez. */
+    @Test fun unauthorizedRefreshesTokenOnce() {
+        var logins = 0
+        var keepalives = 0
+        val http = FakeHttp { _, url, _ ->
+            if (url.contains("/v2/login/user")) logins++
+            tokens(url) ?: if (++keepalives == 1) XboxHttpResponse(401, "") else XboxHttpResponse(204, "")
+        }
+        XboxHome(auth(http), http, {}).keepalive("S")
+        assertEquals(2, logins)
+        assertEquals(2, keepalives)
+    }
+
+    /** Kapatma isteği bir kez başarısız olunca oturum Xbox'ta açık kalıyordu; yinelenir, 404 kapanmış sayılır. */
+    @Test fun closeRetriesAndTreatsMissingAsClosed() {
+        var deletes = 0
+        val flaky = FakeHttp { method, url, _ -> tokens(url) ?: if (method == "DELETE" && ++deletes < 3) XboxHttpResponse(500, "") else XboxHttpResponse(204, "") }
+        assertNull(XboxHome(auth(flaky), flaky, {}).close("S"))
+        val gone = FakeHttp { _, url, _ -> tokens(url) ?: XboxHttpResponse(404, "") }
+        assertNull(XboxHome(auth(gone), gone, {}).close("S"))
+        val down = FakeHttp { _, url, _ -> tokens(url) ?: XboxHttpResponse(503, "") }
+        assertNotNull(XboxHome(auth(down), down, {}).close("S"))
+        assertEquals(XboxHome.CLOSE_DELAYS_MS.size, down.calls.count { it.first == "DELETE" })
+    }
+
     @Test fun serviceErrorsAreClassified() {
         val http = FakeHttp { _, url, _ -> tokens(url) ?: XboxHttpResponse(400, """{"code":"ServerInUse","message":"busy"}""") }
         try {
@@ -438,6 +470,40 @@ class XboxSessionMachineTest {
         assertTrue(m.streaming())
         assertEquals(XboxSessionMachine.Phase.Streaming, m.phase)
         assertFalse(m.streaming())
+    }
+
+    /**
+     * "Bir kez kopunca tekrar bağlanmıyor": görüntü gelmiş yayın koptuktan sonra Xbox eski oturumu bırakmadan yenisini
+     * reddedebiliyor. Bu ret bir kez, uzun beklenip denenir; ikinci ret yayını durdurur (iPhone/Mac, Windows ile aynı).
+     */
+    @Test fun refusalAfterDropIsRetriedOnce() {
+        val m = XboxSessionMachine()
+        m.start(); m.played(); m.status("Provisioned", null); m.streaming()
+        assertEquals(XboxSessionMachine.Action.Retry(5000), m.fail(XboxError.NETWORK, "kopma"))
+        m.start(); m.played()
+        val serviceTimeout = """{"message":"Agent : -2147019873 : Timed out waiting for Cloud Streaming Service to be ready."}"""
+        assertEquals(XboxSessionMachine.Action.Retry(XboxSessionMachine.RECONNECT_GRACE_MS), m.status("Failed", serviceTimeout))
+        m.start(); m.played()
+        assertEquals(XboxSessionMachine.Action.Retry(null), m.status("Failed", """{"code":"Conflict"}"""))
+        // Görüntü hiç gelmeden gelen ret eskisi gibi denenmez.
+        val fresh = XboxSessionMachine()
+        fresh.start(); fresh.played()
+        assertEquals(XboxSessionMachine.Action.Retry(null), fresh.status("Failed", """{"code":"Conflict"}"""))
+    }
+
+    @Test fun endCauseAndKeepalive() {
+        assertEquals(XboxEndCause.SERVER, XboxEndCause.of(XboxError.SERVER_CLOSED))
+        assertEquals(XboxEndCause.TIMEOUT, XboxEndCause.of(XboxError.TIMEOUT))
+        assertEquals(XboxEndCause.TIMEOUT, XboxEndCause.of(XboxError.NO_FIRST_FRAME))
+        assertEquals(XboxEndCause.NETWORK, XboxEndCause.of(XboxError.NETWORK))
+        assertEquals(XboxEndCause.NETWORK, XboxEndCause.of(XboxError.NO_PICTURE))
+        assertEquals("kapanma nedeni: sunucu kapattı (Xbox görüntü kanalını kapattı)", XboxEndCause.line(XboxError.SERVER_CLOSED, "Xbox görüntü kanalını kapattı"))
+        assertTrue(XboxKeepalive.sessionGone("Xbox service HTTP 404: "))
+        assertFalse(XboxKeepalive.sessionGone("Xbox service HTTP 500: "))
+        val keepalive = XboxKeepalive()
+        assertFalse(keepalive.failed()); assertFalse(keepalive.failed())
+        keepalive.succeeded()
+        assertFalse(keepalive.failed()); assertFalse(keepalive.failed()); assertTrue(keepalive.failed())
     }
 
     @Test fun timesOutAfterMaxPolls() {

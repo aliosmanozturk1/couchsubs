@@ -40,8 +40,19 @@ class XboxHome(
             "\"dev\":{\"hw\":{\"make\":\"Microsoft\",\"model\":\"Surface Pro\",\"sdktype\":\"native\"}," +
             "\"os\":{\"name\":\"Windows 11\",\"ver\":\"22631.2715\",\"platform\":\"desktop\"}," +
             "\"displayInfo\":{\"dimensions\":{\"widthInPixels\":1920,\"heightInPixels\":1080},\"pixelDensity\":{\"dpiX\":1,\"dpiY\":1}}}}"
-        const val EXCHANGE_ATTEMPTS = 30
+        /**
+         * SDP/ICE yanıtı ilk 5 sn 250 ms'de bir, sonra saniyede bir, toplam 30 sn sorulur. Eskiden 7,5 sn'de bırakılıyordu:
+         * Wi-Fi'daki Xbox yanıtı geç verince oturum Xbox'ta "uzaktan oynatma başladı"dan birkaç saniye sonra kapanıyordu.
+         */
+        const val EXCHANGE_FAST_ATTEMPTS = 20
         const val EXCHANGE_INTERVAL_MS = 250L
+        const val EXCHANGE_SLOW_INTERVAL_MS = 1000L
+        const val EXCHANGE_ATTEMPTS = EXCHANGE_FAST_ATTEMPTS + 25
+
+        fun exchangeDelayMs(attempt: Int): Long = if (attempt < EXCHANGE_FAST_ATTEMPTS) EXCHANGE_INTERVAL_MS else EXCHANGE_SLOW_INTERVAL_MS
+
+        /** Oturum kapatma (DELETE) denemeleri arasındaki bekleme (ilki hemen; iPhone/Mac XboxSessionClose ile aynı). */
+        val CLOSE_DELAYS_MS = listOf(0L, 1000L, 2000L)
 
         /** `/play` gövdesi (köprüdeki `start`). */
         fun playBody(consoleId: String, timezoneOffsetMinutes: Int): JSONObject = JSONObject()
@@ -96,14 +107,23 @@ class XboxHome(
 
     /** gssv isteği (köprüdeki `api`): 204 ya da boş gövde null. */
     fun api(path: String, method: String = "GET", data: JSONObject? = null): JSONObject? {
-        val endpoint = auth.homeEndpoint()
-        val response = http.request(method, endpoint.baseUrl + path, mapOf(
-            "Accept" to "application/json", "Content-Type" to "application/json",
-            "Authorization" to "Bearer ${endpoint.token}", "X-Gssv-Client" to "XboxComBrowser",
-            "X-MS-Device-Info" to DEVICE_INFO), data?.toString())
+        var response = send(path, method, data)
+        // Hizmet jetonu süresinden önce reddedildi: jeton bir kez yenilenip istek yinelenir.
+        if (response.status == 401) {
+            auth.invalidateHomeToken()
+            response = send(path, method, data)
+        }
         if (!response.ok) throw serviceError(response)
         if (response.status == 204 || response.body.isBlank()) return null
         return parseObject(response.body)
+    }
+
+    private fun send(path: String, method: String, data: JSONObject?): XboxHttpResponse {
+        val endpoint = auth.homeEndpoint()
+        return http.request(method, endpoint.baseUrl + path, mapOf(
+            "Accept" to "application/json", "Content-Type" to "application/json",
+            "Authorization" to "Bearer ${endpoint.token}", "X-Gssv-Client" to "XboxComBrowser",
+            "X-MS-Device-Info" to DEVICE_INFO), data?.toString())
     }
 
     private fun serviceError(response: XboxHttpResponse): XboxException {
@@ -135,13 +155,13 @@ class XboxHome(
     /** POST, sonra yanıt gelene kadar GET (köprüdeki `exchange`). */
     private fun exchange(path: String, payload: JSONObject): String {
         api(path, "POST", payload)
-        repeat(EXCHANGE_ATTEMPTS) {
+        repeat(EXCHANGE_ATTEMPTS) { attempt ->
             val result = api(path)
             val text = result?.optString("exchangeResponse").orEmpty()
             if (text.isNotEmpty()) return text
-            sleep(EXCHANGE_INTERVAL_MS)
+            sleep(exchangeDelayMs(attempt))
         }
-        throw XboxException(XboxError.TIMEOUT, "Xbox WebRTC exchange timed out")
+        throw XboxException(XboxError.TIMEOUT, "Xbox WebRTC exchange timed out (${if (path.endsWith("/ice")) "ICE" else "SDP"}, 30 sn)")
     }
 
     /** SDP yanıtı (Xbox'ın "answer" SDP'si). */
@@ -164,5 +184,27 @@ class XboxHome(
 
     fun stop(sessionId: String) {
         api("/v5/sessions/home/$sessionId", "DELETE")
+    }
+
+    /**
+     * Oturumu kapatır; olmazsa [CLOSE_DELAYS_MS] aralıklarıyla yineler. Oturum Xbox hizmetinde zaten yoksa (404/410)
+     * kapanmış sayılır. Dönen değer: kapanmadıysa son hata, kapandıysa null.
+     */
+    fun close(sessionId: String): String? {
+        var last: String? = null
+        for (delay in CLOSE_DELAYS_MS) {
+            if (delay > 0) sleep(delay)
+            try {
+                stop(sessionId)
+                return null
+            } catch (error: InterruptedException) {
+                throw error
+            } catch (error: Exception) {
+                val message = error.message ?: error.javaClass.simpleName
+                if (XboxKeepalive.sessionGone(message)) return null
+                last = message
+            }
+        }
+        return last ?: "?"
     }
 }

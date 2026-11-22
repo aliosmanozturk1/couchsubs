@@ -456,6 +456,17 @@
                             <CheckBox x:Name="AutoReadGamePhone" Content="{t:T 'Automatically translate the GTA 6 phone (experimental)'}"
                                       Foreground="{DynamicResource textPrimaryBrush}" Margin="0,12,0,0"
                                       Checked="OnAutoReadGamePhone" Unchecked="OnAutoReadGamePhone" />
+                            <!-- GTA 6 telefon mesajları (otomatik okuma ve "Ekranı çevir"): Yanda Panel (varsayılan) ya da Balonların Üstünde;
+                                 Mac, iPhone, Android ile aynı ad ve seçenekler. -->
+                            <TextBlock Text="{t:T 'GTA 6 Phone Messages'}" Margin="0,12,0,8" />
+                            <Border Style="{StaticResource SegmentGroup}" HorizontalAlignment="Left">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="PhoneMessagesPanel" Content="{t:T 'Side Panel'}" GroupName="phoneMessages" Style="{StaticResource SegmentButton}" Checked="OnPhoneMessages" />
+                                    <RadioButton x:Name="PhoneMessagesBubbles" Content="{t:T 'On the Bubbles'}" GroupName="phoneMessages" Style="{StaticResource SegmentButton}" Checked="OnPhoneMessages" />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="{t:T 'Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble.'}" />
                             <StackPanel x:Name="AreaProfileButtons" Orientation="Horizontal" Margin="0,12,0,0">
                                 <Button x:Name="AreaProfileSave" Padding="16,0" Click="OnSaveAreaProfile" />
                                 <Button x:Name="AreaProfileDelete" Content="{t:T 'Delete profile'}" Padding="16,0" Margin="8,0,0,0" Click="OnDeleteAreaProfile" />
@@ -574,12 +585,6 @@
                     <c:Card x:Name="ScreenCard" Margin="0,12,0,0">
                         <StackPanel>
                             <TextBlock x:Name="ScreenHint" Style="{StaticResource HintText}" TextWrapping="Wrap" />
-                            <!-- "Ekranı çevir"de GTA 6 telefonu: kapalıyken her mesaj kendi balonunun üstünde (Mac, iPhone, Android ile aynı) -->
-                            <CheckBox x:Name="PhoneChatCard" Content="{t:T 'Show GTA 6 phone translations in a card next to the phone'}"
-                                      Foreground="{DynamicResource textPrimaryBrush}" Margin="0,12,0,0"
-                                      Checked="OnPhoneChatCard" Unchecked="OnPhoneChatCard" />
-                            <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,4,0,0"
-                                       Text="{t:T 'Off: each message is translated on top of its own bubble, in the bubble\'s colours.'}" />
                         </StackPanel>
                     </c:Card>
                     <c:Card x:Name="FreeAreaCard" Margin="0,12,0,0">

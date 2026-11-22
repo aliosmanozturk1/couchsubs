@@ -524,6 +524,10 @@ kartı: "%lld SN SESSİZ", neden başlığı, açıklama, çözüm düğmeleri v
 Solda 240 genişlikte gezinme kartı: üstte üç bölüm (64 yükseklik, başlık + gri ipucu), ayraç, altında altı sayfa
 (44 yükseklik). En altta gri not "Ayarlar tek yerde. Profil sayfası kaldırıldı." Sağda iki sütun kartlar.
 
+Gelişmiş › Deneysel kartında "GTA 6 Telefonunu Otomatik Çevir" satırının altında **GTA 6 Telefon Mesajları** seçicisi
+(`DSTabs`: Yanda Panel / Balonların Üstünde, varsayılan Yanda Panel; ayar Mac `phoneMessagesPanel`, Windows
+`PhoneMessagesPanel`) ve altında gri açıklaması. Otomatik telefon okumasına ve "Ekranı Çevir"e birlikte uygulanır.
+
 | EN | TR |
 |---|---|
 | Basics | Temel |
@@ -612,6 +616,10 @@ Solda 240 genişlikte gezinme kartı: üstte üç bölüm (64 yükseklik, başl�
 | Objectives, menus and other text on the screen. | Görev, menü ve ekrandaki diğer yazılar. |
 | Translate the GTA 6 Phone Automatically | GTA 6 Telefonunu Otomatik Çevir |
 | Each message is translated over its own bubble. | Her mesaj kendi balonunun üstünde çevrilir. |
+| GTA 6 Phone Messages | GTA 6 Telefon Mesajları |
+| Side Panel | Yanda Panel |
+| On the Bubbles | Balonların Üstünde |
+| Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble. | Yanda Panel: sohbet telefonun yanında gösterilir; karşı taraf solda, siz sağdasınız. Balonların Üstünde: her mesaj kendi balonunun üstünde çevrilir. |
 | Restore Defaults | Varsayılana Dön |
 | Appearance | Görünüm |
 | Follow System | Sisteme Uy |

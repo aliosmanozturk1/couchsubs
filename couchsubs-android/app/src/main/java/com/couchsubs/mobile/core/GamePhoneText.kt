@@ -180,6 +180,7 @@ object GamePhoneText {
      * ([PhoneChat.withoutAppNames]); saat ve hava harfsiz satır olarak zaten atılır.
      */
     fun groups(source: Reading): List<ScreenTranslation.Group> {
+        val home = PhoneChat.isHomeScreen(source.lines)
         val reading = Reading(PhoneChat.withoutAppNames(source.lines))
         val flat = reading.lines.all { it.phoneBox != null }
         fun box(line: TextLine): TextBox = (if (flat) line.phoneBox else line.box)!!
@@ -198,8 +199,10 @@ object GamePhoneText {
                 val place = clean.drop(1).fold(first) { total, line -> total.union(line.box!!) }
                 val heights = run.map { box(it).bottom - box(it).top }.sorted()
                 val icons = clean.flatMap { it.icons ?: emptyList() }
+                // Düz ekrandaki yeri: sohbet panelinde tarafı (sol/sağ) ve sırası bundan çıkar ([roles]).
+                val spot = run.drop(1).fold(box(run[0])) { total, line -> total.union(box(line)) }
                 groups += ScreenTranslation.Group(listOf(clean.joinToString(" ") { it.text }), place, heights[heights.size / 2],
-                    if (icons.isEmpty()) null else listOf(icons))
+                    if (icons.isEmpty()) null else listOf(icons), ScreenPhoneCard.Placement(ScreenPhoneCard.Role.MESSAGE, spot))
             } finally {
                 run.clear()
             }
@@ -209,7 +212,30 @@ object GamePhoneText {
             run.add(line)
         }
         finish()
-        return groups.take(ScreenTranslation.MAX_GROUPS)
+        return roles(groups.take(ScreenTranslation.MAX_GROUPS), home)
+    }
+
+    /**
+     * Sohbet panelinde her grubun rolü ("Ekranı çevir"in [PhoneChat] kuralları, düz ekrandaki yerinden): en üstteki kısa
+     * ad satırı kişinin adıdır (çevrilmez), ortalı kısa satır not, sağa yaslı balon oyuncunun, sola yaslı karşı tarafın
+     * mesajı. Sohbet listesinde önizlemeler, ana ekranda bütün yazılar kendi yerinde kalır. Mac ile aynı.
+     */
+    internal fun roles(groups: List<ScreenTranslation.Group>, home: Boolean): List<ScreenTranslation.Group> {
+        if (groups.any { it.phone == null }) return groups.map { it.copy(phone = null) }
+        val list = groups.any { section(it.paragraphs.joinToString("")) != null }
+        val first = groups.indices.minByOrNull { groups[it].phone!!.spot.top }
+        return groups.mapIndexed { index, group ->
+            val text = group.paragraphs.joinToString(" ")
+            val spot = group.phone!!.spot
+            val row = PhoneChat.Row(emptyList(), spot, text)
+            val role = when {
+                home -> ScreenPhoneCard.Role.HOME
+                index == first && !list && PhoneChat.isHeader(row) -> ScreenPhoneCard.Role.HEADER
+                list -> if (section(text) != null) ScreenPhoneCard.Role.HEADING else ScreenPhoneCard.Role.PREVIEW
+                else -> PhoneChat.role(listOf(row))
+            }
+            group.copy(phone = ScreenPhoneCard.Placement(role, spot))
+        }
     }
 
     private fun endsSentence(text: String): Boolean = text.trimEnd().lastOrNull()?.let { it in ".!?" } ?: false

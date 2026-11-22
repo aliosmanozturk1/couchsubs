@@ -525,8 +525,13 @@ struct SubtitleScreen: View {
             // her çeviri kendi yazısının yerinde, aynı boyda ve özgün yazının stilinde (zemin ve yazı rengi, kalınlık, hiza;
             // TV ve Android'deki gibi). Telefonun her mesajı kendi balonunun üstünde, balonun renginde; eskiden bütün sohbet
             // telefonun üstünde tek siyah kutuda birleşiyordu. "Ekranı çevir" ekrandayken onun yerindeki bloklar çizilmez (#827).
+            // Yanda Panel'de GTA 6 telefonunun mesajları telefonun yanındaki sohbet panelinde (Mac, Windows, Android, TV ile
+            // aynı çizim; `PhonePanelView`), panel dışındaki yazılar kendi yerinde.
+            let placed = PhoneModel.placedItems(model.phoneRegions, screen: model.screenItems)
+            let panel = ScreenPhoneCard.panel(placed)
             GeometryReader { proxy in
-                ForEach(Array(PhoneModel.placedItems(model.phoneRegions, screen: model.screenItems).enumerated()), id: \.offset) { _, item in
+                if let panel { PhonePanelInFrame(panel, size: proxy.size, minFont: 12) }
+                ForEach(Array((panel?.outside ?? placed).enumerated()), id: \.offset) { _, item in
                     let box = item.box
                     let backdrop = ScreenPhoneCard.isBackdrop(item)
                     let width = backdrop ? proxy.size.width * (box.right - box.left) : max(60, proxy.size.width * (box.right - box.left))

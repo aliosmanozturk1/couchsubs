@@ -324,7 +324,8 @@ struct SubtitleOverlayView: View {
                 if model.overlayPhoneItems.isEmpty {
                     Spacer(minLength: 0)
                 } else {
-                    GamePhoneBlocks(items: model.overlayPhoneItems)
+                    GamePhoneBlocks(items: model.overlayPhoneItems,
+                                    panelFont: max(13, CGFloat(model.settings.style.fontSize) * scale * 0.55))
                         .layoutPriority(-1)
                 }
                 if lines.isEmpty, adjusting {

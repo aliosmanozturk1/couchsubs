@@ -23,6 +23,9 @@ public enum XboxErrorKind: String, Sendable {
     /// Bağlantı kuruldu ama Xbox tek kare göndermedi (ilk kare sınırı doldu ya da Xbox kapattı); iki bağlantıdan sonra
     /// durulur (bkz. `XboxSessionMachine.maxNoPictureAttempts`).
     case noFirstFrame
+    /// Xbox yayını kendisi kapattı (görüntü kanalı ya da WebRTC bağlantısı karşı taraftan kapandı, oturum sunucuda
+    /// bulunamadı); yeniden bağlanılır (bkz. `XboxEndCause`).
+    case serverClosed
 }
 
 public struct XboxError: Error, Sendable {

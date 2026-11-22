@@ -16,7 +16,8 @@ public static class ScreenRegions
     public static (string Text, TextBox? Box, IReadOnlyList<ScreenTranslation.Item>? Blocks)? Styled(SubtitleEvent e, bool apart)
     {
         if (!apart || e.Kind != SubtitleEventKind.Screen || e.Blocks is not { } all) return null;
-        var blocks = all.Where(item => !ScreenPhoneCard.IsBackdrop(item)).ToList();
+        // Telefon sohbet panelinin zemini kalır: pencereler paneli onunla çizer (PhonePanelView).
+        var blocks = all.Where(item => !ScreenPhoneCard.IsBackdrop(item) || item.Panel == ScreenPhoneCard.PanelPart.Card).ToList();
         if (blocks.Count == 0 || !blocks.Any(item => item.Look is not null)) return null;
         var box = blocks.Select(item => item.Box).Aggregate((a, b) => a.Union(b));
         return (e.Text, box, blocks);

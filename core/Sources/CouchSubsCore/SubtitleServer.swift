@@ -491,6 +491,9 @@ public final class SubtitleServer: @unchecked Sendable {
         if let icons = item.icons, !icons.isEmpty { result["icons"] = Self.json(icons) }
         // Telefon mesajı kendi balonunda: TV çeviriyi balona sığdırır (eski TV yok sayar, özgün stilde çizer).
         if item.bubble { result["bubble"] = true }
+        // Telefonun yanındaki sohbet panelinin parçası: yeni TV paneli akışla, yuvarlak köşeli yarı saydam kartta çizer;
+        // eski TV alanı yok sayar, öğeyi stilli kutu olarak yerinde çizer.
+        if let panel = item.panel { result["panel"] = panel.rawValue }
         return result
     }
 
@@ -587,7 +590,11 @@ public final class SubtitleServer: @unchecked Sendable {
         var blocks = blocks
         if let all = blocks, !all.isEmpty {
             let kept = all.filter { area($0.box) <= maxBoxArea }
-            if kept.reduce(0, { $0 + area($1.box) }) > maxBoxArea { return ("", nil) }
+            // Sohbet panelinin balonları panelin zemininin içindedir: toplam alana bir kez (zemin olarak) girer.
+            let inside: Set<ScreenPhoneCard.PanelPart> = [.title, .theirs, .mine, .note]
+            if kept.filter({ $0.panel.map { !inside.contains($0) } ?? true }).reduce(0, { $0 + area($1.box) }) > maxBoxArea {
+                return ("", nil)
+            }
             if !kept.isEmpty { return (text, kept) }
             blocks = nil
         }

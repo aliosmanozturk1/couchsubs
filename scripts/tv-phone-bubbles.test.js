@@ -154,3 +154,52 @@ test('"Ekranı çevir" balonları yerinde: taşmaz, okunur boyda, balon rengiyle
   assert.equal(list[0].background, 'rgb(246, 239, 232)', 'gelen balon kendi renginde');
   shoot(inPlace, 'tv-phone-bubbles.png');
 });
+
+// Yanda Panel (varsayılan; X'te monitörle oynayan kullanıcı: balonların üstündeki çeviri kayıyor, küçük, kimin ne dediği
+// belli olmuyor): telefon sağdaysa panel solunda, yuvarlak köşeli yarı saydam koyu kartta; üstte kişinin adı, karşı
+// taraf solda krem, oyuncu sağda amber balon; sığmayan eski mesajlar düşer, son mesaj görünür kalır.
+const cardStyle = { background: '#141518', foreground: '#F3EEE4' };
+const part = (panel, text, box, surface) => ({ text, box: { left: box[0], top: box[1], right: box[2], bottom: box[3] }, line: 0.022,
+  surface: Object.assign({ flat: true }, surface), style: look, panel });
+const panelBlocks = (count) => [
+  part('card', ' ', [0.31, 0.26, 0.592, 0.81], cardStyle),
+  part('title', 'Lucia', [0.32, 0.27, 0.58, 0.30], cardStyle),
+].concat(Array.from({ length: count }, (_, i) => i % 2
+  ? part('mine', 'O şeyleri senin için bıraktım ' + i, [0.40, 0.32 + i * 0.01, 0.58, 0.33 + i * 0.01], { background: '#F5B83D', foreground: '#17181B' })
+  : part('theirs', 'Sağ ol dostum! Başka bir şey bulursan bana getir ' + i, [0.32, 0.32 + i * 0.01, 0.52, 0.33 + i * 0.01], { background: '#F3EEE4', foreground: '#17181B' })));
+const sidePanel = (count) => `
+  showRegion({ id: 'game-phone', text: 'x', box: { left: 0.31, top: 0.26, right: 0.79, bottom: 0.81 }, blocks: ${JSON.stringify(panelBlocks(count))} });
+  var panel = document.querySelector('.phone-panel');
+  var style = getComputedStyle(panel), messages = panel.querySelector('.panel-messages');
+  var rows = Array.prototype.slice.call(panel.querySelectorAll('.panel-row')).map(function (row) {
+    var bubble = row.querySelector('.panel-bubble');
+    return { text: bubble.textContent, side: row.className, font: parseFloat(getComputedStyle(bubble).fontSize),
+      background: getComputedStyle(bubble).backgroundColor, box: rect(bubble) };
+  });
+  $('result').textContent = JSON.stringify({ panel: rect(panel), radius: parseFloat(style.borderTopLeftRadius),
+    background: style.backgroundColor, title: panel.querySelector('.panel-title').textContent, rows: rows,
+    list: rect(messages), couch: !!panel.querySelector('.panel-couch'), loose: document.querySelectorAll('#regions .item').length });`;
+
+test('Yanda Panel: sohbet telefonun yanında, kim ne dedi belli, son mesaj görünür', { skip: !browser && 'Chromium/Chrome bulunamadı' }, () => {
+  const r = measure(sidePanel(4));
+  assert.equal(r.loose, 0, 'panel parçaları ayrıca yerinde çizilmez');
+  assert.ok(r.panel.right <= 0.6 * 1920, 'panel telefonun üstüne biniyor: ' + JSON.stringify(r.panel));
+  assert.ok(r.radius >= 16, 'köşe yuvarlak değil');
+  assert.match(r.background, /rgba\(20, 21, 24, 0\.88\)/, 'zemin yarı saydam koyu değil: ' + r.background);
+  assert.equal(r.title, 'Lucia');
+  assert.equal(r.couch, true);
+  assert.equal(r.rows.length, 4);
+  const theirs = r.rows.filter(row => row.side.indexOf('theirs') >= 0), mine = r.rows.filter(row => row.side.indexOf('mine') >= 0);
+  assert.ok(theirs.every(t => t.box.left < mine[0].box.left), 'karşı taraf solda, oyuncu sağda değil');
+  assert.ok(mine.every(m => m.box.right > r.panel.right - 0.03 * 1920), 'oyuncunun balonu sağa yaslı değil');
+  assert.equal(mine[0].background, 'rgb(245, 184, 61)', 'oyuncunun balonu amber');
+  assert.equal(theirs[0].background, 'rgb(243, 238, 228)', 'karşı tarafın balonu krem');
+  for (let i = 0; i + 1 < r.rows.length; i++) assert.ok(r.rows[i].box.bottom <= r.rows[i + 1].box.top + 1, 'balonlar üst üste');
+  assert.ok(r.rows.every(row => row.font >= 18), 'yazı okunamayacak kadar küçük');
+  shoot(sidePanel(4), 'tv-phone-panel.png');
+
+  const full = measure(sidePanel(30));
+  assert.ok(full.rows.length < 30 && full.rows.length >= 3, 'sığmayan eski mesajlar düşmedi: ' + full.rows.length);
+  assert.ok(full.rows[full.rows.length - 1].text.endsWith(' 29'), 'son mesaj görünmüyor');
+  assert.ok(full.rows[full.rows.length - 1].box.bottom <= full.list.bottom + 1, 'son mesaj panelden taşıyor');
+});

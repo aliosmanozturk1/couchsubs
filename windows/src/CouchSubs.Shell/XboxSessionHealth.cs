@@ -22,6 +22,62 @@ public sealed class XboxKeepalive
 
     /// <returns>Oturum bitirilmeli mi.</returns>
     public bool Failed() => ++Failures >= MaxFailures;
+
+    /// <summary>Yanıt oturumun Xbox hizmetinde artık olmadığını söylüyor (HTTP 404/410): beklenmez, oturum biter.</summary>
+    public static bool SessionGone(string? message) =>
+        message is not null && (message.Contains("HTTP 404", StringComparison.Ordinal) || message.Contains("HTTP 410", StringComparison.Ordinal));
+}
+
+/// <summary>
+/// Bir bağlantının neden bittiği: günlükte açıkça yazılır, yeniden bağlanırken ekrandaki kısa metni seçer. CouchSubsCore
+/// XboxEndCause (iPhone, Mac) ve Android'deki XboxEndCause ile aynı kurallar.
+/// </summary>
+public enum XboxEndCause
+{
+    /// <summary>Xbox (ya da Xbox hizmeti) yayını kapattı: görüntü kanalı karşı taraftan kapandı, oturum bulunamadı, yayın reddedildi.</summary>
+    Server,
+    /// <summary>Beklenen yanıt ya da görüntü süresinde gelmedi.</summary>
+    Timeout,
+    /// <summary>Ağ bağlantısı koptu ya da kurulamadı (ICE, Wi-Fi, internet).</summary>
+    Network,
+}
+
+public static class XboxEndCauses
+{
+    public static string Text(this XboxEndCause cause) => cause switch
+    {
+        XboxEndCause.Server => "sunucu kapattı",
+        XboxEndCause.Timeout => "zaman aşımı",
+        _ => "ağ",
+    };
+
+    /// <summary>Olay belli değilse iletiden: süre dolması zaman aşımı, Xbox hizmetinin hata yanıtı sunucu, gerisi ağ.</summary>
+    public static XboxEndCause FromMessage(string? message) =>
+        message is null ? XboxEndCause.Network
+        : message.Contains("timed out", StringComparison.OrdinalIgnoreCase) || message.Contains("zaman aşımı", StringComparison.OrdinalIgnoreCase) ? XboxEndCause.Timeout
+        : message.Contains("Xbox service HTTP", StringComparison.Ordinal) ? XboxEndCause.Server
+        : XboxEndCause.Network;
+
+    /// <summary>Günlük satırı, ör. <c>kapanma nedeni: ağ (Xbox ICE bağlantısı koptu (failed))</c>.</summary>
+    public static string Line(XboxEndCause cause, string? detail) => $"kapanma nedeni: {cause.Text()} ({XboxStop.Shorten(detail)})";
+
+    /// <summary>Yeniden bağlanırken ana ekranda gösterilen kısa metin (Mac/iPhone XboxText.session, Android xbox_error_*).</summary>
+    public static string RetryMessage(XboxEndCause cause) => cause switch
+    {
+        XboxEndCause.Server => "The Xbox closed the stream. Reconnecting…",
+        XboxEndCause.Timeout => "Your Xbox didn't answer. Retrying…",
+        _ => "The Xbox connection dropped. Reconnecting…",
+    };
+}
+
+/// <summary>
+/// ICE adayları değişildikten sonra görüntü kanalı (input) bu sürede açılmazsa bağlantı zaman aşımıyla kapatılır; ilk
+/// kare sınırı kanal açılınca başlar. Eskiden Windows'ta ICE hiç kurulamazsa sınır yoktu: oturum Xbox kendisi kapatana
+/// kadar "bağlanıyor"da kalıyordu.
+/// </summary>
+public static class XboxConnectWatch
+{
+    public static readonly TimeSpan ConnectLimit = TimeSpan.FromSeconds(30);
 }
 
 /// <summary>
@@ -37,13 +93,23 @@ public sealed class XboxRetryPlan
     public const long HealthyStreamMs = 60_000;
     public const int MaxNoPictureAttempts = 2;
 
+    /// <summary>Kopmadan sonra Xbox yeni oturumu reddederse (eski oturum Xbox'ta henüz kapanmadı) beklenen süre.</summary>
+    public const int ReconnectGraceMs = 15_000;
+
     private int noPicture;
+    private bool hadPicture;
+    private bool graceUsed;
 
     /// <summary>Ardışık başarısız deneme (1…3).</summary>
     public int Failures { get; private set; }
 
-    /// <summary>İlk kare geldi: görüntüsüz bağlantı dizisi biter.</summary>
-    public void PictureArrived() => noPicture = 0;
+    /// <summary>İlk kare geldi: görüntüsüz bağlantı dizisi biter; sonraki kopmada gelen ret bir kez denenebilir.</summary>
+    public void PictureArrived()
+    {
+        noPicture = 0;
+        hadPicture = true;
+        graceUsed = false;
+    }
 
     /// <param name="permanent">Konsol yayını reddetti (Failed ya da errorDetails).</param>
     /// <param name="noFirstFrame">Bağlantı kuruldu ama Xbox'tan tek kare gelmeden bitti.</param>
@@ -55,8 +121,13 @@ public sealed class XboxRetryPlan
         if (streamedMs >= HealthyStreamMs) Failures = 0;
         Failures++;
         if (noFirstFrame) noPicture++;
-        if (permanent || XboxStop.IsPermanent(reason) || Failures > DelaysMs.Length || noPicture >= MaxNoPictureAttempts) return null;
-        return DelaysMs[Failures - 1];
+        var refused = permanent || XboxStop.IsPermanent(reason);
+        // Görüntü gelmiş yayın koptuktan hemen sonra Xbox eski oturumu bırakmadan yenisini reddedebiliyor ("bir kez
+        // kopunca Xbox yeniden başlatılmadan bağlanmıyor"): bu ret bir kez, eski oturum kapansın diye uzun beklenip denenir.
+        var grace = refused && hadPicture && !graceUsed;
+        if ((refused && !grace) || Failures > DelaysMs.Length || noPicture >= MaxNoPictureAttempts) return null;
+        if (grace) graceUsed = true;
+        return grace ? Math.Max(ReconnectGraceMs, DelaysMs[Failures - 1]) : DelaysMs[Failures - 1];
     }
 }
 
@@ -186,9 +257,9 @@ public static partial class XboxStop
     /// Bağlantı bitince yazılan özet (Android'deki <c>summarize</c> ile aynı biçim): neden, okumaya giden kare sayısı ve
     /// ilk kareden sonra kaç saniye sürdüğü. "Görüntü hiç gelmedi" ile "görüntü geldi, sonra kesildi" bu satırla ayrılır.
     /// </summary>
-    public static string Summary(string? reason, long frames, TimeSpan? sinceFirstFrame) =>
+    public static string Summary(string? reason, long frames, TimeSpan? sinceFirstFrame, XboxEndCause? cause = null) =>
         string.Create(CultureInfo.InvariantCulture,
-            $"bağlantı bitti: {(string.IsNullOrWhiteSpace(reason) ? "durduruldu" : reason)}; kare {frames}, ilk kareden sonra {(sinceFirstFrame is { } lived ? $"{(long)lived.TotalSeconds} sn" : "ilk kare yok")}");
+            $"bağlantı bitti{(cause is { } c ? $" ({c.Text()})" : "")}: {(string.IsNullOrWhiteSpace(reason) ? "durduruldu" : reason)}; kare {frames}, ilk kareden sonra {(sinceFirstFrame is { } lived ? $"{(long)lived.TotalSeconds} sn" : "ilk kare yok")}");
 
     /// <summary>Xbox köprüsünün (node) hata çıktısındaki uzun belirteç benzeri dizileri gizler; satırı kısaltır.</summary>
     public static string RedactBridgeOutput(string? output, int limit = 300)

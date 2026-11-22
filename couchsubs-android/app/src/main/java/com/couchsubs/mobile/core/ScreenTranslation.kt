@@ -42,6 +42,11 @@ object ScreenTranslation {
          * sınıra kadar küçülür, satır kırılır; sığmazsa balon biraz aşağı uzar). Mac ile aynı.
          */
         val bubble: Boolean = false,
+        /**
+         * Telefonun yanındaki sohbet panelinin parçası ([ScreenPhoneCard.PanelPart]); yeni çiziciler paneli akışla çizer,
+         * eski TV kutuları yerinde çizer (Mac ile aynı).
+         */
+        val panel: ScreenPhoneCard.PanelPart? = null,
     ) {
         /** Birden çok parça var: satır satır, sola yaslı gösterilir. */
         val paragraphs: Boolean get() = translation.contains('\n')
@@ -61,13 +66,13 @@ object ScreenTranslation {
     fun translateGroups(
         reading: Reading, translate: (String) -> String, cancelled: () -> Boolean = { false }, frame: GrayFrame? = null,
         color: ((Int, Int) -> Int)? = null, phone: ScreenPhoneCard.Handset? = null, memory: PhoneChatMemory? = null,
-        phoneCard: Boolean = true, progress: (List<Item>) -> Unit = {},
+        phoneCard: Boolean = true, panelScale: Double = 1.0, progress: (List<Item>) -> Unit = {},
     ): List<Item> {
         val items = mutableListOf<Item>()
         val all = withImages(groups(reading, wholeScreen = true, handset = phone, frame = frame, color = color), frame)
         val chat = chatTitle(all)
         for (group in all) {
-            if (cancelled()) return present(items, phone, phoneCard)
+            if (cancelled()) return present(items, phone, phoneCard, panelScale)
             // Simgeler çeviride uydurma adlarla korunur (IconText); sözlükteki kısa etiketler çevirmene gitmez, fiyatlar
             // adla korunur (PriceText).
             val prepared = group.paragraphs.map { IconText.protect(it) }
@@ -79,10 +84,10 @@ object ScreenTranslation {
             }
             val item = item(group, prepared, translated, keepUnchanged = phone != null) ?: continue
             items.add(styled(item, frame, color))
-            val shown = present(items, phone, phoneCard)
+            val shown = present(items, phone, phoneCard, panelScale)
             if (shown.isNotEmpty()) progress(shown)
         }
-        return present(items, phone, phoneCard)
+        return present(items, phone, phoneCard, panelScale)
     }
 
     /**
@@ -97,10 +102,10 @@ object ScreenTranslation {
     fun translate(
         reading: Reading, translator: TextTranslator, cancelled: () -> Boolean = { false }, frame: GrayFrame? = null,
         color: ((Int, Int) -> Int)? = null, phone: ScreenPhoneCard.Handset? = null, memory: PhoneChatMemory? = null,
-        phoneCard: Boolean = true, progress: (List<Item>) -> Unit = {},
+        phoneCard: Boolean = true, panelScale: Double = 1.0, progress: (List<Item>) -> Unit = {},
     ): List<Item> {
         if (!translator.translatesTogether)
-            return translateGroups(reading, { translator.translate(it) }, cancelled, frame, color, phone, memory, phoneCard, progress)
+            return translateGroups(reading, { translator.translate(it) }, cancelled, frame, color, phone, memory, phoneCard, panelScale, progress)
         val groups = withImages(groups(reading, wholeScreen = true, handset = phone, frame = frame, color = color), frame)
         // Simgeler çeviride uydurma adlarla korunur (IconText). Sözlükteki kısa arayüz etiketleri ("SCROLL", "SEND",
         // "BACK") ve telefondaki kişi adları çevirmene gitmez; fiyatlar adla korunur (PriceText).
@@ -131,7 +136,7 @@ object ScreenTranslation {
             next += count
             item(group, prepared[index], translated, keepUnchanged = phone != null)?.let { items.add(styled(it, frame, color)) }
         }
-        val shown = present(items, phone, phoneCard)
+        val shown = present(items, phone, phoneCard, panelScale)
         if (shown.isNotEmpty()) progress(shown)
         return shown
     }
@@ -182,8 +187,8 @@ object ScreenTranslation {
      * kendi balonunun üstünde, balonun rengiyle yerinde kalır ([Item.bubble]). Çevirisi aslıyla aynı öğeler (kart dışında;
      * yerinde kişi adı) atılır, özgün yazı görünür kalır (Mac ile aynı).
      */
-    internal fun present(items: List<Item>, phone: ScreenPhoneCard.Handset?, card: Boolean = true): List<Item> =
-        withoutDuplicates((if (phone != null && card) ScreenPhoneCard.layout(items, phone)
+    internal fun present(items: List<Item>, phone: ScreenPhoneCard.Handset?, card: Boolean = true, textScale: Double = 1.0): List<Item> =
+        withoutDuplicates((if (phone != null && card) ScreenPhoneCard.layout(items, phone, textScale)
             else items.map { it.copy(bubble = it.phone?.role?.inCard == true) }).filter { !it.unchanged })
 
     // --- Aynı yerde tek çizim (#827) ---

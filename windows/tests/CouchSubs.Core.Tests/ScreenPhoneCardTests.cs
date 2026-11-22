@@ -125,6 +125,44 @@ public class ScreenPhoneCardTests
         }
     }
 
+    /// <summary>
+    /// Otomatik telefon okumasında Yanda Panel (varsayılan; Mac PhoneRegionSessionTests ile aynı düzen): grupların rolü düz
+    /// ekrandaki yerinden (başlık, sola yaslı karşı taraf, sağa yaslı oyuncu); panel telefonun yanında, parçaları JSON'da
+    /// "panel" alanıyla; Balonların Üstünde'de aslıyla aynı ad çizilmez, balonlar yerinde.
+    /// </summary>
+    [Fact]
+    public void AutomaticPhoneReadingShowsTheChatInASidePanel()
+    {
+        ScreenTranslation.Group Spot(string text, double left, double top, double right) =>
+            new([text], new TextBox(0.8, 0.2 + top * 0.6, 0.9, 0.22 + top * 0.6), 0.018)
+            { Phone = new ScreenPhoneCard.Placement(ScreenPhoneCard.Role.Message, new TextBox(left, top, right, top + 0.04)) };
+        var groups = GamePhoneText.Roles([Spot("Lucia", 0.40, 0.05, 0.60), Spot("Reply today.", 0.05, 0.30, 0.55),
+                                          Spot("Open the camera.", 0.45, 0.50, 0.95)], home: false);
+        Assert.Equal([ScreenPhoneCard.Role.Header, ScreenPhoneCard.Role.Incoming, ScreenPhoneCard.Role.Outgoing],
+                     groups.Select(group => group.Phone!.Role));
+        var items = new List<ScreenTranslation.Item>
+        {
+            new("Lucia", "Lucia", groups[0].Box, 0.018) { Phone = groups[0].Phone, Unchanged = true },
+            new("Reply today.", "Bugün yanıtla.", groups[1].Box, 0.018) { Phone = groups[1].Phone },
+            new("Open the camera.", "Kamerayı aç.", groups[2].Box, 0.018) { Phone = groups[2].Phone },
+        };
+        var pose = new GamePhoneGeometry.Pose(Upright[0], Upright[1], Upright[2], Upright[3]);
+        var panel = RegionWatcher.ArrangedPhone(items, pose, 16.0 / 9, new PhonePanelOptions());
+        Assert.Equal([ScreenPhoneCard.PanelPart.Card, ScreenPhoneCard.PanelPart.Title, ScreenPhoneCard.PanelPart.Theirs,
+                      ScreenPhoneCard.PanelPart.Mine], panel.Select(item => item.Panel!.Value));
+        var card = panel[0].Box;
+        Assert.True(card.Right <= pose.Bounds.Left || card.Left >= pose.Bounds.Right);
+        Assert.Equal(ScreenPhoneCard.IncomingColor, panel[2].Style);
+        Assert.Equal(ScreenPhoneCard.OutgoingColor, panel[3].Style);
+        Assert.True(panel[2].Box.Left < panel[3].Box.Left && panel[2].Box.Top < panel[3].Box.Top);
+        Assert.Equal("card", ScreenPhoneCard.PanelPart.Card.Json());
+
+        var bubbles = RegionWatcher.ArrangedPhone(items, pose, 16.0 / 9, new PhonePanelOptions(Enabled: false));
+        Assert.Equal(["Bugün yanıtla.", "Kamerayı aç."], bubbles.Select(item => item.Translation));
+        Assert.All(bubbles, item => Assert.Null(item.Panel));
+        Assert.Equal(1.5, ScreenPhoneCard.TextScale(69), 9);
+    }
+
     [Fact]
     public void PhoneMessagesBecomeACardBesideThePhone()
     {

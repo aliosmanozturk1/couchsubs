@@ -3,24 +3,55 @@
 import CoreGraphics
 import Foundation
 
-/// "Ekranı çevir"de GTA 6 telefonu: eğik telefon ekranının üstüne yazmak okunmuyordu (yazı küçük, ekran yamuk). Telefon
-/// karede bulunursa (`GamePhoneGeometry`) ekranındaki satırlar düz ekrana taşınıp ayrı gruplanır (`PhoneChat`) ve
-/// çevirileri telefonun hemen yanına, ekranda yer olan tarafa, telefon boyunda açık renkli bir "mesaj kartı" olarak
-/// dizilir: en üstte kişi adı, altında her mesaj kendi balonunda (giden sağda mavi, gelen solda beyaz), sohbet listesinde
-/// ad + önizleme satırları. Balonların yüksekliği Türkçenin kaç satır tutacağına göre hesaplanır, üst üste binmez; kart
-/// dolarsa en eski mesajlar düşer. Yanda yer yoksa kart telefonun üstüne konur. Telefon dışındaki yazılar kendi
-/// yerlerinde kalır. Kart, TV'ye ve masaüstüne sıradan stilli öğeler olarak gider (zemin, başlık, balonlar), ayrı bir
-/// çizim gerekmez (Windows: ScreenPhoneCard.cs, Android: ScreenPhoneCard.kt; ortak deneme dosyası Fixtures/phone-chat.json).
+/// "GTA 6 Telefon Mesajları" ayarı (`UserSettings.phoneMessagesPanel`) ve panelin yazı çarpanı (altyazı boyutundan,
+/// `ScreenPhoneCard.textScale(fontSize:)`).
+public struct PhonePanelOptions: Equatable, Sendable {
+    public var enabled: Bool
+    public var textScale: Double
+
+    public init(enabled: Bool = true, textScale: Double = 1) {
+        self.enabled = enabled
+        self.textScale = textScale
+    }
+}
+
+/// GTA 6 telefonunun sohbet paneli ("Ekranı çevir" ve otomatik telefon okuması): eğik telefon ekranının üstüne yazmak
+/// okunmuyordu (yazı küçük, ekran yamuk, monitörde balonların yeri kayıyor). Telefon karede bulunursa (`GamePhoneGeometry`)
+/// ekranındaki satırlar düz ekrana taşınıp ayrı gruplanır (`PhoneChat`, `GamePhoneText.groups`) ve çevirileri telefonun
+/// hemen yanına (telefon solda ise sağına, sağda ise soluna; yanda yer yoksa altına), telefon boyunda koyu, yarı saydam
+/// bir sohbet paneli olarak dizilir: en üstte kişi adı (çevrilmez), altında her mesaj kendi balonunda (karşı taraf solda
+/// açık zeminde, oyuncu sağda amber zeminde), sohbet listesinde önizleme satırları. Balonların yüksekliği Türkçenin kaç
+/// satır tutacağına göre hesaplanır, üst üste binmez; panel dolarsa en eski mesajlar düşer. Yazı boyu altyazı boyutu
+/// ayarına bağlıdır (`layout(textScale:)`). Telefon dışındaki yazılar kendi yerlerinde kalır. Panel, TV'ye ve masaüstüne
+/// stilli öğeler olarak gider (zemin, başlık, balonlar) ve her öğe panel parçasını taşır (`PanelPart`, JSON `panel`): yeni
+/// çiziciler paneli yuvarlak köşeli, yarı saydam kartta akışla çizer; alanı tanımayan eski TV öğeleri yerinde çizer
+/// (Windows: ScreenPhoneCard.cs, Android: ScreenPhoneCard.kt; ortak deneme dosyası Fixtures/phone-chat.json).
 public enum ScreenPhoneCard {
+    /// Panelin parçası; JSON'da `panel` alanının değeri.
+    public enum PanelPart: String, Equatable, Sendable {
+        /// Panelin zemini (kutusu panelin yeri ve boyu).
+        case card
+        /// Konuşulan kişinin adı (telefonun başlığı; çevrilmez).
+        case title
+        /// Karşı tarafın mesajı (solda, açık zemin) ve oyuncunun mesajı (sağda, amber zemin).
+        case theirs, mine
+        /// Ortalı kısa satır ("Bugün", saat), sohbet listesinin satırları ve bölüm başlığı.
+        case note
+    }
+
     /// Kartın zemini: yazısı yalnız bölünmez boşluk olan öğe, kartın tamamını kaplar; balonlar üstüne çizilir.
     public static let backdropText = "\u{00A0}"
-    static let cardColor = PhoneTextStyle(background: "#F2F2F7", foreground: "#1C1C1E")
-    static let incomingColor = PhoneTextStyle(background: "#FFFFFF", foreground: "#1C1C1E")
-    static let outgoingColor = PhoneTextStyle(background: "#0A84FF", foreground: "#FFFFFF")
+    /// Panelin renkleri (CouchSubs tasarım dili, design/tokens.json): koyu zemin (çiziciler %88 örtüyle çizer), karşı
+    /// tarafın balonu krem, oyuncunun balonu amber, not satırı soluk.
+    static let cardColor = PhoneTextStyle(background: "#141518", foreground: "#F3EEE4")
+    static let incomingColor = PhoneTextStyle(background: "#F3EEE4", foreground: "#17181B")
+    static let outgoingColor = PhoneTextStyle(background: "#F5B83D", foreground: "#17181B")
+    static let noteColor = PhoneTextStyle(background: "#141518", foreground: "#A9A59C")
     /// Telefonla kart arasındaki boşluk ve kartın ekran kenarından payı (ekran genişliğine oranla).
     static let gap = 0.008
-    /// Kart için yanda en az bu kadar yer olmalı; yoksa kart telefonun üstüne konur.
-    static let minWidth = 0.12
+    /// Kart için yanda en az bu kadar yer olmalı; yoksa kart telefonun altına (orada da en az `minBelow` yükseklik yoksa
+    /// telefonun üstüne) konur.
+    static let minWidth = 0.12, minBelow = 0.18
     /// Kartın istenen eni: telefonun bu katı, en az `cardMin` (yanda yer varsa). Telefon boyundaki dar kartta Türkçe
     /// mesajlar çok satıra bölünüyor, balonlar iç içe görünüyordu.
     static let cardScale = 1.4, cardMin = 0.22
@@ -155,8 +186,9 @@ public enum ScreenPhoneCard {
         return Handset(pose: pose, aspect: Double(frame.width) / Double(max(1, frame.height)))
     }
 
-    /// Kartın yeri: telefonun yanında, telefon boyunda; iki yanda da yer yoksa telefonun üstünde. İki yanda da yer varsa
-    /// kart başka çevirilerin (`avoiding`) üstüne en az binen yana, eşitse daha geniş boş kalan yana konur.
+    /// Kartın yeri: telefonun yanında, telefon boyunda; iki yanda da yer yoksa telefonun altında, orada da yer yoksa
+    /// telefonun üstünde. İki yanda da yer varsa kart başka çevirilerin (`avoiding`) üstüne en az binen yana, eşitse daha
+    /// geniş boş kalan yana (telefon solda ise sağa, sağda ise sola) konur.
     static func cardBox(_ phone: TextBox, avoiding others: [TextBox] = []) -> TextBox {
         let roomLeft = phone.left - 2 * gap, roomRight = 1 - phone.right - 2 * gap
         let wanted = max((phone.right - phone.left) * cardScale, cardMin)
@@ -169,6 +201,11 @@ public enum ScreenPhoneCard {
         // Önce daha geniş yan; öbür yan ancak başka çevirilerin üstüne daha az binerse seçilir.
         let candidates = [side(right: roomLeft < roomRight), side(right: roomLeft >= roomRight)].compactMap { $0 }
         guard var best = candidates.first else {
+            if 1 - screenMargin - (phone.bottom + gap) >= minBelow {
+                let width = min(wanted, 1 - 2 * gap)
+                let left = min(max(gap, (phone.left + phone.right - width) / 2), 1 - gap - width)
+                return TextBox(left: left, top: phone.bottom + gap, right: left + width, bottom: 1 - screenMargin)
+            }
             return TextBox(left: max(0, phone.left), top: phone.top, right: min(1, phone.right), bottom: phone.bottom)
         }
         for candidate in candidates.dropFirst() where covered(candidate, others) < covered(best, others) - 1e-9 { best = candidate }
@@ -186,15 +223,17 @@ public enum ScreenPhoneCard {
     /// Telefondaki öğeleri (`phone` bilgisi olanlar) kart olarak dizer. Telefonda çevrilmiş öğe yoksa liste olduğu gibi
     /// döner. Çevrilmemiş öğeler (`unchanged`: kişi adı, "ok") kartta aslıyla görünür; kart dışındakiler sonra atılır.
     /// Balonlar arasında en az `bubbleSpacing` satır boşluk kalır; mesajlar telefon boyuna sığmazsa kart uzar, yine
-    /// sığmazsa en eski mesajlar düşer. Kartın altında kalan başka bir çeviri kartın dışına, yanına alınır.
-    public static func layout(_ items: [ScreenTranslation.Item], handset: Handset) -> [ScreenTranslation.Item] {
+    /// sığmazsa en eski mesajlar düşer. Kartın altında kalan başka bir çeviri kartın dışına, yanına alınır. `textScale`:
+    /// altyazı boyutu ayarının varsayılana oranı (`textScale(fontSize:)`); panelin yazısı onunla büyür, küçülür.
+    public static func layout(_ items: [ScreenTranslation.Item], handset: Handset,
+                              textScale: Double = 1) -> [ScreenTranslation.Item] {
         let onPhone = items.filter { $0.phone?.role.inCard == true }.sorted { $0.phone!.spot.top < $1.phone!.spot.top }
         guard onPhone.contains(where: { !$0.unchanged }) else { return items }
         let others = items.filter { $0.phone?.role.inCard != true }
         var card = cardBox(handset.bounds, avoiding: others.filter { !$0.unchanged }.map(\.box))
         let cardWidth = card.right - card.left
         let heights = onPhone.map(\.lineHeight).sorted()
-        let line = max(minLine, heights[heights.count / 2])
+        let line = max(minLine * min(maxScale, max(minScale, textScale)), heights[heights.count / 2])
         let pad = cardWidth * 0.05, padY = line * 0.4, spacing = line * bubbleSpacing
         let flat = { (align: TextLook.Align, bold: Bool) in TextLook(bold: bold, condensed: false, align: align, upper: false, flat: true) }
 
@@ -209,7 +248,7 @@ public enum ScreenPhoneCard {
         // Her satırın kartta kaplayacağı yer: genişliği rolünden, yüksekliği Türkçenin o genişlikte kaç satır tuttuğundan.
         struct Row { var item: ScreenTranslation.Item; var width: Double; var height: Double; var side: TextLook.Align }
         var rows: [Row] = body.map { item in
-            let role = item.phone!.role == .message ? (isBlue(item.style) ? .outgoing : .incoming) : item.phone!.role
+            let role = item.phone!.role == .message ? (isOutgoing(item.style) ? .outgoing : .incoming) : item.phone!.role
             let bubble = role == .incoming || role == .outgoing
             let widest = (bubble ? bubbleShare : 1) * cardWidth - (bubble ? 0 : 2 * pad)
             let inner = widest - 2 * pad
@@ -220,9 +259,18 @@ public enum ScreenPhoneCard {
             placed.unchanged = false
             placed.lineHeight = line
             switch role {
-            case .outgoing: placed.style = outgoingColor
-            case .incoming: placed.style = incomingColor
-            default: placed.style = cardColor
+            case .outgoing:
+                placed.style = outgoingColor
+                placed.panel = .mine
+            case .incoming:
+                placed.style = incomingColor
+                placed.panel = .theirs
+            case .note:
+                placed.style = noteColor
+                placed.panel = .note
+            default:
+                placed.style = cardColor
+                placed.panel = .note
             }
             let side: TextLook.Align = role == .outgoing ? .right : role == .note ? .center : .left
             placed.look = flat(side, role == .contact || role == .heading)
@@ -254,6 +302,7 @@ public enum ScreenPhoneCard {
         var backdrop = ScreenTranslation.Item(source: "", translation: backdropText, box: card, lineHeight: line)
         backdrop.style = cardColor
         backdrop.look = flat(.left, false)
+        backdrop.panel = .card
         result.append(backdrop)
 
         var bodyTop = card.top + padY
@@ -263,6 +312,7 @@ public enum ScreenPhoneCard {
             header.lineHeight = line
             header.style = cardColor
             header.look = flat(.center, true)
+            header.panel = .title
             result.append(header)
             bodyTop = header.box.bottom + spacing
         }
@@ -309,6 +359,54 @@ public enum ScreenPhoneCard {
             lines.append(current)
         }
         return lines
+    }
+
+    /// Çizilecek sohbet paneli: zemini (kutusu panelin yeri), kişinin adı ve mesajlar telefondaki sırasıyla. Öğelerde
+    /// panel yoksa nil; panel dışındaki öğeler (`outside`) kendi yerlerinde çizilir.
+    public struct Panel: Equatable, Sendable {
+        public let card: ScreenTranslation.Item
+        public let title: ScreenTranslation.Item?
+        public let messages: [ScreenTranslation.Item]
+        public let outside: [ScreenTranslation.Item]
+    }
+
+    public static func panel(_ items: [ScreenTranslation.Item]) -> Panel? {
+        guard let card = items.first(where: { $0.panel == .card }) else { return nil }
+        let parts = items.filter { $0.panel != nil && $0.panel != .card }
+        return Panel(card: card, title: parts.first { $0.panel == .title },
+                     messages: parts.filter { $0.panel != .title }.sorted { $0.box.top < $1.box.top },
+                     outside: items.filter { $0.panel == nil })
+    }
+
+    /// Panelin köşe yarıçapı ve zemin örtüsü (1080 satırlık ekranda piksel; çiziciler ekran boyuna ölçekler).
+    public static let panelRadius = 18.0, panelOpacity = 0.88
+
+    /// Kanepe simgesi (panelin sağ alt köşesi; logo değil, sade): 24×16 ızgarada yuvarlak köşeli dikdörtgenler
+    /// (x, y, en, boy, köşe). Bütün çiziciler (SwiftUI, WPF, Compose, TV) aynı şekli çizer.
+    public static let couchGlyph: [(x: Double, y: Double, width: Double, height: Double, radius: Double)] = [
+        (3, 1, 18, 8, 2.5),   // sırtlık
+        (0, 5, 5, 8, 2),      // sol kolçak
+        (19, 5, 5, 8, 2),     // sağ kolçak
+        (4, 8, 16, 5, 1.5),   // oturak
+        (2, 13, 2, 3, 0.8),   // sol ayak
+        (20, 13, 2, 3, 0.8),  // sağ ayak
+    ]
+
+    /// Altyazı boyutu ayarının (TV pikseli, 1080p) panel yazısına çarpanı: varsayılan boyda 1, `minScale`–`maxScale` arası.
+    public static func textScale(fontSize: Int) -> Double {
+        min(maxScale, max(minScale, Double(fontSize) / Double(defaultFontSize)))
+    }
+    static let defaultFontSize = 46, minScale = 0.75, maxScale = 1.6
+
+    /// Tarafı hizadan belli olmayan balon (ekranı dolduran uzun mesaj) oyuncunun mu: zemini belirgin mavi ya da başka
+    /// doygun bir renk (yeşil, turuncu) ya da açık mavimsi (GTA 6'nın giden balonu #D3DCF4; gelen balon kremdir, #F6EFE8).
+    /// Karşı tarafın balonu telefonda krem, gri ya da beyazdır.
+    static func isOutgoing(_ style: PhoneTextStyle?) -> Bool {
+        if isBlue(style) { return true }
+        guard let hex = style?.background, hex.count == 7, hex.hasPrefix("#"),
+              let value = Int(hex.dropFirst(), radix: 16) else { return false }
+        let r = (value >> 16) & 0xFF, g = (value >> 8) & 0xFF, b = value & 0xFF
+        return (max(r, g, b) - min(r, g, b) >= 70 && max(r, g, b) >= 90) || (b - r >= 20 && b >= g)
     }
 
     /// Balonun okunan rengi belirgin mavi mi (giden mesaj balonu): mavi kanal kırmızı ve yeşilin ortalamasından en az 40 fazla.

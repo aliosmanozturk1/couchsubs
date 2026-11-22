@@ -198,14 +198,27 @@ object PhoneChat {
      * (`phoneBox`) bilinmiyorsa ya da ekran ana ekran değilse satırlar olduğu gibi döner ("Ekranı çevir" ile aynı kural).
      */
     fun withoutAppNames(lines: List<TextLine>): List<TextLine> {
-        if (lines.isEmpty() || lines.any { it.phoneBox == null }) return lines
-        val single = lines.map { Row(listOf(it), it.phoneBox!!, clean(it.text)) }
-            .filter { row -> row.text.count { it.isLetter() } >= 2 }.sortedBy { it.spot.top }
-        val rows = joinedRows(single, HOME_JOIN)
-        if (rows.isEmpty() || !isHome(rows, lines)) return lines
+        if (!isHomeScreen(lines)) return lines
+        val rows = homeRows(lines)
         val median = rows.map { it.height }.sorted()[rows.size / 2]
         val names = homeBlocks(rows, median).filter(::isAppName).flatMap { it[0].lines }
         return lines.filter { line -> names.none { it.text == line.text && it.phoneBox == line.phoneBox } }
+    }
+
+    /**
+     * Satırlar (düz ekrandaki yerleri bilinen) telefonun ana ekranı mı; sohbet panelinde ana ekran yazıları kendi yerinde
+     * kalır ([GamePhoneText.roles]; Mac ile aynı).
+     */
+    fun isHomeScreen(lines: List<TextLine>): Boolean {
+        if (lines.isEmpty() || lines.any { it.phoneBox == null }) return false
+        val rows = homeRows(lines)
+        return rows.isNotEmpty() && isHome(rows, lines)
+    }
+
+    private fun homeRows(lines: List<TextLine>): List<Row> {
+        val single = lines.map { Row(listOf(it), it.phoneBox!!, clean(it.text)) }
+            .filter { row -> row.text.count { it.isLetter() } >= 2 }.sortedBy { it.spot.top }
+        return joinedRows(single, HOME_JOIN)
     }
 
     /**

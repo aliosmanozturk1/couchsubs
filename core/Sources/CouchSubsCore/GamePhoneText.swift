@@ -162,6 +162,7 @@ enum GamePhoneText {
     /// Telefon ekranının blokları, kendi yerlerinde. Ana ekranda uygulama adları (WhatUp, simge etiketleri) çevrilmez
     /// (`PhoneChat.withoutAppNames`); saat ve hava harfsiz satır olarak zaten atılır.
     static func groups(_ reading: Reading) -> [ScreenTranslation.Group] {
+        let home = PhoneChat.isHomeScreen(reading.lines)
         let reading = Reading(lines: PhoneChat.withoutAppNames(reading.lines))
         let flat = reading.lines.allSatisfy { $0.phoneBox != nil }
         func box(_ line: TextLine) -> TextBox { (flat ? line.phoneBox : line.box)! }
@@ -179,8 +180,12 @@ enum GamePhoneText {
             let place = clean.dropFirst().reduce(first) { $0.union($1.box!) }
             let heights = run.map { box($0).bottom - box($0).top }.sorted()
             let icons = clean.flatMap { $0.icons ?? [] }
-            groups.append(.init(paragraphs: [clean.map(\.text).joined(separator: " ")], box: place,
-                                lineHeight: heights[heights.count / 2], icons: icons.isEmpty ? nil : [icons]))
+            var group = ScreenTranslation.Group(paragraphs: [clean.map(\.text).joined(separator: " ")], box: place,
+                                                lineHeight: heights[heights.count / 2], icons: icons.isEmpty ? nil : [icons])
+            // Düz ekrandaki yeri: sohbet panelinde tarafı (sol/sağ) ve sırası bundan çıkar (`roles`).
+            let spots = run.map(box)
+            group.phone = ScreenPhoneCard.Placement(role: .message, spot: spots.dropFirst().reduce(spots[0]) { $0.union($1) })
+            groups.append(group)
         }
         for line in reading.lines.filter({ $0.box != nil }).sorted(by: { box($0).top < box($1).top }) {
             if let previous = run.last,
@@ -188,7 +193,30 @@ enum GamePhoneText {
             run.append(line)
         }
         finish()
-        return Array(groups.prefix(ScreenTranslation.maxGroups))
+        return roles(Array(groups.prefix(ScreenTranslation.maxGroups)), home: home)
+    }
+
+    /// Sohbet panelinde her grubun rolü ("Ekranı çevir"in `PhoneChat` kuralları, düz ekrandaki yerinden): en üstteki
+    /// kısa ad satırı kişinin adıdır (çevrilmez), ortalı kısa satır not, sağa yaslı balon oyuncunun, sola yaslı karşı
+    /// tarafın mesajı; iki yanı da dar balonun tarafını panel rengiyle seçer. Sohbet listesinde ("Messages" bölümü)
+    /// önizlemeler, ana ekranda bütün yazılar kendi yerinde kalır (`home`). Düz yeri bilinmeyen gruplar rolsüz kalır.
+    static func roles(_ groups: [ScreenTranslation.Group], home: Bool) -> [ScreenTranslation.Group] {
+        guard groups.allSatisfy({ $0.phone != nil }) else { return groups.map { var g = $0; g.phone = nil; return g } }
+        let list = groups.contains { section($0.paragraphs.joined()) != nil }
+        let first = groups.indices.min { groups[$0].phone!.spot.top < groups[$1].phone!.spot.top }
+        return groups.indices.map { index in
+            var group = groups[index]
+            let text = group.paragraphs.joined(separator: " ")
+            let spot = group.phone!.spot
+            let row = PhoneChat.Row(lines: [], spot: spot, text: text)
+            let role: ScreenPhoneCard.Role
+            if home { role = .home }
+            else if index == first, !list, PhoneChat.isHeader(row) { role = .header }
+            else if list { role = section(text) != nil ? .heading : .preview }
+            else { role = PhoneChat.role(of: [row]) }
+            group.phone = ScreenPhoneCard.Placement(role: role, spot: spot)
+            return group
+        }
     }
 
     private static func endsSentence(_ text: String) -> Bool {

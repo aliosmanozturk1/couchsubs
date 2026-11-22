@@ -43,6 +43,8 @@
 
   <ItemGroup>
     <Resource Include="Assets\logo.png" />
+    <!-- Yeni arayüzün renk, yazı, ölçü ve hareket değerleri (Mac ile ortak; Theme/Palette.cs okur). -->
+    <EmbeddedResource Include="..\..\..\design\yeni-arayuz\tasarim.json" LogicalName="tasarim.json" />
     <!-- ShellWindow.xaml pencere simgesi olarak bunu okur; ApplicationIcon yalnız exe simgesidir. -->
     <Resource Include="Assets\CouchSubs.ico" />
   </ItemGroup>

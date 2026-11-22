@@ -182,6 +182,7 @@ internal static partial class GamePhoneText
     /// </summary>
     internal static IReadOnlyList<ScreenTranslation.Group> Groups(Reading reading)
     {
+        var home = PhoneChat.IsHomeScreen(reading.Lines);
         reading = new Reading(PhoneChat.WithoutAppNames(reading.Lines));
         List<ScreenTranslation.Group> groups = [];
         List<TextLine> run = [];
@@ -200,8 +201,11 @@ internal static partial class GamePhoneText
                     var box = clean.Select(l => l.Box!.Value).Aggregate((a, b) => a.Union(b));
                     var heights = run.Select(l => Layout(l).Bottom - Layout(l).Top).Order().ToArray();
                     var icons = clean.SelectMany(l => l.Icons ?? []).ToArray();
+                    // Düz ekrandaki yeri: sohbet panelinde tarafı (sol/sağ) ve sırası bundan çıkar (Roles).
+                    var spot = run.Select(Layout).Aggregate((a, b) => a.Union(b));
                     groups.Add(new ScreenTranslation.Group([string.Join(' ', clean.Select(l => l.Text))], box,
-                        heights[heights.Length / 2], icons.Length == 0 ? null : [icons]));
+                        heights[heights.Length / 2], icons.Length == 0 ? null : [icons])
+                    { Phone = new ScreenPhoneCard.Placement(ScreenPhoneCard.Role.Message, spot) });
                 }
             }
             else groups.AddRange(ScreenTranslation.Groups(new Reading(run), menuRows: false, keepIdentifiers: true));
@@ -217,7 +221,32 @@ internal static partial class GamePhoneText
             run.Add(line);
         }
         Finish();
-        return groups.Count <= ScreenTranslation.MaxGroups ? groups : groups.GetRange(0, ScreenTranslation.MaxGroups);
+        return Roles(groups.Count <= ScreenTranslation.MaxGroups ? groups : groups.GetRange(0, ScreenTranslation.MaxGroups), home);
+    }
+
+    /// <summary>
+    /// Sohbet panelinde her grubun rolü ("Ekranı çevir"in <see cref="PhoneChat"/> kuralları, düz ekrandaki yerinden): en
+    /// üstteki kısa ad satırı kişinin adıdır (çevrilmez), ortalı kısa satır not, sağa yaslı balon oyuncunun, sola yaslı
+    /// karşı tarafın mesajı. Sohbet listesinde önizlemeler, ana ekranda bütün yazılar kendi yerinde kalır. Mac ile aynı.
+    /// </summary>
+    internal static IReadOnlyList<ScreenTranslation.Group> Roles(IReadOnlyList<ScreenTranslation.Group> groups, bool home)
+    {
+        if (!groups.All(group => group.Phone is not null)) return [.. groups.Select(group => group with { Phone = null })];
+        var list = groups.Any(group => SectionLabel(string.Concat(group.Paragraphs)) is not null);
+        var first = -1;
+        for (var i = 0; i < groups.Count; i++)
+            if (first < 0 || groups[i].Phone!.Spot.Top < groups[first].Phone!.Spot.Top) first = i;
+        return [.. groups.Select((group, index) =>
+        {
+            var text = string.Join(' ', group.Paragraphs);
+            var spot = group.Phone!.Spot;
+            var row = new PhoneChat.Row([], spot, text);
+            var role = home ? ScreenPhoneCard.Role.Home
+                : index == first && !list && PhoneChat.IsHeader(row) ? ScreenPhoneCard.Role.Header
+                : list ? (SectionLabel(text) is not null ? ScreenPhoneCard.Role.Heading : ScreenPhoneCard.Role.Preview)
+                : PhoneChat.RoleOf([row]);
+            return group with { Phone = new ScreenPhoneCard.Placement(role, spot) };
+        })];
     }
 
     private static bool EndsSentence(string text) => text.TrimEnd().LastOrDefault() is '.' or '!' or '?';

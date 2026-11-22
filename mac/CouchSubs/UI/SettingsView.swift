@@ -120,13 +120,17 @@ struct AreaCards: View {
             HintText(text: "When a game with ready areas (such as GTA 6) is being played, its help box and messages are read and translated automatically. Your own extra areas take precedence.")
             Divider().overlay(Color.csBorder)
             SwitchRow(title: "Automatically translate the GTA 6 phone (experimental)", isOn: $model.settings.autoReadGamePhone)
+            // Dört platformda aynı ad ve seçenekler (iPhone: Profile, Windows: SettingsWindow, Android: ProfileScreens);
+            // otomatik telefon okumasına ve "Ekranı çevir"e uygulanır, varsayılan Yanda Panel.
+            Picker("GTA 6 Phone Messages", selection: $model.settings.phoneMessagesPanel) {
+                Text("Side Panel").tag(true)
+                Text("On the Bubbles").tag(false)
+            }
+            HintText(text: "Side Panel: the chat is shown next to the phone, the other person on the left and you on the right. On the Bubbles: each message is translated on top of its own bubble.")
         }
         Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .screen, String(localized: "Translate the screen (%@)")))) {
             HintText(text: LocalizedStringKey(HotkeyText.sentence(model.settings, .screen,
                 String(localized: "Press %@ while playing: every text on the screen is translated once and shown on the TV in its own place. Press again to remove the translations."))))
-            // Dört platformda aynı ad (iPhone: Profile, Windows: SettingsWindow, Android: ProfileScreens); varsayılan kapalı.
-            SwitchRow(title: "Show GTA 6 phone translations in a card next to the phone", isOn: $model.settings.phoneChatCard)
-            HintText(text: "Off: each message is translated on top of its own bubble, in the bubble's colours.")
         }
         // Serbest alan (Windows: FreeAreaCard): görüntü donar, fareyle seçilen yer bir kez çevrilir.
         Card(title: LocalizedStringKey(HotkeyText.title(model.settings, .freeArea, String(localized: "Free area (%@)")))) {

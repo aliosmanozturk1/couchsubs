@@ -38,34 +38,58 @@ public static class ThemeManager
     public static void Apply(ResourceDictionary resources, bool? forceDark = null)
     {
         var dark = forceDark ?? IsDarkTheme();
-        foreach (var (name, pair) in Tokens.Color)
-        {
-            var color = ToColor(pair.For(dark));
-            resources[$"{name}Color"] = color;
-            var brush = new SolidColorBrush(color);
-            brush.Freeze();
-            resources[$"{name}Brush"] = brush;
-        }
-        foreach (var (name, font) in Tokens.Font)
-        {
-            resources[$"{name}FontSize"] = font.Size;
-            resources[$"{name}FontWeight"] = font.Weight switch
-            {
-                "bold" => FontWeights.Bold,
-                "semibold" => FontWeights.SemiBold,
-                "medium" => FontWeights.Medium,
-                _ => FontWeights.Normal,
-            };
-        }
-        foreach (var (name, value) in Tokens.Space)
-        {
-            resources[$"space.{name}"] = value;
-            resources[$"pad.{name}"] = new Thickness(value);
-        }
+        IsDark = dark;
+        foreach (var (name, pair) in Tokens.Color) SetColor(resources, name, pair.For(dark));
+        foreach (var (name, font) in Tokens.Font) SetFont(resources, name, font.Size, font.Weight);
+        foreach (var (name, value) in Tokens.Space) SetSpace(resources, name, value);
         foreach (var (name, value) in Tokens.Radius) resources[$"radius.{name}"] = new CornerRadius(value);
         foreach (var (name, value) in Tokens.Size) resources[$"size.{name}"] = value;
-        // Pencere zemini düz renktir (hale, ışık ve degrade yok; docs/TASARIM.md).
+        // Yeni arayüzün değerleri (Palette) ortak değerlerin üstüne yazılır; eski adlar da yeni renkleri alır.
+        foreach (var (name, pair) in Palette.Colors) SetColor(resources, name, dark ? pair.Dark : pair.Light);
+        foreach (var (name, font) in Palette.Fonts) SetFont(resources, name, font.Size, font.Weight);
+        foreach (var (name, value) in Palette.Space) SetSpace(resources, name, value);
+        foreach (var (name, value) in Palette.Radius) resources[$"radius.{name}"] = new CornerRadius(value);
+        foreach (var (name, value) in Palette.Size) resources[$"size.{name}"] = value;
+        // Kart taban gölgesi yok; kartlar 1 px çerçeveyle ayrılır. Döşeme (tile) zemini hafif degradedir (tasarım: .tile).
+        var tile = new LinearGradientBrush((Color)resources["tileTopColor"], (Color)resources["tileBottomColor"], 45);
+        tile.Freeze();
+        resources["tileBrush"] = tile;
         resources["windowBackgroundBrush"] = resources["backgroundBrush"];
+        Changed?.Invoke();
+    }
+
+    /// <summary>Uygulanan tema koyu mu (kodda çizilen renkler için).</summary>
+    public static bool IsDark { get; private set; }
+
+    /// <summary>Tema her uygulandığında (kodda çizilen öğeler yenilensin diye).</summary>
+    public static event Action? Changed;
+
+    private static void SetColor(ResourceDictionary resources, string name, string hex) => SetColor(resources, name, ToColor(hex));
+
+    private static void SetColor(ResourceDictionary resources, string name, Color color)
+    {
+        resources[$"{name}Color"] = color;
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        resources[$"{name}Brush"] = brush;
+    }
+
+    private static void SetFont(ResourceDictionary resources, string name, double size, string weight)
+    {
+        resources[$"{name}FontSize"] = size;
+        resources[$"{name}FontWeight"] = weight switch
+        {
+            "bold" => FontWeights.Bold,
+            "semibold" => FontWeights.SemiBold,
+            "medium" => FontWeights.Medium,
+            _ => FontWeights.Normal,
+        };
+    }
+
+    private static void SetSpace(ResourceDictionary resources, string name, double value)
+    {
+        resources[$"space.{name}"] = value;
+        resources[$"pad.{name}"] = new Thickness(value);
     }
 
     /// <summary>"Sistemle aynı" seçiliyken Windows'un teması değişince kaynakları yeniler.</summary>

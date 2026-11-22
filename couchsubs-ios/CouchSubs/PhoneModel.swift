@@ -1163,6 +1163,12 @@ final class PhoneModel: ObservableObject {
         watcher.subtitleEcho = .shared
         // Ayarlar'daki ekran yazısı türleri (telefon, görev, yardım/eylemler, menüler, diğer).
         watcher.allows = { [weak self] kind in self?.settings.screenTextAllows(kind) ?? true }
+        // "GTA 6 Telefon Mesajları: Yanda Panel / Balonların Üstünde"; panelin yazısı altyazı boyutuyla (Windows, Android ile aynı).
+        watcher.phonePanel = { [weak self] in
+            guard let self else { return PhonePanelOptions() }
+            return PhonePanelOptions(enabled: self.settings.phoneMessagesPanel,
+                                     textScale: ScreenPhoneCard.textScale(fontSize: self.settings.style.fontSize))
+        }
         watcher.skipsTurkish = settings.targetLanguage == "tr"
         watcher.translatesUiCommands = settings.sourceLanguage == "en" && settings.targetLanguage == "tr"
         watcher.onLog = { SubtitleLog.write($0) }
@@ -1629,7 +1635,8 @@ final class PhoneModel: ObservableObject {
         }
         let memory = screenMemory
         let server = self.server
-        let phoneCard = settings.phoneChatCard
+        let phoneCard = settings.phoneMessagesPanel
+        let panelScale = ScreenPhoneCard.textScale(fontSize: settings.style.fontSize)
         screenTask = Task { [weak self] in
             do {
                 let read = try await ReadQueue.shared.run(priority: .background, detail: ReadQueue.detail("ekranı çevir", frame)) {
@@ -1650,7 +1657,7 @@ final class PhoneModel: ObservableObject {
                 }
                 self?.screenFingerprint = fingerprint
                 let items = try await ScreenTranslation.translate(reading, using: translator, frame: frame, memory: memory,
-                                                                  phoneCard: phoneCard) { shown in
+                                                                  phoneCard: phoneCard, panelScale: panelScale) { shown in
                     // İzlemenin yenilemesinde aynı çeviriler yeniden gönderilmez (TV'de kart yeniden çizilmesin).
                     guard !Task.isCancelled, !(refresh && self?.screenShown == shown) else { return }
                     let milliseconds = ScreenTranslation.displayMilliseconds(shown)
@@ -1681,7 +1688,7 @@ final class PhoneModel: ObservableObject {
     /// telefon kapanınca kart kalkar (Mac ile aynı).
     private func followPhone(in frame: CGImage) {
         // Çeviriler balonların üstündeyken (kartsız) sohbet kayınca/değişince hemen kalkar (`ScreenPhoneFollow.hide`).
-        let follow = screenFollow ?? ScreenPhoneFollow(hidesOnChange: !settings.phoneChatCard)
+        let follow = screenFollow ?? ScreenPhoneFollow(hidesOnChange: !settings.phoneMessagesPanel)
         Task { [weak self] in
             guard let look = await Task.detached(priority: .utility, operation: { ScreenPhoneFollow.look(frame) }).value else {
                 if self?.screenFollow === follow { self?.stopFollowing() }
