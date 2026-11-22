@@ -279,7 +279,7 @@ public final class SubtitlePipeline {
             }
             quiet.reads += 1
             switch result {
-            case .success(let read): if read.ocr.lines.isEmpty { quiet.empty += 1 } else if read.visible.lines.isEmpty { quiet.background += 1 }
+            case .success(let read): if read.lines.isEmpty { quiet.empty += 1 }
             case .failure(let error): quiet.failures += 1; quiet.lastError = "\(error)"
             }
             guard session == startedSession else {
@@ -909,8 +909,6 @@ struct QuietReads: Equatable {
     var reads = 0
     /// Yazı tanıma alanda hiç satır bulmadı.
     var empty = 0
-    /// Satır bulundu ama altyazı zemini süzgecinde (`SubtitleBackground`) kaldı.
-    var background = 0
     /// Satırlar kendi altyazısı ya da telefon yazısı sayıldı, ya da kumanda ipucu/gürültü/sabit satır olarak ayıklandı.
     var filtered = 0
     /// Satırlar kaldı ama altyazı bloğu seçilmedi (sahne yazısı, kenar bildirimi).
@@ -920,7 +918,7 @@ struct QuietReads: Equatable {
 
     func summary(at time: Int) -> String {
         var text = "altyazı alanında \((time - since) / 1000) sn'dir yazı yok: \(frames) kare, \(menu) kare menü yüzünden okunmadı, "
-            + "\(reads) okuma (\(empty) boş, \(background) zemin süzgecinde, \(filtered) ayıklandı, \(dropped) altyazı sayılmadı, "
+            + "\(reads) okuma (\(empty) boş, \(filtered) ayıklandı, \(dropped) altyazı sayılmadı, "
             + "\(failures) hata)"
         if let lastError { text += "; son hata: \(lastError)" }
         return text

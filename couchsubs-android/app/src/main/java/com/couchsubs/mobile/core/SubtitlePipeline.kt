@@ -129,6 +129,45 @@ class SubtitlePipeline(
     /** Altyazı günlüğü (Mac/iPhone `onLog`, Windows `Log`): şimdilik sahne yazısı sayılıp atılan bloklar. */
     var onLog: ((String) -> Unit)? = null
 
+    /**
+     * Altyazı alanında yazı çıkmayan sürenin tanısı ([QuietReads]); sessizlik [QuietReads.REPORT_AFTER_MS] sürerse nedeni
+     * (okunmadı mı, boş mu okundu, süzgeçte mi kaldı, hata mı) günlüğe yazılır (Mac, iPhone, Windows ile aynı).
+     */
+    private var quiet = QuietReads(now())
+
+    /**
+     * Ekranda menü var (otomatik ekran yazısı menü durumunda) ve bu kare altyazı için okunmuyor. Eskiden bu atlama günlüğe
+     * hiç yazılmıyordu: Mac'te (beta.80, PS5, GTA 6) ekranda diyalog varken altyazı günlüğüne dakikalarca hiçbir satır
+     * düşmüyor, okunmadığı mı, boş mu okunduğu mu anlaşılmıyordu.
+     */
+    fun skipForMenu() {
+        // Geçiş günlüğe hizmette yazılır (TranslationService); burada yalnız sessizlik özetine sayılır.
+        val message = synchronized(lock) {
+            quiet.menu++
+            quietReport()
+        }
+        message?.let { onLog?.invoke(it) }
+    }
+
+    /** Altyazı okuması hata verdi (zaman aşımı dahil); kare boş sayılır, hata sessizlik özetine yazılır. */
+    fun noteReadFailure(error: Throwable) {
+        val message = synchronized(lock) {
+            quiet.frames++
+            quiet.reads++
+            quiet.failures++
+            quiet.lastError = error.message ?: error.javaClass.simpleName
+            quietReport()
+        }
+        message?.let { onLog?.invoke(it) }
+    }
+
+    /** Kilit altında: `REPORT_AFTER_MS`'dir yazı çıkmadıysa özet döner, sayaç yeniden başlar. */
+    private fun quietReport(): String? {
+        val time = now()
+        if (time - quiet.since < QuietReads.REPORT_AFTER_MS) return null
+        return quiet.summary(time).also { quiet = QuietReads(time) }
+    }
+
     /** Sahne yazısı sayılıp atılan blok günlüğe nedeniyle bir kez yazılır (GitHub #822). */
     private fun logSceneText(text: String, reason: String) {
         val key = "$text|$reason"
@@ -222,9 +261,16 @@ class SubtitlePipeline(
      * dönse de satırın yeri değişmediyse satır silinmez (parlak zemin).
      */
     fun process(raw: Reading, area: TextBox, signature: ByteArray? = null, capturedAt: Long? = null, ocrMs: Int? = null,
-                phone: ScreenPhoneCard.Handset? = null) {
+                phone: ScreenPhoneCard.Handset? = null, reused: Boolean = false) {
         frameAt = capturedAt
         frameOcrMs = ocrMs
+        synchronized(lock) {
+            quiet.frames++
+            if (!reused) {
+                quiet.reads++
+                if (raw.lines.isEmpty()) quiet.empty++
+            }
+        }
         // Kumanda ipuçları ve yazı tanıma çöpleri çevrilmez; yalnız altyazı bloğu çevrilir.
         // Konuşma değişirken sabit duran görev/HUD satırı ("Get in the sea plane", GTA 6) altyazı bloğuna katılmaz.
         // Karede kendi altyazımız (OBS Program projektörü, CouchSubs'ın OBS katmanı) varsa okunmaz (bkz. [OwnSubtitles]).
@@ -253,8 +299,10 @@ class SubtitlePipeline(
         var missionRegion: CropRegion? = null
         var noticesChanged = false
         var noticeAreas: List<ExtraArea> = emptyList()
+        var filteredRows = Reading(emptyList())
         val reading = synchronized(lock) {
             val filtered = stickyRows.filter(rows, now())
+            filteredRows = filtered
             if (mission.observe(stickyRows.removed, area, now())) {
                 missionChanged = true
                 missionRegion = mission.region
@@ -278,6 +326,16 @@ class SubtitlePipeline(
         }
         // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. [SubtitleEcho]).
         echo?.record(reading, area)
+        val quietMessage = synchronized(lock) {
+            if (reading.text.isBlank()) {
+                if (filteredRows.lines.isNotEmpty()) quiet.dropped++ else if (raw.lines.isNotEmpty()) quiet.filtered++
+                quietReport()
+            } else {
+                quiet = QuietReads(now())
+                null
+            }
+        }
+        quietMessage?.let { onLog?.invoke(it) }
         if (missionChanged) onMissionChanged?.invoke(missionRegion)
         var flushed: (() -> Unit)? = null
         val after: (() -> Unit)? = synchronized(lock) {
@@ -661,6 +719,7 @@ class SubtitlePipeline(
 
     /** Okuma durunca TV'deki son altyazıyı kaldırır. */
     fun reset() = synchronized(lock) {
+        quiet = QuietReads(now())
         session++
         lineOnScreen = null
         held = null
@@ -705,4 +764,34 @@ internal fun sameSentence(body: String, unnamed: String): Boolean {
     val b = TextMatch.normalize(unnamed)
     if (a.isEmpty() || b.isEmpty()) return false
     return a == b || (TextMatch.isSimilar(a, b, 0.9) && !TextMatch.addsMeaning(body, unnamed) && !TextMatch.addsMeaning(unnamed, body))
+}
+
+/**
+ * Altyazı alanında yazı çıkmayan pencerenin sayaçları (tanı): kaç kare geldi, kaçı okundu, okumalar boş mu döndü, satırlar
+ * hangi süzgeçte kaldı, okuma hata mı verdi, menü yüzünden mi okunmadı (Mac/iPhone ve Windows: QuietReads).
+ */
+internal class QuietReads(val since: Long) {
+    companion object {
+        /** Bu kadar süre altyazı alanından yazı çıkmazsa günlüğe özet yazılır (sessizlik boyunca bu aralıkla bir satır). */
+        const val REPORT_AFTER_MS = 60_000
+    }
+
+    var frames = 0
+    var menu = 0
+    var reads = 0
+    /** Yazı tanıma alanda hiç satır bulmadı. */
+    var empty = 0
+    /** Satırlar kendi altyazısı, telefon yazısı, kumanda ipucu, gürültü ya da sabit satır olarak ayıklandı. */
+    var filtered = 0
+    /** Satırlar kaldı ama altyazı bloğu seçilmedi (sahne yazısı, kenar bildirimi). */
+    var dropped = 0
+    var failures = 0
+    var lastError: String? = null
+
+    fun summary(time: Long): String {
+        var text = "altyazı alanında ${(time - since) / 1000} sn'dir yazı yok: $frames kare, $menu kare menü yüzünden okunmadı, " +
+            "$reads okuma ($empty boş, $filtered ayıklandı, $dropped altyazı sayılmadı, $failures hata)"
+        lastError?.let { text += "; son hata: $it" }
+        return text
+    }
 }

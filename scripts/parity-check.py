@@ -156,6 +156,19 @@ CAPABILITIES = {
         ("android", _DROID + "ConnectingHint.kt", r"fun reason\("),
         ("android", "couchsubs-android/app/src/main/java/com/couchsubs/mobile/service/TranslationService.kt", r"ConnectingHint\.reason\("),
     ],
+    # Mac (beta.80, PS5, GTA 6): ekranda diyalog varken altyazı günlüğü dakikalarca boştu; altyazının okunmadığı (menü), boş
+    # okunduğu, süzgeçte kaldığı ya da okumanın hata verdiği günlükte görünmüyordu.
+    "Altyazı alanında yazı çıkmayınca nedeni günlükte (QuietReads)": [
+        ("mac", _CORE + "Pipeline/SubtitlePipeline.swift", r"struct QuietReads"),
+        ("mac", "mac/CouchSubs/AppModel.swift", r"pipeline\?\.skipForMenu\(\)"),
+        ("ios", "couchsubs-ios/CouchSubs/PhoneModel.swift", r"\.skipForMenu\(\)"),
+        ("mac", _CORE_TESTS + "QuietReadsTests.swift", r"class QuietReadsTests"),
+        ("windows", _WIN + "SubtitlePipeline.cs", r"class QuietReads"),
+        ("windows", _WIN_TESTS + "QuietReadsTests.cs", r"class QuietReadsTests"),
+        ("android", _DROID + "SubtitlePipeline.kt", r"class QuietReads"),
+        ("android", "couchsubs-android/app/src/main/java/com/couchsubs/mobile/service/TranslationService.kt", r"skipForMenu\(\)"),
+        ("android", _DROID_TESTS + "QuietReadsTest.kt", r"class QuietReadsTest"),
+    ],
 }
 
 

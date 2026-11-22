@@ -830,7 +830,9 @@ class TranslationService : Service() {
                 loggedMenu = inMenu
                 Log.i(TAG, if (inMenu) "ekran menüsü açık: altyazı okunmuyor" else "ekran menüsü kapandı: altyazı okunuyor")
             }
-            if (!reading.get() && !inMenu &&now - lastRead >= 1000 / MAX_READS_PER_SECOND) {
+            // Atlanan kareler sessizlik özetinde sayılır (bkz. SubtitlePipeline.skipForMenu).
+            if (inMenu) pipeline?.skipForMenu()
+            if (!reading.get() && !inMenu && now - lastRead >= 1000 / MAX_READS_PER_SECOND) {
                 val area = region
                 // Karenin geldiği an: gecikme buradan TV'ye gidene kadar ölçülür (hattın saatiyle).
                 val capturedAt = com.couchsubs.mobile.core.monotonicClock()
@@ -1285,8 +1287,9 @@ class TranslationService : Service() {
             lastOcrMs = ocrMs
             current.process(result, area.box,
                 com.couchsubs.mobile.core.RegionSignature.of(pixels.nv21, pixels.width, pixels.height),
-                capturedAt, ocrMs, phone)
+                capturedAt, ocrMs, phone, reused = reused)
         } catch (error: java.util.concurrent.TimeoutException) {
+            pipeline?.noteReadFailure(error)
             // Okuma süresinde bitmedi: takılan tanıyıcı bırakılır, sonraki kare yenisiyle okunur (yoksa yeni okuma da
             // aynı tanıyıcının arkasında beklerdi; #679).
             Log.w(TAG, "OCR: okuma süresinde bitmedi; okuyucu yeniden kuruldu", error)
@@ -1297,6 +1300,7 @@ class TranslationService : Service() {
             }
         } catch (error: Exception) {
             Log.w(TAG, "OCR", error)
+            pipeline?.noteReadFailure(error)
         } finally {
             readStartedAt = 0L
             reading.set(false)

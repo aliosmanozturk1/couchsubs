@@ -91,6 +91,9 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     private bool sawFrame;
     private bool sawText;
     private StabilizerNote? lastNote;
+    /// <summary>Altyazı alanında yazı çıkmayan sürenin tanısı (<see cref="QuietReads"/>); sessizlik
+    /// <see cref="QuietReads.ReportAfterMs"/> sürerse nedeni günlüğe yazılır (Mac, iPhone, Android ile aynı).</summary>
+    private QuietReads quiet = new((clock ?? DefaultClock)());
     /// <summary>Son gerçek okumanın süresi (ms); kare değişmediği için yeniden okunmayınca bu kullanılır.</summary>
     private int? lastReadMs;
     /// <summary>Son altyazı okumasının süresi (ms); ek alan okumaları buna göre kendini kısar (<see cref="ReadPressure"/>).</summary>
@@ -273,6 +276,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 sawFrame = true;
                 Write($"ilk kare: oturum başından {now() - sessionStart} ms sonra");
             }
+            quiet.Frames++;
         }
         // Karede GTA 6 telefonu açıksa ekranındaki satırlar altyazı değildir (FindsPhone); telefon seyrek aranır
         // (GamePhoneTracker.IntervalMs), bulunan yer sonraki karelere de geçerlidir.
@@ -309,8 +313,10 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 if (plan.Reuse) return (recognized, readMs, signature);
 
                 var readStarted = now();
+                lock (gate) quiet.Reads++;
                 recognized = reader.ReadLines(area, plan.Deep);
                 var read = recognized;
+                lock (gate) { if (recognized.Lines.Count == 0) quiet.Empty++; }
                 readMs = (int)Math.Clamp(now() - readStarted, 0, int.MaxValue);
                 lock (gate)
                 {
@@ -323,7 +329,15 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
                 }
                 return (read, readMs, signature);
             }
-            catch { return (Reading.Empty, (int?)null, signature); }
+            catch (Exception error)
+            {
+                lock (gate)
+                {
+                    quiet.Failures++;
+                    quiet.LastError = error.Message;
+                }
+                return (Reading.Empty, (int?)null, signature);
+            }
         });
         lock (gate)
         {
@@ -410,7 +424,8 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
         }
         // Ekran yazısı okuyucuları altyazıyı ikinci kez çizmesin (bkz. SubtitleEcho). Menüde altyazı gönderilmez; okunan
         // menü satırları altyazı sayılmaz (yoksa menünün kendi çevirisi metin eşleşmesiyle atılırdı).
-        if (Echo is { } echo && EchoPaused?.Invoke() != true) echo.Record(reading, region);
+        var menu = EchoPaused?.Invoke() == true;
+        if (Echo is { } echo && !menu) echo.Record(reading, region);
 
         Action? after = null;
         Action? flushed = null;
@@ -421,6 +436,25 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             {
                 sawText = true;
                 Write($"ilk yazı: oturum başından {now() - sessionStart} ms sonra {SubtitleLog.Excerpt(reading.Text)}");
+            }
+            // Menüde altyazı gönderilmez (MenuPausedSender, geçişi o yazar); bu kareler sessizlik özetinde sayılır.
+            if (menu) quiet.Menu++;
+            if (menu || reading.Text.Trim().Length == 0)
+            {
+                if (reading.Text.Trim().Length == 0)
+                {
+                    if (rows.Lines.Count > 0) quiet.Dropped++;
+                    else if (raw.Lines.Count > 0) quiet.Filtered++;
+                }
+                if (now() - quiet.Since >= QuietReads.ReportAfterMs)
+                {
+                    Write(quiet.Summary(now()));
+                    quiet = new QuietReads(now());
+                }
+            }
+            else
+            {
+                quiet = new QuietReads(now());
             }
             currentRead = new ReadInfo(captured, ocrMs, reading.Confidence);
             // Bölge izi ve satırın yeri: okuma boş dönse de satırın yeri değişmediyse satır silinmez (parlak zemin).
@@ -1154,6 +1188,7 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
             sawFrame = false;
             sawText = false;
             lastNote = null;
+            quiet = new QuietReads(now());
             session++;
             lineOnScreen = null;
             waiting.Clear();
@@ -1192,5 +1227,36 @@ public sealed class SubtitlePipeline(ITextReader reader, ITextTranslator transla
     {
         Own.Cleared();
         sender.Clear();
+    }
+}
+
+/// <summary>Altyazı alanında yazı çıkmayan pencerenin sayaçları (tanı): kaç kare geldi, kaçı okundu, okumalar boş mu döndü,
+/// satırlar hangi süzgeçte kaldı, okuma hata mı verdi, menü yüzünden mi gösterilmedi (Mac/iPhone: QuietReads, Android:
+/// QuietReads).</summary>
+internal sealed class QuietReads(long since)
+{
+    /// <summary>Bu kadar süre altyazı alanından yazı çıkmazsa günlüğe özet yazılır (sessizlik boyunca bu aralıkla bir satır).</summary>
+    public const int ReportAfterMs = 60_000;
+
+    public long Since { get; } = since;
+    public int Frames;
+    public int Menu;
+    public int Reads;
+    /// <summary>Yazı tanıma alanda hiç satır bulmadı.</summary>
+    public int Empty;
+    /// <summary>Satırlar kendi altyazısı, telefon yazısı, kumanda ipucu, gürültü ya da sabit satır olarak ayıklandı.</summary>
+    public int Filtered;
+    /// <summary>Satırlar kaldı ama altyazı bloğu seçilmedi (sahne yazısı, kenar bildirimi).</summary>
+    public int Dropped;
+    public int Failures;
+    public string? LastError;
+
+    public string Summary(long time)
+    {
+        var text = $"altyazı alanında {(time - Since) / 1000} sn'dir yazı yok: {Frames} kare, {Menu} kare menü yüzünden gösterilmedi, "
+                   + $"{Reads} okuma ({Empty} boş, {Filtered} ayıklandı, {Dropped} altyazı sayılmadı, "
+                   + $"{Failures} hata)";
+        if (LastError is not null) text += $"; son hata: {LastError}";
+        return text;
     }
 }
