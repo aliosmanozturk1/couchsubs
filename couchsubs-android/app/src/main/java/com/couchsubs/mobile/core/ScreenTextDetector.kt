@@ -38,6 +38,8 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
         const val NAME = "Screen text"
         /** Menü durumu: en az bu kadar bileşen aynı 300 ms içinde belirip duruyor. */
         const val MENU_COMPONENTS = 3
+        /** Menüde hiçbir yazı değişmeden bu kadar süre geçince menü durumu biter (altyazı okunur). */
+        const val MENU_LIFE_MS = 5000L
         /** Menü durumu: bileşenlerin dışındaki karoların en az bu kadarı bulanık/karartılmış (düşük sapmalı). */
         const val MENU_CALM_SHARE = 0.60
         /** Bulanık karo: noktalarının parlaklık sapması bundan küçük. */
@@ -111,6 +113,9 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
 
     /** Menüye girildiği örnekteki bileşenlerin karoları: menü bunlardan biri yerinde durdukça sürer. */
     private var menuAnchors = emptySet<Int>()
+    /** Menüye girilen an ve süresi dolan menünün bittiği an (bundan önce belirmiş yazılar yeniden menü sayılmaz). */
+    private var menuEnteredAt = 0L
+    private var menuFloor: Long? = null
 
     private fun Auto.area() = ExtraArea(id, NAME, region, auto = true, menu = menu)
 
@@ -233,13 +238,27 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
         // Menü kanıtı altyazı alanının dışındaki bileşenlerden: iki satırlık altyazı (sakin zeminde) menü sanılıp
         // altyazıyı duraklatmasın.
         val evidence = all.filter { members -> members.any { !inSubtitle[it] } }
-        menu = isMenu(evidence, sample)
-        if (menu && !wasMenu) menuAnchors = evidence.flatten().toSet()
+        // Süresi dolan menünün yazıları yeniden menü sayılmaz; menü ancak sonradan beliren yazılarla açılır.
+        val floor = menuFloor
+        menu = isMenu(if (floor == null) evidence else evidence.filter { members -> members.maxOf { tiles[it].stableSince } > floor }, sample)
+        if (menu && !wasMenu) {
+            menuAnchors = evidence.flatten().toSet()
+            menuEnteredAt = now
+        }
         // Menüde gezinirken seçim çerçevesi kayınca birkaç karo bir an aday olmaktan çıkar: menüye girildiğindeki
         // yazılardan biri hâlâ görünüyorsa menü sürer (kutular yanıp sönmez, kısa etiketler gürültü sayılmaz). Menüdeyken
         // sonradan beliren yazı (karanlık sahnenin görev yazısı, PS5 bildirimi) menüyü sürdürmez: GTA 6 "Gone Fishing"te
         // menü durumu bitmiyor, altyazı bütün oturum okunmuyordu (Mac/iPhone, Windows ile aynı kural).
         if (!menu && wasMenu && autos.any { auto -> auto.menu && auto.tiles.any { candidate[it] && it in menuAnchors } }) menu = true
+        // Menüde bir şey değişmeden (gezinme, seçim) MENU_LIFE_MS geçti: menü sayılmaz, altyazı yeniden okunur
+        // (Mac/iPhone, Windows ile aynı). Karanlık sahnede birlikte beliren sabit HUD yazıları da menü sanılabiliyor.
+        if (menu && wasMenu) {
+            val activity = maxOf(menuEnteredAt, menuAnchors.maxOfOrNull { tiles[it].stableSince } ?: menuEnteredAt)
+            if (now - activity > MENU_LIFE_MS) {
+                menu = false
+                menuFloor = now
+            }
+        }
         // Altyazı alanındaki yazı bulucuya girmez; menü durumunda ise (altyazı duraklar) menünün oradaki etiketleri de alan olur.
         if (!menu && inSubtitle.any { it }) {
             for (index in 0 until TILES) if (inSubtitle[index]) candidate[index] = false
@@ -326,6 +345,7 @@ class ScreenTextDetector(private val clock: () -> Long = monotonicClock) {
         autos.clear()
         menu = false
         menuAnchors = emptySet()
+        menuFloor = null
         lastSample = null
         busy = false
     }

@@ -2582,6 +2582,9 @@ final class AppModel: ObservableObject {
         } else {
             gamePhoneTracker = nil
         }
+        // Altyazı hattı telefonu yalnız GTA 6'da ve telefon ayarı açıkken arar: başka oyunda ya da karanlık sahnede yanlış
+        // bulunan telefon alt şeritteki altyazıyı silmesin (iPhone, Windows, Android ile aynı).
+        pipeline?.findsPhone = gamePhoneTracker != nil
     }
 
     /// Ek alanlar aynı dil, motor ve paketlerle okunur; ayrı bir okuyucu ve çevirmenle (altyazının sırasını beklemez).

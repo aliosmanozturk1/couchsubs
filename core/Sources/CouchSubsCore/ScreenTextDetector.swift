@@ -93,6 +93,9 @@ public final class ScreenTextDetector: @unchecked Sendable {
     private var menu = false
     /// Menüye girildiği örnekteki bileşenlerin karoları: menü bunlar yerinde durdukça sürer (`isMenu`).
     private var menuAnchors = Set<Int>()
+    /// Menüye girilen an ve süresi dolan menünün bittiği an (bundan önce belirmiş yazılar yeniden menü sayılmaz).
+    private var menuEnteredAt = 0
+    private var menuFloor: Int?
 
     public init() {}
 
@@ -182,6 +185,7 @@ public final class ScreenTextDetector: @unchecked Sendable {
             lastSample = nil
             menu = false
             menuAnchors = []
+            menuFloor = nil
         }
     }
 
@@ -354,12 +358,25 @@ public final class ScreenTextDetector: @unchecked Sendable {
               Double(outside.filter { tiles[$0].quiet }.count) >= Self.menuQuietShare * Double(outside.count) else { return false }
         if menu, components.contains(where: { component in
             Double(component.tiles.filter(menuAnchors.contains).count) >= Self.keepOverlap * Double(component.tiles.count)
-        }) { return true }
+        }) {
+            // Menüde bir şey değişmeden (gezinme, seçim) `menuLifeMs` geçti: menü sayılmaz, altyazı yeniden okunur. Aynı
+            // yazılar yeniden menü sayılmaz; menü ancak sonradan beliren yazılarla yeniden açılır (`menuFloor`).
+            let activity = menuAnchors.map { tiles[$0].stableSince }.max() ?? menuEnteredAt
+            if now - max(activity, menuEnteredAt) <= Self.menuLifeMs { return true }
+            menuFloor = now
+            return false
+        }
         let appeared = components.map { $0.tiles.map { tiles[$0].stableSince }.max()! }
-        guard appeared.max()! - appeared.min()! <= Self.menuTogetherMs else { return false }
+        guard appeared.max()! - appeared.min()! <= Self.menuTogetherMs,
+              menuFloor.map({ floor in appeared.allSatisfy { $0 > floor } }) ?? true else { return false }
+        if !menu { menuEnteredAt = now }
         menuAnchors = inside
         return true
     }
+
+    /// Menüde hiçbir yazı değişmeden bu kadar süre geçince menü durumu biter (altyazı okunur). Karanlık sahnede birlikte
+    /// beliren sabit HUD yazıları da menü sanılabiliyor; menü durumu altyazıyı en çok bu kadar susturur.
+    public static let menuLifeMs = 5000
 
     private func update(_ components: [(cells: Cells, tiles: [Int])], candidate: [Bool], now: Int, inMenu: Bool) {
         let closed = menu && !inMenu

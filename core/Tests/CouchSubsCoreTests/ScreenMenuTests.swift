@@ -96,6 +96,21 @@ final class ScreenMenuTests: XCTestCase {
         XCTAssertFalse(detector.inMenu)
     }
 
+    /// Menüde hiçbir şey değişmeden 5 sn geçince menü durumu biter ve aynı yazılarla yeniden açılmaz: menü sanılan sabit
+    /// HUD altyazıyı en çok 5 sn susturur. Yeni beliren bir menü yeniden menü sayılır.
+    func testStillMenuExpiresAndOnlyANewMenuReopens() {
+        let detector = ScreenTextDetector()
+        run(detector, 0, 400) { _ in Self.wheel().image }
+        XCTAssertTrue(detector.inMenu)
+        run(detector, 500, 5000) { _ in Self.wheel().image }
+        XCTAssertTrue(detector.inMenu)
+        run(detector, 5100, 8000) { _ in Self.wheel().image }
+        XCTAssertFalse(detector.inMenu)
+        run(detector, 8100, 8200) { _ in Canvas(fill: 70).image }
+        run(detector, 8300, 8800) { _ in Self.wheel().image }
+        XCTAssertTrue(detector.inMenu)
+    }
+
     func testLabelsOnABusyMovingSceneAreNotAMenu() {
         let detector = ScreenTextDetector()
         run(detector, 0, 1000) { time in

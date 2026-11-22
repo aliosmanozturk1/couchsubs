@@ -1145,6 +1145,9 @@ final class PhoneModel: ObservableObject {
         regionWatcher?.closePhone()
         gamePhoneTracker = Self.tracksGamePhone(running: pipeline != nil, enabled: settings.readsGamePhone,
                                                 game: gameChoice.game?.name) ? GamePhoneTracker() : nil
+        // Altyazı hattı telefonu yalnız GTA 6'da ve telefon ayarı açıkken arar: başka oyunda ya da karanlık sahnede yanlış
+        // bulunan telefon alt şeritteki altyazıyı silmesin (Mac, Windows, Android ile aynı).
+        pipeline?.findsPhone = gamePhoneTracker != nil
     }
 
     static func tracksGamePhone(running: Bool, enabled: Bool, game: String?) -> Bool {

@@ -140,6 +140,8 @@ public final class SubtitlePipeline {
     private var loggedOwn: String?
     /// Günlüğe yazılmış son telefon yazısı (her karede yeniden yazılmasın).
     private var loggedPhone: String?
+    /// Günlüğe yazılmış son "altyazı sayılmadı" kümesi (`logLeftOut`).
+    private var loggedLeftOut = ""
     /// Karede açık GTA 6 telefonunun ekranındaki satırlar altyazı sayılmaz (`ScreenPhoneCard.holds`); telefonun çevirisi
     /// kendi yerindedir (telefon okuyucusu, "Ekranı çevir"). Kullanıcı bildirimleri (X, beta.79, üç kişi): telefonun alt
     /// kısmındaki mesajlar (telefon ortaya yakın tutulunca bütün sohbet) altyazı sanılıp ekranın ortasında tek uzun satır
@@ -251,7 +253,13 @@ public final class SubtitlePipeline {
             let area = RegionCropper.crop(frame, to: region)
             return (area, RegionCropper.signature(of: area), looks ? ScreenPhoneCard.phone(in: frame) : nil)
         }.value
-        if looks { phone = found }
+        if looks {
+            // Telefonun bulunması/kalkması günlüğe yazılır: yanlış bulunan telefon altyazı satırlarını atarsa görünsün.
+            if (found == nil) != (phone == nil) {
+                log(found == nil ? "telefon kalktı" : "telefon bulundu: ekranındaki satırlar altyazı sayılmayacak")
+            }
+            phone = found
+        }
         let handset = findsPhone ? phone : nil
         guard session == startedSession else { return }
         var visible = lastOcrReading
@@ -293,6 +301,15 @@ public final class SubtitlePipeline {
             let observations = try? result.get()
             lastOcrReading = observations?.ocr ?? .empty
             visible = observations?.visible ?? .empty
+            // "Altyazı zeminini izle" okunan bütün satırları attıysa günlüğe yazılır (zemin bulunamadı; ayar kapatılabilir).
+            if watchSubtitleBackground, !lastOcrReading.lines.isEmpty, visible.lines.isEmpty {
+                let key = "zemin|" + lastOcrReading.text
+                if key != loggedLeftOut {
+                    loggedLeftOut = key
+                    log("altyazı sayılmadı: \(SubtitleLog.excerpt(lastOcrReading.text)) (altyazı zemini bulunamadı; "
+                        + "\"Altyazı zeminini izle\" açık)")
+                }
+            }
             onReadResult?(result.failure)
             scheduler.record(visible.text)
         }
@@ -327,9 +344,12 @@ public final class SubtitlePipeline {
             onMissionChanged?(mission.region)
         }
         var edge: [Reading] = []
+        var sceneTexts: [String] = []
         let reading = rows.subtitleBlock(in: place, band: subtitleBand, dropped: { [weak self] block, reason in
+            sceneTexts += block.lines.map(\.text)
             self?.logSceneText(block.text, reason)
         }, notices: { edge.append($0.placed(in: place)) })
+        logLeftOut(rows, chosen: reading, logged: sceneTexts + edge.flatMap { $0.lines.map(\.text) })
         // Kenardaki bildirim kartı altyazının yerinde (ekranın ortasında) değil, kendi yerinde çevrilir.
         if notices.observe(edge, at: now()) {
             log(notices.areas.isEmpty ? "kenar bildirimi kalktı" : "kenar bildirimi kendi yerinde gösteriliyor (\(notices.areas.count))")
@@ -826,6 +846,20 @@ public final class SubtitlePipeline {
         log("sahne yazısı: \(SubtitleLog.excerpt(text)) altyazı sayılmadı (\(reason))")
     }
 
+    /// Alanda okunup altyazı bloğu seçilmeyen satırlar (menü, HUD etiketi, seçilmeyen alt/üst blok) günlüğe yazılır;
+    /// sahne yazısı ve kenar bildirimi kendi satırıyla yazıldığı için burada yoktur. Eskiden sessizce atılıyordu: iPhone
+    /// 1.0.6'da (2026-11-22) altyazı hiç çevrilmeyince günlükte nedeni görünmüyordu. Aynı küme art arda yazılmaz.
+    private func logLeftOut(_ rows: Reading, chosen: Reading, logged: [String]) {
+        let kept = Set(chosen.lines.map(\.text)), skip = Set(logged)
+        let left = rows.lines.map(\.text).filter { !kept.contains($0) && !skip.contains($0) }
+        let key = left.joined(separator: "\n")
+        guard key != loggedLeftOut else { return }
+        loggedLeftOut = key
+        guard !left.isEmpty else { return }
+        let picked = chosen.lines.isEmpty ? "altyazı bloğu yok" : "seçilen: \(SubtitleLog.excerpt(chosen.text))"
+        log("altyazı sayılmadı: \(SubtitleLog.excerpt(left.joined(separator: "\n"))) (\(picked))")
+    }
+
     /// Okuma durunca TV'deki son altyazıyı kaldırır.
     public func reset() {
         log("hat sıfırlandı (paketten \(packHits) satır)")
@@ -835,6 +869,7 @@ public final class SubtitlePipeline {
         lastNote = nil
         phone = nil
         phoneLookedAt = nil
+        loggedLeftOut = ""
         loggedPhone = nil
         session += 1
         lineOnScreen = nil

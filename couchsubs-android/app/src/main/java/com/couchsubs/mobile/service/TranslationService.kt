@@ -837,8 +837,10 @@ class TranslationService : Service() {
                 // Karenin geldiği an: gecikme buradan TV'ye gidene kadar ölçülür (hattın saatiyle).
                 val capturedAt = com.couchsubs.mobile.core.monotonicClock()
                 // Karede GTA 6 telefonu açıksa ekranındaki satırlar altyazı değildir; telefon seyrek aranır, bulunan yer
-                // sonraki okumalara da geçerlidir (Mac, Windows: SubtitlePipeline.findsPhone).
-                if (now - subtitlePhoneAt >= com.couchsubs.mobile.core.GamePhoneTracker.INTERVAL_MS || now < subtitlePhoneAt) {
+                // sonraki okumalara da geçerlidir (Mac, Windows: SubtitlePipeline.findsPhone). Yalnız GTA 6'da ve telefon
+                // ayarı açıkken: başka oyunda (ya da karanlık sahnede) yanlış bulunan telefon alt şeritteki altyazıyı silmesin.
+                if (!playsGta6 || !settings.readsGamePhone) subtitlePhone = null
+                else if (now - subtitlePhoneAt >=com.couchsubs.mobile.core.GamePhoneTracker.INTERVAL_MS || now < subtitlePhoneAt) {
                     subtitlePhoneAt = now
                     subtitlePhone = try {
                         com.couchsubs.mobile.core.ScreenPhoneCard.phone(com.couchsubs.mobile.ocr.LivePhoneImage(frame))

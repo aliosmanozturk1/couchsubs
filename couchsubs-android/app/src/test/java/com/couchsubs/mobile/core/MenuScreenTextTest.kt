@@ -69,6 +69,21 @@ class MenuScreenTextTest {
         assertFalse(detector.menu)
     }
 
+    /** Menüde hiçbir şey değişmeden 5 sn geçince menü biter, aynı yazılarla yeniden açılmaz (Mac, Windows ile aynı). */
+    @Test
+    fun stillMenuExpiresAndOnlyANewMenuReopens() {
+        val detector = ScreenTextDetector()
+        for (t in 0L..400L step 100) detector.step(wheel(0), t)
+        assertTrue(detector.menu)
+        for (t in 500L..5000L step 100) detector.step(wheel(0), t)
+        assertTrue(detector.menu)
+        for (t in 5100L..8000L step 100) detector.step(wheel(0), t)
+        assertFalse(detector.menu)
+        for (t in 8100L..8200L step 100) detector.step(ByteArray(width * height) { 112 }, t)
+        for (t in 8300L..8800L step 100) detector.step(wheel(0), t)
+        assertTrue(detector.menu)
+    }
+
     @Test
     fun shortLabelsOverASharpMovingSceneAreNotAMenu() {
         val detector = ScreenTextDetector()

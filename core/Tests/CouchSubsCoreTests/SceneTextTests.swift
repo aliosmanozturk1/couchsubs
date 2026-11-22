@@ -107,6 +107,32 @@ final class SceneTextTests: XCTestCase {
         XCTAssertEqual(server.texts, [".kcab emoc yeht erofeb ereh fo tuo teg ot deen eW", "og s'teL"])
     }
 
+    /// Alanda okunup altyazı bloğu seçilmeyen satırlar (burada alt alta menü) günlüğe bir kez yazılır; eskiden sessizce
+    /// atılıyordu (iPhone 1.0.6, 2026-11-22: altyazı çevrilmeyince günlükte neden yoktu).
+    @MainActor
+    func testLinesLeftOutOfTheSubtitleBlockAreLoggedOnce() async throws {
+        let reader = FixedReader()
+        reader.reading = Reading(lines: [
+            TextLine("We need to get out of here.", box: TextBox(left: 0.30, top: 0.40, right: 0.70, bottom: 0.50)),
+            TextLine("MAP", box: TextBox(left: 0.02, top: 0.05, right: 0.08, bottom: 0.12)),
+            TextLine("HELP", box: TextBox(left: 0.02, top: 0.14, right: 0.08, bottom: 0.21)),
+            TextLine("SETTINGS", box: TextBox(left: 0.02, top: 0.23, right: 0.10, bottom: 0.30)),
+        ])
+        var now = 1_000_000
+        let pipeline = SubtitlePipeline(reader: reader, translator: Reversed(), server: Sent(), clock: { now })
+        var log: [String] = []
+        pipeline.onLog = { log.append($0) }
+        let frame = try XCTUnwrap(Self.frame())
+        for _ in 0..<5 {
+            await pipeline.process(frame, region: CropRegion())
+            now += 100
+        }
+        await pipeline.waitForTranslations()
+        let left = log.filter { $0.hasPrefix("altyazı sayılmadı:") }
+        XCTAssertEqual(left, ["altyazı sayılmadı: \"MAP / HELP / SETTINGS\" (seçilen: \"We need to get out of here.\")"],
+                       log.joined(separator: "\n"))
+    }
+
     private final class Reversed: TextTranslator, @unchecked Sendable {
         func translate(_ text: String) async throws -> String { String(text.reversed()) }
     }

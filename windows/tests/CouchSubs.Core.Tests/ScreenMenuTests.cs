@@ -92,6 +92,22 @@ public class ScreenMenuTests
         Assert.False(detector.InMenu);
     }
 
+    /// <summary>Menüde hiçbir şey değişmeden 5 sn geçince menü biter, aynı yazılarla yeniden açılmaz (Mac ile aynı).</summary>
+    [Fact]
+    public void StillMenuExpiresAndOnlyANewMenuReopens()
+    {
+        var detector = new ScreenTextDetector();
+        Run(detector, 0, 400, _ => Wheel());
+        Assert.True(detector.InMenu);
+        Run(detector, 500, 5000, _ => Wheel());
+        Assert.True(detector.InMenu);
+        Run(detector, 5100, 8000, _ => Wheel());
+        Assert.False(detector.InMenu);
+        Run(detector, 8100, 8200, _ => Blurred());
+        Run(detector, 8300, 8800, _ => Wheel());
+        Assert.True(detector.InMenu);
+    }
+
     [Fact]
     public void NavigatingKeepsTheOtherBoxes()
     {
