@@ -751,6 +751,14 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// <summary>Canlı altyazı çevirisi duraklatıldı (Num 0); ek bölge ve serbest alan çevirileri çalışmaya devam eder.</summary>
     public bool SubtitlesPaused { get => subtitlesPaused; private set => Set(ref subtitlesPaused, value); }
     public Frame? LastFrame { get => lastFrame; private set => Set(ref lastFrame, value); }
+    /// <summary>Son karenin geldiği an (ana ekrandaki "Görüntü Durdu" ve kare hızı için; bildirilmez, okunur).</summary>
+    public DateTime? LastFrameAt { get; private set; }
+    /// <summary>Ekranda oyun menüsü açık (otomatik ekran yazısı açıkken bilinir); altyazı bu sırada gösterilmez.</summary>
+    public bool ScreenMenuOpen => Volatile.Read(ref screenText)?.InMenu == true;
+    /// <summary>TV'ye giden son satırların gecikmesi (ms), en eskisi başta, en çok 10 (ana ekrandaki Ortalama Gecikme).
+    /// <see cref="MetricsText"/> ile birlikte değişir.</summary>
+    public IReadOnlyList<int> RecentDelaysMs => [.. recentDelays];
+    private readonly Queue<int> recentDelays = new();
     public string? ActiveSourceLanguage { get; private set; }
     /// <summary>Sunucunun gerçekten dinlediği port (8787 doluysa rastgele bir port).</summary>
     public int ServerPort { get; private set; } = DefaultServerPort;
@@ -2133,6 +2141,8 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             // Konuşan renkleri oturum başına: yeni oturumda kişiler yeniden sıralanır.
             server.SpeakerBook.Reset();
             SubtitlesPaused = false;
+            recentDelays.Clear();
+            LastFrameAt = null;
             MetricsText = "";
             framesSince = null;
             sawLineThisRun = false;
@@ -3187,7 +3197,12 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
             EchoPaused = () => Volatile.Read(ref screenText)?.InMenu == true,
             FindsPhone = settings.ReadsGamePhone && GameName.Key(gameSense.Current?.Name) == "gta 6",
         };
-        built.MetricsReady += metrics => post(() => MetricsText = metrics.Summary(text));
+        built.MetricsReady += metrics => post(() =>
+        {
+            recentDelays.Enqueue(metrics.TotalMs);
+            while (recentDelays.Count > 10) recentDelays.Dequeue();
+            MetricsText = metrics.Summary(text);
+        });
         built.PairShown += (source, translation) =>
         {
             var box = built.LastBox;
@@ -3758,6 +3773,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         {
             post(() =>
             {
+                LastFrameAt = Clock();
                 LastFrame = frame;
                 UpdateSubtitleOffTip(frameArrived: true);
             });

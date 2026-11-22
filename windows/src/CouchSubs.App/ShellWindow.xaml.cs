@@ -151,6 +151,7 @@ public partial class ShellWindow : Window
         // Kurulumda üst çubuk ve reklam bandı yok (sihirbazın kendi çubuğu var).
         TopBar.Visibility = main ? Visibility.Visible : Visibility.Collapsed;
         Ads.Visibility = main && AdCatalog.Banners.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        home?.Detach();
         if (!main)
         {
             home = null;

@@ -2,6 +2,7 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -10,12 +11,16 @@ using Run = System.Windows.Documents.Run;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using CouchSubs.App.Controls;
+using CouchSubs.App.Theme;
 using CouchSubs.Core;
 using CouchSubs.Shell;
 
 namespace CouchSubs.App.Views;
 
-/// <summary>Ana ekran: başlat/durdur, PS5 ve TV durumu, uyarılar, son altyazı.</summary>
+/// <summary>
+/// Ana ekran (yeni arayüz): durum çipleri, oyun görüntüsü ve üç düğme, bildirimler, Durum ya da "Sorun Var" kartı,
+/// Canlı Akış. Saniyede bir kare hızı, sessizlik ve durum karoları yenilenir.
+/// </summary>
 public partial class MainView : UserControl
 {
     private readonly AppController controller;
@@ -23,56 +28,103 @@ public partial class MainView : UserControl
     private bool notesUnavailable;
     // Çeviri sürerken PS5 ve TV bağlanamıyorsa güvenlik duvarı kartı önerilir.
     private readonly DispatcherTimer connectionWatch = new() { Interval = TimeSpan.FromSeconds(5) };
-    /// <summary>Canlı altyazı karosu yalnız bu oturumun satırlarını gösterir (önceki oturumlar Geçmiş'te).</summary>
+    /// <summary>Kare hızı, sessizlik nedeni ve durum karoları saniyede bir yenilenir.</summary>
+    private readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromSeconds(1) };
+    /// <summary>Canlı akış ve durum karoları yalnız bu oturumun satırlarını sayar (önceki oturumlar Geçmiş'te).</summary>
     private DateTime? sessionStartedAt;
-    /// <summary>Karoda son satırın altında en çok bu kadar önceki satır durur.</summary>
-    private const int PreviousLineCount = 8;
+    /// <summary>Canlı akışta en çok bu kadar satır durur.</summary>
+    private const int FeedLineCount = 20;
+    private int framesThisSecond;
+    private int framesPerSecond;
 
     public MainView(AppController controller)
     {
         this.controller = controller;
         DataContext = controller;
         InitializeComponent();
-        OutputCard.Attach(controller);
         controller.PropertyChanged += OnChanged;
         connectionWatch.Tick += async (_, _) => await controller.CheckConnectionsAsync();
-        Loaded += (_, _) => connectionWatch.Start();
+        tick.Tick += (_, _) => OnTick();
+        Loaded += (_, _) =>
+        {
+            connectionWatch.Start();
+            tick.Start();
+            Preview.SetFrame(controller.LastFrame);
+        };
         Services.CrashWatch.Changed += OnCrashChanged;
         Unloaded += (_, _) =>
         {
-            controller.PropertyChanged -= OnChanged;
-            Services.CrashWatch.Changed -= OnCrashChanged;
             connectionWatch.Stop();
+            tick.Stop();
         };
+        if (controller.IsRunning) sessionStartedAt = DateTime.UtcNow;
         ShowCrash();
         Refresh();
-        ShowTiles();
+        ShowChips();
         ShowUpdate();
         ShowGame();
-        ShowPreviousLines();
+        ShowFeed();
+        ShowNotices();
+        OnTick();
+        Preview.SetRegion(controller.Settings.Region);
         _ = controller.CheckForUpdateAsync();
     }
 
     private void OnChanged(object? sender, PropertyChangedEventArgs e)
     {
+        switch (e.PropertyName)
+        {
+            case nameof(AppController.LastFrame):
+                framesThisSecond++;
+                if (IsVisible) Preview.SetFrame(controller.LastFrame);
+                return;
+            case nameof(AppController.IsRunning):
+                if (controller.IsRunning) sessionStartedAt = DateTime.UtcNow;
+                break;
+        }
         if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.TranslatorStatus) or nameof(AppController.ModelInstalled)
             or nameof(AppController.OnlineIssue) or nameof(AppController.CanStart) or nameof(AppController.IsStarting)
             or nameof(AppController.DemoMode))
             Refresh();
-        if (e.PropertyName is nameof(AppController.Settings) or nameof(AppController.InstalledPacks))
-            ShowTiles();
+        if (e.PropertyName is nameof(AppController.Settings) or nameof(AppController.InstalledPacks) or nameof(AppController.PlayedGame)
+            or nameof(AppController.IsRunning) or nameof(AppController.Ps5Tone) or nameof(AppController.TvTone) or nameof(AppController.TvClients)
+            or nameof(AppController.DemoMode) or nameof(AppController.CanStart) or nameof(AppController.TranslatorStatus) or nameof(AppController.OnlineIssue))
+            ShowChips();
+        if (e.PropertyName is nameof(AppController.Settings))
+            Preview.SetRegion(controller.Settings.Region);
         if (e.PropertyName is nameof(AppController.IsRunning) or nameof(AppController.DemoMode) or nameof(AppController.PlayedGame) or nameof(AppController.AskingGame)
             or nameof(AppController.AreaProfileGame) or nameof(AppController.OfferedAreaProfileGame))
             ShowGame();
-        if (e.PropertyName is nameof(AppController.IsRunning) && controller.IsRunning)
-            sessionStartedAt = DateTime.UtcNow;
-        if (e.PropertyName is nameof(AppController.LastTranslation))
-            FadeInLiveLine();
+        if (e.PropertyName is nameof(AppController.LastTranslation) or nameof(AppController.IsRunning))
+            Preview.SetLine(controller.IsRunning ? controller.LastTranslation : null);
         if (e.PropertyName is nameof(AppController.History) or nameof(AppController.LastTranslation) or nameof(AppController.IsRunning))
-            ShowPreviousLines();
+        {
+            ShowFeed();
+            ShowStats();
+        }
+        if (e.PropertyName is nameof(AppController.MetricsText)) ShowStats();
         if (e.PropertyName is nameof(AppController.UpdateVersion) or nameof(AppController.Updating)
             or nameof(AppController.UpdateProgress) or nameof(AppController.UpdateError))
             ShowUpdate();
+        if (e.PropertyName is nameof(AppController.NeedsXboxLink) or nameof(AppController.OffersReconnect) or nameof(AppController.ShowsOnTv)
+            or nameof(AppController.NeedsTv) or nameof(AppController.CanReconnectTv) or nameof(AppController.ShowTvAppUpdate)
+            or nameof(AppController.CanReinstallTvApp) or nameof(AppController.ShowTvOpenHint) or nameof(AppController.ShowTestTvHint)
+            or nameof(AppController.TvAppUpdating) or nameof(AppController.TvClients) or nameof(AppController.IsRunning)
+            or nameof(AppController.Settings) or nameof(AppController.CanStart) or nameof(AppController.DemoMode))
+            ShowNotices();
+    }
+
+    /// <summary>Saniyede bir: kare hızı, CANLI hapı, sessizlik nedeni ve durum karoları.</summary>
+    private void OnTick()
+    {
+        framesPerSecond = framesThisSecond;
+        framesThisSecond = 0;
+        var text = Localizer.Current;
+        var running = controller.IsRunning;
+        Preview.SetLive(running);
+        Preview.SetRate(running && framesPerSecond > 0 ? $"{controller.ConsoleTitle} · {text.Format("%lld Frames/s", framesPerSecond)}" : null);
+        ShowProblem();
+        ShowStats();
     }
 
     /// <summary>Kayıt arka planda hazırlanır; hazır olunca arayüz iş parçacığında gösterilir.</summary>
@@ -144,71 +196,18 @@ public partial class MainView : UserControl
         if (notesUnavailable) UpdateNotesText.Text = Localizer.Current["Release notes are unavailable."];
     }
 
-    /// <summary>
-    /// Çeviri karosunda seçili motor; paket karosu yalnız paketler açık, çeviri İngilizce→Türkçe ve kurulu paket varken
-    /// görünür (paketler yalnız o dil çiftinde kullanılır).
-    /// </summary>
-    private void ShowTiles()
-    {
-        var text = Localizer.Current;
-        var settings = controller.Settings;
-        ShowScreenKeys(settings);
-        EngineText.Text = settings.Engine == TranslationEngine.Free ? text["Free"] : settings.Engine.DisplayName();
-        PictureSourceText.Text = controller.PictureSourceTitle ?? "";
-        PictureSourceRow.Visibility = controller.PictureSourceTitle is null ? Visibility.Collapsed : Visibility.Visible;
-        var packs = GameCatalog.PackShelf(controller.InstalledPacks).Count;
-        var active = settings.GamePacks && settings.SourceLanguage == "en" && settings.TargetLanguage == "tr" && packs > 0;
-        PackTile.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
-        PackText.Text = text.Format("Game packs are on · %lld games translated in advance", packs);
-    }
-
-    /// <summary>
-    /// Bilgi karosunun "Ekranı çevir" satırı: Ayarlar › Kısayollar'da seçili her tuş bir Keycap, aralarında "ya da".
-    /// Hiç kısayol yoksa "kısayol yok" yazar. Kısayol değişince Settings bildirimiyle yeniden kurulur.
-    /// </summary>
-    private void ShowScreenKeys(UserSettings settings)
-    {
-        var text = Localizer.Current;
-        var keys = HotkeyTable.KeysFor(settings.Hotkeys, HotkeyAction.Screen);
-        ScreenKeys.Children.Clear();
-        ScreenKeys.ToolTip = HotkeyText.Title(settings, HotkeyAction.Screen, "Translate the screen (%@)");
-        if (keys.Count == 0)
-        {
-            ScreenKeys.Children.Add(new TextBlock
-            {
-                Text = text["no shortcut"], Style = (Style)FindResource("CaptionText"),
-                VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap,
-            });
-            return;
-        }
-        for (var index = 0; index < keys.Count; index++)
-        {
-            if (index > 0)
-                ScreenKeys.Children.Add(new TextBlock
-                {
-                    Text = text["or"], Style = (Style)FindResource("CaptionText"), Margin = new Thickness(8, 0, 8, 0),
-                    VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap,
-                });
-            var label = new TextBlock { Text = keys[index].Label, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap };
-            System.Windows.Documents.Typography.SetNumeralAlignment(label, FontNumeralAlignment.Tabular);
-            ScreenKeys.Children.Add(new Border { Style = (Style)FindResource("Keycap"), Child = label });
-        }
-    }
-
     private async void OnUpdate(object sender, RoutedEventArgs e) => await controller.InstallUpdateAsync();
 
     private void Refresh()
     {
+        var text = Localizer.Current;
         var running = controller.IsRunning;
-        // Deneme modunda düğme "Deneme modundan çık" olur; durum karosu "Deneme modu · Örnek görüntüler" yazar.
+        // Deneme modunda düğme "Deneme Modundan Çık" olur.
         var demo = controller.DemoMode;
-        Toggle.Style = (Style)FindResource(running || demo ? "DangerButton" : "PrimaryButton");
-        ToggleGlyph.Text = demo ? Glyphs.Cancel : running ? Glyphs.Stop : Glyphs.Play;
-        ToggleText.Text = Localizer.Current[demo ? "Exit demo mode" : running ? "Stop translating" : "Start translating"];
+        Toggle.Style = (Style)FindResource(running || demo ? "LiveButton" : "PrimaryButton");
+        Toggle.Content = text[controller.IsStarting ? "Starting…" : demo ? "Exit Demo Mode" : running ? "Stop Translating" : "Start Translating"];
         // Altyazının gideceği bir yer yoksa (TV seçili ama bağlı değil) çeviri başlatılamaz.
         Toggle.IsEnabled = !controller.IsStarting && (running || demo || controller.CanStart);
-        ConsoleStatus.Glyph = demo ? Glyphs.Play : Glyphs.Controller;
-        DemoButton.Visibility = !controller.CanStart && !running && !demo ? Visibility.Visible : Visibility.Collapsed;
         ModelCard.Visibility = controller.ModelInstalled ? Visibility.Collapsed : Visibility.Visible;
         EngineCard.Visibility = controller.TranslatorStatus == TranslatorStatus.EngineFailed ? Visibility.Visible : Visibility.Collapsed;
         // Çevrimiçi motor çeviremiyor; satırlar bu arada cihaz üstü modelle geliyor.
@@ -217,9 +216,11 @@ public partial class MainView : UserControl
         if (issue is { } state)
         {
             var engine = controller.Settings.OnlineEngine;
-            OnlineTitle.Text = Localizer.Current.Format("%@ is not translating right now", engine.DisplayName());
-            OnlineReason.Text = state.Describe(engine, Localizer.Current, controller.Settings.LocalAiServer) + " " + Localizer.Current["Meanwhile the free translation is used."];
+            OnlineTitle.Text = text.Format("%@ is not translating right now", engine.DisplayName());
+            OnlineReason.Text = state.Describe(engine, text, controller.Settings.LocalAiServer) + " " + text["Meanwhile the free translation is used."];
         }
+        Preview.SetLive(running);
+        ShowNotices();
     }
 
     /// <summary>
@@ -249,35 +250,195 @@ public partial class MainView : UserControl
     private void OnPictureSourceSettings(object sender, RoutedEventArgs e) =>
         SettingsView.Open(Window.GetWindow(this), controller, SettingsSection.PictureSource);
 
-    /// <summary>Yeni canlı satır 0,18 sn'de belirir; Windows'ta animasyonlar kapalıysa geçiş yok (docs/TASARIM.md).</summary>
-    private void FadeInLiveLine()
+    /// <summary>Kabuk bu ana ekranı bırakınca (kurulum yeniden açıldı) denetleyiciden ayrılır.</summary>
+    public void Detach()
     {
-        if (!SystemParameters.ClientAreaAnimation)
-        {
-            LiveLine.BeginAnimation(OpacityProperty, null);
-            return;
-        }
-        LiveLine.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180))
-        {
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
-        });
+        controller.PropertyChanged -= OnChanged;
+        Services.CrashWatch.Changed -= OnCrashChanged;
+        connectionWatch.Stop();
+        tick.Stop();
     }
 
     /// <summary>
-    /// Son satır büyük ve sarı yazılır; bu oturumda ondan önce gösterilen satırlar altında, en yenisi üstte (geçmiş en
-    /// yeniden eskiye sıralıdır). Son satır geçmişin en yenisiyse listede tekrar edilmez. Henüz satır yokken liste boştur.
+    /// Dört durum çipi: konsol (ya da seçilen pencere / deneme), TV (ya da bilgisayar ekranı), oynanan oyun, çeviri motoru.
+    /// Yeşil tik hazır ya da bağlı, kırmızı ünlem sorun, gri nokta kurulmamış ya da bekliyor demektir.
     /// </summary>
-    private void ShowPreviousLines()
+    private void ShowChips()
     {
-        if (string.IsNullOrEmpty(controller.LastTranslation))
+        var text = Localizer.Current;
+        var settings = controller.Settings;
+        var running = controller.IsRunning;
+        var consoleTone = controller.DemoMode ? StatusTone.Good : running ? controller.Ps5Tone : controller.CanStart ? StatusTone.Good : StatusTone.Idle;
+        var consoleValue = controller.DemoMode ? text["Demo Mode"]
+            : running ? controller.Ps5Tone switch { StatusTone.Good => text["Connected"], StatusTone.Warning => text["Not Connected"], _ => text["Connecting…"] }
+            : controller.CanStart ? text["Ready"] : text["Not Set Up"];
+        ConsoleChip.Show(controller.ConsoleTitle, consoleValue, controller.Console?.Name is { Length: > 0 } name && !controller.IsXbox ? name : null, consoleTone);
+
+        if (!controller.ShowsOnTv) TvChip.Show("TV", text["Computer Screen"], null, StatusTone.Good);
+        else if (!controller.HasTv) TvChip.Show("TV", text["Not Set Up"], null, StatusTone.Idle);
+        else
         {
-            PreviousLines.ItemsSource = null;
+            var tone = controller.TvTone == StatusTone.Warning ? StatusTone.Warning : controller.TvClients > 0 || !running ? StatusTone.Good : StatusTone.Idle;
+            TvChip.Show("TV", controller.Tv?.Name ?? "TV", controller.TvClients > 0 ? null : running ? text["Waiting"] : null, tone);
+        }
+
+        var packs = GameCatalog.PackShelf(controller.InstalledPacks);
+        var game = controller.PlayedGame;
+        var hasPack = game is not null && settings.GamePacks && packs.Any(item => item.Titles.Append(item.Title).Any(title => GameName.Key(title) == GameName.Key(game)));
+        GameChip.Show(text["Game"], game ?? text["Unknown Game"], hasPack ? text["Pack"] : null, game is null ? StatusTone.Idle : StatusTone.Good);
+
+        var engineTone = controller.TranslatorStatus == TranslatorStatus.EngineFailed || (running && controller.OnlineIssue is not null) ? StatusTone.Warning : StatusTone.Good;
+        var engine = settings.Engine == TranslationEngine.Free ? text["Free Translation"] : settings.Engine.DisplayName();
+        EngineChip.Show(text["Translation"], engine, $"{settings.SourceLanguage.ToUpperInvariant()}→{settings.TargetLanguage.ToUpperInvariant()}", engineTone);
+
+        // Ekranı Çevir düğmesinin kısayolu ipucunda (Ayarlar › Klavye Kısayolları).
+        ScreenButton.ToolTip = HotkeyText.Title(settings, HotkeyAction.Screen, "Translate the screen (%@)");
+    }
+
+    /// <summary>Sağ sütundaki konsol ve TV bildirim kartları yalnız yapılacak bir şey varken görünür.</summary>
+    private void ShowNotices()
+    {
+        ConsoleCard.Visibility = controller.NeedsXboxLink || controller.OffersReconnect ? Visibility.Visible : Visibility.Collapsed;
+        var tvNeedsWork = controller.ShowsOnTv && (controller.NeedsTv || controller.CanReconnectTv && controller.IsRunning || controller.ShowTvAppUpdate
+            || controller.CanReinstallTvApp || controller.ShowTvOpenHint || controller.ShowTestTvHint || controller.TvAppUpdating);
+        TvCard.Visibility = tvNeedsWork ? Visibility.Visible : Visibility.Collapsed;
+        DemoButton.Visibility = !controller.CanStart && !controller.IsRunning && !controller.DemoMode ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Durum karoları: bu oturumun satır sayısı ve son dakikadaki hızı (kıvılcım çizgisi 15 sn'lik dilimler), paketten
+    /// gelen satırlar ve oranı, son satırların ortalama gecikmesi.
+    /// </summary>
+    private void ShowStats()
+    {
+        var text = Localizer.Current;
+        var now = DateTime.UtcNow;
+        var since = sessionStartedAt ?? DateTime.MaxValue;
+        var lines = controller.History.Where(entry => entry.Date >= since).ToList();
+        var perMinute = lines.Count(entry => now - entry.Date <= TimeSpan.FromMinutes(1));
+        LineCount.Text = lines.Count.ToString(CultureInfo.CurrentCulture);
+        LineRate.Text = text.Format("Lines · %lld/min", perMinute);
+        LineSpark.Values = Enumerable.Range(0, 12).Select(slot =>
+        {
+            var end = now - TimeSpan.FromSeconds(15 * (11 - slot));
+            var start = end - TimeSpan.FromSeconds(15);
+            return (double)lines.Count(entry => entry.Date > start && entry.Date <= end);
+        }).ToList();
+        var fromPack = lines.Count(entry => entry.Origin == LineOrigin.Pack);
+        var share = lines.Count == 0 ? 0 : (int)Math.Round(100.0 * fromPack / lines.Count);
+        PackCount.Text = fromPack.ToString(CultureInfo.CurrentCulture);
+        PackShare.Text = text.Format("From Pack · %lld%%", share);
+        PackRing.Fraction = share / 100.0;
+        var delays = controller.RecentDelaysMs;
+        DelayValue.Text = delays.Count == 0 ? "–" : $"{(int)Math.Round(delays.Average())} ms";
+        DelayBars.Values = delays.Select(value => (double)value).ToList();
+        StateTitle.Text = text[!controller.IsRunning ? "Translation Stopped" : lines.Count > 0 ? "Subtitles Flowing" : "Waiting for Subtitles"];
+    }
+
+    /// <summary>
+    /// "Sorun Var" kartı (HomeProblem): görüntü durdu, menü açık ya da oyunun altyazısı kapalı. Kart görünürken Durum kartı
+    /// gizlenir; çözüm düğmeleri işi yapar ya da ilgili ayarı açar.
+    /// </summary>
+    private void ShowProblem()
+    {
+        var text = Localizer.Current;
+        var now = DateTime.UtcNow;
+        var kind = HomeProblem.For(controller.IsRunning, controller.DemoMode, controller.LastFrameAt is { } at ? now - at : null,
+            controller.ScreenMenuOpen, controller.ShowsSubtitleOffTip);
+        ProblemCard.Visibility = kind == HomeProblemKind.None ? Visibility.Collapsed : Visibility.Visible;
+        StatusCard.Visibility = kind == HomeProblemKind.None ? Visibility.Visible : Visibility.Collapsed;
+        if (kind == HomeProblemKind.None)
+        {
+            shownProblem = kind;
             return;
         }
-        var since = sessionStartedAt ?? DateTime.MinValue;
-        var lines = controller.History.Where(entry => entry.Date >= since).ToList();
-        if (lines.Count > 0 && lines[0].Translation == controller.LastTranslation) lines.RemoveAt(0);
-        PreviousLines.ItemsSource = lines.Take(PreviousLineCount).ToList();
+        var lastLine = controller.History.FirstOrDefault()?.Date;
+        var silent = HomeProblem.SilentSeconds(now, lastLine, sessionStartedAt ?? now);
+        SilentFor.Text = text.Format("%lld S SILENT", silent);
+        var pictureGap = controller.LastFrameAt is { } last ? (int)(now - last).TotalSeconds : 0;
+        switch (kind)
+        {
+            case HomeProblemKind.PictureStopped:
+                ProblemTitle.Text = text.Format("The PS5 picture hasn't arrived for %lld seconds.", pictureGap);
+                ProblemText.Text = text["The connection may have weakened. CouchSubs is trying to reconnect; if it doesn't, check that you're on the same Wi-Fi network as the PS5 and using 5 GHz."];
+                break;
+            case HomeProblemKind.MenuOpen:
+                ProblemTitle.Text = text["A menu is open in the game; there's no subtitle."];
+                ProblemText.Text = text["We don't translate the text in the pause menu. The subtitles come back by themselves when you return to the game."];
+                break;
+            default:
+                ProblemTitle.Text = text["Game Subtitles Off?"];
+                ProblemText.Text = text["CouchSubs reads the English subtitles on screen, not the audio. Turn on the game's own subtitles."];
+                break;
+        }
+        if (kind == shownProblem) return;
+        shownProblem = kind;
+        Motion.EnterFrom(ProblemCard, -8);
+        ProblemFixes.Children.Clear();
+        switch (kind)
+        {
+            case HomeProblemKind.PictureStopped:
+                AddFix(text["Reconnect Now"], null, primary: true, () => controller.Reconnect());
+                AddFix(text["Open the Connection Test"], null, primary: false,
+                    () => SettingsView.Open(Window.GetWindow(this), controller, SettingsSection.PictureSource));
+                break;
+            case HomeProblemKind.MenuOpen:
+                var on = controller.Settings is { AutoScreenText: true, ScreenTextMenus: true };
+                AddFix(text["Translate Menus Too (On-Screen Text)"], text[on ? "Completed" : "Off"], primary: !on,
+                    () => controller.Settings = controller.Settings with { AutoScreenText = true, ScreenTextMenus = true });
+                break;
+            default:
+                AddFix(text["Draw the Area Manually"], null, primary: false, () => SettingsView.Open(Window.GetWindow(this), controller));
+                break;
+        }
+    }
+
+    private HomeProblemKind shownProblem;
+
+    /// <summary>Çözüm düğmesi: 48 yüksek, solda iş, sağda mono durum ("Kapalı" / "Yapıldı"); ilki amber.</summary>
+    private void AddFix(string label, string? state, bool primary, Action run)
+    {
+        var row = new DockPanel { LastChildFill = true };
+        if (state is not null)
+        {
+            var mark = new TextBlock { Text = state, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+            mark.SetResourceReference(StyleProperty, "MonoText");
+            mark.FontSize = 12;
+            DockPanel.SetDock(mark, Dock.Right);
+            row.Children.Add(mark);
+        }
+        row.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap });
+        var button = new Button
+        {
+            Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(16, 0, 16, 0), Margin = new Thickness(0, 0, 0, 8),
+        };
+        button.SetResourceReference(StyleProperty, primary ? "PrimaryButton" : "SecondaryButton");
+        button.Click += (_, _) =>
+        {
+            run();
+            shownProblem = HomeProblemKind.None;
+            ShowProblem();
+        };
+        ProblemFixes.Children.Add(button);
+    }
+
+    /// <summary>Canlı akış: bu oturumun satırları (çeviri yokken son satırlar), en yenisi üstte.</summary>
+    private void ShowFeed()
+    {
+        var since = controller.IsRunning ? sessionStartedAt ?? DateTime.MinValue : DateTime.MinValue;
+        var lines = controller.History.Where(entry => entry.Date >= since).Take(FeedLineCount).ToList();
+        Feed.ItemsSource = lines;
+        FeedEmpty.Visibility = lines.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnHistory(object sender, RoutedEventArgs e) => ShellWindow.Navigate(ShellTab.History);
+
+    /// <summary>Ekranı Çevir (kısayoldaki gibi): ekranın tamamı bir kez çevrilir.</summary>
+    private async void OnTranslateScreen(object sender, RoutedEventArgs e)
+    {
+        try { await controller.TranslateScreenAsync(); }
+        catch (Exception error) { StartupGuard.Log("Ekran çevrilemedi", error); }
     }
 
     /// <summary>Deneme altyazısı (çeviri başlamadıysa altyazı sunucusu da açılır).</summary>
