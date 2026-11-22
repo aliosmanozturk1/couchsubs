@@ -66,3 +66,24 @@ güncellemesiyle gider; kuruluysa paket R2'ye yüklenince Mac, Windows, iPhone v
    `curl -X POST -H "authorization: Bearer $ADMIN_TOKEN" --data @/tmp/gta6/gta-6.pool-keys.json
    https://couchsubs-pool.enmera.workers.dev/v1/exported`
    Gün içinde yeni satırlar biriktikçe 2-8 tekrarlanır; `--limit` her turda küçük tutulur.
+
+## GTA 6 tam metin dökümünden paket (`extract.py gta6`)
+
+Oyunun İngilizce metninin dökümü [psviethoa/gta6-text-en](https://github.com/psviethoa/gta6-text-en) deposunda
+(döküm: CyberLeek; Xbox 1.0.2.1, Kasım 2026; 579.495 satır). Döküm ve çeviriler bu depoya **girmez**: döküm yerel bir
+klasörden okunur, çıktılar da yalnız yerelde ya da özel kanalda tutulur. Deponun lisansı yoktur; metinler Rockstar
+Games / Take-Two Interactive'e aittir.
+
+- `gta6dump.py` · dökümü (`all_rows.tsv`) tablo içindeki oyun sırasıyla okur. Bir tablo genelde bir sahnedir. Oyun her
+  `~sl:~` parçasını ekranda ayrı gösterdiği için her parça ayrı satır olur (`id#0`, `id#1`…); zamanlama, renk ve biçim
+  etiketleri silinir, yer tutucular (`~1~`, `~INPUT_AIM~`, `~BLIP_…~`) kalır. Kod/sayı satırları (`keep=1`) atlanır.
+  Tüm dökümden ~592 bin satır, 449 bin benzersiz anahtar çıkar.
+- `extract.py gta6 <döküm klasörü> <rows.jsonl> [--table C0100,…] [--category dialogue,subtitle]` · satırları yazar.
+- `translate.py gta6 <rows.jsonl> <out.json>` · `translate_rules.py`'deki `gta6` sözlüğüyle (glossary/gta6.json ve
+  yer tutucu kuralları) çevirir. Sahne bağlamı için `TRANSLATE_CONTEXT=30` (varsayılan 4).
+- `validate.py <rows.jsonl> <çeviri> [--write lines.json]` · yer tutucuları, cümle sayısını, boş çeviriyi ve
+  sözlükteki "aynen kalır" isimlerini denetler; `--write` hatasız satırları `build.py`'nin okuduğu biçimde yazar.
+  Çeviri, `translate.py` çıktısı ya da ajan çıktısı (`{"id", "tr": [...]}` satırları) olabilir.
+- `gta6/` · çeviren kişi ve ajanlar için rehberler: `STYLE.md`, `TAGS.md`, `AGENT_WORKFLOW.md` ve
+  `glossary/gta6.json`'dan `gta6glossary_md.py` ile üretilen `GLOSSARY.md`.
+- Denemeler: `python3 -m unittest tools/packs/test_gta6.py` (ağ ve API yok).

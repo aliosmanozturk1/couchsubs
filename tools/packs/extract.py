@@ -1,9 +1,17 @@
-# Extract dialogue lines (speaker, text, scene) from the fan transcripts.
+# Extract dialogue lines (speaker, text, scene) from the fan transcripts and the GTA VI text dump.
 # Usage: python3 -I extract.py ds|sm2 <src dir> <out.jsonl>
+#        python3 -I extract.py gta6 <dump dir> <out.jsonl> [--table C0100,C0101] [--category dialogue,subtitle]
 import json, re, sys, html
 
 game, src, out = sys.argv[1:4]
 rows = []
+
+
+def option(name):
+    args = sys.argv[4:]
+    if name not in args:
+        return None
+    return set(args[args.index(name) + 1].split(","))
 
 
 def clean(t):
@@ -63,6 +71,13 @@ elif game == "sm2":
             if not re.search(r"[A-Za-z]", text) or len(text) < 2:
                 continue
             rows.append({"speaker": speaker, "text": text, "scene": scene})
+elif game == "gta6":
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import gta6dump
+    rows = gta6dump.rows(src, tables=option("--table"), categories=option("--category"))
+else:
+    raise SystemExit(f"unknown game: {game}")
 
 with open(out, "w", encoding="utf-8") as f:
     for r in rows:

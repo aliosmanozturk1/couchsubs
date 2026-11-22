@@ -18,6 +18,25 @@ Black Cat = Kara Kedi; Flame = Alev; the suit = kostüm; web/webs = ağ; web-sho
 Brooklyn Visions (Academy), Emily-May Foundation (EMF), F.E.A.S.T., Oscorp, Daily Bugle, Harlem, Queens, Manhattan stay as is."""
 }
 
+
+
+def _gta6():
+    """GTA VI: the glossary file plus the rules for lines extracted from the text dump (gta6dump.py)."""
+    import sys
+    from pathlib import Path
+    here = Path(__file__).resolve().parent
+    sys.path.insert(0, str(here))
+    import gta6glossary
+    return gta6glossary.prompt_block(here / "glossary/gta6.json") + """
+Lines come from the game's own text tables in game order; one table is usually one scene, phone call or a pool of
+ambient lines. Speakers are not known: infer them from the neighbouring lines and keep one form of address per scene.
+Keep every placeholder exactly as written and the same number of times: ~1~, ~2~, ~1$~, ~1b~, ~INPUT_...~,
+~INPUTGROUP_...~, ~BLIP_...~. Build the sentence so no Turkish suffix is attached to a placeholder.
+"In Spanish:" / "Unknown Language:" prefixes become "İspanyolca:" / "Bilinmeyen dil:"."""
+
+
+GLOSSARY["gta6"] = _gta6()
+
 RULES = """Rules:
 - Natural spoken Turkish, the way a professional Turkish subtitle translator would write it; match the tone and register
   (casual banter stays casual; use "sen" between friends, family and enemies; "siz" only for formal/respectful address).

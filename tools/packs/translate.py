@@ -38,10 +38,12 @@ for r in rows:
 print(game, "lines", len(lines), "sentences", sum(len(l["sents"]) for l in lines))
 
 CH = 40
+# Previous lines sent as read-only context; GTA VI scenes read better with ~30 (TRANSLATE_CONTEXT=30).
+CTX = int(__import__("os").environ.get("TRANSLATE_CONTEXT", "4"))
 
 
 def run(start):
-    ctx = lines[max(0, start - 4):start]
+    ctx = lines[max(0, start - CTX):start]
     chunk = lines[start:start + CH]
     parts = []
     if ctx:
