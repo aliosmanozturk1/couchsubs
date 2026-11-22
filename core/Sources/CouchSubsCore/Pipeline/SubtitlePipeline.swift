@@ -192,6 +192,9 @@ public final class SubtitlePipeline {
     private var sawFrame = false
     private var sawText = false
     private var lastNote: StabilizerNote?
+    /// Altyazı alanında yazı çıkmayan sürenin tanısı (`QuietReads`); sessizlik `QuietReads.reportAfterMs` sürerse nedeni
+    /// (okunmadı mı, boş mu okundu, süzgeçte mi kaldı, hata mı) günlüğe yazılır.
+    private var quiet: QuietReads
 
     /// `scheduler`: varsayılanı her kareyi okur; uygulama gereksiz okumaları atlayan planı verir.
     /// `clock`: milisaniye saati; testlerde sahtesi verilir.
@@ -207,6 +210,7 @@ public final class SubtitlePipeline {
         self.stabilizer = SubtitleStabilizer(clock: clock)
         self.own = OwnSubtitles(clock: clock)
         sessionStart = clock()
+        quiet = QuietReads(since: sessionStart)
     }
 
     /// Çeviri ekrana gider; kendi altyazısı süzgeci onu hatırlar.
@@ -236,6 +240,7 @@ public final class SubtitlePipeline {
             sawFrame = true
             log("ilk kare: oturum başından \(now() - sessionStart) ms sonra")
         }
+        quiet.frames += 1
         // Okuma sürerken hat sıfırlandıysa (çeviri durdu, hat yeniden kuruldu) bu karenin sonucu yeni oturuma karışmaz:
         // geç biten eski okuma TV'ye eski satırı göndermesin.
         let startedSession = session
@@ -271,6 +276,11 @@ public final class SubtitlePipeline {
             } catch {
                 result = .failure(error)
                 if case ReadQueueError.timedOut(let ms) = error { log("okuma \(ms) ms'de bitmedi; kare atlandı") }
+            }
+            quiet.reads += 1
+            switch result {
+            case .success(let read): if read.ocr.lines.isEmpty { quiet.empty += 1 } else if read.visible.lines.isEmpty { quiet.background += 1 }
+            case .failure(let error): quiet.failures += 1; quiet.lastError = "\(error)"
             }
             guard session == startedSession else {
                 log("eski okuma \(now() - started) ms sonra bitti, hat sıfırlanmıştı; atıldı")
@@ -331,6 +341,12 @@ public final class SubtitlePipeline {
         if !sawText, !reading.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             sawText = true
             log("ilk yazı: oturum başından \(now() - sessionStart) ms sonra \(SubtitleLog.excerpt(reading.text))")
+        }
+        if reading.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if !rows.lines.isEmpty { quiet.dropped += 1 } else if !visible.lines.isEmpty { quiet.filtered += 1 }
+            reportQuiet()
+        } else {
+            quiet = QuietReads(since: now())
         }
         // Bölge izi ve satırın yeri: okuma boş dönse de satırın yeri değişmediyse satır silinmez (parlak zemin).
         // Altyazının yerinde yalnız kendi çevirimiz okunduysa (örtme ya da üst üste binen katman) satır kalkmış sayılmaz.
@@ -828,10 +844,28 @@ public final class SubtitlePipeline {
         log("altyazı sayılmadı: \(SubtitleLog.excerpt(left.joined(separator: "\n"))) (\(picked))")
     }
 
+    /// Ekranda menü var (otomatik ekran yazısı menü durumunda) ve uygulama bu kareyi altyazı için okumuyor. Eskiden bu
+    /// atlama günlüğe hiç yazılmıyordu: Mac'te (beta.80, PS5, GTA 6) ekranda diyalog varken altyazı günlüğüne dakikalarca
+    /// hiçbir satır düşmüyor, okunmadığı mı, boş mu okunduğu mu anlaşılmıyordu.
+    public func skipForMenu() {
+        // Geçiş günlüğe uygulamada yazılır (`ScreenTextDetector.menuLog`); burada yalnız sessizlik özetine sayılır.
+        quiet.menu += 1
+        reportQuiet()
+    }
+
+    /// Altyazı alanında `QuietReads.reportAfterMs`'dir yazı çıkmadıysa nedeni günlüğe yazılır, sayaç yeniden başlar.
+    private func reportQuiet() {
+        let time = now()
+        guard time - quiet.since >= QuietReads.reportAfterMs else { return }
+        log(quiet.summary(at: time))
+        quiet = QuietReads(since: time)
+    }
+
     /// Okuma durunca TV'deki son altyazıyı kaldırır.
     public func reset() {
         log("hat sıfırlandı (paketten \(packHits) satır)")
         sessionStart = now()
+        quiet = QuietReads(since: sessionStart)
         sawFrame = false
         sawText = false
         lastNote = nil
@@ -860,6 +894,36 @@ public final class SubtitlePipeline {
         loggedOwn = nil
         if stabilizer.reset() == .clear { clearScreen() }
         own.reset()
+    }
+}
+
+/// Altyazı alanında yazı çıkmayan pencerenin sayaçları (tanı): kaç kare geldi, kaçı okundu, okumalar boş mu döndü,
+/// satırlar hangi süzgeçte kaldı, okuma hata mı verdi, menü yüzünden mi okunmadı.
+struct QuietReads: Equatable {
+    /// Bu kadar süre altyazı alanından yazı çıkmazsa günlüğe özet yazılır (sessizlik boyunca bu aralıkla bir satır).
+    static let reportAfterMs = 60_000
+
+    var since: Int
+    var frames = 0
+    var menu = 0
+    var reads = 0
+    /// Yazı tanıma alanda hiç satır bulmadı.
+    var empty = 0
+    /// Satır bulundu ama altyazı zemini süzgecinde (`SubtitleBackground`) kaldı.
+    var background = 0
+    /// Satırlar kendi altyazısı ya da telefon yazısı sayıldı, ya da kumanda ipucu/gürültü/sabit satır olarak ayıklandı.
+    var filtered = 0
+    /// Satırlar kaldı ama altyazı bloğu seçilmedi (sahne yazısı, kenar bildirimi).
+    var dropped = 0
+    var failures = 0
+    var lastError: String?
+
+    func summary(at time: Int) -> String {
+        var text = "altyazı alanında \((time - since) / 1000) sn'dir yazı yok: \(frames) kare, \(menu) kare menü yüzünden okunmadı, "
+            + "\(reads) okuma (\(empty) boş, \(background) zemin süzgecinde, \(filtered) ayıklandı, \(dropped) altyazı sayılmadı, "
+            + "\(failures) hata)"
+        if let lastError { text += "; son hata: \(lastError)" }
+        return text
     }
 }
 

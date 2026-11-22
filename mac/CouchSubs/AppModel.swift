@@ -3182,7 +3182,7 @@ final class AppModel: ObservableObject {
             loggedMenu = inMenu
             SubtitleLog.write(ScreenTextDetector.menuLog(inMenu))
         }
-        if inMenu { return }
+        if inMenu { pipeline?.skipForMenu(); return }
         // Önceki kare hâlâ işleniyorsa bu kare atlanır; okuma kareleri biriktirmez.
         var entry = frameGate.enter(now: SubtitleStabilizer.uptimeMs())
         if case .stuck(let ms) = entry {

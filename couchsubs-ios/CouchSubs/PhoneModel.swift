@@ -1220,7 +1220,7 @@ final class PhoneModel: ObservableObject {
             loggedMenu = inMenu
             SubtitleLog.write(ScreenTextDetector.menuLog(inMenu))
         }
-        if inMenu { return }
+        if inMenu { current.skipForMenu(); return }
         // Önceki kare hâlâ işleniyorsa bu kare atlanır. Tek okuma bitmezse çeviri tamamen duruyor, "Durdur / Başlat"
         // düzeltmiyordu (Mac'te görüldü, 2026-11-13); takılan okuma hattı yeniden kurdurur.
         var entry = frameGate.enter(now: SubtitleStabilizer.uptimeMs())
