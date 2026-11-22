@@ -125,6 +125,16 @@ public partial class SettingsView : UserControl
         ShowPace();
         ShowMiniSubtitle();
         Sections.SelectedIndex = 0;
+        // Yazı boyutu, koyuluk ve yazı rengi artık düzenleyicide; eski satırlar gizlenir (ayarın kendisi aynı).
+        AppearanceHost.Content = new AppearanceEditor(controller);
+        foreach (var old in new FrameworkElement?[] { TextSize.Parent as FrameworkElement, BackgroundOpacity.Parent as FrameworkElement, TextColor })
+            if (old is not null) old.Visibility = Visibility.Collapsed;
+        if (TextColor.Parent is Panel colorPanel && colorPanel.Children.IndexOf(TextColor) is > 0 and var at && colorPanel.Children[at - 1] is TextBlock colorLabel)
+            colorLabel.Visibility = Visibility.Collapsed;
+        if (TextSize.Parent is Panel { Parent: Panel sizePanel } sizeGrid && sizePanel.Children.IndexOf(sizeGrid) is > 0 and var sizeAt && sizePanel.Children[sizeAt - 1] is TextBlock sizeLabel)
+            sizeLabel.Visibility = Visibility.Collapsed;
+        if (BackgroundOpacity.Parent is Panel { Parent: Panel bgPanel } bgGrid && bgPanel.Children.IndexOf(bgGrid) is > 0 and var bgAt && bgPanel.Children[bgAt - 1] is TextBlock bgLabel)
+            bgLabel.Visibility = Visibility.Collapsed;
         RemotePlayAppChoice.SelectedItem = RemotePlayAppChoice.Items.Cast<ComboBoxItem>().First(item => (string)item.Tag == settings.RemotePlayApp.ToString());
         XboxAudioOnComputer.IsChecked = settings.XboxAudioOnComputer;
         XboxLegacyFrameRate.IsChecked = settings.XboxLegacyFrameRate;

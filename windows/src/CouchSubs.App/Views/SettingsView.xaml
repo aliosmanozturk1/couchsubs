@@ -125,8 +125,10 @@
             </TabItem>
             <TabItem x:Name="AppearanceSection">
                 <StackPanel>
+                    <!-- Önizleme, yazı boyutu, zemin, yazı ve karakter adı renkleri (AppearanceEditor). -->
+                    <ContentControl x:Name="AppearanceHost" Margin="0,0,0,24" Focusable="False" />
                     <!-- Görünüm ayarları bilgisayar ekranındaki pencereye de uygulanır. -->
-                    <c:Card x:Name="StyleCard" Title="{t:T 'SUBTITLES ON THE TV'}">
+                    <c:Card x:Name="StyleCard" Title="{t:T 'MORE'}">
                         <StackPanel>
                             <TextBlock Text="{t:T 'Text size'}" Margin="0,0,0,8" />
                             <Grid Margin="0,0,0,12">
