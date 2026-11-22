@@ -63,7 +63,7 @@ struct PacksScreen: View {
                 if busy { Text("Updating…") } else { Text("Update the packs now") }
             }
             .buttonStyle(.mobileSecondary)
-            .disabled(busy || AppConfig.packsBaseURL == nil)
+            .disabled(busy || AppConfig.packsBaseURL == nil || AppConfig.packsSecret == nil)
         }
         .overlay {
             if updating {

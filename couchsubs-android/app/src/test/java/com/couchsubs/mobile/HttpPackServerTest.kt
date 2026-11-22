@@ -18,8 +18,10 @@ class HttpPackServerTest {
     /** [answers]: adres → sonuç (null: ağ hatası, Int: HTTP kodu, ByteArray: gövde). */
     private class Fake(val answers: Map<String, Any?>) {
         val calls = mutableListOf<String>()
-        fun fetch(url: String): ByteArray {
+        val headers = mutableListOf<Map<String, String>>()
+        fun fetch(url: String, sent: Map<String, String>): ByteArray {
             calls += url
+            headers += sent
             return when (val answer = answers[url]) {
                 is ByteArray -> answer
                 is Int -> throw PackDownloadException(answer, "HTTP $answer")
@@ -83,5 +85,20 @@ class HttpPackServerTest {
         answers["$primary/v1/packs"] = listing.toByteArray()
         server.list()
         assertEquals(0, server.preferred)
+    }
+
+    @Test
+    fun signsEveryRequestWhenSecretGiven() {
+        val fake = Fake(mapOf("$primary/v1/packs/gta-6" to byteArrayOf(1)))
+        HttpPackServer(listOf(primary), fake::fetch, secret = "test-secret-not-real", clock = { 1_764_460_800_000L }).download("gta-6")
+        assertEquals(mapOf("x-couchsubs-time" to "1764460800",
+            "x-couchsubs-signature" to "c7d9ee8207b98e3d43de0bfd2ecbcaaadf125e718f03b4fe8dae1779f18b5f30"), fake.headers.single())
+    }
+
+    @Test
+    fun noSecretNoHeaders() {
+        val fake = Fake(mapOf("$primary/v1/packs/gta-6" to byteArrayOf(1)))
+        HttpPackServer(listOf(primary), fake::fetch).download("gta-6")
+        assertEquals(emptyMap<String, String>(), fake.headers.single())
     }
 }

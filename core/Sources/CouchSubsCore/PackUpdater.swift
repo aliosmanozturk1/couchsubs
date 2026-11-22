@@ -83,11 +83,12 @@ public actor PackUpdater {
     private let clock: @Sendable () -> Date
 
     /// `directory`: paketlerin konacağı klasör (uygulamada `GamePackLibrary.userDirectory`); `stateFile` onun dışında
-    /// durur ki paket gibi okunmasın. `fallbackURLs`: birincil adres ulaşılamazsa sırayla denenen yedekler.
-    public init(baseURL: URL, fallbackURLs: [URL] = [], directory: URL, stateFile: URL,
+    /// durur ki paket gibi okunmasın. `fallbackURLs`: birincil adres ulaşılamazsa sırayla denenen yedekler. `secret`:
+    /// isteklerin imzası (`PackSigning.configuredSecret`); uygulama sır yoksa PackUpdater'ı hiç kurmaz.
+    public init(baseURL: URL, fallbackURLs: [URL] = [], directory: URL, stateFile: URL, secret: String? = nil,
                 fetch: @escaping Fetch = { try await URLSession.shared.data(for: $0) },
                 clock: @escaping @Sendable () -> Date = Date.init) {
-        mirrors = PackMirrors(primary: baseURL, fallbacks: fallbackURLs)
+        mirrors = PackMirrors(primary: baseURL, fallbacks: fallbackURLs, secret: secret, clock: clock)
         self.directory = directory
         self.stateFile = stateFile
         self.fetch = fetch

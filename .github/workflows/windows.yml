@@ -20,6 +20,9 @@ on:
         required: false
       GA_API_SECRET:
         required: false
+      # Paket isteklerinin imzası (server/packs); yoksa Windows paketinde paket indirme kapalı.
+      PACKS_APP_SECRET:
+        required: false
 
 env:
   FFMPEG_VERSION: "7.1.2"
@@ -232,8 +235,15 @@ jobs:
         env:
           GA_MEASUREMENT_ID: ${{ secrets.GA_MEASUREMENT_ID }}
           GA_API_SECRET: ${{ secrets.GA_API_SECRET }}
+          PACKS_APP_SECRET: ${{ secrets.PACKS_APP_SECRET }}
         run: |
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION=0.1.0-dev; fi
+          PACK_ARGS=()
+          if [[ -n "$PACKS_APP_SECRET" ]]; then
+            PACK_ARGS=(-p:CouchSubsPacksSecret="$PACKS_APP_SECRET")
+          else
+            echo "::warning title=Paket indirme kapalı::PACKS_APP_SECRET yok; Windows paketinde paket indirme kapalı."
+          fi
           USAGE_ARGS=()
           if [[ "$GITHUB_REF_TYPE" == tag && -n "$GA_MEASUREMENT_ID" && -n "$GA_API_SECRET" ]]; then
             USAGE_ARGS=(-p:CouchSubsGaMeasurementId="$GA_MEASUREMENT_ID" -p:CouchSubsGaApiSecret="$GA_API_SECRET")
@@ -242,7 +252,7 @@ jobs:
           fi
           dotnet publish windows/src/CouchSubs.App -c Release -r win-x64 --self-contained -o publish/CouchSubs -p:Version="$VERSION" \
             -p:CouchSubsPacksUrl=https://couchsubs-packs.enmera.workers.dev \
-            -p:CouchSubsPacksFallbackUrl=https://couchsubs-packs.enmeraapps.com "${USAGE_ARGS[@]}"
+            -p:CouchSubsPacksFallbackUrl=https://couchsubs-packs.enmeraapps.com "${USAGE_ARGS[@]}" "${PACK_ARGS[@]}"
 
       # CTranslate2'nin resmi Windows wheel'i CPU ve NVIDIA CUDA kodunu içerir. Python uygulamayla birlikte
       # gelir; kullanıcının Python kurması gerekmez. CUDA bulunmazsa uygulama CPU'ya döner.

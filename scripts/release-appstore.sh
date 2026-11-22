@@ -39,6 +39,13 @@ if [[ "$3" == --no-upload ]]; then
 fi
 
 VERSION_ARGS=(MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD")
+# Paket isteklerinin imzası (server/packs, PackSigning): ~/.config/couchsubs/packs.env (PACKS_APP_SECRET; depoda değil).
+[[ -z "${PACKS_APP_SECRET:-}" && -f ~/.config/couchsubs/packs.env ]] && source ~/.config/couchsubs/packs.env
+if [[ -n "${PACKS_APP_SECRET:-}" ]]; then
+  VERSION_ARGS+=(PACKS_APP_SECRET="$PACKS_APP_SECRET")
+else
+  echo "Uyarı: PACKS_APP_SECRET yok (~/.config/couchsubs/packs.env); bu yapıda paket indirme kapalı."
+fi
 # App Store Connect API anahtarı (~/.config/couchsubs/asc.env: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH) varsa Xcode
 # hesabının oturumu gerekmez; yoksa Xcode › Settings › Accounts'taki hesap kullanılır.
 AUTH_ARGS=()

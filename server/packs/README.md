@@ -1,18 +1,48 @@
 # couchsubs-packs
 
-Telefon uygulamasının (couchsubs-android) yeni ve güncellenen oyun paketlerini indirdiği Cloudflare Worker. Paketler
-ücretsizdir; hesap, giriş ya da anahtar yoktur. Dosyalar R2'de durur. Uygulama, kendi içinde gelen paketlerin üstüne
-buradaki daha yeni sürümleri koyar; masaüstü uygulamaları paketleri kendi içinde taşımaya devam eder.
+Uygulamaların (Windows, Mac, iPhone/iPad, Android) yeni ve güncellenen oyun paketlerini indirdiği Cloudflare Worker.
+Paketler ücretsizdir, kullanıcı hesabı ya da giriş yoktur; ama yalnız uygulama içinden alınır: her istek uygulamaya
+derlemede gömülen paylaşılan sırla imzalanır (aşağıda "İstek imzası"). Dosyalar R2'de durur. Uygulama, kendi içinde
+gelen paketlerin üstüne buradaki daha yeni sürümleri koyar.
 
 | Yol | Ne verir | Önbellek |
 |---|---|---|
 | `GET /v1/packs` | `{"packs":[{id,title,version,sha256,size,entries}]}` (R2'deki `index.json`; havuzdan üretilenlerde ayrıca `auto: true`, `titleId`) | `public, max-age=300` |
 | `GET /v1/packs/:id` | `packs/<id>.json.gz`, `x-pack-sha256` ve `etag` başlıklarıyla; `If-None-Match` eşleşirse `304` | `public, no-cache` (ETag ile) |
 
-Kötüye kullanıma karşı IP başına (`CF-Connecting-IP`) saatte 60 paket indirme; aşılırsa `429` ve `retry-after`.
+Kötüye kullanıma karşı IP başına (`CF-Connecting-IP`) saatte 30 paket indirme; aşılırsa `429` ve `retry-after`.
+Yanıtlarda CORS başlığı yoktur: tarayıcıdaki başka bir site paketleri okuyamaz.
 Sınır Worker örneği başına bellektedir (kaba kesme içindir); daha sıkı gerekirse Cloudflare'in Rate Limiting kuralı
 eklenir. Uygulama indirdiği dosyayı listedeki SHA-256 ile doğrular; açılışta, günde bir ve PS5'te yeni bir oyun
 başlayınca listeye bakar.
+
+## İstek imzası
+
+Her istekte iki başlık:
+
+| Başlık | Değer |
+|---|---|
+| `x-couchsubs-time` | unix zamanı (saniye) |
+| `x-couchsubs-signature` | `hex(HMAC-SHA256(APP_SECRET, "GET\n" + yol + "\n" + zaman))`, yol ör. `/v1/packs/gta-6` |
+
+Zaman sunucu saatinden en çok ±5 dakika sapabilir; yanlış, eksik ya da süresi geçmiş imza `403`. Geçiş: imzasız
+istekler (eski uygulama sürümleri) **2026-11-29T23:59Z**'ye kadar kabul edilip loglanır (`{"unsigned":"<yol>"}`,
+`npx wrangler tail`), sonra `403` (`UNSIGNED_UNTIL`, `src/index.ts`).
+
+İstemciler: Mac ve iPhone/iPad `core/Sources/CouchSubsCore/PackSigning.swift` (Info.plist `CSPacksAppSecret` ←
+derleme ayarı `PACKS_APP_SECRET`), Windows `windows/src/CouchSubs.Core/PackSigning.cs` (`-p:CouchSubsPacksSecret`),
+Android `couchsubs-android/.../packs/PackSigning.kt` (`BuildConfig.PACKS_APP_SECRET` ← `packs.app.secret` ya da
+ortamdaki `PACKS_APP_SECRET`). Dördü aynı test vektörünü sınar. Sır depoda değildir: CI'da GitHub sırrı
+`PACKS_APP_SECRET` (release.yml → windows.yml ve package-mac.sh), yerelde `~/.config/couchsubs/packs.env`
+(`PACKS_APP_SECRET=…`, chmod 600; package-mac.sh, release-appstore.sh ve Android Gradle okur). Sır yoksa (yerel
+geliştirici derlemesi) uygulama paket indirmeyi hiç başlatmaz; uygulamayla gelen paketler çalışır.
+
+Sırrı kurmak (değer ekrana basılmaz; packs.env'de yoksa üretir, Worker'a, GitHub'a ve iCloud yedeğine koyar):
+
+```sh
+server/packs/scripts/setup-app-secret.sh
+npx wrangler deploy   # server/packs içinde
+```
 
 ## Havuzdan otomatik paketler
 
@@ -60,6 +90,6 @@ derlemesinde `-p:CouchSubsPacksUrl` (`.github/workflows/windows.yml`). Yedek adr
 
 ```sh
 npm install
-npm test          # vitest: liste, indirme, 304, geçersiz kimlik, IP sınırı
+npm test          # vitest: liste, indirme, 304, geçersiz kimlik, IP sınırı, imza ve geçiş
 npm run typecheck
 ```

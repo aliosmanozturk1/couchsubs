@@ -9,6 +9,7 @@ import com.couchsubs.mobile.account.MeasurementPolicy
 import com.couchsubs.mobile.account.Meta
 import com.couchsubs.mobile.core.GamePackLibrary
 import com.couchsubs.mobile.packs.HttpPackServer
+import com.couchsubs.mobile.packs.PackSigning
 import com.couchsubs.mobile.packs.PackStore
 import com.couchsubs.mobile.settings.AppSettings
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +35,11 @@ object Services {
     lateinit var packStore: PackStore
         private set
     /** Paket sunucusu: workers.dev, ulaşılamazsa yedek adres (couchsubs-packs.enmeraapps.com); çalışan adres hatırlanır. */
-    private val packServer by lazy { HttpPackServer(listOf(BuildConfig.PACKS_URL, BuildConfig.PACKS_FALLBACK_URL)) }
+    private val packServer by lazy {
+        HttpPackServer(listOf(BuildConfig.PACKS_URL, BuildConfig.PACKS_FALLBACK_URL), secret = PackSigning.secretOrNull(BuildConfig.PACKS_APP_SECRET))
+    }
+    /** Uygulama sırrı yoksa (yerel geliştirici derlemesi) sunucu imzasız isteği reddeder: paket indirme sessizce kapalı. */
+    val packDownloadsEnabled: Boolean get() = PackSigning.secretOrNull(BuildConfig.PACKS_APP_SECRET) != null
     /** Ayarlar › Oyun paketleri'nden içe aktarılan topluluk paketleri (yalnız bu telefonda; sunucuya gitmez). */
     lateinit var importedPacksDirectory: File
         private set
@@ -165,7 +170,7 @@ object Services {
      * [onChanged] çağrılır (çalışan çeviri hizmeti kendi kitaplığını yeniden okur).
      */
     fun refreshPacks(force: Boolean, maxAgeMs: Long = PackStore.REFRESH_INTERVAL_MS, onChanged: (() -> Unit)? = null) {
-        if (BuildConfig.PACKS_URL.isBlank()) return
+        if (BuildConfig.PACKS_URL.isBlank() || !packDownloadsEnabled) return
         if (force) packStatus.value = PackStatus.DOWNLOADING
         scope.launch(Dispatchers.IO) { runRefresh(force, maxAgeMs, onChanged) }
     }
@@ -176,7 +181,7 @@ object Services {
      * Paket sunucusu yapılandırılmamışsa null.
      */
     suspend fun updatePacksNow(before: List<Pair<String, Int>>): com.couchsubs.mobile.packs.PackUpdateOutcome? {
-        if (BuildConfig.PACKS_URL.isBlank()) return null
+        if (BuildConfig.PACKS_URL.isBlank() || !packDownloadsEnabled) return null
         packStatus.value = PackStatus.DOWNLOADING
         val (result, error) = kotlinx.coroutines.withContext(Dispatchers.IO) {
             // Çalışan çeviri hizmeti de yeni paketleri okusun (TranslationService'teki yenilemede olduğu gibi).
@@ -216,7 +221,7 @@ object Services {
     /** Bu telefondaki paketler ve sunucuda olup henüz inmemiş olanlar (bloklar). Sunucu listesi alınamazsa durum yazılır. */
     fun catalog(context: Context): List<CatalogEntry> {
         val local = packLibrary(context).infos
-        val remote = if (BuildConfig.PACKS_URL.isBlank()) emptyList()
+        val remote = if (BuildConfig.PACKS_URL.isBlank() || !packDownloadsEnabled) emptyList()
         else try {
             packServer.list()
         } catch (error: Exception) {

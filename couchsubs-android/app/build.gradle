@@ -18,6 +18,11 @@ def secrets = new Properties()
 def secretsFile = rootProject.file('secrets.properties')
 if (secretsFile.exists()) secretsFile.withInputStream { secrets.load(it) }
 def secret = { String name, String fallback = '' -> (secrets.getProperty(name) ?: System.getenv(name.toUpperCase().replace('.', '_')) ?: fallback).trim() }
+// Paket sırları yerelde ~/.config/couchsubs/packs.env'de (KEY=değer; depoda yok, bkz. server/packs/README.md).
+def packsEnv = new Properties()
+def packsEnvFile = file("${System.getProperty('user.home')}/.config/couchsubs/packs.env")
+if (packsEnvFile.exists()) packsEnvFile.withInputStream { packsEnv.load(it) }
+def packsAppSecret = secret('packs.app.secret', (packsEnv.getProperty('PACKS_APP_SECRET') ?: '').replaceAll(/^["']|["']$/, ''))
 
 def releaseSigning = null
 def signingFile = file(System.getenv('COUCHSUBS_ANDROID_SIGNING') ?: "${System.getProperty('user.home')}/.config/couchsubs/android-signing.properties")
@@ -58,6 +63,9 @@ android {
         buildConfigField 'String', 'PACKS_URL', "\"${secret('packs.url', 'https://couchsubs-packs.enmera.workers.dev')}\""
         // Yedek adres: workers.dev'e ulaşamayan ağlar için (DNS/reklam engelleyici/operatör, #583). Aynı Worker.
         buildConfigField 'String', 'PACKS_FALLBACK_URL', "\"${secret('packs.fallbackUrl', 'https://couchsubs-packs.enmeraapps.com')}\""
+        // Paket isteklerinin imza sırrı (server/packs, PackSigning): secrets.properties `packs.app.secret` ya da ortamdaki
+        // PACKS_APP_SECRET (CI sırrı). Depoda değil; boşsa paket indirme kapalı.
+        buildConfigField 'String', 'PACKS_APP_SECRET', "\"${packsAppSecret}\""
         buildConfigField 'String', 'FACEBOOK_APP_ID', "\"${secret('facebook.appId')}\""
         buildConfigField 'boolean', 'HAS_FIREBASE', "${hasGoogleServices}"
         buildConfigField 'String', 'TV_SAMSUNG_VERSION', "\"${tizenVersion}\""

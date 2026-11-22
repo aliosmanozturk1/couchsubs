@@ -72,8 +72,12 @@ struct CouchSubsApp: App {
         if !testing { model.loadHistory() }
 
         let analytics = AppAnalytics(firebase: firebase, meta: !testing && AppConfig.facebookAppID != nil)
-        let store = testing ? nil : AppConfig.packsBaseURL.map {
-            PackStore(baseURL: $0, fallbackURLs: AppConfig.packsFallbackURL.map { [$0] } ?? [], directory: PackStore.defaultDirectory)
+        // Sır yoksa (yerel geliştirici derlemesi) sunucu imzasız isteği reddeder: paket indirme sessizce kapalı.
+        let store = testing ? nil : AppConfig.packsBaseURL.flatMap { base in
+            AppConfig.packsSecret.map { secret in
+                PackStore(baseURL: base, fallbackURLs: AppConfig.packsFallbackURL.map { [$0] } ?? [], secret: secret,
+                          directory: PackStore.defaultDirectory)
+            }
         }
         let app = AppModel(analytics: analytics, packStore: store, library: library)
         model.onAnalytics = { [analytics] event in analytics.log(event) }

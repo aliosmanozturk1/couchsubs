@@ -10,7 +10,7 @@ routes = [
   { pattern = "couchsubs-packs.enmeraapps.com", custom_domain = true },
 ]
 
-# Paketler ücretsizdir: sır ya da giriş gerekmez. Yalnız R2 kovası bağlanır.
+# R2 kovası bağlanır. İstek imzası için APP_SECRET `npx wrangler secret put APP_SECRET` ile konur (depoda değil).
 [[r2_buckets]]
 binding = "PACKS"
 bucket_name = "couchsubs-packs"

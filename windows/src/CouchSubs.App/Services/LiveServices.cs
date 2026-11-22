@@ -63,11 +63,12 @@ public sealed class LiveServices : IAppServices
             "Windows " + Environment.OSVersion.Version)
         : null;
     public Task<RunningGame?> RunningGameAsync(string host) => ConsoleDiscovery.RunningGameAsync(host);
-    // Paket sunucusu yapılandırıldıysa (COUCHSUBS_PACKS_URL ya da derlemedeki CouchSubsPacksUrl) indirilen paketler
-    // kullanıcının paket klasörüne gider; adres yoksa kapalı.
-    public PackUpdater? PackUpdates { get; } = PackUpdater.ConfiguredBaseUrl() is { } url
+    // Paket sunucusu ve uygulama sırrı yapılandırıldıysa (COUCHSUBS_PACKS_URL ya da derlemedeki CouchSubsPacksUrl;
+    // CouchSubsPacksSecret) indirilen paketler kullanıcının paket klasörüne gider. Adres ya da sır yoksa (yerel geliştirici
+    // derlemesi; sunucu imzasız isteği reddeder) kapalı.
+    public PackUpdater? PackUpdates { get; } = PackUpdater.ConfiguredBaseUrl() is { } url && PackSigning.ConfiguredSecret() is { } secret
         ? new PackUpdater(url, GamePackLibrary.UserDirectory, Path.Combine(AppPaths.Data, "packs-remote.json"),
-            fallbackUrls: PackUpdater.ConfiguredFallbackUrl() is { } fallback ? [fallback] : null)
+            fallbackUrls: PackUpdater.ConfiguredFallbackUrl() is { } fallback ? [fallback] : null, secret: secret)
         : null;
 
     public async Task<IReadOnlyList<ConsoleInfo>> DiscoverConsolesAsync()

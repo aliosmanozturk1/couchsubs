@@ -12,6 +12,8 @@
 # Kullanım verisi (Ayarlar › Oyun paketleri › Kullanım verisi; GA4 Measurement Protocol, web veri akışı):
 #   GA_MEASUREMENT_ID       Ölçüm kimliği (G-…)
 #   GA_API_SECRET           Aynı akışın Measurement Protocol API sırrı
+# Oyun paketleri (server/packs):
+#   PACKS_APP_SECRET        Paket isteklerinin imza sırrı; yoksa paketlerde paket indirme kapalı
 # İkisi de tanımlıysa GitHub/Sparkle Mac paketinde ve Windows paketinde ölçüm açılır; yoksa ölçüm kapalı (no-op).
 # Mac App Store sürümü bunları hiç almaz (APP_STORE derlemesinde ölçüm kapalı).
 # Sırlar eksikse Mac paketi imzasız çıkar (uyarı verilir); imzalı paket eskisi gibi scripts/release-mac.sh ile elle
@@ -61,6 +63,7 @@ jobs:
     secrets:
       GA_MEASUREMENT_ID: ${{ secrets.GA_MEASUREMENT_ID }}
       GA_API_SECRET: ${{ secrets.GA_API_SECRET }}
+      PACKS_APP_SECRET: ${{ secrets.PACKS_APP_SECRET }}
 
   android:
     needs: frames
@@ -171,6 +174,7 @@ jobs:
         env:
           GA_MEASUREMENT_ID: ${{ secrets.GA_MEASUREMENT_ID }}
           GA_API_SECRET: ${{ secrets.GA_API_SECRET }}
+          PACKS_APP_SECRET: ${{ secrets.PACKS_APP_SECRET }}
         run: |
           APKS=(android-apk/*.apk)
           ANDROID_APK="${APKS[0]}" ./scripts/package-mac.sh

@@ -30,6 +30,8 @@
     <AssemblyMetadata Include="CouchSubsPacksUrl" Value="$(CouchSubsPacksUrl)" />
     <!-- Yedek adres: workers.dev'e ulaşılamazsa (ağ hatası/zaman aşımı/5xx) denenir (#583); `-p:CouchSubsPacksFallbackUrl=https://…`. -->
     <AssemblyMetadata Include="CouchSubsPacksFallbackUrl" Value="$(CouchSubsPacksFallbackUrl)" />
+    <!-- İstek imzasının sırrı (PackSigning): depoda değil, `-p:CouchSubsPacksSecret=…` (CI: PACKS_APP_SECRET). Boşsa paket indirme kapalı. -->
+    <AssemblyMetadata Include="CouchSubsPacksSecret" Value="$(CouchSubsPacksSecret)" />
   </ItemGroup>
 
   <!-- Kullanım verisi (GA4 Measurement Protocol): `-p:CouchSubsGaMeasurementId=G-… -p:CouchSubsGaApiSecret=…` ile verilir

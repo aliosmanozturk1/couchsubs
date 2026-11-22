@@ -66,9 +66,10 @@ actor PackStore {
     /// `directory`: paket önbelleği (Application Support/CouchSubs/Packs); `files` alt klasörü paketleri, `manifest.json`
     /// son listeyi tutar. `fallbackURLs`: `baseURL`'e (workers.dev) ulaşılamazsa (ağ hatası, zaman aşımı, 5xx) sırayla
     /// denenen yedek adresler (#583); çalışan adres uygulama açıkken hatırlanır (`PackMirrors`).
-    init(baseURL: URL, fallbackURLs: [URL] = [], directory: URL, session: URLSession = .shared,
+    /// `secret`: isteklerin imzası (`PackSigning`, server/packs).
+    init(baseURL: URL, fallbackURLs: [URL] = [], secret: String? = nil, directory: URL, session: URLSession = .shared,
          now: @escaping @Sendable () -> Date = { Date() }) {
-        mirrors = PackMirrors(primary: baseURL, fallbacks: fallbackURLs)
+        mirrors = PackMirrors(primary: baseURL, fallbacks: fallbackURLs, secret: secret, clock: now)
         self.directory = directory
         self.session = session
         self.now = now

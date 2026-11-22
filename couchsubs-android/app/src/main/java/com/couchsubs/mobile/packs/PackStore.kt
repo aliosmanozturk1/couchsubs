@@ -186,10 +186,13 @@ class PackStore(
  * (DNS, reklam engelleyici, operatör) *.workers.dev'e ulaşamıyor (#583). Her istek son çalışan adresten başlar; ağ hatası,
  * zaman aşımı ya da 5xx olursa sıradakini dener. 4xx (404, 429) sunucunun gerçek cevabıdır, başka adres denenmez. Çalışan
  * adres bu nesne yaşadıkça (uygulama açıkken) hatırlanır; o da düşerse sıra yeniden baştan dolaşılır.
+ * [secret] verilirse her istek imzalanır ([PackSigning]); uygulama sır yoksa indirmeyi hiç başlatmaz.
  */
 class HttpPackServer(
     baseUrls: List<String>,
-    private val fetch: (String) -> ByteArray = ::httpGet,
+    private val fetch: (String, Map<String, String>) -> ByteArray = ::httpGet,
+    private val secret: String? = null,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) : PackServer {
     constructor(baseUrl: String) : this(listOf(baseUrl))
 
@@ -223,7 +226,9 @@ class HttpPackServer(
         for (step in baseUrls.indices) {
             val index = (start + step) % baseUrls.size
             try {
-                val data = fetch(baseUrls[index] + path)
+                val url = baseUrls[index] + path
+                val headers = secret?.let { PackSigning.headers(it, "GET", URL(url).path, clock() / 1000) } ?: emptyMap()
+                val data = fetch(url, headers)
                 preferred = index
                 return data
             } catch (error: PackDownloadException) {
@@ -241,9 +246,10 @@ class HttpPackServer(
 }
 
 /** Düz GET; 2xx değilse [PackDownloadException] (ağ hatasında status null). */
-private fun httpGet(url: String): ByteArray {
+private fun httpGet(url: String, headers: Map<String, String>): ByteArray {
     val connection = URL(url).openConnection() as HttpURLConnection
     try {
+        headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
         connection.connectTimeout = 15_000
         connection.readTimeout = 60_000
         // Liste sunucudan `max-age=300` ile geliyor: bir HTTP önbelleği kurulsa bile "Paketleri güncelle" eski listeyi

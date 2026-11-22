@@ -139,6 +139,8 @@ targets:
         # Config/App.xcconfig + Secrets.xcconfig'ten (bkz. AppConfig.swift).
         CSPacksBaseURL: $(PACKS_API_BASE_URL)
         CSPacksFallbackURL: $(PACKS_API_FALLBACK_URL)
+        # İstek imzası (PackSigning); Secrets.xcconfig ya da derlemede PACKS_APP_SECRET=… Boşsa paket indirme kapalı.
+        CSPacksAppSecret: $(PACKS_APP_SECRET)
         FacebookAppID: $(FACEBOOK_APP_ID)
         FacebookClientToken: $(FACEBOOK_CLIENT_TOKEN)
         FacebookDisplayName: CouchSubs

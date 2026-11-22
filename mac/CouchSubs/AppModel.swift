@@ -982,14 +982,15 @@ final class AppModel: ObservableObject {
         usage.record(.screen(step.screenName))
     }
 
-    /// Paket sunucusunun adresi yapılandırıldıysa (Info.plist `CSPacksBaseURL`) açılışta ve günde bir bakılır; PS5'te
+    /// Paket sunucusunun adresi ve uygulama sırrı yapılandırıldıysa (Info.plist `CSPacksBaseURL`, `CSPacksAppSecret`) açılışta ve günde bir bakılır; PS5'te
     /// yeni bir oyun tanınınca da (`packsForGame`). Yeni paket inince paketler yeniden okunur.
     private func startPackUpdates() {
-        guard let base = PackUpdater.configuredBaseURL() else { return }
+        // Sır yoksa (yerel geliştirici derlemesi) sunucu imzasız isteği reddeder: indirme sessizce kapalı.
+        guard let base = PackUpdater.configuredBaseURL(), let secret = PackSigning.configuredSecret() else { return }
         let state = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(AppIdentity.name, isDirectory: true).appendingPathComponent("packs-remote.json")
         let updater = PackUpdater(baseURL: base, fallbackURLs: PackUpdater.configuredFallbackURL().map { [$0] } ?? [],
-                                  directory: GamePackLibrary.userDirectory, stateFile: state)
+                                  directory: GamePackLibrary.userDirectory, stateFile: state, secret: secret)
         packUpdater = updater
         let packs = self.packs
         packUpdates = Task.detached(priority: .background) { [weak self] in

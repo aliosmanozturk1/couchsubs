@@ -48,6 +48,15 @@ else
   echo "Uyarı: GA_MEASUREMENT_ID/GA_API_SECRET verilmedi; bu pakette kullanım verisi kapalı."
 fi
 
+# Paket isteklerinin imzası (server/packs, PackSigning): CI'da PACKS_APP_SECRET sırrından, yerelde
+# ~/.config/couchsubs/packs.env'den. Yoksa bu pakette paket indirme kapalı.
+[[ -z "$PACKS_APP_SECRET" && -f ~/.config/couchsubs/packs.env ]] && source ~/.config/couchsubs/packs.env
+if [[ -n "$PACKS_APP_SECRET" ]]; then
+  VERSION_ARGS+=(PACKS_APP_SECRET="$PACKS_APP_SECRET")
+else
+  echo "Uyarı: PACKS_APP_SECRET verilmedi; bu pakette paket indirme kapalı."
+fi
+
 SIGN_ARGS=(CODE_SIGN_IDENTITY="-")
 if [[ -n "$DEVELOPER_ID" ]]; then
   TEAM="${DEVELOPER_ID##*\(}"; TEAM="${TEAM%\)}"

@@ -74,15 +74,18 @@ public sealed partial class PackUpdater : IDisposable
     private readonly string stateFile;
     private readonly HttpClient http;
     private readonly Func<DateTimeOffset> clock;
+    private readonly string? secret;
     private readonly SemaphoreSlim running = new(1, 1);
 
     /// <param name="directory">Paketlerin konacağı klasör (uygulamada <see cref="GamePackLibrary.UserDirectory"/>).</param>
     /// <param name="stateFile">Durum dosyası; paket klasörünün dışında durur ki paket gibi okunmasın.</param>
     /// <param name="handler">HTTP katmanı; testlerde sahtesi verilir.</param>
     /// <param name="fallbackUrls">Birincil adrese ulaşılamazsa sırayla denenen yedek adresler.</param>
+    /// <param name="secret">İsteklerin imzası (<see cref="PackSigning"/>); uygulama sır yoksa PackUpdater'ı hiç kurmaz.</param>
     public PackUpdater(Uri baseUrl, string directory, string stateFile, HttpMessageHandler? handler = null, Func<DateTimeOffset>? clock = null,
-        IEnumerable<Uri>? fallbackUrls = null)
+        IEnumerable<Uri>? fallbackUrls = null, string? secret = null)
     {
+        this.secret = secret;
         baseUrls = new[] { baseUrl }.Concat(fallbackUrls ?? [])
             .Select(url => new Uri(url.AbsoluteUri.TrimEnd('/') + "/"))
             .DistinctBy(url => url.AbsoluteUri)
@@ -238,7 +241,9 @@ public sealed partial class PackUpdater : IDisposable
             var index = (start + step) % baseUrls.Count;
             try
             {
-                using var response = await http.GetAsync(new Uri(baseUrls[index], path), cancellationToken).ConfigureAwait(false);
+                using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(baseUrls[index], path));
+                if (secret is not null) PackSigning.Sign(request, secret, clock());
+                using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
                 if ((int)response.StatusCode >= 500) continue;
                 if (!response.IsSuccessStatusCode) return null;
                 var data = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);

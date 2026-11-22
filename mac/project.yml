@@ -93,6 +93,8 @@ targets:
         # Paket sunucusu (server/packs); derleme ayarı PACKS_API_BASE_URL boşsa paket indirme kapalı (PackUpdater).
         CSPacksBaseURL: $(PACKS_API_BASE_URL)
         CSPacksFallbackURL: $(PACKS_API_FALLBACK_URL)
+        # İstek imzası (PackSigning); depoda değil, derlemede PACKS_APP_SECRET=… ile verilir. Boşsa paket indirme kapalı.
+        CSPacksAppSecret: $(PACKS_APP_SECRET)
         # Kullanım verisi (UsageMeasurement); boşsa kapalı.
         CSGAMeasurementID: $(GA_MEASUREMENT_ID)
         CSGAApiSecret: $(GA_API_SECRET)
@@ -171,6 +173,8 @@ targets:
         NSHumanReadableCopyright: AGPL-3.0. Uses chiaki-ng (AGPL-3.0).
         CSPacksBaseURL: $(PACKS_API_BASE_URL)
         CSPacksFallbackURL: $(PACKS_API_FALLBACK_URL)
+        # İstek imzası (PackSigning); depoda değil, derlemede PACKS_APP_SECRET=… ile verilir. Boşsa paket indirme kapalı.
+        CSPacksAppSecret: $(PACKS_APP_SECRET)
     entitlements:
       path: AppStore/CouchSubs.entitlements
       properties:

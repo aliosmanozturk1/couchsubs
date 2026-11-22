@@ -30,17 +30,23 @@ public final class PackMirrors: @unchecked Sendable {
     }
 
     public let urls: [URL]
+    /// Verilirse her istek imzalanır (`PackSigning`).
+    private let secret: String?
+    private let clock: @Sendable () -> Date
     private let lock = NSLock()
     private var preferred = 0
 
     /// Aynı adres bir kez; sıra korunur.
-    public init(_ urls: [URL]) {
+    public init(_ urls: [URL], secret: String? = nil, clock: @escaping @Sendable () -> Date = Date.init) {
         var seen = Set<String>()
         self.urls = urls.filter { seen.insert($0.absoluteString.trimmingSuffix("/")).inserted }
+        self.secret = secret
+        self.clock = clock
     }
 
-    public convenience init(primary: URL, fallbacks: [URL] = []) {
-        self.init([primary] + fallbacks)
+    public convenience init(primary: URL, fallbacks: [URL] = [], secret: String? = nil,
+                            clock: @escaping @Sendable () -> Date = Date.init) {
+        self.init([primary] + fallbacks, secret: secret, clock: clock)
     }
 
     /// Son başarılı adresin sırası.
@@ -60,6 +66,7 @@ public final class PackMirrors: @unchecked Sendable {
             var request = URLRequest(url: urls[index].appendingPathComponent(path), cachePolicy: cachePolicy,
                                      timeoutInterval: timeout)
             request.httpMethod = "GET"
+            if let secret { PackSigning.sign(&request, secret: secret, now: clock()) }
             let outcome: Result<Data, Failure>
             do {
                 let (data, response) = try await fetch(request)
