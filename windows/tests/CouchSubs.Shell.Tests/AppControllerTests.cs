@@ -288,9 +288,11 @@ internal sealed class FakeServices : IAppServices
         if (RefuseKey) throw new DevModeException(DevModeError.KeyRefused);
         return Task.FromResult(AppOnTv);
     }
+    public Exception? LgInstallError { get; set; }
     public Task InstallTvAppAsync(string host, string devKey)
     {
         Installs++;
+        if (LgInstallError is { } error) throw error;
         AppOnTv = BundledTvAppVersion;
         return Task.CompletedTask;
     }
@@ -2835,8 +2837,10 @@ public class TvAppInstallTests
         Assert.Equal("TV app is out of date (< 0.9.69 → 0.6.1)", controller.TvStatusText);
         controller.TvAppReported("0.5.0");
         Assert.Equal(new TvAppOutdated("0.5.0", "0.6.1"), controller.TvAppOutdated);
+        var step = controller.Step;
         await controller.UpdateTvAppAsync();
-        Assert.Equal(OnboardingStep.Tv, controller.Step);
+        Assert.Equal(step, controller.Step);
+        Assert.True(controller.TvAppUpdating);
         Assert.Equal(TvAppKind.NeedsPassphrase, controller.TvApp.Kind);
         await controller.InstallTvAppAsync("ABC123");
         Assert.Equal(1, services.Installs);
@@ -2858,8 +2862,10 @@ public class TvAppInstallTests
         controller.TvAppReported("");
         await controller.RefreshTvAppAsync();
         Assert.Equal(TvAppKind.DevModeOff, controller.TvApp.Kind);
+        var step = controller.Step;
         await controller.UpdateTvAppAsync();
-        Assert.Equal(OnboardingStep.Tv, controller.Step);
+        Assert.Equal(step, controller.Step);
+        Assert.True(controller.TvAppUpdating);
         Assert.Equal(TvAppKind.DevModeOff, controller.TvApp.Kind);
         await controller.RefreshTvAppAsync();
         Assert.Equal(TvAppKind.DevModeOff, controller.TvApp.Kind);
@@ -2893,6 +2899,91 @@ public class TvAppInstallTests
         Assert.Equal(TvAppKind.NeedsPassphrase, controller.TvApp.Kind);
         Assert.Contains(services.InstallLog, line => line.Contains("yeniden kurma/güncelleme istendi"));
         Assert.Contains(services.InstallLog, line => line.Contains("Passphrase isteniyor"));
+    }
+
+    // "TV uygulamasını güncelle" senaryoları: ana ekranda (TV adımına gidilmez), her adım tvinstall.log'da (Mac ile aynı).
+
+    private static async Task<AppController> UpdateScenario(FakeServices services, bool key)
+    {
+        var store = new MemoryStore();
+        if (key) store.Save(StoreKeys.TvDevKey, "dev-key");
+        var controller = Make(services, store);
+        var dev = services.DevMode;
+        var app = services.AppOnTv;
+        services.DevMode = false;
+        await controller.PairAsync(Tv);
+        services.DevMode = dev;
+        services.AppOnTv = app;
+        services.InstallLog.Clear();
+        return controller;
+    }
+
+    [Fact]
+    public async Task UpdateWithEverythingReadyInstallsAtOnce()
+    {
+        var services = new FakeServices { DevMode = true, AppOnTv = "0.5.0" };
+        var controller = await UpdateScenario(services, key: true);
+        await controller.UpdateTvAppAsync();
+        Assert.NotEqual(OnboardingStep.Tv, controller.Step);
+        Assert.Equal(1, services.Installs);
+        Assert.Equal(new TvAppState(TvAppKind.UpToDate, "0.6.1"), controller.TvApp);
+        Assert.True(controller.ShowTvAppUpdateDone);
+        Assert.Contains(services.InstallLog, line => line.Contains("Ana ekrandan"));
+        controller.DismissTvAppUpdate();
+        Assert.False(controller.TvAppUpdating);
+    }
+
+    [Fact]
+    public async Task UpdateWithDevModeOffContinuesByItselfOnceItIsOn()
+    {
+        var services = new FakeServices { AppOnTv = "0.5.0" };
+        var controller = await UpdateScenario(services, key: true);
+        await controller.UpdateTvAppAsync();
+        Assert.Equal(TvAppKind.DevModeOff, controller.TvApp.Kind);
+        Assert.Contains(services.InstallLog, line => line.Contains("geliştirici modu kapalı"));
+        services.DevMode = true;
+        // Kartın 3 sn'lik bekleme döngüsü.
+        await controller.RefreshTvAppAsync();
+        Assert.Equal(1, services.Installs);
+        Assert.Equal(new TvAppState(TvAppKind.UpToDate, "0.6.1"), controller.TvApp);
+    }
+
+    [Fact]
+    public async Task UpdateWithoutAKeyAsksThePassphraseThenInstalls()
+    {
+        var services = new FakeServices { DevMode = true, AppOnTv = "0.5.0" };
+        var controller = await UpdateScenario(services, key: false);
+        await controller.UpdateTvAppAsync();
+        Assert.Equal(TvAppKind.NeedsPassphrase, controller.TvApp.Kind);
+        Assert.Contains(services.InstallLog, line => line.Contains("Passphrase isteniyor"));
+        await controller.InstallTvAppAsync("ABC123");
+        Assert.Equal(1, services.Installs);
+        Assert.Equal(new TvAppState(TvAppKind.UpToDate, "0.6.1"), controller.TvApp);
+    }
+
+    [Fact]
+    public async Task ReinstallingADeletedAppFromHomeInstallsIt()
+    {
+        var services = new FakeServices { DevMode = true, AppOnTv = null };
+        var controller = await UpdateScenario(services, key: true);
+        Assert.Null(controller.TvAppOutdated);
+        await controller.UpdateTvAppAsync();
+        Assert.NotEqual(OnboardingStep.Tv, controller.Step);
+        Assert.Equal(1, services.Installs);
+        Assert.Equal(new TvAppState(TvAppKind.UpToDate, "0.6.1"), controller.TvApp);
+    }
+
+    [Fact]
+    public async Task FailedUpdateShowsWhyAndRetrySucceeds()
+    {
+        var services = new FakeServices { DevMode = true, AppOnTv = "0.5.0", LgInstallError = new DevModeException(DevModeError.InstallFailed, "disk dolu") };
+        var controller = await UpdateScenario(services, key: true);
+        await controller.UpdateTvAppAsync();
+        Assert.Equal(TvAppKind.Failed, controller.TvApp.Kind);
+        Assert.Equal("disk dolu", controller.TvApp.Reason);
+        services.LgInstallError = null;
+        await controller.RefreshTvAppAsync();
+        Assert.Equal(new TvAppState(TvAppKind.UpToDate, "0.6.1"), controller.TvApp);
     }
 
     [Fact]

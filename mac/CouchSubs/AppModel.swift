@@ -1538,12 +1538,21 @@ final class AppModel: ObservableObject {
     private var lastTVAppAutoUpdate: Date?
     static let tvAppAutoUpdateInterval: TimeInterval = 3600
 
-    /// Ana ekrandaki "TV uygulamasını güncelle": TV adımı açılır ve uygulama yeniden kurulur. LG'de kayıtlı anahtar varsa
-    /// Passphrase sorulmaz; yoksa TV kartı Developer Mode / Passphrase adımlarını gösterir.
+    /// Ana ekrandaki "TV uygulamasını güncelle": güncelleme hemen, ana ekranda başlar; ilerleme, eksik adım (Developer Mode
+    /// kapalı, Passphrase) ve sonuç ana ekrandaki TV uygulaması kartında görünür. Eksik giderilince (geliştirici modu
+    /// açılınca) kart kendiliğinden devam eder. Önceden TV adımı açılıyor, orada yalnız eşleştirme/test görünüyor, test
+    /// onaylanınca aynı ana ekrana dönülüyordu.
     func updateTVApp() async {
-        step = .tv
+        tvAppUpdating = true
+        TVInstallLog.write("--- Ana ekrandan \"TV uygulamasını güncelle\" (TV \(tvAppOutdated?.installed ?? "?") → \(tvAppOutdated?.bundled ?? "?")).")
         await reinstallTVApp()
     }
+
+    /// Ana ekranda TV uygulaması kartı açık (güncelleme sürüyor, bir adım bekliyor ya da sonucu gösteriyor).
+    @Published private(set) var tvAppUpdating = false
+
+    /// Ana ekrandaki TV uygulaması kartını kapatır ("Tamam").
+    func dismissTVAppUpdate() { tvAppUpdating = false }
 
     // MARK: - TV uygulamasını kurma
 

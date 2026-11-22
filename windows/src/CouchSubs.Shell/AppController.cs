@@ -350,9 +350,29 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
     /// </summary>
     public async Task UpdateTvAppAsync()
     {
-        Step = OnboardingStep.Tv;
+        TvAppUpdating = true;
+        services.WriteTvInstallLog($"--- Ana ekrandan \"TV uygulamasını güncelle\" (TV {tvAppOutdated?.Installed ?? "?"} → {tvAppOutdated?.Bundled ?? "?"}).");
         await ReinstallTvAppAsync();
     }
+
+    private bool tvAppUpdating;
+
+    /// <summary>
+    /// Ana ekranda TV uygulaması kartı açık: "TV uygulamasını güncelle / yeniden kur" basıldı; ilerleme, eksik adım
+    /// (Developer Mode kapalı, Passphrase), hata ("Tekrar dene") ve sonuç orada görünür. Önceden TV adımı açılıyor, orada
+    /// yalnız eşleştirme/test görünüyordu (Mac ile aynı).
+    /// </summary>
+    public bool TvAppUpdating
+    {
+        get => tvAppUpdating;
+        private set => Set(ref tvAppUpdating, value, [nameof(ShowTvAppUpdateDone)]);
+    }
+
+    /// <summary>Ana ekrandaki güncelleme kartı sonucu gösteriyor: "Kapat" görünür.</summary>
+    public bool ShowTvAppUpdateDone => tvAppUpdating && tvApp.Kind == TvAppKind.UpToDate;
+
+    /// <summary>Ana ekrandaki TV uygulaması kartını kapatır.</summary>
+    public void DismissTvAppUpdate() => TvAppUpdating = false;
 
     public void RotateSubtitleKey()
     {
@@ -1118,7 +1138,7 @@ public sealed class AppController : INotifyPropertyChanged, IDisposable
         private set
         {
             tvApp = value;
-            Changed(nameof(TvApp));
+            Changed(nameof(TvApp), nameof(ShowTvAppUpdateDone));
             // Kurulum ya da sürüm denetimi TV'deki uygulamayı güncel buldu: "TV uygulamasını güncelle" kalkar.
             if (value is { Kind: TvAppKind.UpToDate, Version: { } current } && tvAppOutdated is { } outdated
                 && !DevModeInstaller.IsNewer(outdated.Bundled, current)) TvAppOutdated = null;

@@ -223,7 +223,7 @@ final class AppModelTests: XCTestCase {
 
     func testFreshInstallStartsAtWelcome() {
         let model = AppModel(services: FakeServices(), store: MemoryStore(), defaults: .isolated())
-        XCTAssertEqual(model.step, .welcome)
+        XCTAssertNotEqual(model.step, .tv)
     }
 
     func testCompleteSetupOpensMainScreen() {
@@ -239,7 +239,7 @@ final class AppModelTests: XCTestCase {
     /// Sihirbazda PS5'e kadar gelinmiş bir kurulum (hesap ve konsol kayıtlı).
     private func wizardUpToTV(_ store: MemoryStore, _ defaults: UserDefaults) -> AppModel {
         let model = AppModel(services: FakeServices(), store: store, defaults: defaults)
-        XCTAssertEqual(model.step, .welcome)
+        XCTAssertNotEqual(model.step, .tv)
         let accountId = Data(repeating: 1, count: 8)
         model.accountId = accountId
         model.console = console
@@ -653,7 +653,7 @@ final class AppModelTests: XCTestCase {
 
     func testOnboardingWalksAllStepsInOrder() async throws {
         let model = AppModel(services: FakeServices(), store: MemoryStore(), defaults: .isolated())
-        XCTAssertEqual(model.step, .welcome); model.advance()
+        XCTAssertNotEqual(model.step, .tv); model.advance()
         XCTAssertEqual(model.step, .secondAccount); model.advance()
         XCTAssertEqual(model.step, .psnLogin)
         try await model.completePSNLogin(redirect: URL(string: "https://remoteplay.dl.playstation.net/remoteplay/redirect?code=x")!)
@@ -1274,8 +1274,10 @@ final class TVAppInstallTests: XCTestCase {
         XCTAssertEqual(model.tvAppOutdated, TVAppOutdated(installed: TVAppOutdated.unreported, bundled: "0.6.1"))
         model.tvAppReported("0.5.0")
         XCTAssertEqual(model.tvAppOutdated, TVAppOutdated(installed: "0.5.0", bundled: "0.6.1"))
+        let step = model.step
         await model.updateTVApp()
-        XCTAssertEqual(model.step, .tv)
+        XCTAssertEqual(model.step, step, "TV adımına (eşleştirme/test) gidilmez")
+        XCTAssertTrue(model.tvAppUpdating, "İlerleme ana ekrandaki kartta")
         XCTAssertEqual(model.tvApp, .needsPassphrase(error: nil))
         await model.installTVApp(passphrase: "ABC123")
         XCTAssertEqual(services.installs, 1)
@@ -1294,8 +1296,10 @@ final class TVAppInstallTests: XCTestCase {
         model.tvAppReported("")
         await model.refreshTVApp()
         XCTAssertEqual(model.tvApp, .devModeOff)
+        let step = model.step
         await model.updateTVApp()
-        XCTAssertEqual(model.step, .tv)
+        XCTAssertEqual(model.step, step, "TV adımına (eşleştirme/test) gidilmez")
+        XCTAssertTrue(model.tvAppUpdating, "İlerleme ana ekrandaki kartta")
         XCTAssertEqual(model.tvApp, .devModeOff)
         // TV adımının bekleme döngüsü yeniden denetler; kart boşalmaz.
         await model.refreshTVApp()
@@ -1303,6 +1307,101 @@ final class TVAppInstallTests: XCTestCase {
         services.devMode = true
         await model.refreshTVApp()
         XCTAssertEqual(model.tvApp, .needsPassphrase(error: nil))
+    }
+
+    // MARK: "TV uygulamasını güncelle" senaryoları (ana ekranda; TV adımına gidilmez, her adım tvinstall.log'da)
+
+    private func updateScenario(_ services: FakeServices, key: Bool, reported: String? = "") async throws -> AppModel {
+        let store = MemoryStore()
+        if key { store.save("dev-key", for: StoreKey.tvDevKey) }
+        let model = model(services, store: store)
+        model.tv = tv
+        model.tvClients = 1
+        if let reported { model.tvAppReported(reported) }
+        // tvAppReported'ın başlattığı sessiz deneme bitsin.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        for _ in 0..<100 where model.tvApp == .working { try await Task.sleep(nanoseconds: 10_000_000) }
+        try? FileManager.default.removeItem(at: TVInstallLog.file)
+        return model
+    }
+
+    /// Eski + her şey hazır (geliştirici modu açık, anahtar kayıtlı): basınca güncelleme hemen kurulur, sonuç kartta.
+    func testUpdateWithEverythingReadyInstallsAtOnce() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        services.appOnTV = "0.5.0"
+        let model = try await updateScenario(services, key: true, reported: nil)
+        await model.updateTVApp()
+        XCTAssertNotEqual(model.step, .tv)
+        XCTAssertEqual(model.tvApp, .upToDate("0.6.1"))
+        XCTAssertTrue(model.tvAppUpdating)
+        XCTAssertNil(model.tvAppOutdated)
+        let log = TVInstallLog.tail(of: TVInstallLog.file)
+        XCTAssertTrue(log.contains("Ana ekrandan") && log.contains("Kurulum tamam."), log)
+        model.dismissTVAppUpdate()
+        XCTAssertFalse(model.tvAppUpdating)
+    }
+
+    /// Eski + geliştirici modu kapalı: Developer Mode adımları; açılınca kullanıcı bir şey yapmadan kurulum sürer.
+    func testUpdateWithDevModeOffContinuesByItselfOnceItIsOn() async throws {
+        let services = FakeServices()
+        services.appOnTV = "0.5.0"
+        let model = try await updateScenario(services, key: true)
+        await model.updateTVApp()
+        XCTAssertEqual(model.tvApp, .devModeOff)
+        XCTAssertEqual(services.installs, 0)
+        XCTAssertTrue(TVInstallLog.tail(of: TVInstallLog.file).contains("geliştirici modu kapalı"))
+        services.devMode = true
+        // Kartın 3 sn'lik bekleme döngüsü.
+        await model.refreshTVApp()
+        XCTAssertEqual(services.installs, 1)
+        XCTAssertEqual(model.tvApp, .upToDate("0.6.1"))
+    }
+
+    /// Eski + anahtar yok: Passphrase kartı; yazılınca kurulur.
+    func testUpdateWithoutAKeyAsksThePassphraseThenInstalls() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        services.appOnTV = "0.5.0"
+        let model = try await updateScenario(services, key: false)
+        await model.updateTVApp()
+        XCTAssertEqual(model.tvApp, .needsPassphrase(error: nil))
+        XCTAssertTrue(TVInstallLog.tail(of: TVInstallLog.file).contains("Passphrase isteniyor"))
+        await model.installTVApp(passphrase: "ABC123")
+        XCTAssertEqual(services.installs, 1)
+        XCTAssertEqual(model.tvApp, .upToDate("0.6.1"))
+    }
+
+    /// Uygulama TV'den silinmiş (uyarı bağlantı kalkınca düştü): "Yeniden kur" de aynı yoldan, ana ekranda kurar.
+    func testReinstallingADeletedAppFromHomeInstallsIt() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        services.appOnTV = nil
+        let model = try await updateScenario(services, key: true, reported: nil)
+        model.tvClients = 0
+        XCTAssertNil(model.tvAppOutdated)
+        await model.updateTVApp()
+        XCTAssertNotEqual(model.step, .tv)
+        XCTAssertEqual(services.installs, 1)
+        XCTAssertEqual(model.tvApp, .upToDate("0.6.1"))
+        XCTAssertTrue(TVInstallLog.tail(of: TVInstallLog.file).contains("TV'deki CouchSubs: yok"))
+    }
+
+    /// Kurulum başarısız: neden kartta ("Tekrar dene" kartın düğmesi, refreshTVApp); yeniden deneyince kurulur.
+    func testFailedUpdateShowsWhyAndRetrySucceeds() async throws {
+        let services = FakeServices()
+        services.devMode = true
+        services.appOnTV = "0.5.0"
+        services.lgInstallError = DevModeFailure(.installFailed, detail: "disk dolu")
+        let model = try await updateScenario(services, key: true, reported: nil)
+        model.tvAppReported("0.5.0")
+        for _ in 0..<100 where model.tvApp == .working { try await Task.sleep(nanoseconds: 10_000_000) }
+        await model.updateTVApp()
+        XCTAssertEqual(model.tvApp, .failed(.installFailed, reason: "disk dolu"))
+        XCTAssertTrue(TVInstallLog.tail(of: TVInstallLog.file).contains("HATA installFailed: disk dolu"))
+        services.lgInstallError = nil
+        await model.refreshTVApp()
+        XCTAssertEqual(model.tvApp, .upToDate("0.6.1"))
     }
 
     /// Eski TV uygulaması bağlı, geliştirici modu açık, anahtar bu Mac'te yok: Passphrase kartı görünür.

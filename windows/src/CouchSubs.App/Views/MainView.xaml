@@ -5,7 +5,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="clr-namespace:CouchSubs.App.Controls"
              xmlns:t="clr-namespace:CouchSubs.App.Theme"
-             xmlns:local="clr-namespace:CouchSubs.App.Views">
+             xmlns:local="clr-namespace:CouchSubs.App.Views"
+             xmlns:s="clr-namespace:CouchSubs.App.Views.Steps">
     <DockPanel Margin="{DynamicResource pad.screen}">
         <!-- Başlık: logo, ad, ayarlar -->
         <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
@@ -171,15 +172,21 @@
                                 <!-- TV eşleşmiş ama TV uygulaması bağlı değil (LG): TV adımı açılır; başka TV seçilir ya da kurulum adımları yeniden izlenir. -->
                                 <Button Content="{t:T 'Connect a TV'}" HorizontalAlignment="Left" Margin="0,12,0,0" Padding="16,0" Click="OnConnectTv"
                                         Visibility="{Binding CanReconnectTv, Converter={StaticResource VisibleIf}}" />
-                                <!-- TV'deki uygulama bu bilgisayardaki paketten eski (#884, #891): TV adımı açılır, uygulama yeniden kurulur. -->
+                                <!-- TV'deki uygulama bu bilgisayardaki paketten eski (#884, #891): güncelleme burada başlar, kart altta açılır. -->
                                 <Button Content="{t:T 'Update the TV app'}" HorizontalAlignment="Left" Margin="0,12,0,0" Padding="16,0" Click="OnUpdateTvApp"
                                         Visibility="{Binding ShowTvAppUpdate, Converter={StaticResource VisibleIf}}" />
-                                <!-- TV uygulaması bağlanmıyor (ör. TV'den kaldırıldı): TV adımı açılır, uygulama yeniden kurulur ya da açılır. -->
+                                <!-- TV uygulaması bağlanmıyor (ör. TV'den kaldırıldı): yeniden kurulum burada başlar, kart altta açılır. -->
                                 <Button Content="{t:T 'Reinstall the TV app'}" HorizontalAlignment="Left" Margin="0,12,0,0" Padding="16,0" Click="OnReinstallTvApp"
                                         Visibility="{Binding CanReinstallTvApp, Converter={StaticResource VisibleIf}}" />
                                 <!-- TV eşleşmişken (TV uygulaması bağlı olsa da) yalnız TV adımı açılır: başka TV seçilir, "Yeniden kur…" gerekmez. -->
                                 <Button Style="{StaticResource GhostButton}" Content="{t:T 'Change TV'}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="OnConnectTv"
                                         Visibility="{Binding CanChangeTv, Converter={StaticResource VisibleIf}}" />
+                                <!-- "TV uygulamasını güncelle": ilerleme, eksik adım (Developer Mode, Passphrase), hata ve sonuç burada; TV adımına gidilmez. -->
+                                <StackPanel Visibility="{Binding TvAppUpdating, Converter={StaticResource VisibleIf}}">
+                                    <s:TvAppCard Margin="0,12,0,0" />
+                                    <Button Content="{t:T 'Close'}" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" Margin="0,8,0,0"
+                                            Click="OnDismissTvAppUpdate" Visibility="{Binding ShowTvAppUpdateDone, Converter={StaticResource VisibleIf}}" />
+                                </StackPanel>
                             </StackPanel>
                         </c:Card>
 

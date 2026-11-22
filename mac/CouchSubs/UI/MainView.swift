@@ -158,6 +158,8 @@ struct MainControls: View {
                 if model.settings.output.showsOnTV { TVStatusTile() }
             }
             .fixedSize(horizontal: false, vertical: true)
+            // "TV uygulamasını güncelle": ilerleme, eksik adım ve sonuç burada (TV adımına gidilmez).
+            if model.tvAppUpdating && model.settings.output.showsOnTV { TVAppUpdateSection() }
             if model.isRunning && !model.demoMode { GameSection(choice: model.gameChoice, areas: model.gameAreas) }
             // Kurulum bitmeden de uygulama örnek görüntülerle denenebilir.
             if !model.canStart && !model.isRunning && !model.demoMode { DemoModeButton(kind: .ghost) }
@@ -252,6 +254,21 @@ private struct TestSubtitleButton: View {
     }
 }
 
+/// Ana ekrandaki TV uygulaması güncellemesi: kurulum kartı (ilerleme, Developer Mode adımları, Passphrase, hata ve
+/// "Tekrar dene"); sonuç görününce "Tamam" kartı kapatır.
+private struct TVAppUpdateSection: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.space("s")) {
+            TVAppCard()
+            if case .upToDate = model.tvApp {
+                Button("OK") { model.dismissTVAppUpdate() }.buttonStyle(.secondary)
+            }
+        }
+    }
+}
+
 private struct TVStatusTile: View {
     @EnvironmentObject private var model: AppModel
 
@@ -265,21 +282,20 @@ private struct TVStatusTile: View {
     var body: some View {
         if model.hasTV {
             if let outdated = model.tvAppOutdated {
-                // TV'deki uygulama bu Mac'teki paketten eski (#884, #891): TV adımı açılır, uygulama yeniden kurulur.
+                // TV'deki uygulama bu Mac'teki paketten eski (#884, #891): güncelleme burada başlar, kart altta açılır.
                 StatusTile(symbol: "tv", title: "TV",
                            value: String(format: String(localized: "TV app is out of date (%@ → %@)"), outdated.installed, outdated.bundled),
                            tone: .warning) {
                     Button("Update the TV app") { Task { await model.updateTVApp() } }.buttonStyle(.secondary)
+                        .disabled(model.tvAppUpdating && model.tvApp == .working)
                     changeTV
                 }
             } else if model.canReinstallTVApp {
-                // TV uygulaması bağlanmıyor (ör. TV'den kaldırıldı): TV adımı açılır, uygulama yeniden kurulur ya da açılır.
+                // TV uygulaması bağlanmıyor (ör. TV'den kaldırıldı): yeniden kurulum burada başlar, kart altta açılır.
                 StatusTile(symbol: "tv", title: "TV", value: String(localized: "Waiting for the TV app"),
                            tone: AppModel.tvTone(clients: model.tvClients, running: model.isRunning)) {
-                    Button("Reinstall the TV app") {
-                        model.step = .tv
-                        Task { await model.reinstallTVApp() }
-                    }.buttonStyle(.secondary)
+                    Button("Reinstall the TV app") { Task { await model.updateTVApp() } }.buttonStyle(.secondary)
+                        .disabled(model.tvAppUpdating && model.tvApp == .working)
                     changeTV
                 }
             } else if model.canReconnectTV {
