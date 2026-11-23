@@ -1,7 +1,19 @@
 # GTA VI Türkçe çeviri üslubu
 
 Bu dosya, GTA VI metnini çeviren her kişi ve ajan için ortak kural setidir. Terimler `GLOSSARY.md`'de, etiketler
-`TAGS.md`'de. Bu üç dosya çelişirse sıra şöyle: `TAGS.md` > `GLOSSARY.md` > bu dosya.
+`TAGS.md`'de. Bu üç dosya çelişirse sıra şöyle: aşağıdaki değişmez kural > `TAGS.md` > `GLOSSARY.md` > bu dosyanın
+geri kalanı.
+
+## Değişmez kural: küfür ve hakaret sansürlenmez
+
+**Çevirilerde küfür ve hakaret asla sansürlenmez ya da yumuşatılmaz; aynı sertlikte karşılık verilir.**
+
+- Irkçı, cinsiyetçi ve aşağılayıcı hakaretler de bu kurala dahildir.
+- Sert bir kelime daha hafif bir kelimeyle ("pislik", "korkak", "kanka" gibi) karşılanmaz; harflerle gizlenmez
+  (`s*ktir`), atlanmaz.
+- Sözlükte karşılığı olmayan bir küfür ya da hakaret, bağlama göre aynı sertlikte bir Türkçe karşılıkla çevrilir.
+- Sertleştirme de yapılmaz: İngilizcede olmayan bir küfür eklenmez.
+- Sözlükte bu kurala aykırı bir eşleme görürsen onu kullanma, issue'da bildir.
 
 ## Hedef
 
@@ -26,9 +38,8 @@ konuşma dilinde bir metin görmeli. Çeviri İngilizceyi kelime kelime izlemez,
 
 ## Küfür ve argo
 
-- Küfür aynı şiddette kalır: ne yumuşatılır ne sertleştirilir. Karşılıklar `GLOSSARY.md`'de.
-- Argo, argoyla karşılanır. "Ahbap", "kanka", "dostum" gibi hitaplar için sözlüğe bak.
-- Irkçı ya da cinsiyetçi ifadeler oyunda karakteri anlatmak için vardır. Anlamı ve sertliği korunur, sansürlenmez.
+- Küfür aynı şiddette kalır (yukarıdaki değişmez kural). Sık geçen karşılıklar `GLOSSARY.md`'de.
+- Argo, argoyla karşılanır. "Ahbap", "dostum", "kardeş" gibi hitaplar için sözlüğe bak.
 
 ## Arayüz metinleri
 

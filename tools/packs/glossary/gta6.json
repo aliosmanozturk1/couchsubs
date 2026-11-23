@@ -61,12 +61,6 @@
    "gta_v": "Dostum,"
   },
   {
-   "en": "nigga",
-   "tr": "kanka",
-   "gta_v": "Kanka...",
-   "note": "küfür değil hitap; GTA V'te de 'kanka'"
-  },
-  {
    "en": "sir",
    "tr": "efendim",
    "gta_v": "Efendim.",
@@ -159,19 +153,12 @@
   {
    "en": "asshole",
    "tr": "orospu çocuğu",
-   "gta_v": "Orospu çocuğu!",
-   "note": "hafif bağlamda 'pislik'"
+   "gta_v": "Orospu çocuğu!"
   },
   {
    "en": "bitch",
    "tr": "orospu",
-   "gta_v": "Orospu!",
-   "note": "erkeğe hakarette 'kaltak/ibne' değil, bağlama göre 'pislik'"
-  },
-  {
-   "en": "pussy",
-   "tr": "korkak",
-   "gta_v": "Korkak."
+   "gta_v": "Orospu!"
   },
   {
    "en": "idiot",

@@ -10,7 +10,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 TITLES = {"address": "Hitaplar", "insults": "Küfür ve hakaret", "crime": "Suç ve sokak terimleri",
-          "game_ui": "Oyun arayüzü"}
+          "game_ui": "Oyun arayüzü", "phrases": "Kalıplar", "places": "Yerler"}
 
 
 def cell(value):
@@ -25,7 +25,10 @@ def render(glossary):
            "## Aynen kalanlar", "",
            "Bu isimler çevrilmez; Türkçe ekler kesme işaretiyle eklenir (Lucia'yı, Vice City'de).", "",
            ", ".join(f"`{name}`" for name in glossary["keep"]), ""]
-    for key, title in TITLES.items():
+    # Every term section, in file order: a section added to the JSON shows up here without a code change.
+    sections = [k for k, v in glossary.items() if isinstance(v, list) and v and isinstance(v[0], dict) and "tr" in v[0]]
+    for key in sections:
+        title = TITLES.get(key, key)
         out += [f"## {title}", "", "| İngilizce | Türkçe | GTA V'te | Not |", "|---|---|---|---|"]
         out += [f"| {cell(e['en'])} | {cell(e['tr'])} | {cell(e.get('gta_v'))} | {cell(e.get('note'))} |"
                 for e in glossary.get(key, [])]

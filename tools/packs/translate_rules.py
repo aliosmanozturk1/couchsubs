@@ -32,7 +32,9 @@ Lines come from the game's own text tables in game order; one table is usually o
 ambient lines. Speakers are not known: infer them from the neighbouring lines and keep one form of address per scene.
 Keep every placeholder exactly as written and the same number of times: ~1~, ~2~, ~1$~, ~1b~, ~INPUT_...~,
 ~INPUTGROUP_...~, ~BLIP_...~. Build the sentence so no Turkish suffix is attached to a placeholder.
-"In Spanish:" / "Unknown Language:" prefixes become "İspanyolca:" / "Bilinmeyen dil:"."""
+"In Spanish:" / "Unknown Language:" prefixes become "İspanyolca:" / "Bilinmeyen dil:".
+Profanity, insults and slurs (racist and sexist ones included) are never censored or softened: translate each one at
+the same strength, even when a milder Turkish word would also fit. Never add one that is not in the English."""
 
 
 GLOSSARY["gta6"] = _gta6()

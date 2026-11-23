@@ -126,5 +126,32 @@ class GlossaryMarkdownTests(unittest.TestCase):
         self.assertIn("placeholder", GLOSSARY["gta6"])
 
 
+class NoCensorshipTests(unittest.TestCase):
+    """Rule: profanity and insults are never censored or softened; they get a Turkish equivalent of the same strength."""
+
+    def glossary(self):
+        return json.loads((HERE / "glossary/gta6.json").read_text(encoding="utf-8"))
+
+    def test_glossary_json_matches_its_source(self):
+        import gta6glossary
+        g = self.glossary()
+        for section, choices in gta6glossary.CHOICES.items():
+            self.assertEqual([(e["en"], e["tr"], e.get("note")) for e in g[section]], choices, section)
+
+    def test_softening_mappings_are_gone(self):
+        g = self.glossary()
+        terms = {e["en"]: e for section in ("address", "insults") for e in g[section]}
+        self.assertNotIn("nigga", terms)   # was "kanka"
+        self.assertNotIn("pussy", terms)   # was "korkak"
+        for e in terms.values():
+            self.assertNotIn("pislik", e.get("note") or "", e["en"])
+
+    def test_rule_is_in_the_guide_and_the_prompt(self):
+        from translate_rules import GLOSSARY
+        self.assertIn("never censored or softened", GLOSSARY["gta6"])
+        self.assertIn("küfür ve hakaret asla sansürlenmez ya da yumuşatılmaz",
+                      (HERE / "gta6/STYLE.md").read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()

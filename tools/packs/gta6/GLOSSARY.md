@@ -25,7 +25,6 @@ Bu isimler çevrilmez; Türkçe ekler kesme işaretiyle eklenir (Lucia'yı, Vice
 | homie | kardeşim | Kardeşim!!! | — |
 | buddy | dostum | Dostum? | — |
 | my friend | dostum | Dostum, | — |
-| nigga | kanka | Kanka... | küfür değil hitap; GTA V'te de 'kanka' |
 | sir | efendim | Efendim. | resmî; polisler ve görevliler |
 | ma'am | hanımefendi | — | — |
 | boss | patron | Patron. | — |
@@ -48,9 +47,8 @@ Bu isimler çevrilmez; Türkçe ekler kesme işaretiyle eklenir (Lucia'yı, Vice
 | fuck you | siktir git | Siktir git! | — |
 | fuck off | siktir git | Siktir git! | — |
 | motherfucker | orospu çocuğu | Orospu çocuğu! | — |
-| asshole | orospu çocuğu | Orospu çocuğu! | hafif bağlamda 'pislik' |
-| bitch | orospu | Orospu! | erkeğe hakarette 'kaltak/ibne' değil, bağlama göre 'pislik' |
-| pussy | korkak | Korkak. | — |
+| asshole | orospu çocuğu | Orospu çocuğu! | — |
+| bitch | orospu | Orospu! | — |
 | idiot | geri zekalı | Geri zekalı! | — |
 | fool | salak | Salak | — |
 | jerk | lavuk | Lavuk | — |
@@ -103,3 +101,35 @@ Bu isimler çevrilmez; Türkçe ekler kesme işaretiyle eklenir (Lucia'yı, Vice
 | destination | Varış Yeri | Varış Yeri | — |
 | waypoint | Varış Noktası | Varış Noktası | — |
 | objective | Hedef | Hedef | — |
+
+## Kalıplar
+
+| İngilizce | Türkçe | GTA V'te | Not |
+|---|---|---|---|
+| come on | hadi | Hadi! | — |
+| let's go | gidelim | Gidelim. | — |
+| hurry up | acele et | Acele et. | — |
+| watch out | dikkat | Dikkat! | — |
+| shut up | kapa çeneni | Kapa çeneni. | — |
+| calm down | sakinleş | Sakinleş. | — |
+| take it easy | ağır ol | Ağır ol. | — |
+| get down | yere yat | Yere yat! | — |
+| freeze | olduğun yerde kal | Olduğun yerde kal. | — |
+| copy that | anlaşıldı | Anlaşıldı. | — |
+| you got it | tamamdır | Artık senin! | GTA V'teki 'Artık senin!' bağlama uymaz |
+| see ya | görüşürüz | Görüşürüz! | — |
+| follow me | beni takip et | Beni takip et. | — |
+
+## Yerler
+
+| İngilizce | Türkçe | GTA V'te | Not |
+|---|---|---|---|
+| strip club | striptiz kulübü | Striptiz Kulübü | — |
+| gas station | benzinci | Benzinci | — |
+| liquor store | içki dükkânı | Likör Dükkanı | GTA V'te 'Likör Dükkanı' (yanlış çeviri) |
+| downtown | şehir merkezi | Şehir Merkezi | — |
+| docks | rıhtım | Rıhtım | — |
+| swamp | bataklık | Bataklık | — |
+| marina | marina | Marina | — |
+| yacht | yat | Yat | — |
+| mansion | malikâne | Malikane | — |
