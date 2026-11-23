@@ -37,7 +37,12 @@ Profanity, insults and slurs (racist and sexist ones included) are never censore
 the same strength, even when a milder Turkish word would also fit. Never add one that is not in the English."""
 
 
-GLOSSARY["gta6"] = _gta6()
+# Optional: a copy of this file without gta6glossary.py / glossary/gta6.json (tests that run translate.py from a
+# temporary folder) keeps working for the other games; asking for "gta6" there fails with KeyError.
+try:
+    GLOSSARY["gta6"] = _gta6()
+except (ImportError, FileNotFoundError):
+    pass
 
 RULES = """Rules:
 - Natural spoken Turkish, the way a professional Turkish subtitle translator would write it; match the tone and register
